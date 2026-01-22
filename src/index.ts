@@ -142,7 +142,7 @@ async function answerQuestion(
   return textContent ? textContent.text : "답변을 생성할 수 없습니다.";
 }
 
-// 트윗 발행
+// 트윗 발행 (v1.1 API 사용)
 async function postTweet(twitter: TwitterApi | null, content: string): Promise<void> {
   if (TEST_MODE || !twitter) {
     console.log("🧪 [테스트 모드] 트윗 발행 시뮬레이션:");
@@ -154,11 +154,22 @@ async function postTweet(twitter: TwitterApi | null, content: string): Promise<v
   }
 
   try {
-    const tweet = await twitter.v2.tweet(content);
-    console.log("✅ 트윗 발행 완료:", tweet.data.id);
-  } catch (error) {
-    console.error("❌ 트윗 발행 실패:", error);
-    throw error;
+    // v1.1 API로 트윗 발행 시도
+    const tweet = await twitter.v1.tweet(content);
+    console.log("✅ 트윗 발행 완료! (v1.1)");
+    console.log(`   ID: ${tweet.id_str}`);
+    console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.id_str}`);
+  } catch (v1Error: any) {
+    console.log("⚠️ v1.1 실패, v2 API 시도 중...");
+    try {
+      // v2 API로 재시도
+      const tweet = await twitter.v2.tweet(content);
+      console.log("✅ 트윗 발행 완료! (v2)");
+      console.log(`   ID: ${tweet.data.id}`);
+    } catch (v2Error) {
+      console.error("❌ 트윗 발행 실패:", v2Error);
+      throw v2Error;
+    }
   }
 }
 
