@@ -19,7 +19,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.30.0",
+    "@anthropic-ai/sdk": "^0.30.1",
     "dotenv": "^16.4.5",
     "twitter-api-v2": "^1.17.0"
   },
