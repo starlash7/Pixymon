@@ -7,6 +7,7 @@ export interface NewsItem {
   source: string;
   category: string;
   importance: "high" | "medium" | "low";
+  url?: string;
 }
 
 /**
@@ -20,42 +21,119 @@ export interface MarketData {
 }
 
 /**
+ * CoinGecko 트렌딩 코인 타입
+ */
+interface TrendingCoin {
+  item: {
+    id: string;
+    name: string;
+    symbol: string;
+    market_cap_rank: number;
+    price_btc: number;
+    data: {
+      price_change_percentage_24h: { usd: number };
+    };
+  };
+}
+
+/**
  * 블록체인 뉴스 수집 서비스
+ * - CoinGecko API (트렌딩, 마켓 데이터)
+ * - 실시간 데이터 기반
  */
 export class BlockchainNewsService {
+  
   /**
-   * 오늘의 핫이슈 수집
+   * CoinGecko 트렌딩 코인 기반 핫이슈 생성
    */
   async getTodayHotNews(): Promise<NewsItem[]> {
-    console.log("📰 블록체인 뉴스 수집 중...");
+    console.log("[FETCH] 트렌딩 데이터 수집 중...");
 
-    // TODO: 실제 뉴스 API 연동 (CoinDesk, The Block 등)
-    // 현재는 예시 데이터
-    const news: NewsItem[] = [
-      {
-        title: "Bitcoin ETF 거래량 사상 최고치 기록",
-        summary: "미국 Bitcoin 현물 ETF의 일일 거래량이 50억 달러를 돌파",
-        source: "CoinDesk",
-        category: "bitcoin",
-        importance: "high",
-      },
-      {
-        title: "Ethereum Dencun 업그레이드 성공",
-        summary: "이더리움 레이어2 가스비 90% 절감 예상",
-        source: "The Block",
-        category: "ethereum",
-        importance: "high",
-      },
-      {
-        title: "Solana DeFi TVL 사상 최고치",
-        summary: "솔라나 생태계 TVL 100억 달러 돌파",
-        source: "DeFi Llama",
-        category: "defi",
-        importance: "medium",
-      },
-    ];
+    try {
+      // CoinGecko 트렌딩 API (무료, 키 불필요)
+      const response = await fetch(
+        "https://api.coingecko.com/api/v3/search/trending"
+      );
 
-    return news;
+      if (!response.ok) {
+        throw new Error(`CoinGecko API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const trendingCoins: TrendingCoin[] = data.coins?.slice(0, 5) || [];
+
+      // 트렌딩 코인을 뉴스 형식으로 변환
+      const news: NewsItem[] = trendingCoins.map((coin, index) => {
+        const change = coin.item.data?.price_change_percentage_24h?.usd || 0;
+        const direction = change >= 0 ? "상승" : "하락";
+        
+        return {
+          title: `${coin.item.name} (${coin.item.symbol.toUpperCase()}) 트렌딩 ${index + 1}위`,
+          summary: `24h ${direction} ${Math.abs(change).toFixed(1)}% | 시총 순위 #${coin.item.market_cap_rank || "N/A"}`,
+          source: "CoinGecko Trending",
+          category: "trending",
+          importance: index < 2 ? "high" : "medium",
+        };
+      });
+
+      // 글로벌 마켓 상태 추가
+      const globalNews = await this.getGlobalMarketNews();
+      if (globalNews) {
+        news.unshift(globalNews);
+      }
+
+      return news.slice(0, 5);
+    } catch (error) {
+      console.error("[WARN] 트렌딩 데이터 실패, 마켓 데이터만 사용");
+      
+      // 실패 시 마켓 데이터 기반 뉴스 생성
+      return this.getMarketBasedNews();
+    }
+  }
+
+  /**
+   * 글로벌 마켓 상태 뉴스
+   */
+  async getGlobalMarketNews(): Promise<NewsItem | null> {
+    try {
+      const response = await fetch(
+        "https://api.coingecko.com/api/v3/global"
+      );
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      const global = data.data;
+      
+      const btcDom = global.market_cap_percentage?.btc?.toFixed(1) || "N/A";
+      const totalMcap = (global.total_market_cap?.usd / 1e12).toFixed(2);
+      const mcapChange = global.market_cap_change_percentage_24h_usd?.toFixed(1) || "0";
+
+      return {
+        title: `크립토 시총 $${totalMcap}T | BTC 도미넌스 ${btcDom}%`,
+        summary: `24h 시총 변화: ${parseFloat(mcapChange) >= 0 ? "+" : ""}${mcapChange}%`,
+        source: "CoinGecko Global",
+        category: "market",
+        importance: "high",
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 마켓 데이터 기반 뉴스 생성 (폴백)
+   */
+  async getMarketBasedNews(): Promise<NewsItem[]> {
+    const marketData = await this.getMarketData();
+    
+    return marketData.slice(0, 3).map((coin, index) => ({
+      title: `${coin.name} $${coin.price.toLocaleString()}`,
+      summary: `24h ${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(1)}%`,
+      source: "CoinGecko",
+      category: coin.symbol.toLowerCase(),
+      importance: index === 0 ? "high" : "medium",
+    }));
   }
 
   /**
@@ -104,27 +182,54 @@ export class BlockchainNewsService {
    * 뉴스를 트윗 형식으로 포맷팅
    */
   formatNewsForTweet(news: NewsItem[], marketData: MarketData[]): string {
-    const today = new Date().toLocaleDateString("ko-KR", {
-      month: "numeric",
-      day: "numeric",
-    });
+    let text = "";
 
-    let text = `📅 ${today} 블록체인 핫이슈\n\n`;
+    // 글로벌/마켓 뉴스 (첫 번째)
+    const marketNews = news.find(n => n.category === "market");
+    if (marketNews) {
+      text += `${marketNews.title}\n${marketNews.summary}\n\n`;
+    }
 
-    // 뉴스 항목
-    news.slice(0, 3).forEach((item, index) => {
-      text += `${index + 1}. ${item.title}\n`;
-    });
-
-    // 마켓 데이터
-    text += "\n📊 마켓:\n";
+    // Top 3 마켓 데이터
+    text += "주요 코인:\n";
     marketData.slice(0, 3).forEach((coin) => {
-      const emoji = coin.change24h >= 0 ? "📈" : "📉";
       const sign = coin.change24h >= 0 ? "+" : "";
-      text += `${coin.symbol}: $${coin.price.toLocaleString()} ${emoji}${sign}${coin.change24h.toFixed(1)}%\n`;
+      text += `${coin.symbol}: $${coin.price.toLocaleString()} (${sign}${coin.change24h.toFixed(1)}%)\n`;
     });
+
+    // 트렌딩 코인
+    const trending = news.filter(n => n.category === "trending").slice(0, 3);
+    if (trending.length > 0) {
+      text += "\n트렌딩:\n";
+      trending.forEach((item, index) => {
+        text += `${index + 1}. ${item.title.split(" 트렌딩")[0]}\n`;
+      });
+    }
 
     return text;
+  }
+
+  /**
+   * Fear & Greed Index 조회
+   */
+  async getFearGreedIndex(): Promise<{ value: number; label: string } | null> {
+    try {
+      const response = await fetch(
+        "https://api.alternative.me/fng/?limit=1"
+      );
+      
+      if (!response.ok) return null;
+      
+      const data = await response.json();
+      const fng = data.data?.[0];
+      
+      return fng ? {
+        value: parseInt(fng.value),
+        label: fng.value_classification
+      } : null;
+    } catch {
+      return null;
+    }
   }
 }
 
