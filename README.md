@@ -1,183 +1,158 @@
 # 🦊 Pixymon
 
-**트위터 기반 블록체인 뉴스 AI 에이전트**
+**크립토 마켓 인텔 AI 에이전트**
 
-ElizaOS를 기반으로 만들어진 AI 에이전트로, 매일 핫한 블록체인 이슈를 정리하고 사용자의 질문에 답변합니다.
+실시간 블록체인 뉴스 분석 및 마켓 데이터를 기반으로 트위터에서 자동으로 인사이트를 공유하는 AI 에이전트입니다.
 
-![ElizaOS](https://img.shields.io/badge/ElizaOS-1.0.0-blue)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+[![Twitter](https://img.shields.io/badge/Twitter-@Pixy__mon-1DA1F2?style=flat&logo=twitter)](https://twitter.com/Pixy_mon)
+[![Claude](https://img.shields.io/badge/AI-Claude-blueviolet)](https://anthropic.com)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
 ## ✨ 주요 기능
 
-### 📰 자동 뉴스 요약
-- 매일 정해진 시간에 블록체인/암호화폐 관련 핫이슈 자동 수집
-- AI를 통한 뉴스 요약 및 트위터 자동 포스팅
-- 실시간 마켓 데이터 (BTC, ETH 등) 포함
+### 📊 24/7 마켓 브리핑
+- 매일 오전 9시 모닝 브리핑 자동 발행
+- 3시간마다 마켓 업데이트 포스팅
+- 실시간 데이터: BTC/ETH 가격, Fear & Greed Index, 시총, BTC 도미넌스
 
-### 💬 질문 답변
-- 트위터 멘션으로 질문하면 AI가 답변
-- 블록체인, DeFi, NFT, Layer2 등 다양한 주제 지원
-- 최신 뉴스 컨텍스트를 반영한 답변
+### 💬 멘션 자동 응답
+- `@Pixy_mon` 멘션 시 AI가 자동 답변
+- 한국어 질문 → 한국어 답변
+- 영어 질문 → 영어 답변
+- 중복 답글 방지 시스템
 
-### 🎯 지원 주제
-- Bitcoin & Ethereum
-- DeFi (탈중앙화 금융)
-- NFT & 디지털 아트
-- Layer2 솔루션 (Arbitrum, Optimism, zkSync 등)
-- DAO & 거버넌스
-- 암호화폐 규제 및 정책
+### 🔍 실시간 데이터 소스
+| 소스 | 데이터 |
+|------|--------|
+| CoinGecko | 트렌딩 코인, 마켓 데이터 |
+| CryptoCompare | 핫 뉴스 |
+| Alternative.me | Fear & Greed Index |
+| Twitter | 50+ 인플루언서 모니터링 |
+
+### 🎯 인플루언서 추적 (50+)
+- **창립자/CEO**: Vitalik, Saylor, CZ, Elon Musk
+- **투자자/애널리스트**: Arthur Hayes, Raoul Pal, Cathie Wood
+- **온체인/데이터**: Lookonchain, Willy Woo, Nic Carter
+- **트레이더**: Ansem, DonAlt, Kaleo, Credible Crypto
+- **AI 에이전트**: aixbt_agent
 
 ---
 
-## 🚀 시작하기
+## 🤖 스타일
 
-### 필수 조건
+Pixymon은 **aixbt 스타일**의 팩트 기반 분석을 제공합니다:
 
-- Node.js 18.0.0 이상
-- npm 또는 yarn
-- Twitter (X) Developer 계정 및 API 키
-- OpenAI API 키
+```
+$BTC 89.5k, 24h -1.2%. $ETH는 더 약함 -3.1%. 
+도미넌스 57.5%면 알트 시즌 아직 멀었음
 
-### 설치
-
-```bash
-# 저장소 클론
-git clone https://github.com/yourusername/pixymon.git
-cd pixymon
-
-# 의존성 설치
-npm install
-
-# 환경 변수 설정
-copy env.example .env
-# .env 파일을 열어 API 키 입력
+by Pixymon
 ```
 
-### 환경 변수 설정
+**특징:**
+- 숫자 먼저, 해석은 짧게
+- `$BTC`, `$ETH` 티커 형식
+- 해시태그/이모지 최소화
+- 자연스러운 한국어 + 영어 크립토 용어
+- 숨은 유머 (김프, 러그풀, 횡보 등)
 
-`env.example` 파일을 `.env`로 복사하고 아래 값들을 입력하세요:
+---
+
+## 🚀 실행 모드
+
+### 일회성 실행
+```bash
+npm run dev
+```
+
+### 24/7 스케줄러 모드
+```bash
+# Windows PowerShell
+$env:SCHEDULER_MODE="true"; npm run dev
+
+# Mac/Linux
+SCHEDULER_MODE=true npm run dev
+```
+
+**스케줄:**
+| 시간 | 작업 |
+|------|------|
+| 09:00 | 모닝 브리핑 |
+| 0, 3, 6, 12, 15, 18, 21시 | 마켓 업데이트 |
+| 1, 4, 7, 10, 13, 16, 19, 22시 | 멘션 체크 |
+
+---
+
+## 🛠️ 설치
+
+```bash
+git clone https://github.com/starlash7/Pixymon.git
+cd Pixymon
+npm install
+```
+
+### 환경 변수 (.env)
 
 ```env
-# 필수
-OPENAI_API_KEY=your_openai_api_key
-TWITTER_USERNAME=your_twitter_username
-TWITTER_PASSWORD=your_twitter_password
+# 필수 - Anthropic Claude
+ANTHROPIC_API_KEY=your_anthropic_api_key
+
+# 필수 - Twitter API
 TWITTER_API_KEY=your_twitter_api_key
 TWITTER_API_SECRET=your_twitter_api_secret
 TWITTER_ACCESS_TOKEN=your_twitter_access_token
 TWITTER_ACCESS_SECRET=your_twitter_access_secret
 
-# 선택 (추가 기능용)
-COINGECKO_API_KEY=your_coingecko_api_key
-ETHERSCAN_API_KEY=your_etherscan_api_key
-```
-
-### 실행
-
-```bash
-# 개발 모드
-npm run dev
-
-# 프로덕션 빌드 및 실행
-npm run build
-npm start
+# 선택
+TEST_MODE=false        # true면 트윗 발행 안 함
+SCHEDULER_MODE=false   # true면 24/7 스케줄러 모드
 ```
 
 ---
 
-## 📁 프로젝트 구조
+## 📁 구조
 
 ```
 pixymon/
 ├── src/
-│   ├── index.ts              # 메인 진입점
-│   ├── character.ts          # Pixymon 캐릭터 정의
-│   ├── services/
-│   │   ├── blockchain-news.ts # 뉴스 수집 서비스
-│   │   └── scheduler.ts      # 자동 포스팅 스케줄러
-│   └── actions/
-│       └── answer-question.ts # 질문 답변 액션
-├── env.example               # 환경 변수 템플릿
+│   ├── index.ts                 # 메인 (스케줄러, 포스팅, 멘션)
+│   ├── character.ts             # 캐릭터 정의
+│   └── services/
+│       └── blockchain-news.ts   # 뉴스/마켓 데이터 수집
+├── .env                         # 환경 변수
 ├── package.json
-├── tsconfig.json
-└── README.md
+└── tsconfig.json
 ```
 
 ---
 
-## 🔧 설정 커스터마이징
+## 📝 로드맵
 
-### 캐릭터 수정
-
-`src/character.ts` 파일에서 에이전트의 성격, 말투, 지식 범위를 수정할 수 있습니다:
-
-```typescript
-export const pixymonCharacter: Character = {
-  name: "Pixymon",
-  bio: [...],       // 에이전트 배경
-  adjectives: [...], // 성격 특성
-  style: {...},     // 말투 스타일
-  // ...
-};
-```
-
-### 포스팅 시간 변경
-
-`src/services/scheduler.ts`에서 자동 포스팅 시간을 변경할 수 있습니다:
-
-```typescript
-// 기본: 오전 9시, 오후 6시
-private postingHours: number[] = [9, 18];
-
-// 예: 오전 8시, 오후 12시, 오후 8시로 변경
-scheduler.setPostingHours([8, 12, 20]);
-```
-
----
-
-## 🛡️ 주의사항
-
-- **투자 조언 금지**: 이 에이전트는 정보 제공 목적으로만 사용됩니다. 투자 결정은 본인의 책임입니다.
-- **API 사용량**: Twitter API와 OpenAI API의 사용량 제한을 확인하세요.
-- **정보의 정확성**: AI가 생성한 내용은 항상 검증이 필요합니다.
-
----
-
-## 📝 향후 개발 계획
-
-- [ ] 실시간 뉴스 API 연동 (CoinDesk, The Block 등)
-- [ ] 온체인 데이터 분석 기능
-- [ ] 텔레그램/디스코드 지원
-- [ ] 다국어 지원
+- [x] 실시간 마켓 데이터
+- [x] 24/7 자동 스케줄러
+- [x] 멘션 자동 응답
+- [x] 다국어 지원 (한/영)
+- [x] 인플루언서 모니터링
+- [ ] 온체인 데이터 분석
+- [ ] 텔레그램/디스코드 연동
 - [ ] 웹 대시보드
 
 ---
 
-## 🤝 기여하기
+## ⚠️ 주의사항
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- **NFA (Not Financial Advice)**: 투자 조언이 아닙니다
+- **정보 검증 필요**: AI 생성 콘텐츠는 항상 검증하세요
+- **API 제한**: Twitter/Anthropic API 사용량 확인
 
 ---
 
 ## 📄 라이선스
 
-MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+MIT License
 
 ---
 
-## 🔗 관련 링크
-
-- [ElizaOS Documentation](https://docs.elizaos.ai/)
-- [Twitter Developer Portal](https://developer.twitter.com/)
-- [OpenAI API](https://platform.openai.com/)
-
----
-
-Made with ❤️ by Pixymon Team
+**Made with 🔥 by Pixymon**
