@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
+import cron from "node-cron";
 import { BlockchainNewsService } from "./services/blockchain-news.js";
 
 /**
@@ -11,6 +12,7 @@ import { BlockchainNewsService } from "./services/blockchain-news.js";
  */
 
 const TEST_MODE = process.env.TEST_MODE === "true";
+const SCHEDULER_MODE = process.env.SCHEDULER_MODE === "true";
 
 // 환경 변수 검증
 function validateEnvironment() {
@@ -416,6 +418,74 @@ async function postTweet(twitter: TwitterApi | null, content: string): Promise<v
   }
 }
 
+// 마켓 브리핑 포스팅
+async function postMarketBriefing(
+  twitter: TwitterApi | null,
+  claude: Anthropic,
+  newsService: BlockchainNewsService
+) {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  console.log(`\n[${now}] 마켓 브리핑 시작...`);
+
+  try {
+    const [news, marketData, fng, cryptoNews] = await Promise.all([
+      newsService.getTodayHotNews(),
+      newsService.getMarketData(),
+      newsService.getFearGreedIndex(),
+      newsService.getCryptoNews(5)
+    ]);
+    
+    let newsText = newsService.formatNewsForTweet(news, marketData);
+    
+    if (fng) {
+      newsText += `\nFear & Greed: ${fng.value} (${fng.label})`;
+    }
+
+    if (cryptoNews.length > 0) {
+      newsText += "\n\n핫뉴스:\n";
+      cryptoNews.slice(0, 3).forEach((item, i) => {
+        newsText += `${i + 1}. ${item.title}\n`;
+      });
+    }
+
+    console.log("[DATA] 수집 완료");
+
+    const summary = await generateNewsSummary(claude, newsText);
+    console.log("[POST] " + summary.substring(0, 50) + "...");
+
+    await postTweet(twitter, summary);
+  } catch (error) {
+    console.error("[ERROR] 마켓 브리핑 실패:", error);
+  }
+}
+
+// 멘션 체크 및 응답
+async function checkAndReplyMentions(
+  twitter: TwitterApi,
+  claude: Anthropic
+) {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  console.log(`\n[${now}] 멘션 체크 중...`);
+
+  try {
+    const mentions = await getMentions(twitter);
+    
+    if (mentions.length > 0) {
+      console.log(`[INFO] ${mentions.length}개 멘션 발견`);
+      
+      for (const mention of mentions.slice(0, 5)) {
+        console.log(`  └─ "${mention.text.substring(0, 40)}..."`);
+        await replyToMention(twitter, claude, mention);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    } else {
+      console.log("[INFO] 새 멘션 없음");
+    }
+  } catch (error) {
+    console.error("[ERROR] 멘션 처리 실패:", error);
+  }
+}
+
 // 메인 실행
 async function main() {
   console.log("▶ Pixymon 온라인.");
@@ -423,6 +493,9 @@ async function main() {
   console.log("  AI: Claude | Mode: Analyst");
   if (TEST_MODE) {
     console.log("  [TEST MODE] 실제 트윗 발행 안 함");
+  }
+  if (SCHEDULER_MODE) {
+    console.log("  [SCHEDULER] 24/7 자동 실행 모드");
   }
   console.log("=====================================\n");
 
@@ -446,95 +519,72 @@ async function main() {
     }
   }
 
-  console.log("\n=====================================");
-  console.log("  Pixymon v1.0 - 온체인 분석 에이전트");
-  console.log("  ├─ 뉴스 분석");
-  console.log("  ├─ 마켓 데이터");
-  console.log("  └─ Q&A");
-  console.log("=====================================\n");
+  // 스케줄러 모드
+  if (SCHEDULER_MODE) {
+    console.log("\n=====================================");
+    console.log("  Pixymon v2.0 - 24/7 자동 에이전트");
+    console.log("  ├─ 매일 09:00 마켓 브리핑");
+    console.log("  ├─ 3시간마다 마켓 업데이트");
+    console.log("  └─ 3시간마다 멘션 체크");
+    console.log("=====================================\n");
 
-  // 1. 마켓 데이터 + 뉴스 수집
-  try {
-    console.log("[SCAN] 데이터 수집 중...\n");
-    
-    const [news, marketData, fng, cryptoNews] = await Promise.all([
-      newsService.getTodayHotNews(),
-      newsService.getMarketData(),
-      newsService.getFearGreedIndex(),
-      newsService.getCryptoNews(5)
-    ]);
-    
-    let newsText = newsService.formatNewsForTweet(news, marketData);
-    
-    // Fear & Greed Index 추가
-    if (fng) {
-      newsText += `\nFear & Greed: ${fng.value} (${fng.label})`;
-    }
-
-    // CryptoPanic 핫뉴스 추가
-    if (cryptoNews.length > 0) {
-      newsText += "\n\n핫뉴스:\n";
-      cryptoNews.slice(0, 3).forEach((item, i) => {
-        newsText += `${i + 1}. ${item.title}\n`;
-      });
-    }
-
-    console.log("[DATA] Raw Input:");
-    console.log("─".repeat(40));
-    console.log(newsText);
-    console.log("─".repeat(40));
-
-    // 인플루언서 트윗 수집 (Twitter 연결시에만)
-    let influencerInsights = "";
+    // 시작 시 한 번 실행
+    console.log("[INIT] 초기 실행...");
+    await postMarketBriefing(twitter, claude, newsService);
     if (twitter && !TEST_MODE) {
-      influencerInsights = await getInfluencerTweets(twitter);
-      if (influencerInsights) {
-        console.log("\n[INTEL] 인플루언서 인사이트:");
-        console.log("─".repeat(40));
-        console.log(influencerInsights.substring(0, 500) + "...");
-        console.log("─".repeat(40));
-      }
+      await checkAndReplyMentions(twitter, claude);
     }
 
-    console.log("\n[PROCESS] 분석 중...\n");
-    const summary = await generateNewsSummary(claude, newsText);
+    // 매일 오전 9시 마켓 브리핑 (한국 시간)
+    cron.schedule("0 9 * * *", async () => {
+      console.log("\n🌅 [09:00] 모닝 브리핑");
+      await postMarketBriefing(twitter, claude, newsService);
+    }, { timezone: "Asia/Seoul" });
 
-    console.log("[OUTPUT] 생성된 포스트:");
-    console.log("─".repeat(40));
-    console.log(summary);
-    console.log("─".repeat(40));
-
-    await postTweet(twitter, summary);
-
-  } catch (error) {
-    console.error("[ERROR] 뉴스 수집 실패:", error);
-  }
-
-  // 2. 멘션 확인 및 답글
-  if (twitter && !TEST_MODE) {
-    try {
-      console.log("\n[MENTION] 멘션 확인 중...");
-      const mentions = await getMentions(twitter);
-      
-      if (mentions.length > 0) {
-        console.log(`[INFO] ${mentions.length}개 멘션 발견`);
-        
-        for (const mention of mentions.slice(0, 5)) {
-          console.log(`  └─ "${mention.text.substring(0, 50)}..."`);
-          await replyToMention(twitter, claude, mention);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      } else {
-        console.log("[INFO] 새 멘션 없음");
+    // 3시간마다 마켓 업데이트 (0, 3, 6, 9, 12, 15, 18, 21시)
+    cron.schedule("0 */3 * * *", async () => {
+      const hour = new Date().getHours();
+      if (hour !== 9) { // 9시는 모닝 브리핑으로 처리
+        console.log("\n📊 [3시간] 마켓 업데이트");
+        await postMarketBriefing(twitter, claude, newsService);
       }
-    } catch (error) {
-      console.error("[ERROR] 멘션 처리 실패:", error);
-    }
-  }
+    }, { timezone: "Asia/Seoul" });
 
-  console.log("=====================================");
-  console.log("▶ Pixymon 세션 종료.");
-  console.log("=====================================");
+    // 3시간마다 멘션 체크 (1, 4, 7, 10, 13, 16, 19, 22시)
+    cron.schedule("0 1,4,7,10,13,16,19,22 * * *", async () => {
+      if (twitter && !TEST_MODE) {
+        console.log("\n📬 [3시간] 멘션 체크");
+        await checkAndReplyMentions(twitter, claude);
+      }
+    }, { timezone: "Asia/Seoul" });
+
+    console.log("[SCHEDULER] 대기 중... (Ctrl+C로 종료)\n");
+    
+    // 프로세스 유지
+    process.on("SIGINT", () => {
+      console.log("\n▶ Pixymon 종료.");
+      process.exit(0);
+    });
+
+  } else {
+    // 일회성 실행 모드
+    console.log("\n=====================================");
+    console.log("  Pixymon v1.0 - 온체인 분석 에이전트");
+    console.log("  ├─ 뉴스 분석");
+    console.log("  ├─ 마켓 데이터");
+    console.log("  └─ Q&A");
+    console.log("=====================================\n");
+
+    await postMarketBriefing(twitter, claude, newsService);
+    
+    if (twitter && !TEST_MODE) {
+      await checkAndReplyMentions(twitter, claude);
+    }
+
+    console.log("=====================================");
+    console.log("▶ Pixymon 세션 종료.");
+    console.log("=====================================");
+  }
 }
 
 main().catch(console.error);

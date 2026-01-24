@@ -21,10 +21,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",
     "dotenv": "^16.4.5",
+    "node-cron": "^4.2.1",
     "twitter-api-v2": "^1.17.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/node-cron": "^3.0.11",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },
