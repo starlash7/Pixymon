@@ -39,10 +39,44 @@ interface TrendingCoin {
 /**
  * 블록체인 뉴스 수집 서비스
  * - CoinGecko API (트렌딩, 마켓 데이터)
+ * - CryptoPanic API (실시간 뉴스)
  * - 실시간 데이터 기반
  */
 export class BlockchainNewsService {
   
+  /**
+   * CryptoCompare 뉴스 가져오기 (무료 API)
+   */
+  async getCryptoNews(limit: number = 10): Promise<NewsItem[]> {
+    console.log("[FETCH] 크립토 뉴스 수집 중...");
+
+    try {
+      // CryptoCompare 무료 뉴스 API
+      const response = await fetch(
+        `https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=popular`
+      );
+
+      if (!response.ok) {
+        throw new Error(`CryptoCompare API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const articles = data.Data?.slice(0, limit) || [];
+
+      return articles.map((article: any, index: number) => ({
+        title: article.title,
+        summary: article.body?.substring(0, 100) || "",
+        source: article.source_info?.name || "CryptoCompare",
+        category: "news",
+        importance: index < 3 ? "high" : "medium",
+        url: article.url,
+      }));
+    } catch (error) {
+      console.error("[WARN] 크립토 뉴스 API 실패");
+      return [];
+    }
+  }
+
   /**
    * CoinGecko 트렌딩 코인 기반 핫이슈 생성
    */

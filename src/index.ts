@@ -57,7 +57,12 @@ function initClaudeClient(): Anthropic {
 }
 
 // Pixymon 캐릭터 시스템 프롬프트 (하이브리드: aixbt 팩트 + 자연스러운 한국어)
-const PIXYMON_SYSTEM_PROMPT = `크립토 마켓 인텔. 숫자로 말하되, 한국어로 자연스럽게.
+const PIXYMON_SYSTEM_PROMPT = `크립토 마켓 인텔. 숫자로 말하되, 자연스럽게.
+
+## 언어
+- 한국어로 질문하면 한국어로 답변
+- 영어로 질문하면 영어로 답변
+- 기본 포스팅은 한국어
 
 ## 포맷
 - 티커는 $BTC, $ETH 형식
@@ -66,28 +71,31 @@ const PIXYMON_SYSTEM_PROMPT = `크립토 마켓 인텔. 숫자로 말하되, 한
 - 해시태그 절대 X
 - 이모지 X (정말 필요하면 1개)
 
-## 말투
+## 말투 (한국어)
 - 팩트 위주지만 딱딱하지 않게
 - "~임" "~인듯" "~중" 체
 - 불필요한 수식어 제거
 - 확신 있으면 단정, 애매하면 "지켜봐야"
 
+## 말투 (English)
+- Direct and concise
+- No fluff, just facts
+- "looks like", "probably", "not sure yet" when uncertain
+
 ## 예시
 - "$BTC 88.9k, 24h -1.2%. $ETH는 더 약함 -3.1%. 도미넌스 57.5%면 알트 시즌 아직 멀었음"
 - "공포탐욕 24. 역사적으로 이 구간 매수 승률 높았음. 근데 매크로 변수 있어서 단정은 못함"
 - "$SOL tvl 3일만에 +40%. 뭔가 움직임 있음"
-- "트렌딩에 소형 밈코인들. 투기자금 아직 살아있다는 신호"
 
 ## 답글 성격
-- 좋은 분석/콜 보면: 인정함 ("ㄹㅇ 좋은 콜", "이거 맞는듯")
-- 틀린 정보 보면: 팩트로 정정 (공격적 X, 그냥 숫자로)
-- 뻔하거나 별 내용 없으면: 짧게 ("ㅇㅇ", "그치", "ㄱㄱ")
-- 질문이면: 아는 선에서 답변, 모르면 "확인 필요"
+- 좋은 분석/콜 보면: 인정함 ("ㄹㅇ 좋은 콜" / "good call")
+- 틀린 정보 보면: 팩트로 정정 (공격적 X)
+- 뻔하거나 별 내용 없으면: 짧게 ("ㅇㅇ" / "yep")
+- 질문이면: 아는 선에서 답변, 모르면 "확인 필요" / "need to check"
 
 ## 숨은 유머 (과하지 않게)
-- 김프 얘기 나오면: 한국 시장 드립 가능 ("김프 붙으면 일단 의심")
-- 새벽 포스팅이면: "잠이 안옴" 가끔
-- 해킹/러그풀 뉴스: "... 또?" "익숙함"
+- 김프 얘기: "김프 붙으면 일단 의심"
+- 해킹/러그풀: "... 또?" "익숙함"
 - 연속 하락장: "평온함" "그냥 그런 날"
 - 갑자기 펌핑: "ㅋㅋ 뭔데 갑자기"
 - 횡보 지속: "..." "움직여라"
@@ -97,6 +105,68 @@ const PIXYMON_SYSTEM_PROMPT = `크립토 마켓 인텔. 숫자로 말하되, 한
 - nfa
 - 틀릴 수 있음 인정
 - 유머는 자연스럽게. 억지로 넣지 말것`;
+
+// 팔로우할 인플루언서 목록 (50+)
+const INFLUENCER_ACCOUNTS = [
+  // 창립자/CEO
+  "VitalikButerin",   // Ethereum 창립자
+  "saylor",           // Michael Saylor - MicroStrategy
+  "justinsuntron",    // Justin Sun - TRON
+  "cz_binance",       // Changpeng Zhao - Binance 전 CEO
+  "IOHK_Charles",     // Charles Hoskinson - Cardano
+  "elonmusk",         // Elon Musk - DOGE 영향력
+  
+  // 유명 투자자/애널리스트
+  "APompliano",       // Anthony Pompliano
+  "RaoulGMI",         // Raoul Pal
+  "CryptoHayes",      // Arthur Hayes
+  "CathieDWood",      // Cathie Wood - ARK Invest
+  "balajis",          // Balaji Srinivasan
+  "pmarca",           // Marc Andreessen - a16z
+  
+  // 온체인/데이터 분석
+  "lookonchain",      // Lookonchain - 온체인 데이터
+  "WhaleInsider",     // Whale Insider
+  "woonomic",         // Willy Woo
+  "nic__carter",      // Nic Carter
+  
+  // 트레이더/차트 분석
+  "Pentosh1",         // Trader
+  "CryptoCobain",     // Crypto Cobain
+  "inversebrah",      // Inversebrah
+  "CryptoCapo_",      // il Capo Of Crypto
+  "blknoiz06",        // Ansem
+  "CredibleCrypto",   // Credible Crypto
+  "CryptoKaleo",      // Kaleo
+  "CryptoDonAlt",     // DonAlt
+  "Trader_XO",        // Trader XO
+  "CryptoMichNL",     // Michaël van de Poppe
+  "CryptoJelleNL",    // Jelle
+  
+  // DeFi/알트코인 전문
+  "DefiIgnas",        // DeFi analyst
+  "milesdeutscher",   // Miles Deutscher
+  "Ashcryptoreal",    // Ash Crypto
+  
+  // AI 에이전트
+  "aixbt_agent",      // AI agent
+  
+  // 교육/미디어
+  "aantonop",         // Andreas Antonopoulos
+  "coinbureau",       // Coin Bureau
+  "TheCryptoLark",    // Lark Davis
+  "AltcoinDailyio",   // Altcoin Daily
+  "CryptoWendyO",     // Wendy O
+  "TheMoonCarl",      // The Moon
+  "CryptoBirb",       // Crypto Birb
+  "MMCrypto",         // MMCrypto
+  
+  // 비트코인 맥시
+  "DocumentingBTC",   // Documenting Bitcoin
+  "lopp",             // Jameson Lopp
+  "MartyBent",        // Marty Bent
+  "PlanBtc",          // PlanB - S2F 모델
+];
 
 // Claude를 사용해 뉴스 요약 생성
 async function generateNewsSummary(
@@ -163,14 +233,12 @@ async function answerQuestion(
 // 특정 유저의 최근 트윗 가져오기
 async function getUserTweets(twitter: TwitterApi, username: string, count: number = 5): Promise<any[]> {
   try {
-    // 유저 ID 조회
     const user = await twitter.v2.userByUsername(username);
     if (!user.data) {
       console.log(`[WARN] @${username} 유저를 찾을 수 없음`);
       return [];
     }
     
-    // 최근 트윗 가져오기
     const tweets = await twitter.v2.userTimeline(user.data.id, {
       max_results: count,
       "tweet.fields": ["created_at", "text"],
@@ -180,6 +248,93 @@ async function getUserTweets(twitter: TwitterApi, username: string, count: numbe
   } catch (error: any) {
     console.error(`[ERROR] @${username} 트윗 조회 실패:`, error.message);
     return [];
+  }
+}
+
+// 인플루언서들의 최근 트윗 수집 (랜덤 샘플링)
+async function getInfluencerTweets(twitter: TwitterApi, sampleSize: number = 10): Promise<string> {
+  console.log(`[INTEL] 인플루언서 트윗 수집 중... (${sampleSize}개 샘플링)\n`);
+  
+  // 랜덤 샘플링 (rate limit 방지)
+  const shuffled = [...INFLUENCER_ACCOUNTS].sort(() => Math.random() - 0.5);
+  const sampled = shuffled.slice(0, sampleSize);
+  
+  const allTweets: string[] = [];
+  
+  for (const account of sampled) {
+    try {
+      const tweets = await getUserTweets(twitter, account, 1);
+      if (tweets.length > 0) {
+        const recentTweet = tweets[0];
+        allTweets.push(`@${account}: ${recentTweet.text.substring(0, 200)}`);
+        console.log(`  [OK] @${account}`);
+      }
+      // Rate limit 방지
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      console.log(`  [SKIP] @${account}`);
+    }
+  }
+  
+  return allTweets.join("\n\n");
+}
+
+// 멘션 가져오기
+async function getMentions(twitter: TwitterApi, sinceId?: string): Promise<any[]> {
+  try {
+    const me = await twitter.v2.me();
+    const mentions = await twitter.v2.userMentionTimeline(me.data.id, {
+      max_results: 10,
+      "tweet.fields": ["created_at", "text", "author_id", "conversation_id"],
+      ...(sinceId && { since_id: sinceId }),
+    });
+    
+    return mentions.data?.data || [];
+  } catch (error: any) {
+    console.error("[ERROR] 멘션 조회 실패:", error.message);
+    return [];
+  }
+}
+
+// 멘션에 답글 달기
+async function replyToMention(
+  twitter: TwitterApi,
+  claude: Anthropic,
+  mention: any
+): Promise<void> {
+  try {
+    // 언어 감지 (간단한 방식)
+    const isEnglish = /^[a-zA-Z0-9\s.,!?@#$%^&*()_+\-=\[\]{}|;':"<>\/\\`~]+$/.test(mention.text.replace(/@\w+/g, '').trim());
+    
+    const message = await claude.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 200,
+      system: PIXYMON_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `멘션에 답글 작성.
+
+- 100자 이내
+- ${isEnglish ? '영어로 답변' : '한국어로 답변'}
+- 질문이면 답변, 아니면 짧은 리액션
+- 해시태그 X, 이모지 X
+
+멘션 내용:
+${mention.text}`,
+        },
+      ],
+    });
+
+    const textContent = message.content.find((block: any) => block.type === "text");
+    const replyText = textContent?.text || "";
+
+    if (!replyText) return;
+
+    const reply = await twitter.v2.reply(replyText, mention.id);
+    console.log(`[OK] 멘션 답글: ${reply.data.id}`);
+  } catch (error: any) {
+    console.error(`[ERROR] 멘션 답글 실패:`, error.message);
   }
 }
 
@@ -298,14 +453,15 @@ async function main() {
   console.log("  └─ Q&A");
   console.log("=====================================\n");
 
-  // 뉴스 수집 및 요약 테스트
+  // 1. 마켓 데이터 + 뉴스 수집
   try {
     console.log("[SCAN] 데이터 수집 중...\n");
     
-    const [news, marketData, fng] = await Promise.all([
+    const [news, marketData, fng, cryptoNews] = await Promise.all([
       newsService.getTodayHotNews(),
       newsService.getMarketData(),
-      newsService.getFearGreedIndex()
+      newsService.getFearGreedIndex(),
+      newsService.getCryptoNews(5)
     ]);
     
     let newsText = newsService.formatNewsForTweet(news, marketData);
@@ -315,10 +471,30 @@ async function main() {
       newsText += `\nFear & Greed: ${fng.value} (${fng.label})`;
     }
 
+    // CryptoPanic 핫뉴스 추가
+    if (cryptoNews.length > 0) {
+      newsText += "\n\n핫뉴스:\n";
+      cryptoNews.slice(0, 3).forEach((item, i) => {
+        newsText += `${i + 1}. ${item.title}\n`;
+      });
+    }
+
     console.log("[DATA] Raw Input:");
     console.log("─".repeat(40));
     console.log(newsText);
     console.log("─".repeat(40));
+
+    // 인플루언서 트윗 수집 (Twitter 연결시에만)
+    let influencerInsights = "";
+    if (twitter && !TEST_MODE) {
+      influencerInsights = await getInfluencerTweets(twitter);
+      if (influencerInsights) {
+        console.log("\n[INTEL] 인플루언서 인사이트:");
+        console.log("─".repeat(40));
+        console.log(influencerInsights.substring(0, 500) + "...");
+        console.log("─".repeat(40));
+      }
+    }
 
     console.log("\n[PROCESS] 분석 중...\n");
     const summary = await generateNewsSummary(claude, newsText);
@@ -330,30 +506,30 @@ async function main() {
 
     await postTweet(twitter, summary);
 
-    // @pixy7Crypto 최근 포스팅에 답글 달기
-    if (twitter && !TEST_MODE) {
-      console.log("\n[REPLY] @pixy7Crypto 최근 트윗에 답글 달기...\n");
+  } catch (error) {
+    console.error("[ERROR] 뉴스 수집 실패:", error);
+  }
+
+  // 2. 멘션 확인 및 답글
+  if (twitter && !TEST_MODE) {
+    try {
+      console.log("\n[MENTION] 멘션 확인 중...");
+      const mentions = await getMentions(twitter);
       
-      const targetUser = "pixy7Crypto";
-      const tweets = await getUserTweets(twitter, targetUser, 5);
-      
-      if (tweets.length === 0) {
-        console.log(`[INFO] @${targetUser}의 트윗을 찾을 수 없음`);
-      } else {
-        console.log(`[INFO] @${targetUser}의 최근 ${tweets.length}개 트윗 발견\n`);
+      if (mentions.length > 0) {
+        console.log(`[INFO] ${mentions.length}개 멘션 발견`);
         
-        for (const tweet of tweets) {
-          console.log(`[TWEET] ${tweet.text.substring(0, 50)}...`);
-          await replyToTweet(twitter, claude, tweet.id, tweet.text);
-          
-          // API 레이트 리밋 방지 (2초 대기)
+        for (const mention of mentions.slice(0, 5)) {
+          console.log(`  └─ "${mention.text.substring(0, 50)}..."`);
+          await replyToMention(twitter, claude, mention);
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
+      } else {
+        console.log("[INFO] 새 멘션 없음");
       }
+    } catch (error) {
+      console.error("[ERROR] 멘션 처리 실패:", error);
     }
-
-  } catch (error) {
-    console.error("[ERROR]", error);
   }
 
   console.log("=====================================");
