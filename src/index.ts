@@ -173,26 +173,41 @@ const INFLUENCER_ACCOUNTS = [
   "PlanBtc",          // PlanB - S2F 모델
 ];
 
-// Claude를 사용해 뉴스 요약 생성
+// Claude를 사용해 뉴스 요약 생성 (자율 앵글 선택)
 async function generateNewsSummary(
   claude: Anthropic,
-  newsData: string
+  newsData: string,
+  timeSlot: "morning" | "evening" = "morning"
 ): Promise<string> {
+  const timeContext = timeSlot === "morning" 
+    ? "모닝 브리핑 - 오늘 하루 주목할 포인트 중심" 
+    : "이브닝 리캡 - 오늘 하루 흐름 정리 또는 내일 전망";
+
   const message = await claude.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 300,
+    max_tokens: 400,
     system: PIXYMON_SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
-        content: `데이터 보고 트윗 작성.
+        content: `[${timeContext}]
+
+아래 데이터 중에서 가장 흥미롭거나 의미있는 앵글 하나를 골라서 트윗 작성.
+
+가능한 앵글 (하나만 선택):
+1. 가격 움직임 - 의미있는 변화가 있을 때만
+2. 공포탐욕 vs 가격 괴리 - 심리 분석
+3. 트렌딩 코인 분석 - 왜 이게 뜨는지
+4. 뉴스 이벤트 해석 - 핫한 뉴스가 있을 때
+5. 도미넌스/알트 시즌 판단
+6. 특이점 발견 - 뭔가 이상하거나 주목할 만한 것
 
 규칙:
-- 200자 이내 (서명 공간 필요)
-- $BTC, $ETH 티커 형식 사용
-- 핵심 숫자 2-3개 + 짧은 해석
+- 200자 이내
+- 매번 다른 관점으로 (항상 BTC/ETH 가격부터 시작하지 말것)
+- 뻔한 내용이면 차라리 짧은 한마디
+- $BTC, $ETH 티커 형식
 - 해시태그 X, 이모지 X
-- 나열하지 말고 흐름있게
 
 데이터:
 ${newsData}`,
@@ -425,10 +440,12 @@ async function postTweet(twitter: TwitterApi | null, content: string): Promise<v
 async function postMarketBriefing(
   twitter: TwitterApi | null,
   claude: Anthropic,
-  newsService: BlockchainNewsService
+  newsService: BlockchainNewsService,
+  timeSlot: "morning" | "evening" = "morning"
 ) {
   const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-  console.log(`\n[${now}] 마켓 브리핑 시작...`);
+  const slotLabel = timeSlot === "morning" ? "모닝 브리핑" : "이브닝 리캡";
+  console.log(`\n[${now}] ${slotLabel} 시작...`);
 
   try {
     const [news, marketData, fng, cryptoNews] = await Promise.all([
@@ -453,7 +470,7 @@ async function postMarketBriefing(
 
     console.log("[DATA] 수집 완료");
 
-    const summary = await generateNewsSummary(claude, newsText);
+    const summary = await generateNewsSummary(claude, newsText, timeSlot);
     console.log("[POST] " + summary.substring(0, 50) + "...");
 
     await postTweet(twitter, summary);
@@ -531,16 +548,12 @@ async function main() {
   // 스케줄러 모드
   if (SCHEDULER_MODE) {
     console.log("\n=====================================");
-    console.log("  Pixymon v2.0 - 24/7 자동 에이전트");
-    console.log("  ├─ 매일 09:00 마켓 브리핑");
-    console.log("  ├─ 3시간마다 마켓 업데이트");
+    console.log("  Pixymon v2.1 - 24/7 자동 에이전트");
+    console.log("  ├─ 09:00 모닝 브리핑");
+    console.log("  ├─ 21:00 이브닝 리캡");
     console.log("  └─ 3시간마다 멘션 체크");
     console.log("=====================================\n");
 
-    // 시작 시 한 번 실행
-    console.log("[INIT] 초기 실행...");
-    await postMarketBriefing(twitter, claude, newsService);
-    
     // 기존 멘션은 스킵하고 마지막 ID만 저장 (중복 답글 방지)
     if (twitter && !TEST_MODE) {
       console.log("[INIT] 기존 멘션 ID 확인 중...");
@@ -552,25 +565,22 @@ async function main() {
       }
     }
 
-    // 매일 오전 9시 마켓 브리핑 (한국 시간)
+    // 매일 오전 9시 모닝 브리핑 (한국 시간)
     cron.schedule("0 9 * * *", async () => {
       console.log("\n🌅 [09:00] 모닝 브리핑");
-      await postMarketBriefing(twitter, claude, newsService);
+      await postMarketBriefing(twitter, claude, newsService, "morning");
     }, { timezone: "Asia/Seoul" });
 
-    // 3시간마다 마켓 업데이트 (0, 3, 6, 9, 12, 15, 18, 21시)
+    // 매일 오후 9시 이브닝 리캡 (한국 시간)
+    cron.schedule("0 21 * * *", async () => {
+      console.log("\n🌙 [21:00] 이브닝 리캡");
+      await postMarketBriefing(twitter, claude, newsService, "evening");
+    }, { timezone: "Asia/Seoul" });
+
+    // 3시간마다 멘션 체크 (0, 3, 6, 9, 12, 15, 18, 21시)
     cron.schedule("0 */3 * * *", async () => {
-      const hour = new Date().getHours();
-      if (hour !== 9) { // 9시는 모닝 브리핑으로 처리
-        console.log("\n📊 [3시간] 마켓 업데이트");
-        await postMarketBriefing(twitter, claude, newsService);
-      }
-    }, { timezone: "Asia/Seoul" });
-
-    // 3시간마다 멘션 체크 (1, 4, 7, 10, 13, 16, 19, 22시)
-    cron.schedule("0 1,4,7,10,13,16,19,22 * * *", async () => {
       if (twitter && !TEST_MODE) {
-        console.log("\n📬 [3시간] 멘션 체크");
+        console.log("\n📬 멘션 체크");
         await checkAndReplyMentions(twitter, claude);
       }
     }, { timezone: "Asia/Seoul" });
@@ -586,13 +596,16 @@ async function main() {
   } else {
     // 일회성 실행 모드
     console.log("\n=====================================");
-    console.log("  Pixymon v1.0 - 온체인 분석 에이전트");
+    console.log("  Pixymon v2.1 - 온체인 분석 에이전트");
     console.log("  ├─ 뉴스 분석");
     console.log("  ├─ 마켓 데이터");
     console.log("  └─ Q&A");
     console.log("=====================================\n");
 
-    await postMarketBriefing(twitter, claude, newsService);
+    // 현재 시간에 따라 morning/evening 결정
+    const hour = new Date().getHours();
+    const timeSlot = hour < 15 ? "morning" : "evening";
+    await postMarketBriefing(twitter, claude, newsService, timeSlot);
     
     if (twitter && !TEST_MODE) {
       await checkAndReplyMentions(twitter, claude);
