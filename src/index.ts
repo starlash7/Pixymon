@@ -14,6 +14,9 @@ import { BlockchainNewsService } from "./services/blockchain-news.js";
 const TEST_MODE = process.env.TEST_MODE === "true";
 const SCHEDULER_MODE = process.env.SCHEDULER_MODE === "true";
 
+// 마지막으로 처리한 멘션 ID 저장 (중복 답글 방지)
+let lastProcessedMentionId: string | undefined = undefined;
+
 // 환경 변수 검증
 function validateEnvironment() {
   const required = ["ANTHROPIC_API_KEY"];
@@ -468,16 +471,22 @@ async function checkAndReplyMentions(
   console.log(`\n[${now}] 멘션 체크 중...`);
 
   try {
-    const mentions = await getMentions(twitter);
+    // 마지막으로 처리한 멘션 이후의 새 멘션만 가져오기
+    const mentions = await getMentions(twitter, lastProcessedMentionId);
     
     if (mentions.length > 0) {
-      console.log(`[INFO] ${mentions.length}개 멘션 발견`);
+      console.log(`[INFO] ${mentions.length}개 새 멘션 발견`);
+      
+      // 가장 최신 멘션 ID 저장 (다음 체크 시 이 이후만 가져옴)
+      lastProcessedMentionId = mentions[0].id;
       
       for (const mention of mentions.slice(0, 5)) {
         console.log(`  └─ "${mention.text.substring(0, 40)}..."`);
         await replyToMention(twitter, claude, mention);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
+      
+      console.log(`[INFO] 마지막 처리 ID: ${lastProcessedMentionId}`);
     } else {
       console.log("[INFO] 새 멘션 없음");
     }
@@ -531,8 +540,16 @@ async function main() {
     // 시작 시 한 번 실행
     console.log("[INIT] 초기 실행...");
     await postMarketBriefing(twitter, claude, newsService);
+    
+    // 기존 멘션은 스킵하고 마지막 ID만 저장 (중복 답글 방지)
     if (twitter && !TEST_MODE) {
-      await checkAndReplyMentions(twitter, claude);
+      console.log("[INIT] 기존 멘션 ID 확인 중...");
+      const existingMentions = await getMentions(twitter);
+      if (existingMentions.length > 0) {
+        lastProcessedMentionId = existingMentions[0].id;
+        console.log(`[INIT] 마지막 멘션 ID 저장: ${lastProcessedMentionId}`);
+        console.log("[INIT] 이후 새 멘션만 처리됩니다.");
+      }
     }
 
     // 매일 오전 9시 마켓 브리핑 (한국 시간)
