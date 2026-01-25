@@ -263,19 +263,21 @@ async function generateNewsSummary(
 ${moodText ? `\n${moodText}\n` : ""}
 아래 데이터 중에서 가장 흥미롭거나 의미있는 앵글 하나를 골라서 트윗 작성.
 
-가능한 앵글 (하나만 선택):
-1. 가격 움직임 - 의미있는 변화가 있을 때만
+가능한 앵글 (하나만 선택, 다양하게):
+1. 가격 움직임 - 의미있는 변화가 있을 때만 (매번 하지 말것)
 2. 공포탐욕 vs 가격 괴리 - 심리 분석
-3. 트렌딩 코인 분석 - 왜 이게 뜨는지
-4. 뉴스 이벤트 해석 - 핫한 뉴스가 있을 때
+3. 트렌딩 코인/밈 분석 - 생소한 코인이 왜 뜨는지, 밈 무브먼트
+4. 인플루언서 알파 - 유명인이 뭔가 흥미로운 말 했을 때
 5. 도미넌스/알트 시즌 판단
-6. 특이점 발견 - 뭔가 이상하거나 주목할 만한 것
+6. 특이점/이상 징후 - 뭔가 이상하거나 웃긴 것 발견
 7. 나의 상태/성장 - 가끔 자기 얘기 (Lv.1, 진화, 데이터 소화 등)
+8. 밈/문화 코멘트 - 크립토 문화 관찰, 펭귄/밈코인 등
 
 규칙:
 - 200자 이내
-- 매번 다른 관점으로 (항상 BTC/ETH 가격부터 시작하지 말것)
-- 뻔한 내용이면 차라리 짧은 한마디 또는 나의 상태 언급
+- BTC/ETH 가격 분석은 가끔만. 밈, 알파, 문화적 관찰도 자주
+- 인플루언서가 재밌는 말 했으면 그거 언급해도 됨
+- 생소한 트렌딩 코인이나 밈 있으면 그거 얘기
 - $BTC, $ETH 티커 형식
 - 해시태그 X, 이모지 X
 - 시그니처 표현 자연스럽게 사용 가능
@@ -555,12 +557,20 @@ async function postMarketBriefing(
   console.log(`\n[${now}] ${slotLabel} 시작...`);
 
   try {
+    // 기본 마켓 데이터 수집
     const [news, marketData, fng, cryptoNews] = await Promise.all([
       newsService.getTodayHotNews(),
       newsService.getMarketData(),
       newsService.getFearGreedIndex(),
       newsService.getCryptoNews(5)
     ]);
+    
+    // 인플루언서 트윗 수집 (알파/밈 정보)
+    let influencerContent = "";
+    if (twitter && !TEST_MODE) {
+      console.log("[FETCH] 인플루언서 트윗 수집 중...");
+      influencerContent = await getInfluencerTweets(twitter, 5);
+    }
     
     // Pixymon 무드 감지
     const btcData = marketData?.find((c: any) => c.symbol === "btc");
@@ -579,6 +589,12 @@ async function postMarketBriefing(
       cryptoNews.slice(0, 3).forEach((item, i) => {
         newsText += `${i + 1}. ${item.title}\n`;
       });
+    }
+    
+    // 인플루언서 알파 추가
+    if (influencerContent) {
+      newsText += "\n\n인플루언서 동향 (알파/밈):\n";
+      newsText += influencerContent;
     }
 
     // 메모리 컨텍스트 추가 (중복 방지용)
