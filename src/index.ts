@@ -280,8 +280,9 @@ ${moodText ? `\n${moodText}\n` : ""}
 - 생소한 트렌딩 코인이나 밈 있으면 그거 얘기
 - $BTC, $ETH 티커 형식
 - 해시태그 X, 이모지 X
-- 시그니처 표현 자연스럽게 사용 가능
+- 가끔(3번 중 1번 정도) 자연스럽게 자기 언급 ("픽시가 봤을 때", "데이터 소화해보니", "Lv.2면 더 잘 볼텐데" 등)
 - 트윗 본문만 출력. 앵글 선택 표시나 메타 정보 절대 포함 X
+- "by Pixymon" 같은 서명 붙이지 말것
 
 데이터:
 ${newsData}`,
@@ -292,8 +293,7 @@ ${newsData}`,
   const textContent = message.content.find((block) => block.type === "text");
   const content = textContent?.text || "음... 데이터가 이상함";
   
-  // 서명 추가
-  return `${content}\n\nby Pixymon`;
+  return content;
 }
 
 // Claude를 사용해 질문에 답변
