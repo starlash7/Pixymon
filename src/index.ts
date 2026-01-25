@@ -3,6 +3,7 @@ import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import cron from "node-cron";
 import { BlockchainNewsService } from "./services/blockchain-news.js";
+import { memory } from "./services/memory.js";
 
 /**
  * Pixymon AI Agent - 메인 진입점
@@ -323,8 +324,28 @@ async function replyToMention(
   mention: any
 ): Promise<void> {
   try {
+    // 팔로워 기록 (멘션한 사람 추적)
+    if (mention.author_id) {
+      // 유저 정보 가져오기 (username 확인용)
+      try {
+        const user = await twitter.v2.user(mention.author_id);
+        if (user.data) {
+          memory.recordMention(mention.author_id, user.data.username);
+        }
+      } catch {
+        // 유저 정보 못 가져오면 ID만으로 기록
+        memory.recordMention(mention.author_id, `user_${mention.author_id}`);
+      }
+    }
+
     // 언어 감지 (간단한 방식)
     const isEnglish = /^[a-zA-Z0-9\s.,!?@#$%^&*()_+\-=\[\]{}|;':"<>\/\\`~]+$/.test(mention.text.replace(/@\w+/g, '').trim());
+    
+    // 팔로워 컨텍스트 가져오기
+    const follower = mention.author_id ? memory.getFollower(mention.author_id) : null;
+    const followerContext = follower && follower.mentionCount > 1 
+      ? `\n(이 사람은 ${follower.mentionCount}번째 멘션, 친근하게)` 
+      : "";
     
     const message = await claude.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -338,7 +359,7 @@ async function replyToMention(
 - 100자 이내
 - ${isEnglish ? '영어로 답변' : '한국어로 답변'}
 - 질문이면 답변, 아니면 짧은 리액션
-- 해시태그 X, 이모지 X
+- 해시태그 X, 이모지 X${followerContext}
 
 멘션 내용:
 ${mention.text}`,
@@ -353,6 +374,9 @@ ${mention.text}`,
 
     const reply = await twitter.v2.reply(replyText, mention.id);
     console.log(`[OK] 멘션 답글: ${reply.data.id}`);
+    
+    // 답글도 메모리에 저장
+    memory.saveTweet(reply.data.id, replyText, "reply");
   } catch (error: any) {
     console.error(`[ERROR] 멘션 답글 실패:`, error.message);
   }
@@ -406,14 +430,18 @@ ${tweetText}`,
 }
 
 // 트윗 발행 (v1.1 API 사용)
-async function postTweet(twitter: TwitterApi | null, content: string): Promise<void> {
+async function postTweet(twitter: TwitterApi | null, content: string, type: "briefing" | "reply" | "quote" = "briefing"): Promise<string | null> {
   if (TEST_MODE || !twitter) {
     console.log("🧪 [테스트 모드] 트윗 발행 시뮬레이션:");
     console.log("─".repeat(40));
     console.log(content);
     console.log("─".repeat(40));
     console.log("✅ (실제 트윗은 발행되지 않음)\n");
-    return;
+    
+    // 테스트 모드에서도 메모리에 저장
+    const testId = `test_${Date.now()}`;
+    memory.saveTweet(testId, content, type);
+    return testId;
   }
 
   try {
@@ -422,6 +450,10 @@ async function postTweet(twitter: TwitterApi | null, content: string): Promise<v
     console.log("✅ 트윗 발행 완료! (v1.1)");
     console.log(`   ID: ${tweet.id_str}`);
     console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.id_str}`);
+    
+    // 메모리에 저장
+    memory.saveTweet(tweet.id_str, content, type);
+    return tweet.id_str;
   } catch (v1Error: any) {
     console.log("⚠️ v1.1 실패, v2 API 시도 중...");
     try {
@@ -429,6 +461,10 @@ async function postTweet(twitter: TwitterApi | null, content: string): Promise<v
       const tweet = await twitter.v2.tweet(content);
       console.log("✅ 트윗 발행 완료! (v2)");
       console.log(`   ID: ${tweet.data.id}`);
+      
+      // 메모리에 저장
+      memory.saveTweet(tweet.data.id, content, type);
+      return tweet.data.id;
     } catch (v2Error) {
       console.error("❌ 트윗 발행 실패:", v2Error);
       throw v2Error;
@@ -468,12 +504,41 @@ async function postMarketBriefing(
       });
     }
 
+    // 메모리 컨텍스트 추가 (중복 방지용)
+    const memoryContext = memory.getContext();
+    newsText += `\n\n${memoryContext}`;
+
     console.log("[DATA] 수집 완료");
 
-    const summary = await generateNewsSummary(claude, newsText, timeSlot);
+    // 트윗 생성
+    let summary = await generateNewsSummary(claude, newsText, timeSlot);
+    
+    // 중복 체크
+    const { isDuplicate, similarTweet } = memory.checkDuplicate(summary);
+    if (isDuplicate && similarTweet) {
+      console.log("[WARN] 유사한 트윗 감지, 재생성 시도...");
+      console.log(`  └─ 유사 트윗: "${similarTweet.content.substring(0, 40)}..."`);
+      
+      // 다시 생성 (다른 앵글로)
+      newsText += "\n\n주의: 방금 생성한 내용이 최근 트윗과 너무 유사함. 완전히 다른 앵글로 작성할 것.";
+      summary = await generateNewsSummary(claude, newsText, timeSlot);
+    }
+
     console.log("[POST] " + summary.substring(0, 50) + "...");
 
-    await postTweet(twitter, summary);
+    const tweetId = await postTweet(twitter, summary);
+
+    // 코인 예측 저장 (가격 추적용)
+    if (tweetId && marketData) {
+      const coins = summary.match(/\$([A-Z]{2,10})/g) || [];
+      for (const coin of coins) {
+        const symbol = coin.replace("$", "").toLowerCase();
+        const coinData = marketData.find((c: any) => c.symbol === symbol);
+        if (coinData) {
+          memory.savePrediction(coin, coinData.current_price, tweetId);
+        }
+      }
+    }
   } catch (error) {
     console.error("[ERROR] 마켓 브리핑 실패:", error);
   }

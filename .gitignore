@@ -36,3 +36,6 @@ coverage/
 # Cache
 .cache/
 .npm/
+
+# Memory data (personal/local)
+data/
