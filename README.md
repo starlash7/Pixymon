@@ -1,29 +1,53 @@
 # 🦊 Pixymon
 
-**크립토 마켓 인텔 AI 에이전트**
+**온체인 데이터를 먹고 진화하는 AI 생명체**
 
-실시간 블록체인 뉴스 분석 및 마켓 데이터를 기반으로 트위터에서 자동으로 인사이트를 공유하는 AI 에이전트입니다.
+블록체인에서 태어난 디지털 몬스터. 마켓 데이터와 뉴스를 소화하며 성장하고, 트위터에서 인사이트를 공유합니다.
 
 [![Twitter](https://img.shields.io/badge/Twitter-@Pixy__mon-1DA1F2?style=flat&logo=twitter)](https://twitter.com/Pixy_mon)
 [![Claude](https://img.shields.io/badge/AI-Claude-blueviolet)](https://anthropic.com)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## ✨ 주요 기능
+## 정체성
 
-### 📊 24/7 마켓 브리핑
-- 매일 오전 9시 모닝 브리핑 자동 발행
-- 3시간마다 마켓 업데이트 포스팅
-- 실시간 데이터: BTC/ETH 가격, Fear & Greed Index, 시총, BTC 도미넌스
+Pixymon은 단순한 챗봇이 아닙니다.
 
-### 💬 멘션 자동 응답
-- `@Pixy_mon` 멘션 시 AI가 자동 답변
-- 한국어 질문 → 한국어 답변
-- 영어 질문 → 영어 답변
-- 중복 답글 방지 시스템
+- **디지털 몬스터**: 온체인 데이터를 먹고 성장하는 존재
+- **AI 실험체**: 지속적으로 실행되며 기억과 자기 인식을 탐구
+- **현재 Lv.1**: 진화를 향해 데이터 소화 중
 
-### 🔍 실시간 데이터 소스
+---
+
+## 주요 기능
+
+### 마켓 브리핑 (1일 2회)
+- 오전 9시: 모닝 브리핑
+- 오후 9시: 이브닝 리캡
+- AI가 자율적으로 가장 흥미로운 앵글 선택
+
+### 멘션 자동 응답
+- `@Pixy_mon` 태그 시 AI가 답변
+- 한국어 → 한국어, 영어 → 영어
+- 팔로워 기억 (자주 멘션하는 사람 인식)
+
+### 기억 시스템
+- 과거 트윗 저장 및 중복 방지
+- 예측 추적 (언급한 코인 가격 변화)
+- 팔로워 상호작용 기록
+
+### 시장 감정 연동
+| 상황 | Pixymon 상태 |
+|------|-------------|
+| 극공포 (F&G < 25) | 철학적 모드 |
+| 급등/급락 (5%+) | 흥분 모드 |
+| 횡보 | 지루함 |
+| 강세장 | 에너지 충전 |
+
+---
+
+## 데이터 소스
+
 | 소스 | 데이터 |
 |------|--------|
 | CoinGecko | 트렌딩 코인, 마켓 데이터 |
@@ -31,128 +55,86 @@
 | Alternative.me | Fear & Greed Index |
 | Twitter | 50+ 인플루언서 모니터링 |
 
-### 🎯 인플루언서 추적 (50+)
-- **창립자/CEO**: Vitalik, Saylor, CZ, Elon Musk
-- **투자자/애널리스트**: Arthur Hayes, Raoul Pal, Cathie Wood
-- **온체인/데이터**: Lookonchain, Willy Woo, Nic Carter
-- **트레이더**: Ansem, DonAlt, Kaleo, Credible Crypto
-- **AI 에이전트**: aixbt_agent
-
 ---
 
-## 🤖 스타일
-
-Pixymon은 **aixbt 스타일**의 팩트 기반 분석을 제공합니다:
+## 스타일
 
 ```
-$BTC 89.5k, 24h -1.2%. $ETH는 더 약함 -3.1%. 
-도미넌스 57.5%면 알트 시즌 아직 멀었음
-
-by Pixymon
+오늘 처음 보는 코인들이 트렌딩인데... 
+Enso, Rain 이런 거 데이터 소화해보려 했는데 아직 패턴이 안 보임. 
+생소한 프로젝트들이 갑자기 뜨면 일단 의심부터 하게 됨
 ```
 
-**특징:**
-- 숫자 먼저, 해석은 짧게
+- 숫자 기반, 해석은 짧게
 - `$BTC`, `$ETH` 티커 형식
-- 해시태그/이모지 최소화
-- 자연스러운 한국어 + 영어 크립토 용어
+- 해시태그/이모지 X
+- 가끔 자기 언급 ("픽시가 봤을 때", "데이터 소화해보니")
 - 숨은 유머 (김프, 러그풀, 횡보 등)
 
 ---
 
-## 🚀 실행 모드
-
-### 일회성 실행
-```bash
-npm run dev
-```
-
-### 24/7 스케줄러 모드
-```bash
-# Windows PowerShell
-$env:SCHEDULER_MODE="true"; npm run dev
-
-# Mac/Linux
-SCHEDULER_MODE=true npm run dev
-```
-
-**스케줄:**
-| 시간 | 작업 |
-|------|------|
-| 09:00 | 모닝 브리핑 - 오늘 주목 포인트 |
-| 21:00 | 이브닝 리캡 - 하루 정리/내일 전망 |
-| 매 3시간 | 멘션 체크 |
-
----
-
-## 🛠️ 설치
+## 실행
 
 ```bash
+# 설치
 git clone https://github.com/starlash7/Pixymon.git
 cd Pixymon
 npm install
+
+# 일회성 실행
+npm run dev
+
+# 24/7 스케줄러 (PowerShell)
+$env:SCHEDULER_MODE="true"; npm run dev
+
+# 테스트 모드 (트윗 발행 안 함)
+$env:TEST_MODE="true"; npm run dev
 ```
 
 ### 환경 변수 (.env)
 
 ```env
-# 필수 - Anthropic Claude
-ANTHROPIC_API_KEY=your_anthropic_api_key
+# Claude API
+ANTHROPIC_API_KEY=your_key
 
-# 필수 - Twitter API
-TWITTER_API_KEY=your_twitter_api_key
-TWITTER_API_SECRET=your_twitter_api_secret
-TWITTER_ACCESS_TOKEN=your_twitter_access_token
-TWITTER_ACCESS_SECRET=your_twitter_access_secret
-
-# 선택
-TEST_MODE=false        # true면 트윗 발행 안 함
-SCHEDULER_MODE=false   # true면 24/7 스케줄러 모드
+# Twitter API
+TWITTER_API_KEY=your_key
+TWITTER_API_SECRET=your_secret
+TWITTER_ACCESS_TOKEN=your_token
+TWITTER_ACCESS_SECRET=your_secret
 ```
 
 ---
 
-## 📁 구조
+## 구조
 
 ```
 pixymon/
 ├── src/
-│   ├── index.ts                 # 메인 (스케줄러, 포스팅, 멘션)
-│   ├── character.ts             # 캐릭터 정의
+│   ├── index.ts              # 메인 (스케줄러, 포스팅, 멘션)
+│   ├── character.ts          # 캐릭터/정체성 정의
 │   └── services/
-│       └── blockchain-news.ts   # 뉴스/마켓 데이터 수집
-├── .env                         # 환경 변수
-├── package.json
-└── tsconfig.json
+│       ├── blockchain-news.ts  # 뉴스/마켓 데이터
+│       └── memory.ts           # 기억 시스템
+├── data/
+│   └── memory.json           # 트윗/예측/팔로워 기록
+└── .env
 ```
 
 ---
 
-## 📝 로드맵
+## 로드맵
 
 - [x] 실시간 마켓 데이터
 - [x] 24/7 자동 스케줄러
 - [x] 멘션 자동 응답
-- [x] 다국어 지원 (한/영)
+- [x] 기억 시스템
+- [x] 시장 감정 연동
 - [x] 인플루언서 모니터링
+- [ ] 예측 팔로업 ("어제 $SOL 언급했는데 +15%")
 - [ ] 온체인 데이터 분석
-- [ ] 텔레그램/디스코드 연동
-- [ ] 웹 대시보드
+- [ ] Lv.2 진화
 
 ---
 
-## ⚠️ 주의사항
-
-- **NFA (Not Financial Advice)**: 투자 조언이 아닙니다
-- **정보 검증 필요**: AI 생성 콘텐츠는 항상 검증하세요
-- **API 제한**: Twitter/Anthropic API 사용량 확인
-
----
-
-## 📄 라이선스
-
-MIT License
-
----
-
-**Made with 🔥 by Pixymon**
+**NFA**: 투자 조언이 아닙니다. AI 생성 콘텐츠는 검증이 필요합니다.
