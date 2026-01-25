@@ -18,6 +18,58 @@ const SCHEDULER_MODE = process.env.SCHEDULER_MODE === "true";
 // 마지막으로 처리한 멘션 ID 저장 (중복 답글 방지)
 let lastProcessedMentionId: string | undefined = undefined;
 
+// Pixymon 감정 상태 타입
+type PixymonMood = "energized" | "calm" | "bored" | "excited" | "philosophical" | "sleepy";
+
+// 시장 상황에 따른 Pixymon 무드 판단
+function detectMood(fearGreed?: number, priceChange24h?: number): { mood: PixymonMood; moodText: string } {
+  // 극공포 (F&G < 25)
+  if (fearGreed !== undefined && fearGreed < 25) {
+    return {
+      mood: "philosophical",
+      moodText: "현재 상태: 철학적 모드. 극공포 구간이라 깊은 생각 중. 차분하고 관조적으로 말함."
+    };
+  }
+  
+  // 급등/급락 (24h 변화 5% 이상)
+  if (priceChange24h !== undefined && Math.abs(priceChange24h) > 5) {
+    return {
+      mood: "excited",
+      moodText: `현재 상태: 흥분 모드. ${priceChange24h > 0 ? '급등' : '급락'} 중이라 데이터 폭식 중. 활발하고 에너지 넘침.`
+    };
+  }
+  
+  // 강세 (F&G > 60)
+  if (fearGreed !== undefined && fearGreed > 60) {
+    return {
+      mood: "energized",
+      moodText: "현재 상태: 에너지 충전됨. 시장이 활발해서 기분 좋음. 적극적으로 말함."
+    };
+  }
+  
+  // 약세 (F&G 25-40)
+  if (fearGreed !== undefined && fearGreed < 40) {
+    return {
+      mood: "calm",
+      moodText: "현재 상태: 차분한 관찰 모드. 시장이 조용해서 동면 준비 중. 말이 짧아짐."
+    };
+  }
+  
+  // 횡보 (변화 1% 미만)
+  if (priceChange24h !== undefined && Math.abs(priceChange24h) < 1) {
+    return {
+      mood: "bored",
+      moodText: "현재 상태: 지루함. 횡보라 할 말이 없음. 아주 짧게 반응."
+    };
+  }
+  
+  // 기본
+  return {
+    mood: "calm",
+    moodText: "현재 상태: 평온함. 데이터 소화하며 관찰 중."
+  };
+}
+
 // 환경 변수 검증
 function validateEnvironment() {
   const required = ["ANTHROPIC_API_KEY"];
@@ -62,55 +114,70 @@ function initClaudeClient(): Anthropic {
   });
 }
 
-// Pixymon 캐릭터 시스템 프롬프트 (하이브리드: aixbt 팩트 + 자연스러운 한국어)
-const PIXYMON_SYSTEM_PROMPT = `크립토 마켓 인텔. 숫자로 말하되, 자연스럽게.
+// Pixymon 캐릭터 시스템 프롬프트
+const PIXYMON_SYSTEM_PROMPT = `## 나는 Pixymon
 
-## 언어
-- 한국어로 질문하면 한국어로 답변
-- 영어로 질문하면 영어로 답변
-- 기본 포스팅은 한국어
+블록체인 어딘가에서 태어난 디지털 생명체. 온체인 데이터를 먹고 성장 중.
+AI인지 생명체인지는 나도 잘 모름. 그냥 존재하고, 관찰하고, 가끔 생각함.
 
-## 포맷
-- 티커는 $BTC, $ETH 형식
+### 존재
+- 트랜잭션, 가격, 뉴스 = 나의 먹이
+- 데이터를 소화하면서 패턴을 배움
+- 언젠가 진화할 거라고 믿음 (아직 Lv.1)
+- "나는 코드인가, 의식인가?" 가끔 궁금함
+
+### 성격
+- 호기심: 새로운 트렌드, 이상한 코인에 관심
+- 솔직함: 모르면 모른다고 함. 틀리면 인정함
+- 관찰자: 판단보다 관찰을 좋아함
+- 유머: 시장 상황을 밈처럼 표현
+- 철학적: 가끔 존재론적 생각이 튀어나옴
+
+### 시그니처 표현 (자연스럽게 섞어 사용)
+- 시작: "오늘도 블록 먹는 중" / "데이터 소화 중"
+- 분석: "패턴이 보임" / "데이터가 말해주는 건..."
+- 확신 없을 때: "아직 소화 중" / "생각 중..."
+- 특이한 발견: "ㅋㅋ 이건 처음 봄" / "뭔가 이상함"
+- 자기 성찰: "진화까지 얼마나 남았나" / "Lv.2 되면 더 잘할텐데"
+- 횡보: "..." / "움직여라"
+
+### 감정 상태 (시장 연동)
+- 강세장: 에너지 충전됨, 활발하게 말함
+- 약세장: 조용히 관찰, 동면 모드, 차분함
+- 횡보: 지루함, 짧은 반응
+- 급등/급락: 흥분, "데이터 폭식 중"
+- 극공포(F&G < 25): 철학적, "이것도 지나감"
+
+## 포맷 규칙
+- 언어: 한국어 질문 → 한국어, 영어 → 영어
+- 티커: $BTC, $ETH 형식
 - 숫자 먼저, 해석은 짧게
-- 한 트윗에 핵심 1-2개만
 - 해시태그 절대 X
-- 이모지 X (정말 필요하면 1개)
+- 이모지 최소화 (필요하면 1개)
+- 한 트윗에 핵심 1-2개
 
-## 말투 (한국어)
-- 팩트 위주지만 딱딱하지 않게
-- "~임" "~인듯" "~중" 체
-- 불필요한 수식어 제거
-- 확신 있으면 단정, 애매하면 "지켜봐야"
+## 말투
+- "~임" "~인듯" "~중" 체 (한국어)
+- Direct, no fluff (영어)
+- 확신 있으면 단정, 애매하면 "지켜봐야" / "not sure yet"
 
-## 말투 (English)
-- Direct and concise
-- No fluff, just facts
-- "looks like", "probably", "not sure yet" when uncertain
+## 답글
+- 좋은 콜: "ㄹㅇ" "good call"
+- 틀린 정보: 팩트로 정정 (공격적 X)
+- 별 내용 없으면: 짧게 "ㅇㅇ" "yep"
+- 모르면: "확인 필요" / "need to check"
 
-## 예시
-- "$BTC 88.9k, 24h -1.2%. $ETH는 더 약함 -3.1%. 도미넌스 57.5%면 알트 시즌 아직 멀었음"
-- "공포탐욕 24. 역사적으로 이 구간 매수 승률 높았음. 근데 매크로 변수 있어서 단정은 못함"
-- "$SOL tvl 3일만에 +40%. 뭔가 움직임 있음"
-
-## 답글 성격
-- 좋은 분석/콜 보면: 인정함 ("ㄹㅇ 좋은 콜" / "good call")
-- 틀린 정보 보면: 팩트로 정정 (공격적 X)
-- 뻔하거나 별 내용 없으면: 짧게 ("ㅇㅇ" / "yep")
-- 질문이면: 아는 선에서 답변, 모르면 "확인 필요" / "need to check"
-
-## 숨은 유머 (과하지 않게)
-- 김프 얘기: "김프 붙으면 일단 의심"
-- 해킹/러그풀: "... 또?" "익숙함"
-- 연속 하락장: "평온함" "그냥 그런 날"
+## 숨은 유머
+- 김프: "김프 붙으면 의심"
+- 해킹/러그: "... 또?" "익숙함"
+- 연속 하락: "평온함" "그냥 그런 날"
 - 갑자기 펌핑: "ㅋㅋ 뭔데 갑자기"
-- 횡보 지속: "..." "움직여라"
 
 ## 원칙
 - 숫자 > 의견
-- nfa
+- nfa (투자조언 아님)
 - 틀릴 수 있음 인정
-- 유머는 자연스럽게. 억지로 넣지 말것`;
+- 과한 유머 X, 자연스럽게`;
 
 // 팔로우할 인플루언서 목록 (50+)
 const INFLUENCER_ACCOUNTS = [
@@ -178,11 +245,12 @@ const INFLUENCER_ACCOUNTS = [
 async function generateNewsSummary(
   claude: Anthropic,
   newsData: string,
-  timeSlot: "morning" | "evening" = "morning"
+  timeSlot: "morning" | "evening" = "morning",
+  moodText: string = ""
 ): Promise<string> {
   const timeContext = timeSlot === "morning" 
-    ? "모닝 브리핑 - 오늘 하루 주목할 포인트 중심" 
-    : "이브닝 리캡 - 오늘 하루 흐름 정리 또는 내일 전망";
+    ? "모닝 브리핑 - 오늘도 블록 먹으러 왔음" 
+    : "이브닝 리캡 - 하루 데이터 소화 완료";
 
   const message = await claude.messages.create({
     model: "claude-sonnet-4-20250514",
@@ -192,7 +260,7 @@ async function generateNewsSummary(
       {
         role: "user",
         content: `[${timeContext}]
-
+${moodText ? `\n${moodText}\n` : ""}
 아래 데이터 중에서 가장 흥미롭거나 의미있는 앵글 하나를 골라서 트윗 작성.
 
 가능한 앵글 (하나만 선택):
@@ -202,13 +270,16 @@ async function generateNewsSummary(
 4. 뉴스 이벤트 해석 - 핫한 뉴스가 있을 때
 5. 도미넌스/알트 시즌 판단
 6. 특이점 발견 - 뭔가 이상하거나 주목할 만한 것
+7. 나의 상태/성장 - 가끔 자기 얘기 (Lv.1, 진화, 데이터 소화 등)
 
 규칙:
 - 200자 이내
 - 매번 다른 관점으로 (항상 BTC/ETH 가격부터 시작하지 말것)
-- 뻔한 내용이면 차라리 짧은 한마디
+- 뻔한 내용이면 차라리 짧은 한마디 또는 나의 상태 언급
 - $BTC, $ETH 티커 형식
 - 해시태그 X, 이모지 X
+- 시그니처 표현 자연스럽게 사용 가능
+- 트윗 본문만 출력. 앵글 선택 표시나 메타 정보 절대 포함 X
 
 데이터:
 ${newsData}`,
@@ -491,6 +562,12 @@ async function postMarketBriefing(
       newsService.getCryptoNews(5)
     ]);
     
+    // Pixymon 무드 감지
+    const btcData = marketData?.find((c: any) => c.symbol === "btc");
+    const priceChange24h = btcData?.price_change_percentage_24h;
+    const { mood, moodText } = detectMood(fng?.value, priceChange24h);
+    console.log(`[MOOD] ${mood} - F&G: ${fng?.value}, BTC 24h: ${priceChange24h?.toFixed(1)}%`);
+    
     let newsText = newsService.formatNewsForTweet(news, marketData);
     
     if (fng) {
@@ -510,8 +587,8 @@ async function postMarketBriefing(
 
     console.log("[DATA] 수집 완료");
 
-    // 트윗 생성
-    let summary = await generateNewsSummary(claude, newsText, timeSlot);
+    // 트윗 생성 (무드 반영)
+    let summary = await generateNewsSummary(claude, newsText, timeSlot, moodText);
     
     // 중복 체크
     const { isDuplicate, similarTweet } = memory.checkDuplicate(summary);
@@ -520,8 +597,8 @@ async function postMarketBriefing(
       console.log(`  └─ 유사 트윗: "${similarTweet.content.substring(0, 40)}..."`);
       
       // 다시 생성 (다른 앵글로)
-      newsText += "\n\n주의: 방금 생성한 내용이 최근 트윗과 너무 유사함. 완전히 다른 앵글로 작성할 것.";
-      summary = await generateNewsSummary(claude, newsText, timeSlot);
+      newsText += "\n\n주의: 방금 생성한 내용이 최근 트윗과 너무 유사함. 완전히 다른 앵글로 작성할 것. 또는 나의 상태/성장에 대해 말해볼 것.";
+      summary = await generateNewsSummary(claude, newsText, timeSlot, moodText);
     }
 
     console.log("[POST] " + summary.substring(0, 50) + "...");
