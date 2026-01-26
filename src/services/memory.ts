@@ -47,6 +47,7 @@ interface MemoryData {
   tweets: Tweet[];
   predictions: Prediction[];
   followers: Record<string, Follower>;
+  lastProcessedMentionId?: string;  // 마지막 처리한 멘션 ID
   lastUpdated: string;
 }
 
@@ -330,6 +331,22 @@ export class MemoryService {
       predictions: this.data.predictions.length,
       followers: Object.keys(this.data.followers).length,
     };
+  }
+
+  // ============================================
+  // 멘션 ID 추적 (중복 답글 방지)
+  // ============================================
+
+  // 마지막 처리한 멘션 ID 가져오기
+  getLastProcessedMentionId(): string | undefined {
+    return this.data.lastProcessedMentionId;
+  }
+
+  // 마지막 처리한 멘션 ID 저장
+  setLastProcessedMentionId(mentionId: string): void {
+    this.data.lastProcessedMentionId = mentionId;
+    this.save();
+    console.log(`[MEMORY] 마지막 멘션 ID 저장: ${mentionId}`);
   }
 }
 

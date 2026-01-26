@@ -15,9 +15,6 @@ import { memory } from "./services/memory.js";
 const TEST_MODE = process.env.TEST_MODE === "true";
 const SCHEDULER_MODE = process.env.SCHEDULER_MODE === "true";
 
-// 마지막으로 처리한 멘션 ID 저장 (중복 답글 방지)
-let lastProcessedMentionId: string | undefined = undefined;
-
 // Pixymon 감정 상태 타입
 type PixymonMood = "energized" | "calm" | "bored" | "excited" | "philosophical" | "sleepy";
 
@@ -647,22 +644,21 @@ async function checkAndReplyMentions(
   console.log(`\n[${now}] 멘션 체크 중...`);
 
   try {
-    // 마지막으로 처리한 멘션 이후의 새 멘션만 가져오기
-    const mentions = await getMentions(twitter, lastProcessedMentionId);
+    // 메모리에서 마지막 처리한 멘션 ID 가져오기
+    const lastMentionId = memory.getLastProcessedMentionId();
+    const mentions = await getMentions(twitter, lastMentionId);
     
     if (mentions.length > 0) {
       console.log(`[INFO] ${mentions.length}개 새 멘션 발견`);
       
-      // 가장 최신 멘션 ID 저장 (다음 체크 시 이 이후만 가져옴)
-      lastProcessedMentionId = mentions[0].id;
+      // 가장 최신 멘션 ID를 메모리에 저장 (영구 저장)
+      memory.setLastProcessedMentionId(mentions[0].id);
       
       for (const mention of mentions.slice(0, 5)) {
         console.log(`  └─ "${mention.text.substring(0, 40)}..."`);
         await replyToMention(twitter, claude, mention);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
-      
-      console.log(`[INFO] 마지막 처리 ID: ${lastProcessedMentionId}`);
     } else {
       console.log("[INFO] 새 멘션 없음");
     }
@@ -713,14 +709,20 @@ async function main() {
     console.log("  └─ 3시간마다 멘션 체크");
     console.log("=====================================\n");
 
-    // 기존 멘션은 스킵하고 마지막 ID만 저장 (중복 답글 방지)
+    // 메모리에서 마지막 처리 멘션 ID 확인 (영구 저장됨)
     if (twitter && !TEST_MODE) {
-      console.log("[INIT] 기존 멘션 ID 확인 중...");
-      const existingMentions = await getMentions(twitter);
-      if (existingMentions.length > 0) {
-        lastProcessedMentionId = existingMentions[0].id;
-        console.log(`[INIT] 마지막 멘션 ID 저장: ${lastProcessedMentionId}`);
+      const savedMentionId = memory.getLastProcessedMentionId();
+      if (savedMentionId) {
+        console.log(`[INIT] 저장된 마지막 멘션 ID: ${savedMentionId}`);
         console.log("[INIT] 이후 새 멘션만 처리됩니다.");
+      } else {
+        // 처음 실행 시 기존 멘션 ID 저장
+        console.log("[INIT] 첫 실행 - 기존 멘션 ID 확인 중...");
+        const existingMentions = await getMentions(twitter);
+        if (existingMentions.length > 0) {
+          memory.setLastProcessedMentionId(existingMentions[0].id);
+          console.log("[INIT] 이후 새 멘션만 처리됩니다.");
+        }
       }
     }
 
