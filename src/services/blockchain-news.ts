@@ -213,6 +213,62 @@ export class BlockchainNewsService {
   }
 
   /**
+   * 특정 코인 가격 조회 (심볼로)
+   */
+  async getCoinPrice(symbol: string): Promise<{ price: number; change24h: number } | null> {
+    try {
+      // CoinGecko ID 매핑 (주요 코인들)
+      const idMap: Record<string, string> = {
+        BTC: "bitcoin",
+        ETH: "ethereum",
+        SOL: "solana",
+        XRP: "ripple",
+        BNB: "binancecoin",
+        ADA: "cardano",
+        DOGE: "dogecoin",
+        AVAX: "avalanche-2",
+        DOT: "polkadot",
+        MATIC: "matic-network",
+        LINK: "chainlink",
+        SHIB: "shiba-inu",
+        LTC: "litecoin",
+        ATOM: "cosmos",
+        UNI: "uniswap",
+        ARB: "arbitrum",
+        OP: "optimism",
+        APT: "aptos",
+        SUI: "sui",
+        PEPE: "pepe",
+      };
+
+      const coinId = idMap[symbol.toUpperCase()];
+      if (!coinId) {
+        console.log(`[PRICE] ${symbol} ID 매핑 없음`);
+        return null;
+      }
+
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`
+      );
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      const coinData = data[coinId];
+
+      if (!coinData) return null;
+
+      return {
+        price: coinData.usd,
+        change24h: coinData.usd_24h_change || 0,
+      };
+    } catch (error) {
+      console.error(`[PRICE] ${symbol} 조회 실패:`, error);
+      return null;
+    }
+  }
+
+  /**
    * 뉴스를 트윗 형식으로 포맷팅
    */
   formatNewsForTweet(news: NewsItem[], marketData: MarketData[]): string {

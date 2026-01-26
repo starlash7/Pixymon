@@ -623,10 +623,10 @@ async function postMarketBriefing(
     if (tweetId && marketData) {
       const coins = summary.match(/\$([A-Z]{2,10})/g) || [];
       for (const coin of coins) {
-        const symbol = coin.replace("$", "").toLowerCase();
-        const coinData = marketData.find((c: any) => c.symbol === symbol);
+        const symbol = coin.replace("$", "").toUpperCase();
+        const coinData = marketData.find((c: any) => c.symbol.toUpperCase() === symbol);
         if (coinData) {
-          memory.savePrediction(coin, coinData.current_price, tweetId);
+          memory.savePrediction(coin, coinData.current_price || coinData.price, tweetId);
         }
       }
     }
@@ -664,6 +664,101 @@ async function checkAndReplyMentions(
     }
   } catch (error) {
     console.error("[ERROR] 멘션 처리 실패:", error);
+  }
+}
+
+// 예측 팔로업 - 어제 언급한 코인 가격 변화 체크
+async function checkPredictionFollowUp(
+  twitter: TwitterApi,
+  claude: Anthropic,
+  newsService: BlockchainNewsService
+) {
+  console.log("\n[FOLLOWUP] 예측 팔로업 체크 중...");
+
+  try {
+    // 24시간 이상 지난, 아직 팔로업 안 된 예측들
+    const pendingPredictions = memory.getPendingPredictions(24);
+
+    if (pendingPredictions.length === 0) {
+      console.log("[FOLLOWUP] 팔로업할 예측 없음");
+      return;
+    }
+
+    console.log(`[FOLLOWUP] ${pendingPredictions.length}개 예측 확인 중...`);
+
+    // 의미있는 변화가 있는 예측들 수집
+    const significantChanges: Array<{
+      coin: string;
+      oldPrice: number;
+      newPrice: number;
+      changePercent: number;
+    }> = [];
+
+    for (const prediction of pendingPredictions) {
+      const coinSymbol = prediction.coin.replace("$", "");
+      const priceData = await newsService.getCoinPrice(coinSymbol);
+
+      if (priceData) {
+        const changePercent = ((priceData.price - prediction.priceAtMention) / prediction.priceAtMention) * 100;
+
+        // 예측 업데이트
+        memory.updatePrediction(coinSymbol, priceData.price);
+
+        // 5% 이상 변화 시 의미있는 변화로 기록
+        if (Math.abs(changePercent) >= 5) {
+          significantChanges.push({
+            coin: prediction.coin,
+            oldPrice: prediction.priceAtMention,
+            newPrice: priceData.price,
+            changePercent: Math.round(changePercent * 10) / 10,
+          });
+        }
+      }
+
+      // API 레이트 리밋 방지
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // 의미있는 변화가 있으면 팔로업 트윗 생성
+    if (significantChanges.length > 0) {
+      console.log(`[FOLLOWUP] ${significantChanges.length}개 의미있는 변화 감지!`);
+
+      const changesText = significantChanges
+        .map(c => `${c.coin}: $${c.oldPrice.toLocaleString()} → $${c.newPrice.toLocaleString()} (${c.changePercent > 0 ? "+" : ""}${c.changePercent}%)`)
+        .join("\n");
+
+      const followUpPrompt = `
+어제 내가 언급했던 코인들의 가격 변화:
+${changesText}
+
+이 데이터를 보고 짧은 팔로업 트윗을 작성해줘.
+- 자랑하거나 후회하는 톤 OK (맞췄으면 "ㅋㅋ 봤지", 틀렸으면 "음... 이건 예상 밖")
+- 다음에 뭘 볼지 힌트 줘도 됨
+- 150자 이내
+- 트윗 본문만 출력
+`;
+
+      const message = await claude.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 200,
+        system: PIXYMON_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: followUpPrompt }],
+      });
+
+      const textContent = message.content.find((block) => block.type === "text");
+      const followUpTweet = textContent?.text || "";
+
+      if (followUpTweet) {
+        const tweetId = await postTweet(twitter, followUpTweet, "briefing");
+        if (tweetId) {
+          console.log(`[FOLLOWUP] 팔로업 트윗 발행됨!`);
+        }
+      }
+    } else {
+      console.log("[FOLLOWUP] 의미있는 변화 없음 (±5% 미만)");
+    }
+  } catch (error) {
+    console.error("[ERROR] 예측 팔로업 실패:", error);
   }
 }
 
@@ -705,6 +800,7 @@ async function main() {
     console.log("\n=====================================");
     console.log("  Pixymon v2.1 - 24/7 자동 에이전트");
     console.log("  ├─ 09:00 모닝 브리핑");
+    console.log("  ├─ 18:00 예측 팔로업");
     console.log("  ├─ 21:00 이브닝 리캡");
     console.log("  └─ 3시간마다 멘션 체크");
     console.log("=====================================\n");
@@ -730,6 +826,12 @@ async function main() {
     cron.schedule("0 9 * * *", async () => {
       console.log("\n🌅 [09:00] 모닝 브리핑");
       await postMarketBriefing(twitter, claude, newsService, "morning");
+    }, { timezone: "Asia/Seoul" });
+
+    // 매일 오후 6시 예측 팔로업 (한국 시간)
+    cron.schedule("0 18 * * *", async () => {
+      console.log("\n📊 [18:00] 예측 팔로업");
+      await checkPredictionFollowUp(twitter, claude, newsService);
     }, { timezone: "Asia/Seoul" });
 
     // 매일 오후 9시 이브닝 리캡 (한국 시간)
@@ -767,6 +869,9 @@ async function main() {
     const hour = new Date().getHours();
     const timeSlot = hour < 15 ? "morning" : "evening";
     await postMarketBriefing(twitter, claude, newsService, timeSlot);
+    
+    // 예측 팔로업 체크
+    await checkPredictionFollowUp(twitter, claude, newsService);
     
     if (twitter && !TEST_MODE) {
       await checkAndReplyMentions(twitter, claude);
