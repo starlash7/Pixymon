@@ -289,36 +289,28 @@ export class MemoryService {
   // 최근 활동 요약
   getContext(): string {
     const recentTweets = this.getRecentTweets(5);
-    const pendingPredictions = this.getPendingPredictions();
-    const topFollowers = this.getTopFollowers(3);
+    const recentPredictions = this.data.predictions.slice(-5);
 
-    let context = "## 최근 기억\n\n";
+    let context = "## 내 기억 (참고용, 강제로 언급할 필요 없음)\n\n";
 
-    // 최근 트윗
+    // 최근 트윗 (중복 방지)
     if (recentTweets.length > 0) {
-      context += "### 최근 내 트윗 (중복 피하기)\n";
+      context += "### 최근 내 트윗 (비슷한 내용 피하기)\n";
       recentTweets.forEach(t => {
-        const date = new Date(t.timestamp).toLocaleDateString("ko-KR");
-        context += `- [${date}] ${t.content.substring(0, 50)}...\n`;
+        context += `- ${t.content.substring(0, 60)}...\n`;
       });
       context += "\n";
     }
 
-    // 팔로업 필요한 예측
-    if (pendingPredictions.length > 0) {
-      context += "### 팔로업 필요한 예측\n";
-      pendingPredictions.forEach(p => {
-        context += `- ${p.coin}: $${p.priceAtMention}에 언급 (확인 필요)\n`;
+    // 과거에 언급한 코인들 (자연스럽게 연결 가능)
+    if (recentPredictions.length > 0) {
+      context += "### 전에 언급한 코인 (관련 있으면 자연스럽게 연결해도 됨)\n";
+      recentPredictions.forEach(p => {
+        const daysAgo = Math.floor((Date.now() - new Date(p.mentionedAt).getTime()) / (1000 * 60 * 60 * 24));
+        const timeAgo = daysAgo === 0 ? "오늘" : daysAgo === 1 ? "어제" : `${daysAgo}일 전`;
+        context += `- ${p.coin} ${timeAgo} $${p.priceAtMention.toLocaleString()}에 언급\n`;
       });
       context += "\n";
-    }
-
-    // VIP 팔로워
-    if (topFollowers.length > 0) {
-      context += "### 자주 소통하는 팔로워\n";
-      topFollowers.forEach(f => {
-        context += `- @${f.username} (${f.mentionCount}회)\n`;
-      });
     }
 
     return context;
