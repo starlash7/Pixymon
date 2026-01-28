@@ -727,14 +727,15 @@ async function proactiveEngagement(
 ) {
   console.log("\n[ENGAGE] 프로액티브 인게이지먼트 시작...");
 
-  // 오늘 이미 댓글 단 수 확인 (하루 10개 제한)
+  // 오늘 이미 댓글 단 수 확인 (하루 한도)
   const todayCount = memory.getTodayReplyCount();
-  if (todayCount >= 12) {
-    console.log(`[ENGAGE] 오늘 댓글 한도 도달 (${todayCount}/12)`);
+  const dailyLimit = TEST_MODE ? 50 : 12; // 테스트 모드에서는 한도 높임
+  if (todayCount >= dailyLimit) {
+    console.log(`[ENGAGE] 오늘 댓글 한도 도달 (${todayCount}/${dailyLimit})`);
     return;
   }
 
-  const remainingToday = 12 - todayCount;
+  const remainingToday = dailyLimit - todayCount;
   const actualCount = Math.min(replyCount, remainingToday);
   console.log(`[ENGAGE] 목표: ${actualCount}개 (오늘 ${todayCount}개 완료)`);
 
@@ -745,14 +746,22 @@ async function proactiveEngagement(
 
     let repliedCount = 0;
 
+    const repliedAccounts = new Set<string>(); // 이미 댓글 단 계정 추적
+
     for (const account of sampled) {
       if (repliedCount >= actualCount) break;
+      
+      // 이미 이 계정에 댓글 달았으면 스킵 (한 계정당 1개만)
+      if (repliedAccounts.has(account)) continue;
 
       try {
         // 최근 트윗 가져오기
         const tweets = await getUserTweets(twitter, account, 3);
         
+        let repliedToThisAccount = false;
+        
         for (const tweet of tweets) {
+          if (repliedToThisAccount) break; // 이 계정에 댓글 달았으면 다음 계정으로
           if (repliedCount >= actualCount) break;
           
           // 이미 댓글 달았으면 스킵
@@ -818,6 +827,8 @@ Style: Short, sharp, no fluff. Not sycophantic.
             memory.saveRepliedTweet(tweet.id);
             memory.saveTweet(`engage_test_${Date.now()}`, replyText, "reply");
             repliedCount++;
+            repliedToThisAccount = true;
+            repliedAccounts.add(account);
           } else {
             try {
               const reply = await twitter.v2.reply(replyText, tweet.id);
@@ -825,17 +836,19 @@ Style: Short, sharp, no fluff. Not sycophantic.
               memory.saveRepliedTweet(tweet.id);
               memory.saveTweet(reply.data.id, replyText, "reply");
               repliedCount++;
+              repliedToThisAccount = true;
+              repliedAccounts.add(account);
             } catch (replyError: any) {
               console.log(`  [ERROR] 댓글 실패: ${replyError.message}`);
             }
           }
 
           // Rate limit 방지
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
         // 계정 간 딜레이
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500));
 
       } catch (error: any) {
         console.log(`  [SKIP] @${account}: ${error.message?.substring(0, 30)}`);
