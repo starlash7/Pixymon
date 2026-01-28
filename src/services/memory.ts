@@ -48,6 +48,7 @@ interface MemoryData {
   predictions: Prediction[];
   followers: Record<string, Follower>;
   lastProcessedMentionId?: string;  // 마지막 처리한 멘션 ID
+  repliedTweets: string[];  // 댓글 단 트윗 ID들 (중복 방지)
   lastUpdated: string;
 }
 
@@ -56,6 +57,7 @@ const EMPTY_MEMORY: MemoryData = {
   tweets: [],
   predictions: [],
   followers: {},
+  repliedTweets: [],
   lastUpdated: new Date().toISOString(),
 };
 
@@ -339,6 +341,43 @@ export class MemoryService {
     this.data.lastProcessedMentionId = mentionId;
     this.save();
     console.log(`[MEMORY] 마지막 멘션 ID 저장: ${mentionId}`);
+  }
+
+  // ============================================
+  // 댓글 단 트윗 추적 (프로액티브 인게이지먼트)
+  // ============================================
+
+  // 이미 댓글 달았는지 확인
+  hasRepliedTo(tweetId: string): boolean {
+    if (!this.data.repliedTweets) {
+      this.data.repliedTweets = [];
+    }
+    return this.data.repliedTweets.includes(tweetId);
+  }
+
+  // 댓글 단 트윗 저장
+  saveRepliedTweet(tweetId: string): void {
+    if (!this.data.repliedTweets) {
+      this.data.repliedTweets = [];
+    }
+    this.data.repliedTweets.push(tweetId);
+    
+    // 최근 500개만 유지 (메모리 관리)
+    if (this.data.repliedTweets.length > 500) {
+      this.data.repliedTweets = this.data.repliedTweets.slice(-500);
+    }
+    
+    this.save();
+  }
+
+  // 오늘 댓글 단 개수
+  getTodayReplyCount(): number {
+    // 오늘 날짜 기준으로 답글 트윗 수 계산
+    const today = new Date().toISOString().split("T")[0];
+    const todayReplies = this.data.tweets.filter(t => 
+      t.type === "reply" && t.timestamp.startsWith(today)
+    );
+    return todayReplies.length;
   }
 }
 

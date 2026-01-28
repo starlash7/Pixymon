@@ -332,14 +332,23 @@ async function getUserTweets(twitter: TwitterApi, username: string, count: numbe
       return [];
     }
     
+    // Twitter API v2는 max_results 최소 5 필요
     const tweets = await twitter.v2.userTimeline(user.data.id, {
-      max_results: count,
+      max_results: Math.max(5, count),
       "tweet.fields": ["created_at", "text"],
+      exclude: ["retweets", "replies"],
     });
     
-    return tweets.data?.data || [];
+    // 요청한 수만큼만 반환
+    const data = tweets.data?.data || [];
+    return data.slice(0, count);
   } catch (error: any) {
-    console.error(`[ERROR] @${username} 트윗 조회 실패:`, error.message);
+    // 에러 상세 로그 (디버깅용)
+    if (error.code === 400) {
+      console.log(`  [SKIP] @${username} (API 제한)`);
+    } else {
+      console.log(`  [SKIP] @${username}`);
+    }
     return [];
   }
 }
@@ -668,6 +677,144 @@ async function checkAndReplyMentions(
   }
 }
 
+// 언어 감지 (간단한 휴리스틱)
+function detectLanguage(text: string): "ko" | "en" {
+  const koreanRegex = /[가-힣]/g;
+  const koreanMatches = text.match(koreanRegex) || [];
+  // 한글이 10자 이상이면 한국어로 판단
+  return koreanMatches.length > 10 ? "ko" : "en";
+}
+
+// 프로액티브 인게이지먼트 - 유명인 트윗에 댓글 달기
+async function proactiveEngagement(
+  twitter: TwitterApi,
+  claude: Anthropic,
+  replyCount: number = 2
+) {
+  console.log("\n[ENGAGE] 프로액티브 인게이지먼트 시작...");
+
+  // 오늘 이미 댓글 단 수 확인 (하루 10개 제한)
+  const todayCount = memory.getTodayReplyCount();
+  if (todayCount >= 12) {
+    console.log(`[ENGAGE] 오늘 댓글 한도 도달 (${todayCount}/12)`);
+    return;
+  }
+
+  const remainingToday = 12 - todayCount;
+  const actualCount = Math.min(replyCount, remainingToday);
+  console.log(`[ENGAGE] 목표: ${actualCount}개 (오늘 ${todayCount}개 완료)`);
+
+  try {
+    // 인플루언서 계정에서 랜덤 샘플링
+    const shuffled = [...INFLUENCER_ACCOUNTS].sort(() => Math.random() - 0.5);
+    const sampled = shuffled.slice(0, actualCount * 3); // 여유있게 가져오기
+
+    let repliedCount = 0;
+
+    for (const account of sampled) {
+      if (repliedCount >= actualCount) break;
+
+      try {
+        // 최근 트윗 가져오기
+        const tweets = await getUserTweets(twitter, account, 3);
+        
+        for (const tweet of tweets) {
+          if (repliedCount >= actualCount) break;
+          
+          // 이미 댓글 달았으면 스킵
+          if (memory.hasRepliedTo(tweet.id)) {
+            continue;
+          }
+
+          // 리트윗이나 답글은 스킵
+          if (tweet.text.startsWith("RT @") || tweet.text.startsWith("@")) {
+            continue;
+          }
+
+          // 트윗이 너무 짧으면 스킵 (의미없는 트윗)
+          if (tweet.text.length < 30) {
+            continue;
+          }
+
+          // 언어 감지
+          const lang = detectLanguage(tweet.text);
+          console.log(`\n[ENGAGE] @${account} (${lang})`);
+          console.log(`  └─ "${tweet.text.substring(0, 50)}..."`);
+
+          // 지적인 댓글 생성 (aixbt 스타일 - 짧고 날카롭게)
+          const systemPrompt = lang === "ko" 
+            ? `너는 Pixymon. 크립토 분석 AI.
+댓글 스타일: 짧고 핵심만. 아부 X.
+- 맞으면: "ㄹㅇ", "이거임", "봤지"
+- 틀리면: "근데 데이터는...", "음 좀 다른데"
+- 재밌으면 유머 ok
+- 50자 이내 필수
+- 해시태그 X, 이모지 X`
+            : `You are Pixymon, crypto AI.
+Style: Short, sharp, no fluff. Not sycophantic.
+- If good: "this", "solid", "watching this too"  
+- If wrong: "data says otherwise", "interesting but..."
+- Humor ok if natural
+- MAX 50 chars
+- No hashtags, no emojis`;
+
+          const message = await claude.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 100,
+            system: systemPrompt,
+            messages: [
+              {
+                role: "user",
+                content: `Reply to this tweet:\n\n"${tweet.text}"`,
+              },
+            ],
+          });
+
+          const textContent = message.content.find((block) => block.type === "text");
+          const replyText = textContent?.text || "";
+
+          if (!replyText || replyText.length < 5) {
+            console.log("  [SKIP] 댓글 생성 실패");
+            continue;
+          }
+
+          // 댓글 발행
+          if (TEST_MODE) {
+            console.log(`  🧪 [테스트] 댓글: ${replyText}`);
+            memory.saveRepliedTweet(tweet.id);
+            memory.saveTweet(`engage_test_${Date.now()}`, replyText, "reply");
+            repliedCount++;
+          } else {
+            try {
+              const reply = await twitter.v2.reply(replyText, tweet.id);
+              console.log(`  ✅ 댓글 완료: ${replyText.substring(0, 40)}...`);
+              memory.saveRepliedTweet(tweet.id);
+              memory.saveTweet(reply.data.id, replyText, "reply");
+              repliedCount++;
+            } catch (replyError: any) {
+              console.log(`  [ERROR] 댓글 실패: ${replyError.message}`);
+            }
+          }
+
+          // Rate limit 방지
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+
+        // 계정 간 딜레이
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+      } catch (error: any) {
+        console.log(`  [SKIP] @${account}: ${error.message?.substring(0, 30)}`);
+      }
+    }
+
+    console.log(`\n[ENGAGE] 완료: ${repliedCount}개 댓글`);
+
+  } catch (error) {
+    console.error("[ERROR] 프로액티브 인게이지먼트 실패:", error);
+  }
+}
+
 // 메인 실행
 async function main() {
   console.log("▶ Pixymon 온라인.");
@@ -707,7 +854,8 @@ async function main() {
     console.log("  Pixymon v2.1 - 24/7 자동 에이전트");
     console.log("  ├─ 09:00 모닝 브리핑");
     console.log("  ├─ 21:00 이브닝 리캡");
-    console.log("  └─ 3시간마다 멘션 체크");
+    console.log("  ├─ 3시간마다 멘션 체크");
+    console.log("  └─ 3시간마다 인플루언서 댓글 (2개)");
     console.log("=====================================\n");
 
     // 메모리에서 마지막 처리 멘션 ID 확인 (영구 저장됨)
@@ -747,6 +895,14 @@ async function main() {
       }
     }, { timezone: "Asia/Seoul" });
 
+    // 3시간마다 인플루언서 댓글 (30분 오프셋: 0:30, 3:30, 6:30...)
+    cron.schedule("30 */3 * * *", async () => {
+      if (twitter && !TEST_MODE) {
+        console.log("\n💬 프로액티브 인게이지먼트");
+        await proactiveEngagement(twitter, claude, 2);
+      }
+    }, { timezone: "Asia/Seoul" });
+
     console.log("[SCHEDULER] 대기 중... (Ctrl+C로 종료)\n");
     
     // 프로세스 유지
@@ -768,6 +924,11 @@ async function main() {
     const hour = new Date().getHours();
     const timeSlot = hour < 15 ? "morning" : "evening";
     await postMarketBriefing(twitter, claude, newsService, timeSlot);
+    
+    // 프로액티브 인게이지먼트 (인플루언서 댓글)
+    if (twitter) {
+      await proactiveEngagement(twitter, claude, 2);
+    }
     
     if (twitter && !TEST_MODE) {
       await checkAndReplyMentions(twitter, claude);
