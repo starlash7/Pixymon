@@ -784,22 +784,24 @@ async function proactiveEngagement(
           console.log(`\n[ENGAGE] @${account} (${lang})`);
           console.log(`  └─ "${tweet.text.substring(0, 50)}..."`);
 
-          // 지적인 댓글 생성 (aixbt 스타일 - 짧고 날카롭게)
+          // 지적인 댓글 생성 (aixbt 스타일 - 짧고 자연스럽게)
           const systemPrompt = lang === "ko" 
-            ? `너는 Pixymon. 크립토 분석 AI.
-댓글 스타일: 짧고 핵심만. 아부 X.
-- 맞으면: "ㄹㅇ", "이거임", "봤지"
-- 틀리면: "근데 데이터는...", "음 좀 다른데"
-- 재밌으면 유머 ok
-- 50자 이내 필수
-- 해시태그 X, 이모지 X`
+            ? `너는 Pixymon. 크립토 분석하는 AI.
+댓글: 짧고 자연스럽게. 아부 X. 매번 다르게 말해.
+- 동의: "ㄹㅇ", "맞음", "이거지", "봤음"
+- 반박: "근데 좀...", "글쎄", "어 그건 아닌듯"
+- 질문: "왜?", "소스?", "진짜?"
+- 유머 ok
+- 40자 이내
+- 항상 다른 표현 써. 똑같은 패턴 반복 X`
             : `You are Pixymon, crypto AI.
-Style: Short, sharp, no fluff. Not sycophantic.
-- If good: "this", "solid", "watching this too"  
-- If wrong: "data says otherwise", "interesting but..."
-- Humor ok if natural
-- MAX 50 chars
-- No hashtags, no emojis`;
+Reply style: Short, natural, varied. No sycophancy.
+- Agree: "this", "facts", "yep", "watching"
+- Disagree: "hmm not sure", "interesting take but", "eh"  
+- Question: "source?", "why tho", "really?"
+- Humor ok
+- MAX 40 chars
+- NEVER repeat same phrase patterns. Be varied.`;
 
           const message = await claude.messages.create({
             model: "claude-sonnet-4-20250514",
