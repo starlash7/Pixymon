@@ -729,7 +729,7 @@ async function proactiveEngagement(
 
   // 오늘 이미 댓글 단 수 확인 (하루 한도)
   const todayCount = memory.getTodayReplyCount();
-  const dailyLimit = TEST_MODE ? 50 : 12; // 테스트 모드에서는 한도 높임
+  const dailyLimit = TEST_MODE ? 50 : 25; // 하루 최대 25개
   if (todayCount >= dailyLimit) {
     console.log(`[ENGAGE] 오늘 댓글 한도 도달 (${todayCount}/${dailyLimit})`);
     return;
@@ -904,7 +904,7 @@ async function main() {
     console.log("  ├─ 09:00 모닝 브리핑");
     console.log("  ├─ 21:00 이브닝 리캡");
     console.log("  ├─ 3시간마다 멘션 체크");
-    console.log("  └─ 3시간마다 인플루언서 댓글 (2개)");
+    console.log("  └─ 3시간마다 인플루언서 댓글 (3개)");
     console.log("=====================================\n");
 
     // 메모리에서 마지막 처리 멘션 ID 확인 (영구 저장됨)
@@ -948,7 +948,7 @@ async function main() {
     cron.schedule("30 */3 * * *", async () => {
       if (twitter && !TEST_MODE) {
         console.log("\n💬 프로액티브 인게이지먼트");
-        await proactiveEngagement(twitter, claude, 2);
+        await proactiveEngagement(twitter, claude, 3);
       }
     }, { timezone: "Asia/Seoul" });
 
@@ -976,7 +976,7 @@ async function main() {
     
     // 프로액티브 인게이지먼트 (인플루언서 댓글)
     if (twitter) {
-      await proactiveEngagement(twitter, claude, 2);
+      await proactiveEngagement(twitter, claude, 3);
     }
     
     if (twitter && !TEST_MODE) {
