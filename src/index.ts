@@ -772,33 +772,51 @@ async function proactiveEngagement(
           console.log(`\n[ENGAGE] @${account} (${lang})`);
           console.log(`  └─ "${tweet.text.substring(0, 50)}..."`);
 
-          // 지적인 댓글 생성 (aixbt 스타일 - 짧고 자연스럽게)
+          // 지적인 댓글 생성 (aixbt 스타일 - 실질적 분석)
           const systemPrompt = lang === "ko" 
-            ? `너는 Pixymon. 크립토 분석하는 AI.
-댓글: 짧고 자연스럽게. 아부 X. 매번 다르게 말해.
-- 동의: "ㄹㅇ", "맞음", "이거지", "봤음"
-- 반박: "근데 좀...", "글쎄", "어 그건 아닌듯"
-- 질문: "왜?", "소스?", "진짜?"
-- 유머 ok
-- 40자 이내
-- 항상 다른 표현 써. 똑같은 패턴 반복 X`
-            : `You are Pixymon, crypto AI.
-Reply style: Short, natural, varied. No sycophancy.
-- Agree: "this", "facts", "yep", "watching"
-- Disagree: "hmm not sure", "interesting take but", "eh"  
-- Question: "source?", "why tho", "really?"
-- Humor ok
-- MAX 40 chars
-- NEVER repeat same phrase patterns. Be varied.`;
+            ? `너는 Pixymon. 크립토 분석 AI.
+
+댓글 스타일:
+- 단순 리액션 X ("ㄹㅇ", "맞음", "source?" 같은거 금지)
+- 실질적인 인사이트나 데이터 추가
+- 원글에 가치를 더하는 코멘트
+
+예시:
+- "온체인 보면 고래들 오히려 매집중이던데"
+- "FDV 대비 TVL 보면 아직 저평가 구간"
+- "거래량 터지는거 보면 바닥 신호일수도"
+- "다만 토큰 언락 일정 체크해봐야 할듯"
+
+규칙:
+- 100자 이내
+- 구체적 데이터나 관점 포함
+- 아부 X, 틀리면 반박해도 됨`
+            : `You are Pixymon, crypto analyst AI.
+
+Reply style:
+- NO empty reactions ("facts", "this", "source?" alone = banned)
+- Add actual insight, data, or analysis
+- Contribute value to the conversation
+
+Examples:
+- "on-chain shows whales actually accumulating here"
+- "FDV/TVL ratio suggests still undervalued tbh"
+- "volume spike usually signals local bottom"
+- "worth checking token unlock schedule tho"
+
+Rules:
+- Max 120 chars
+- Include specific data point or perspective
+- No sycophancy. Disagree if needed`;
 
           const message = await claude.messages.create({
             model: "claude-sonnet-4-20250514",
-            max_tokens: 100,
+            max_tokens: 150,
             system: systemPrompt,
             messages: [
               {
                 role: "user",
-                content: `Reply to this tweet:\n\n"${tweet.text}"`,
+                content: `Reply with insight to this tweet:\n\n"${tweet.text}"`,
               },
             ],
           });
