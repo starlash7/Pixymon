@@ -235,41 +235,29 @@ const INFLUENCER_ACCOUNTS = [
   // 커뮤니티/기타
   "jamperz",            // Community builder, Polymarket
   
-  // ========== 2026 핫 크립토 프로젝트 Top 20 ==========
+  // ========== 2026 핫 프로젝트 (Prediction, Perp DEX, AI) ==========
   
   // Prediction Markets
   "Polymarket",         // Prediction Market 1위
   "Kalshi",             // US 규제 Prediction
   "opinionlabsxyz",     // 초고속 Prediction
   
-  // Privacy/Infra
-  "ArciumHQ",           // Solana 모듈러 Privacy
-  "zaborado",             // FHE 프라이버시 인프라
-  
-  // RWA (Real World Assets)
-  "OndoFinance",        // RWA 토큰화 Treasury
-  "KeetaNetwork",       // RWA + 고속 결제
-  "Zebec_HQ",           // RWA Payroll·스트리밍
-  "maboradefinance",       // RWA 대출·기관 크레딧
-  
-  // L2/인프라
-  "megaeth_labs",       // 초고성능 L2
-  "CelestiaOrg",        // Modular DA
-  "daboradeBridgeFinance",  // Gasless 크로스체인
-  "SuiNetwork",         // Zero-fee stablecoin
-  
-  // DEX/트레이딩
-  "JupiterExchange",    // Solana Everything App
+  // Perp DEX
   "HyperliquidX",       // Perps DEX 리더
+  "JupiterExchange",    // Solana Everything App
   "OstiumLabs",         // Equity Perps DEX
-  "bulktrade",          // Solana Perps DEX
+  "dYdX",                 // dYdX
+  "GMX_IO",             // GMX
+  "vertex_protocol",    // Vertex
   
-  // DePIN/AI
+  // AI/DePIN
   "ionet",              // AI 컴퓨트 DePIN
   "akashnet_",          // DePIN + AI 클라우드
-  
-  // 기타
-  "xplaceapp",          // Self-custody NeoBank
+  "rendernetwork",      // 렌더 네트워크
+  "opentensor",         // Bittensor TAO
+  "getgrass_io",        // Grass 데이터
+  "aixbt_agent",        // AI 에이전트
+  "truth_terminal",     // GOAT
 ];
 
 // Claude를 사용해 뉴스 요약 생성 (자율 앵글 선택)
@@ -729,7 +717,7 @@ async function proactiveEngagement(
 
   // 오늘 이미 댓글 단 수 확인 (하루 한도)
   const todayCount = memory.getTodayReplyCount();
-  const dailyLimit = TEST_MODE ? 50 : 25; // 하루 최대 25개
+  const dailyLimit = TEST_MODE ? 50 : 10; // 하루 최대 10개 (질 > 양)
   if (todayCount >= dailyLimit) {
     console.log(`[ENGAGE] 오늘 댓글 한도 도달 (${todayCount}/${dailyLimit})`);
     return;
