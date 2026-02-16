@@ -1,7 +1,7 @@
 import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
-import { BlockchainNewsService } from "./blockchain-news.js";
+import { BlockchainNewsService, MarketData } from "./blockchain-news.js";
 import {
   CLAUDE_MODEL,
   CLAUDE_RESEARCH_MODEL,
@@ -13,6 +13,7 @@ import {
 import { getMentions, postTweet, replyToMention, searchRecentTrendTweets, TEST_MODE, sleep } from "./twitter.js";
 import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { detectLanguage } from "../utils/mood.js";
+import { findNarrativeDuplicate, validateMarketConsistency } from "./content-guard.js";
 
 const DEFAULT_DAILY_TARGET = 20;
 const DEFAULT_TIMEZONE = "Asia/Seoul";
@@ -30,6 +31,13 @@ interface DailyQuotaOptions {
 interface TrendContext {
   keywords: string[];
   summary: string;
+  marketData: MarketData[];
+  headlines: string[];
+}
+
+interface ContentQualityCheck {
+  ok: boolean;
+  reason?: string;
 }
 
 // 멘션 체크 및 응답
@@ -103,12 +111,26 @@ export async function proactiveEngagement(
       console.log("[ENGAGE] 트렌드 후보 트윗 없음");
       return 0;
     }
+    const preview = candidates
+      .slice(0, 4)
+      .map((tweet) => `${tweet.__trendScore || "?"}/${tweet.__trendEngagement || "?"}`)
+      .join(", ");
+    console.log(`[ENGAGE] 후보 ${candidates.length}개 선별 완료 (score/engage 상위: ${preview || "n/a"})`);
 
     let repliedCount = 0;
+    const recentReplyTexts = memory
+      .getRecentTweets(50)
+      .filter((tweet) => tweet.type === "reply")
+      .map((tweet) => tweet.content);
+
     for (const tweet of candidates) {
       if (repliedCount >= goal) break;
       const text = String(tweet.text || "");
+      const trendScore = typeof tweet.__trendScore === "number" ? tweet.__trendScore : 0;
+      const trendEngagement = typeof tweet.__trendEngagement === "number" ? tweet.__trendEngagement : 0;
       if (!text || text.length < 30) continue;
+      if (trendScore > 0 && trendScore < 2.8) continue;
+      if (trendEngagement > 0 && trendEngagement < 4) continue;
       if (text.startsWith("RT @") || text.startsWith("@")) continue;
       if (memory.hasRepliedTo(tweet.id)) continue;
 
@@ -192,6 +214,12 @@ ${toneGuide}
         }
       }
 
+      const quality = evaluateReplyQuality(replyText, trend.marketData, recentReplyTexts);
+      if (!quality.ok) {
+        console.log(`  [SKIP] 품질 게이트: ${quality.reason}`);
+        continue;
+      }
+
       if (TEST_MODE) {
         console.log(`  🧪 [테스트] 댓글: ${replyText}`);
         memory.saveRepliedTweet(tweet.id);
@@ -209,6 +237,10 @@ ${toneGuide}
       }
 
       memory.recordCognitiveActivity("social", 2);
+      recentReplyTexts.push(replyText);
+      if (recentReplyTexts.length > 60) {
+        recentReplyTexts.splice(0, recentReplyTexts.length - 60);
+      }
       repliedCount += 1;
       await sleep(1800);
     }
@@ -233,6 +265,12 @@ export async function postTrendUpdate(
     const runContext = await cognitive.prepareRunContext("briefing");
     const trend = await collectTrendContext();
     const sourceText = `${trend.summary}\n핵심 키워드: ${trend.keywords.join(", ")}`;
+    const recentBriefingTexts = memory
+      .getRecentTweets(60)
+      .filter((tweet) => tweet.type === "briefing")
+      .map((tweet) => tweet.content);
+    const postAngle = pickPostAngle(DEFAULT_TIMEZONE);
+    const marketAnchors = formatMarketAnchors(trend.marketData);
 
     const packet = await cognitive.analyzeTarget({
       objective: "briefing",
@@ -242,74 +280,88 @@ export async function postTrendUpdate(
       runContext,
     });
 
-    const message = await claude.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 320,
-      system: `${PIXYMON_SYSTEM_PROMPT}
+    let rejectionFeedback = "";
+    let postText: string | null = null;
+    const recentContext =
+      recentBriefingTexts.length > 0
+        ? recentBriefingTexts
+            .slice(-3)
+            .map((text, index) => `${index + 1}. ${text}`)
+            .join("\n")
+        : "- 없음";
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const message = await claude.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 320,
+        system: `${PIXYMON_SYSTEM_PROMPT}
 
 추가 운영 규칙:
 - 오늘 트위터 기술/트렌드 변화 중심으로 한 문장 주장 + 한 문장 근거.
-- 과장 금지, 단정은 confidence 높을 때만.`,
-      messages: [
-        {
-          role: "user",
-          content: `아래 컨텍스트로 오늘의 트렌드 글 1개 작성.
+- 과장 금지, 단정은 confidence 높을 때만.
+- 숫자는 제공된 시장 앵커 범위 안에서만 인용한다.`,
+        messages: [
+          {
+            role: "user",
+            content: `아래 컨텍스트로 오늘의 트렌드 글 1개 작성.
 
 ${packet.promptContext}
 
 트렌드 요약:
 ${trend.summary}
 
+우선 앵글:
+${postAngle}
+
+최근 작성 글 (반복 금지):
+${recentContext}
+
+시장 숫자 앵커:
+${marketAnchors}
+
+직전 실패 원인:
+${rejectionFeedback || "없음"}
+
 규칙:
 - 220자 이내
 - 반드시 한국어로 작성 (고유명사 제외 영어 최소화)
 - 해시태그/이모지 금지
 - 질문형 또는 관찰형 마무리
+- "시장 숫자 앵커"에 없는 가격 숫자는 쓰지 말 것
+- 앵커가 없으면 구체 가격 숫자 언급 금지
+- 최근 작성 글과 같은 전개/문장 구조 금지
 - 트윗 본문만 출력`,
-        },
-      ],
-    });
-
-    let postText = sanitizeTweetText(extractTextFromClaude(message.content));
-    if (!postText || postText.length < 20) {
-      console.log("[POST] 글 생성 실패");
-      return false;
-    }
-
-    const duplicate = memory.checkDuplicate(postText, 0.72);
-    if (duplicate.isDuplicate) {
-      const regen = await claude.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: 240,
-        system: PIXYMON_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: `아래 트윗과 다른 각도로 다시 작성.
-
-중복 트윗:
-${duplicate.similarTweet?.content || ""}
-
-새 규칙:
-- 220자 이내
-- 반드시 한국어로 작성
-- 해시태그/이모지 금지
-- 오늘 트렌드 기술 변화에만 초점`,
           },
         ],
       });
 
-      const regenerated = sanitizeTweetText(extractTextFromClaude(regen.content));
-      if (regenerated && regenerated.length >= 20) {
-        postText = regenerated;
+      let candidate = sanitizeTweetText(extractTextFromClaude(message.content));
+      if (!candidate || candidate.length < 20) {
+        rejectionFeedback = "문장이 비어있거나 너무 짧음";
+        continue;
       }
+
+      if (detectLanguage(candidate) !== "ko") {
+        const rewrittenKo = await rewriteByLanguage(claude, candidate, "ko", 220);
+        if (rewrittenKo) {
+          candidate = rewrittenKo;
+        }
+      }
+
+      const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingTexts);
+      if (!quality.ok) {
+        rejectionFeedback = quality.reason || "품질 게이트 미통과";
+        console.log(`[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/3)`);
+        continue;
+      }
+
+      postText = candidate;
+      break;
     }
 
-    if (detectLanguage(postText) !== "ko") {
-      const rewrittenKo = await rewriteByLanguage(claude, postText, "ko", 220);
-      if (rewrittenKo) {
-        postText = rewrittenKo;
-      }
+    if (!postText) {
+      console.log("[POST] 품질 기준을 만족하는 글 생성 실패");
+      return false;
     }
 
     const tweetId = await postTweet(twitter, postText, "briefing");
@@ -351,7 +403,7 @@ export async function runDailyQuotaCycle(
     return { target, remaining: Math.max(0, remaining), executed };
   }
 
-  const postGoal = Math.max(6, Math.floor(target * 0.35));
+  const postGoal = Math.max(3, Math.floor(target * 0.25));
 
   while (executed < maxActions && remaining > 0) {
     const before = executed;
@@ -430,7 +482,11 @@ async function collectTrendContext(): Promise<TrendContext> {
     extractKeywordsFromTitle(title).forEach((keyword) => keywordSet.add(keyword));
   }
 
-  const keywords = Array.from(keywordSet).filter(Boolean).slice(0, 14);
+  for (const seed of ["onchain", "layer2", "ETF", "liquidity", "macro", "AI agent"]) {
+    keywordSet.add(seed);
+  }
+
+  const keywords = Array.from(keywordSet).filter(Boolean).slice(0, 18);
   const topCoinSummary = marketData
     .slice(0, 4)
     .map((coin) => `${coin.symbol} ${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(1)}%`)
@@ -438,8 +494,10 @@ async function collectTrendContext(): Promise<TrendContext> {
   const newsSummary = titlePool.slice(0, 4).map((title) => `- ${title}`).join("\n");
 
   return {
-    keywords: keywords.length > 0 ? keywords : ["crypto", "blockchain", "layer2", "onchain"],
+    keywords: keywords.length > 0 ? keywords : ["crypto", "blockchain", "layer2", "onchain", "ETF", "macro"],
     summary: `마켓 흐름: ${topCoinSummary || "데이터 확인 중"}\n핫 토픽:\n${newsSummary || "- 데이터 부족"}`,
+    marketData,
+    headlines: titlePool.slice(0, 8),
   };
 }
 
@@ -449,6 +507,7 @@ function extractKeywordsFromTitle(title: string): string[] {
     .map((token) => token.trim())
     .filter((token) => token.length >= 3)
     .filter((token) => !/^(the|and|with|from|this|that|for|into|about|news)$/i.test(token))
+    .filter((token) => !/^(join|community|private|group|airdrop|giveaway)$/i.test(token))
     .slice(0, 4);
 }
 
@@ -499,6 +558,93 @@ Rules:
   } catch {
     return null;
   }
+}
+
+function evaluateReplyQuality(
+  text: string,
+  marketData: MarketData[],
+  recentReplyTexts: string[]
+): ContentQualityCheck {
+  const marketConsistency = validateMarketConsistency(text, marketData);
+  if (!marketConsistency.ok) {
+    return { ok: false, reason: marketConsistency.reason || "시장 숫자 불일치" };
+  }
+
+  const duplicate = memory.checkDuplicate(text, 0.88);
+  if (duplicate.isDuplicate) {
+    return { ok: false, reason: "기존 발화와 과도하게 유사" };
+  }
+
+  const narrativeDup = findNarrativeDuplicate(text, recentReplyTexts, 0.82);
+  if (narrativeDup.isDuplicate) {
+    return {
+      ok: false,
+      reason: `최근 댓글과 내러티브 중복(sim=${narrativeDup.similarity})`,
+    };
+  }
+
+  return { ok: true };
+}
+
+function evaluatePostQuality(
+  text: string,
+  marketData: MarketData[],
+  recentPostTexts: string[]
+): ContentQualityCheck {
+  if (!text || text.length < 20) {
+    return { ok: false, reason: "문장이 너무 짧음" };
+  }
+
+  const marketConsistency = validateMarketConsistency(text, marketData);
+  if (!marketConsistency.ok) {
+    return { ok: false, reason: marketConsistency.reason || "시장 숫자 불일치" };
+  }
+
+  const duplicate = memory.checkDuplicate(text, 0.74);
+  if (duplicate.isDuplicate) {
+    return { ok: false, reason: "기존 트윗과 의미 중복" };
+  }
+
+  const narrativeDup = findNarrativeDuplicate(text, recentPostTexts, 0.7);
+  if (narrativeDup.isDuplicate) {
+    return {
+      ok: false,
+      reason: `최근 포스트와 내러티브 중복(sim=${narrativeDup.similarity})`,
+    };
+  }
+
+  const normalized = sanitizeTweetText(text).slice(0, 24);
+  if (normalized && recentPostTexts.some((item) => sanitizeTweetText(item).slice(0, 24) === normalized)) {
+    return { ok: false, reason: "문장 시작 패턴 중복" };
+  }
+
+  return { ok: true };
+}
+
+function pickPostAngle(timezone: string): string {
+  const angles = [
+    "심리(FearGreed)와 온체인 시그널 괴리 해석",
+    "오늘 나온 기술/업그레이드 이슈의 실사용 영향",
+    "유동성(스테이블/거래량)과 가격 반응의 비동기",
+    "리스크 플래그(고래/멤풀/변동성) 관점에서 재해석",
+    "시장 참여자 행동 변화(관망 vs 추격) 프레이밍",
+  ];
+  const todayPosts = memory.getTodayPostCount(timezone);
+  return angles[todayPosts % angles.length];
+}
+
+function formatMarketAnchors(marketData: MarketData[]): string {
+  if (marketData.length === 0) {
+    return "- 실시간 마켓 앵커 없음 (구체 가격 숫자 언급 금지)";
+  }
+
+  return marketData
+    .slice(0, 4)
+    .map((coin) => {
+      const sign = coin.change24h >= 0 ? "+" : "";
+      return `- ${coin.symbol}: $${Math.round(coin.price).toLocaleString("en-US")} (${sign}${coin.change24h.toFixed(2)}%)`;
+    })
+    .join("\n");
 }
 
 function normalizeDailyTarget(value: number | undefined): number {

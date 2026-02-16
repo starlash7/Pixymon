@@ -12,6 +12,7 @@ import {
 import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { CognitiveRunContext } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
+import { evaluateTrendCandidate } from "./content-guard.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
 
@@ -139,24 +140,73 @@ export async function searchRecentTrendTweets(
   count: number = 30
 ): Promise<any[]> {
   try {
-    const cleaned = [...new Set(keywords.map((keyword) => keyword.trim()).filter((keyword) => keyword.length >= 2))]
-      .slice(0, 10);
+    const cleaned = sanitizeTrendKeywords(keywords).slice(0, 12);
 
     const keywordQuery = cleaned.length > 0
       ? cleaned.map((keyword) => `"${keyword}"`).join(" OR ")
       : "crypto OR blockchain OR onchain OR layer2";
 
-    const query = `(${keywordQuery}) -is:retweet -is:reply`;
+    const query = `(${keywordQuery}) -is:retweet -is:reply -is:quote`;
     const maxResults = Math.max(10, Math.min(100, count));
 
     const result = await twitter.v2.search(query, {
       max_results: maxResults,
       "tweet.fields": ["created_at", "text", "author_id", "lang", "public_metrics"],
+      "user.fields": ["username", "verified", "public_metrics"],
       expansions: ["author_id"],
     });
 
     const rows = result.data?.data || [];
-    return rows;
+    const users = (((result as unknown as { includes?: { users?: any[] } }).includes?.users) || []) as any[];
+    const userMap = new Map(users.map((user) => [String(user.id || ""), user]));
+
+    const ranked = rows
+      .map((tweet) => {
+        const authorId = String(tweet.author_id || "");
+        const user = userMap.get(authorId);
+        const evaluation = evaluateTrendCandidate({
+          text: String(tweet.text || ""),
+          keywordHints: cleaned,
+          metrics: tweet.public_metrics,
+          author: {
+            followers_count: user?.public_metrics?.followers_count,
+            verified: Boolean(user?.verified),
+          },
+        });
+        return { tweet, user, evaluation };
+      })
+      .filter((item) => !item.evaluation.isLowSignal)
+      .sort((a, b) => b.evaluation.score - a.evaluation.score);
+
+    const selected: any[] = [];
+    const seenAuthors = new Set<string>();
+    for (const item of ranked) {
+      const authorId = String(item.tweet.author_id || "");
+      if (authorId && seenAuthors.has(authorId)) continue;
+      if (item.evaluation.engagementRaw < 6 || item.evaluation.score < 3.2) continue;
+      selected.push({
+        ...item.tweet,
+        __trendScore: item.evaluation.score,
+        __trendEngagement: item.evaluation.engagementRaw,
+        __authorFollowers: item.user?.public_metrics?.followers_count || 0,
+      });
+      if (authorId) {
+        seenAuthors.add(authorId);
+      }
+      if (selected.length >= maxResults) break;
+    }
+
+    if (selected.length > 0) {
+      return selected.slice(0, maxResults);
+    }
+
+    // 품질 필터가 너무 엄격해 후보가 없을 때는 저점수지만 스팸 아닌 순서로 fallback
+    return ranked.slice(0, Math.min(12, ranked.length)).map((item) => ({
+      ...item.tweet,
+      __trendScore: item.evaluation.score,
+      __trendEngagement: item.evaluation.engagementRaw,
+      __authorFollowers: item.user?.public_metrics?.followers_count || 0,
+    }));
   } catch (error: any) {
     console.log(`[TREND] 검색 실패: ${error.message || "unknown"}`);
     return [];
@@ -364,6 +414,17 @@ Rules:
   } catch {
     return null;
   }
+}
+
+function sanitizeTrendKeywords(keywords: string[]): string[] {
+  return [...new Set(
+    keywords
+      .map((keyword) => String(keyword || "").trim())
+      .filter((keyword) => keyword.length >= 2 && keyword.length <= 30)
+      .filter((keyword) => !/^[0-9]+$/.test(keyword))
+      .filter((keyword) => !/^(http|https)/i.test(keyword))
+      .filter((keyword) => !/^[@#]/.test(keyword))
+  )];
 }
 
 // 트윗 발행 (Twitter API v2 only)

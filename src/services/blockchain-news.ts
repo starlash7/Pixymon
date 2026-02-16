@@ -81,6 +81,8 @@ interface FearGreedApiResponse {
   }>;
 }
 
+let lastKnownMarketData: MarketData[] = [];
+
 /**
  * 블록체인 뉴스 수집 서비스
  * - CoinGecko API (트렌딩, 마켓 데이터)
@@ -245,21 +247,21 @@ export class BlockchainNewsService {
       }
 
       const data = (await response.json()) as CoinGeckoMarketCoin[];
-
-      return data.map((coin) => ({
+      const normalized = data.map((coin) => ({
         symbol: coin.symbol.toUpperCase(),
         name: coin.name,
         price: coin.current_price,
         change24h: coin.price_change_percentage_24h || 0,
       }));
+      lastKnownMarketData = normalized;
+      return normalized;
     } catch (error) {
-      console.error("⚠️ 마켓 데이터 조회 실패, 기본값 사용");
-      // 실패 시 기본값 반환
-      return [
-        { symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 2.5 },
-        { symbol: "ETH", name: "Ethereum", price: 3500, change24h: 1.8 },
-        { symbol: "SOL", name: "Solana", price: 180, change24h: 5.2 },
-      ];
+      if (lastKnownMarketData.length > 0) {
+        console.error("⚠️ 마켓 데이터 조회 실패, 마지막 성공 스냅샷 사용");
+        return lastKnownMarketData.map((coin) => ({ ...coin }));
+      }
+      console.error("⚠️ 마켓 데이터 조회 실패, 스냅샷 없음");
+      return [];
     }
   }
 
