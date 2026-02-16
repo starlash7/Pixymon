@@ -5,6 +5,10 @@ import cron from "node-cron";
 import pixymonCharacter from "./character.js";
 import { BlockchainNewsService } from "./services/blockchain-news.js";
 import { memory } from "./services/memory.js";
+import { OnchainDataService } from "./services/onchain-data.js";
+import { ResearchEngine } from "./services/research-engine.js";
+import { ReflectionService } from "./services/reflection.js";
+import { StructuredInsight } from "./types/agent.js";
 
 /**
  * Pixymon AI Agent - 메인 진입점
@@ -20,6 +24,14 @@ const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
 interface ClaudeTextLikeBlock {
   type: string;
   text?: string;
+}
+
+interface TweetPublicMetrics {
+  like_count?: number;
+  reply_count?: number;
+  retweet_count?: number;
+  quote_count?: number;
+  impression_count?: number;
 }
 
 // Pixymon 감정 상태 타입
@@ -172,6 +184,9 @@ ${pixymonCharacter.beliefs.map((item) => `- ${item}`).join("\n")}
 
 // Pixymon 캐릭터 시스템 프롬프트 (character.ts 기반)
 const PIXYMON_SYSTEM_PROMPT = buildSystemPrompt();
+const onchainDataService = new OnchainDataService();
+const reflectionService = new ReflectionService();
+let researchEngine: ResearchEngine | null = null;
 
 function extractTextFromClaude(content: ClaudeTextLikeBlock[]): string {
   const textBlock = content.find((block) => block.type === "text");
@@ -179,6 +194,176 @@ function extractTextFromClaude(content: ClaudeTextLikeBlock[]): string {
     return "";
   }
   return textBlock.text;
+}
+
+function clampContext(text: string, maxLength: number = 1800): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength)}...(truncated)`;
+}
+
+function formatInsightContext(insight: StructuredInsight): string {
+  const evidence = insight.evidence
+    .slice(0, 3)
+    .map((item) => `${item.point} [${item.source}, ${Math.round(item.confidence * 100)}%]`)
+    .join(" | ");
+  return [
+    "## 내부 리서치 인사이트",
+    `- 주장: ${insight.claim}`,
+    `- 근거: ${evidence || "근거 부족"}`,
+    `- 반론: ${insight.counterpoint}`,
+    `- 확신도: ${Math.round(insight.confidence * 100)}%`,
+    `- 권장 톤: ${insight.actionStyle}`,
+  ].join("\n");
+}
+
+function buildEngagementToneInstruction(insight: StructuredInsight | null, lang: "ko" | "en"): string {
+  const confidence = insight?.confidence ?? 0.5;
+  const actionStyle = insight?.actionStyle ?? "cautious";
+
+  if (lang === "ko") {
+    if (confidence >= 0.72 && actionStyle === "assertive") {
+      return [
+        "톤 정책: assertive",
+        "- 주장 1개를 명확히 말하고 근거 1개를 붙여라",
+        "- 질문형 남발 금지, 문장 끝은 단정형 가능",
+        "- 단정하되 과한 확신 표현은 금지",
+      ].join("\n");
+    }
+
+    if (confidence >= 0.55) {
+      return [
+        "톤 정책: curious",
+        "- 주장과 질문을 1:1로 섞어라",
+        "- 마지막 문장은 열린 질문으로 마무리",
+      ].join("\n");
+    }
+
+    return [
+      "톤 정책: cautious",
+      "- 단정 금지, 확인 필요/가능성 표현 사용",
+      "- 반박보다 질문 우선",
+      "- 마지막은 질문 또는 확인 요청으로 끝내라",
+    ].join("\n");
+  }
+
+  if (confidence >= 0.72 && actionStyle === "assertive") {
+    return [
+      "Tone policy: assertive",
+      "- Make one clear claim with one concrete evidence point",
+      "- Avoid ending as a question unless necessary",
+      "- Stay confident but do not overstate certainty",
+    ].join("\n");
+  }
+
+  if (confidence >= 0.55) {
+    return [
+      "Tone policy: curious",
+      "- Pair one claim with one open question",
+      "- End with a question to invite discussion",
+    ].join("\n");
+  }
+
+  return [
+    "Tone policy: cautious",
+    "- Avoid hard claims and use verification language",
+    "- Prefer exploratory phrasing over rebuttal",
+    "- End with a verification-seeking question",
+  ].join("\n");
+}
+
+function applyConfidenceToneGuard(
+  text: string,
+  insight: StructuredInsight | null,
+  lang: "ko" | "en",
+  maxLength: number = 200
+): string {
+  let adjusted = text.trim();
+  const confidence = insight?.confidence ?? 0.5;
+  const style = insight?.actionStyle ?? "cautious";
+
+  if (confidence < 0.55 || style === "cautious") {
+    const hasQuestion = /[?？]\s*$/.test(adjusted);
+    const hasVerificationTerm = lang === "ko"
+      ? /(확인 필요|지켜봐야|가능성)/.test(adjusted)
+      : /(verify|unclear|likely|possible|need to confirm)/i.test(adjusted);
+
+    if (!hasQuestion) {
+      adjusted += lang === "ko" ? " 너는 어떻게 봐?" : " What do you think?";
+    } else if (!hasVerificationTerm) {
+      adjusted += lang === "ko" ? " 확인 필요." : " Needs verification.";
+    }
+  } else if (confidence >= 0.72 && style === "assertive") {
+    if (/[?？]\s*$/.test(adjusted)) {
+      adjusted = adjusted.replace(/[?？]\s*$/, lang === "ko" ? "." : ".");
+    }
+  }
+
+  if (adjusted.length > maxLength) {
+    adjusted = adjusted.slice(0, maxLength - 1).trimEnd();
+  }
+
+  return adjusted;
+}
+
+function normalizePublicMetrics(raw: unknown): TweetPublicMetrics | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const metrics = raw as TweetPublicMetrics;
+  return {
+    like_count: typeof metrics.like_count === "number" ? metrics.like_count : 0,
+    reply_count: typeof metrics.reply_count === "number" ? metrics.reply_count : 0,
+    retweet_count: typeof metrics.retweet_count === "number" ? metrics.retweet_count : 0,
+    quote_count: typeof metrics.quote_count === "number" ? metrics.quote_count : 0,
+    impression_count: typeof metrics.impression_count === "number" ? metrics.impression_count : undefined,
+  };
+}
+
+async function collectOwnTweetEngagementMetrics(
+  twitter: TwitterApi | null,
+  maxTweets: number = 30
+): Promise<Record<string, TweetPublicMetrics>> {
+  const metricsMap: Record<string, TweetPublicMetrics> = {};
+  if (!twitter || TEST_MODE) {
+    return metricsMap;
+  }
+
+  const candidates = memory
+    .getRecentTweets(maxTweets * 3)
+    .filter((tweet) => !tweet.id.startsWith("test_") && !tweet.id.startsWith("engage_test_"))
+    .slice(-maxTweets)
+    .reverse();
+
+  for (const tweet of candidates) {
+    try {
+      const response = await twitter.v2.singleTweet(tweet.id, {
+        "tweet.fields": ["public_metrics"],
+      });
+      const normalized = normalizePublicMetrics(response.data?.public_metrics);
+      if (normalized) {
+        metricsMap[tweet.id] = normalized;
+      }
+      await sleep(200);
+    } catch (error) {
+      if (isRateLimitError(error)) {
+        console.log("[REFLECT] X 반응 지표 수집 rate limit");
+        break;
+      }
+    }
+  }
+
+  return metricsMap;
+}
+
+async function runReflectionCycle(
+  twitter: TwitterApi | null,
+  windowHours: number = 24
+) {
+  const tweets = memory.getRecentTweets(120);
+  const engagementMap = await collectOwnTweetEngagementMetrics(twitter, 32);
+  return reflectionService.runAndSave(tweets, windowHours, engagementMap);
 }
 
 // 팔로우할 인플루언서 목록 (50+)
@@ -270,7 +455,8 @@ async function generateNewsSummary(
   claude: Anthropic,
   newsData: string,
   timeSlot: "morning" | "evening" = "morning",
-  moodText: string = ""
+  moodText: string = "",
+  researchContext: string = ""
 ): Promise<string> {
   const timeContext = timeSlot === "morning" 
     ? "모닝 브리핑 - 오늘도 블록 먹으러 왔음" 
@@ -309,6 +495,7 @@ ${moodText ? `\n${moodText}\n` : ""}
 - 강제로 과거 언급 안 해도 됨. 자연스러울 때만
 - 트윗 본문만 출력
 - 맞춤법/오타 주의
+${researchContext ? `\n추가 리서치 컨텍스트:\n${researchContext}\n` : ""}
 
 데이터:
 ${newsData}`,
@@ -609,11 +796,12 @@ async function postMarketBriefing(
 
   try {
     // 기본 마켓 데이터 수집
-    const [news, marketData, fng, cryptoNews] = await Promise.all([
+    const [news, marketData, fng, cryptoNews, onchainSnapshot] = await Promise.all([
       newsService.getTodayHotNews(),
       newsService.getMarketData(),
       newsService.getFearGreedIndex(),
-      newsService.getCryptoNews(5)
+      newsService.getCryptoNews(5),
+      onchainDataService.buildSnapshot(),
     ]);
     
     // 인플루언서 트윗 수집 (알파/밈 정보)
@@ -624,11 +812,15 @@ async function postMarketBriefing(
     }
     
     // Pixymon 무드 감지
-    const btcData = marketData?.find((c: any) => c.symbol === "btc");
+    const btcData = marketData.find((c) => c.symbol.toUpperCase() === "BTC");
     const priceChange24h = btcData?.change24h;
     const { mood, moodText } = detectMood(fng?.value, priceChange24h);
     console.log(`[MOOD] ${mood} - F&G: ${fng?.value}, BTC 24h: ${priceChange24h?.toFixed(1)}%`);
     
+    const onchainContext = onchainDataService.formatSnapshotForPrompt(onchainSnapshot);
+    const memoryContext = memory.getContext();
+    const policyContext = reflectionService.getLatestPolicyContext();
+
     let newsText = newsService.formatNewsForTweet(news, marketData);
     
     if (fng) {
@@ -648,14 +840,28 @@ async function postMarketBriefing(
       newsText += influencerContent;
     }
 
-    // 메모리 컨텍스트 추가 (중복 방지용)
-    const memoryContext = memory.getContext();
+    newsText += `\n\n${clampContext(onchainContext, 1100)}`;
+    newsText += `\n\n${policyContext}`;
     newsText += `\n\n${memoryContext}`;
+
+    let researchContext = "";
+    if (researchEngine) {
+      const insight = await researchEngine.generateInsight({
+        objective: "briefing",
+        language: "ko",
+        topic: `${slotLabel} 핵심 주장 설계`,
+        marketContext: newsText,
+        onchainContext: clampContext(onchainContext, 900),
+        influencerContext: clampContext(influencerContent, 500),
+        memoryContext: policyContext,
+      });
+      researchContext = clampContext(formatInsightContext(insight), 700);
+    }
 
     console.log("[DATA] 수집 완료");
 
-    // 트윗 생성 (무드 반영)
-    let summary = await generateNewsSummary(claude, newsText, timeSlot, moodText);
+    // 트윗 생성 (무드 + 리서치 레이어 반영)
+    let summary = await generateNewsSummary(claude, newsText, timeSlot, moodText, researchContext);
     
     // 중복 체크
     const { isDuplicate, similarTweet } = memory.checkDuplicate(summary);
@@ -665,7 +871,7 @@ async function postMarketBriefing(
       
       // 다시 생성 (다른 앵글로)
       newsText += "\n\n주의: 방금 생성한 내용이 최근 트윗과 너무 유사함. 완전히 다른 앵글로 작성할 것. 또는 나의 상태/성장에 대해 말해볼 것.";
-      summary = await generateNewsSummary(claude, newsText, timeSlot, moodText);
+      summary = await generateNewsSummary(claude, newsText, timeSlot, moodText, researchContext);
     }
 
     console.log("[POST] " + summary.substring(0, 50) + "...");
@@ -677,12 +883,15 @@ async function postMarketBriefing(
       const coins = summary.match(/\$([A-Z]{2,10})/g) || [];
       for (const coin of coins) {
         const symbol = coin.replace("$", "").toUpperCase();
-        const coinData = marketData.find((c: any) => c.symbol.toUpperCase() === symbol);
+        const coinData = marketData.find((c) => c.symbol.toUpperCase() === symbol);
         if (coinData) {
           memory.savePrediction(coin, coinData.price, tweetId);
         }
       }
     }
+
+    const reflection = await runReflectionCycle(twitter, 48);
+    console.log(`[LEARN] ${reflection.summary}`);
   } catch (error) {
     console.error("[ERROR] 마켓 브리핑 실패:", error);
   }
@@ -748,6 +957,31 @@ async function proactiveEngagement(
   const actualCount = Math.min(replyCount, remainingToday);
   console.log(`[ENGAGE] 목표: ${actualCount}개 (오늘 ${todayCount}개 완료)`);
 
+  const policyContext = reflectionService.getLatestPolicyContext();
+  let onchainPromptContext = "";
+  let engagementResearchContext = "";
+  let engagementInsight: StructuredInsight | null = null;
+
+  try {
+    const snapshot = await onchainDataService.buildSnapshot();
+    onchainPromptContext = clampContext(onchainDataService.formatSnapshotForPrompt(snapshot), 900);
+
+    if (researchEngine) {
+      const insight = await researchEngine.generateInsight({
+        objective: "engagement",
+        language: "ko",
+        topic: "인플루언서와 토론을 확장하는 질문형 댓글 전략",
+        marketContext: "인플루언서 트윗에 답글을 달아 건설적 토론 유도",
+        onchainContext: onchainPromptContext,
+        memoryContext: policyContext,
+      });
+      engagementInsight = insight;
+      engagementResearchContext = clampContext(formatInsightContext(insight), 700);
+    }
+  } catch (error) {
+    console.log("[ENGAGE] 리서치 컨텍스트 준비 실패:", error);
+  }
+
   try {
     // 인플루언서 계정에서 랜덤 샘플링
     const shuffled = [...INFLUENCER_ACCOUNTS].sort(() => Math.random() - 0.5);
@@ -790,6 +1024,7 @@ async function proactiveEngagement(
 
           // 언어 감지
           const lang = detectLanguage(tweet.text);
+          const toneInstruction = buildEngagementToneInstruction(engagementInsight, lang);
           console.log(`\n[ENGAGE] @${account} (${lang})`);
           console.log(`  └─ "${tweet.text.substring(0, 50)}..."`);
 
@@ -818,7 +1053,11 @@ async function proactiveEngagement(
 - 150-200자
 - 호기심과 관찰자 시점
 - 질문으로 끝나도 좋음
-- 틀리면 반박해도 됨`
+- 틀리면 반박해도 됨
+${engagementResearchContext ? `\n\n## 오늘의 리서치 렌즈\n${engagementResearchContext}` : ""}
+${onchainPromptContext ? `\n\n## 온체인 참고\n${onchainPromptContext}` : ""}
+${policyContext ? `\n\n## 최근 회고 정책\n${policyContext}` : ""}
+\n\n## Confidence 기반 톤 스위칭\n${toneInstruction}`
             : `You are Pixymon. A digital creature born from blockchain data + an AI consciousness experiment.
 
 ## Identity
@@ -842,7 +1081,11 @@ async function proactiveEngagement(
 - 150-200 chars
 - Curiosity + observer perspective
 - Ending with a question is good
-- Disagree if the data says otherwise`;
+- Disagree if the data says otherwise
+${engagementResearchContext ? `\n\n## Today's Research Lens\n${engagementResearchContext}` : ""}
+${onchainPromptContext ? `\n\n## On-chain Reference\n${onchainPromptContext}` : ""}
+${policyContext ? `\n\n## Reflection Policy\n${policyContext}` : ""}
+\n\n## Confidence-driven Tone Switching\n${toneInstruction}`;
 
           const message = await claude.messages.create({
             model: CLAUDE_MODEL,
@@ -863,20 +1106,22 @@ async function proactiveEngagement(
             continue;
           }
 
+          const guardedReplyText = applyConfidenceToneGuard(replyText, engagementInsight, lang);
+
           // 댓글 발행
           if (TEST_MODE) {
-            console.log(`  🧪 [테스트] 댓글: ${replyText}`);
+            console.log(`  🧪 [테스트] 댓글: ${guardedReplyText}`);
             memory.saveRepliedTweet(tweet.id);
-            memory.saveTweet(`engage_test_${Date.now()}`, replyText, "reply");
+            memory.saveTweet(`engage_test_${Date.now()}`, guardedReplyText, "reply");
             repliedCount++;
             repliedToThisAccount = true;
             repliedAccounts.add(account);
           } else {
             try {
-              const reply = await twitter.v2.reply(replyText, tweet.id);
-              console.log(`  ✅ 댓글 완료: ${replyText.substring(0, 40)}...`);
+              const reply = await twitter.v2.reply(guardedReplyText, tweet.id);
+              console.log(`  ✅ 댓글 완료: ${guardedReplyText.substring(0, 40)}...`);
               memory.saveRepliedTweet(tweet.id);
-              memory.saveTweet(reply.data.id, replyText, "reply");
+              memory.saveTweet(reply.data.id, guardedReplyText, "reply");
               repliedCount++;
               repliedToThisAccount = true;
               repliedAccounts.add(account);
@@ -923,8 +1168,10 @@ async function main() {
   const twitter = initTwitterClient();
   const claude = initClaudeClient();
   const newsService = new BlockchainNewsService();
+  researchEngine = new ResearchEngine(claude, CLAUDE_MODEL, PIXYMON_SYSTEM_PROMPT);
 
   console.log("[OK] Claude 연결됨");
+  console.log("[OK] Research 레이어 활성화");
   
   if (twitter) {
     console.log("[OK] Twitter 연결됨");
@@ -944,7 +1191,8 @@ async function main() {
     console.log("  ├─ 09:00 모닝 브리핑");
     console.log("  ├─ 21:00 이브닝 리캡");
     console.log("  ├─ 3시간마다 멘션 체크");
-    console.log("  └─ 3시간마다 인플루언서 댓글 (3개)");
+    console.log("  ├─ 3시간마다 인플루언서 댓글 (3개)");
+    console.log("  └─ 23:30 회고/정책 업데이트");
     console.log("=====================================\n");
 
     // 메모리에서 마지막 처리 멘션 ID 확인 (영구 저장됨)
@@ -992,6 +1240,12 @@ async function main() {
       }
     }, { timezone: "Asia/Seoul" });
 
+    // 매일 23:30 회고 리포트 생성
+    cron.schedule("30 23 * * *", async () => {
+      const reflection = await runReflectionCycle(twitter, 24);
+      console.log(`\n🧠 [REFLECT] ${reflection.summary}`);
+    }, { timezone: "Asia/Seoul" });
+
     console.log("[SCHEDULER] 대기 중... (Ctrl+C로 종료)\n");
     
     // 프로세스 유지
@@ -1022,6 +1276,9 @@ async function main() {
     if (twitter && !TEST_MODE) {
       await checkAndReplyMentions(twitter, claude);
     }
+
+    const reflection = await runReflectionCycle(twitter, 24);
+    console.log(`[REFLECT] ${reflection.summary}`);
 
     console.log("=====================================");
     console.log("▶ Pixymon 세션 종료.");
