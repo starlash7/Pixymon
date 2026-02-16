@@ -19,6 +19,7 @@ const DEFAULT_DAILY_TARGET = 20;
 const DEFAULT_TIMEZONE = "Asia/Seoul";
 const DEFAULT_MIN_LOOP_MINUTES = 25;
 const DEFAULT_MAX_LOOP_MINUTES = 70;
+const POST_GENERATION_MAX_ATTEMPTS = 2;
 
 interface DailyQuotaOptions {
   dailyTarget?: number;
@@ -33,11 +34,28 @@ interface TrendContext {
   summary: string;
   marketData: MarketData[];
   headlines: string[];
+  newsSources: Array<{ key: string; trust: number }>;
 }
 
 interface ContentQualityCheck {
   ok: boolean;
   reason?: string;
+}
+
+interface AdaptivePolicy {
+  postDuplicateThreshold: number;
+  postNarrativeThreshold: number;
+  replyDuplicateThreshold: number;
+  replyNarrativeThreshold: number;
+  minTrendScore: number;
+  minTrendEngagement: number;
+  minSourceTrust: number;
+  rationale: string;
+}
+
+interface RecentPostRecord {
+  content: string;
+  timestamp: string;
 }
 
 // 멘션 체크 및 응답
@@ -94,7 +112,8 @@ export async function checkAndReplyMentions(
 export async function proactiveEngagement(
   twitter: TwitterApi,
   claude: Anthropic,
-  replyCount: number = 2
+  replyCount: number = 2,
+  policy: AdaptivePolicy = getDefaultAdaptivePolicy()
 ): Promise<number> {
   const goal = clamp(replyCount, 0, 20);
   if (goal === 0) return 0;
@@ -128,9 +147,15 @@ export async function proactiveEngagement(
       const text = String(tweet.text || "");
       const trendScore = typeof tweet.__trendScore === "number" ? tweet.__trendScore : 0;
       const trendEngagement = typeof tweet.__trendEngagement === "number" ? tweet.__trendEngagement : 0;
+      const sourceTrust = typeof tweet.__sourceTrustScore === "number" ? tweet.__sourceTrustScore : 0.5;
+      const sourceKey = typeof tweet.__sourceKey === "string" ? tweet.__sourceKey : `x:${String(tweet.author_id || "unknown")}`;
       if (!text || text.length < 30) continue;
-      if (trendScore > 0 && trendScore < 2.8) continue;
-      if (trendEngagement > 0 && trendEngagement < 4) continue;
+      if (trendScore > 0 && trendScore < policy.minTrendScore) continue;
+      if (trendEngagement > 0 && trendEngagement < policy.minTrendEngagement) continue;
+      if (sourceTrust < policy.minSourceTrust) {
+        memory.adjustSourceTrust(sourceKey, -0.004, "below-source-trust");
+        continue;
+      }
       if (text.startsWith("RT @") || text.startsWith("@")) continue;
       if (memory.hasRepliedTo(tweet.id)) continue;
 
@@ -214,9 +239,10 @@ ${toneGuide}
         }
       }
 
-      const quality = evaluateReplyQuality(replyText, trend.marketData, recentReplyTexts);
+      const quality = evaluateReplyQuality(replyText, trend.marketData, recentReplyTexts, policy);
       if (!quality.ok) {
         console.log(`  [SKIP] 품질 게이트: ${quality.reason}`);
+        memory.adjustSourceTrust(sourceKey, -0.01, `reply-quality-${toReasonCode(quality.reason || "unknown")}`);
         continue;
       }
 
@@ -237,6 +263,7 @@ ${toneGuide}
       }
 
       memory.recordCognitiveActivity("social", 2);
+      memory.adjustSourceTrust(sourceKey, 0.015, "reply-success");
       recentReplyTexts.push(replyText);
       if (recentReplyTexts.length > 60) {
         recentReplyTexts.splice(0, recentReplyTexts.length - 60);
@@ -256,7 +283,9 @@ ${toneGuide}
 // 트렌드 요약 글 작성
 export async function postTrendUpdate(
   twitter: TwitterApi,
-  claude: Anthropic
+  claude: Anthropic,
+  policy: AdaptivePolicy = getDefaultAdaptivePolicy(),
+  timezone: string = DEFAULT_TIMEZONE
 ): Promise<boolean> {
   console.log("\n[POST] 트렌드 요약 글 작성 시작...");
 
@@ -265,11 +294,12 @@ export async function postTrendUpdate(
     const runContext = await cognitive.prepareRunContext("briefing");
     const trend = await collectTrendContext();
     const sourceText = `${trend.summary}\n핵심 키워드: ${trend.keywords.join(", ")}`;
-    const recentBriefingTexts = memory
-      .getRecentTweets(60)
+    const recentBriefingPosts = memory
+      .getRecentTweets(120)
       .filter((tweet) => tweet.type === "briefing")
-      .map((tweet) => tweet.content);
-    const postAngle = pickPostAngle(DEFAULT_TIMEZONE);
+      .map((tweet) => ({ content: tweet.content, timestamp: tweet.timestamp }));
+    const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
+    const postAngle = pickPostAngle(timezone, recentBriefingPosts);
     const marketAnchors = formatMarketAnchors(trend.marketData);
 
     const packet = await cognitive.analyzeTarget({
@@ -282,6 +312,9 @@ export async function postTrendUpdate(
 
     let rejectionFeedback = "";
     let postText: string | null = null;
+    let generationAttempts = 0;
+    let usedFallback = false;
+    let latestFailReason = "";
     const recentContext =
       recentBriefingTexts.length > 0
         ? recentBriefingTexts
@@ -290,7 +323,8 @@ export async function postTrendUpdate(
             .join("\n")
         : "- 없음";
 
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < POST_GENERATION_MAX_ATTEMPTS; attempt++) {
+      generationAttempts = attempt + 1;
       const message = await claude.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: 320,
@@ -348,10 +382,13 @@ ${rejectionFeedback || "없음"}
         }
       }
 
-      const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingTexts);
+      const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingPosts, policy);
       if (!quality.ok) {
         rejectionFeedback = quality.reason || "품질 게이트 미통과";
-        console.log(`[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/3)`);
+        latestFailReason = rejectionFeedback;
+        console.log(
+          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${POST_GENERATION_MAX_ATTEMPTS})`
+        );
         continue;
       }
 
@@ -360,6 +397,28 @@ ${rejectionFeedback || "없음"}
     }
 
     if (!postText) {
+      const fallbackPost = buildFallbackPost(trend, postAngle);
+      if (fallbackPost) {
+        const fallbackQuality = evaluatePostQuality(fallbackPost, trend.marketData, recentBriefingPosts, policy);
+        if (fallbackQuality.ok) {
+          postText = fallbackPost;
+          usedFallback = true;
+          console.log("[POST] LLM 재시도 실패, deterministic fallback으로 전환");
+        } else {
+          console.log(`[POST] fallback 실패: ${fallbackQuality.reason}`);
+          latestFailReason = fallbackQuality.reason || latestFailReason;
+        }
+      }
+    }
+
+    if (!postText) {
+      memory.recordPostGeneration({
+        timezone,
+        retryCount: Math.max(0, generationAttempts - 1),
+        usedFallback: false,
+        success: false,
+        failReason: toReasonCode(latestFailReason || rejectionFeedback || "unknown"),
+      });
       console.log("[POST] 품질 기준을 만족하는 글 생성 실패");
       return false;
     }
@@ -368,6 +427,16 @@ ${rejectionFeedback || "없음"}
     if (!tweetId) return false;
 
     memory.recordCognitiveActivity("social", 2);
+    memory.recordPostGeneration({
+      timezone,
+      retryCount: Math.max(0, generationAttempts - 1),
+      usedFallback,
+      success: true,
+      failReason: usedFallback ? "fallback-success" : undefined,
+    });
+    for (const source of trend.newsSources.slice(0, 3)) {
+      memory.adjustSourceTrust(source.key, 0.006, "post-news-source-used", source.trust);
+    }
     console.log(`[POST] 완료: ${postText.substring(0, 55)}...`);
     return true;
   } catch (error) {
@@ -392,6 +461,10 @@ export async function runDailyQuotaCycle(
   }
 
   console.log(`[QUOTA] 오늘 활동 ${target - remaining}/${target}, 이번 사이클 최대 ${maxActions}개`);
+  const adaptivePolicy = buildAdaptivePolicy(target, target - remaining, timezone);
+  console.log(
+    `[POLICY] ${adaptivePolicy.rationale} | dup(post:${adaptivePolicy.postDuplicateThreshold.toFixed(2)}, reply:${adaptivePolicy.replyDuplicateThreshold.toFixed(2)}) | source>=${adaptivePolicy.minSourceTrust.toFixed(2)}`
+  );
 
   let executed = 0;
   const mentionBudget = Math.min(remaining, Math.max(1, Math.floor(maxActions / 2)));
@@ -411,21 +484,21 @@ export async function runDailyQuotaCycle(
     const preferPost = todayPosts < postGoal && (executed === 0 || executed % 2 === 0);
 
     if (preferPost) {
-      const posted = await postTrendUpdate(twitter, claude);
+      const posted = await postTrendUpdate(twitter, claude, adaptivePolicy, timezone);
       if (posted) {
         executed += 1;
       }
     } else {
-      const replied = await proactiveEngagement(twitter, claude, 1);
+      const replied = await proactiveEngagement(twitter, claude, 1, adaptivePolicy);
       executed += replied;
     }
 
     if (executed === before) {
       if (preferPost) {
-        const fallbackReplies = await proactiveEngagement(twitter, claude, 1);
+        const fallbackReplies = await proactiveEngagement(twitter, claude, 1, adaptivePolicy);
         executed += fallbackReplies;
       } else {
-        const fallbackPosted = await postTrendUpdate(twitter, claude);
+        const fallbackPosted = await postTrendUpdate(twitter, claude, adaptivePolicy, timezone);
         if (fallbackPosted) executed += 1;
       }
     }
@@ -477,8 +550,20 @@ async function collectTrendContext(): Promise<TrendContext> {
     keywordSet.add(coin.name);
   }
 
-  const titlePool = [...hotNews, ...cryptoNews].map((item) => item.title).filter(Boolean);
-  for (const title of titlePool) {
+  const mergedNews = [...hotNews, ...cryptoNews].map((item) => {
+    const sourceKey = `news:${normalizeSourceLabel(item.source || "unknown")}`;
+    const fallbackTrust = estimateNewsSourceFallbackTrust(item.source || "unknown");
+    const trust = memory.getSourceTrustScore(sourceKey, fallbackTrust);
+    return { item, sourceKey, trust };
+  });
+
+  const trustedNews = mergedNews
+    .filter((row) => row.trust >= 0.28)
+    .sort((a, b) => b.trust - a.trust);
+
+  const filteredNews = trustedNews.length > 0 ? trustedNews : mergedNews.sort((a, b) => b.trust - a.trust);
+  const titlePool = filteredNews.map((row) => row.item.title).filter(Boolean);
+  for (const title of titlePool.slice(0, 12)) {
     extractKeywordsFromTitle(title).forEach((keyword) => keywordSet.add(keyword));
   }
 
@@ -498,6 +583,7 @@ async function collectTrendContext(): Promise<TrendContext> {
     summary: `마켓 흐름: ${topCoinSummary || "데이터 확인 중"}\n핫 토픽:\n${newsSummary || "- 데이터 부족"}`,
     marketData,
     headlines: titlePool.slice(0, 8),
+    newsSources: filteredNews.slice(0, 8).map((row) => ({ key: row.sourceKey, trust: row.trust })),
   };
 }
 
@@ -563,19 +649,20 @@ Rules:
 function evaluateReplyQuality(
   text: string,
   marketData: MarketData[],
-  recentReplyTexts: string[]
+  recentReplyTexts: string[],
+  policy: AdaptivePolicy
 ): ContentQualityCheck {
   const marketConsistency = validateMarketConsistency(text, marketData);
   if (!marketConsistency.ok) {
     return { ok: false, reason: marketConsistency.reason || "시장 숫자 불일치" };
   }
 
-  const duplicate = memory.checkDuplicate(text, 0.88);
+  const duplicate = memory.checkDuplicate(text, policy.replyDuplicateThreshold);
   if (duplicate.isDuplicate) {
     return { ok: false, reason: "기존 발화와 과도하게 유사" };
   }
 
-  const narrativeDup = findNarrativeDuplicate(text, recentReplyTexts, 0.82);
+  const narrativeDup = findNarrativeDuplicate(text, recentReplyTexts, policy.replyNarrativeThreshold);
   if (narrativeDup.isDuplicate) {
     return {
       ok: false,
@@ -589,23 +676,25 @@ function evaluateReplyQuality(
 function evaluatePostQuality(
   text: string,
   marketData: MarketData[],
-  recentPostTexts: string[]
+  recentPosts: RecentPostRecord[],
+  policy: AdaptivePolicy
 ): ContentQualityCheck {
   if (!text || text.length < 20) {
     return { ok: false, reason: "문장이 너무 짧음" };
   }
 
+  const recentPostTexts = recentPosts.map((post) => post.content);
   const marketConsistency = validateMarketConsistency(text, marketData);
   if (!marketConsistency.ok) {
     return { ok: false, reason: marketConsistency.reason || "시장 숫자 불일치" };
   }
 
-  const duplicate = memory.checkDuplicate(text, 0.74);
+  const duplicate = memory.checkDuplicate(text, policy.postDuplicateThreshold);
   if (duplicate.isDuplicate) {
     return { ok: false, reason: "기존 트윗과 의미 중복" };
   }
 
-  const narrativeDup = findNarrativeDuplicate(text, recentPostTexts, 0.7);
+  const narrativeDup = findNarrativeDuplicate(text, recentPostTexts, policy.postNarrativeThreshold);
   if (narrativeDup.isDuplicate) {
     return {
       ok: false,
@@ -618,10 +707,24 @@ function evaluatePostQuality(
     return { ok: false, reason: "문장 시작 패턴 중복" };
   }
 
+  const recentWithin24 = recentPosts.filter((post) => isWithinHours(post.timestamp, 24));
+  if (recentWithin24.length > 0) {
+    const candidateTag = inferTopicTag(text);
+    const recentTags = recentWithin24.map((post) => inferTopicTag(post.content));
+    const lastTag = recentTags[recentTags.length - 1];
+    if (lastTag === candidateTag) {
+      return { ok: false, reason: `주제 다양성 부족(${candidateTag} 연속)` };
+    }
+    const sameTagCount = recentTags.filter((tag) => tag === candidateTag).length;
+    if (sameTagCount >= 3) {
+      return { ok: false, reason: `24h 내 동일 주제 과밀(${candidateTag})` };
+    }
+  }
+
   return { ok: true };
 }
 
-function pickPostAngle(timezone: string): string {
+function pickPostAngle(timezone: string, recentPosts: RecentPostRecord[]): string {
   const angles = [
     "심리(FearGreed)와 온체인 시그널 괴리 해석",
     "오늘 나온 기술/업그레이드 이슈의 실사용 영향",
@@ -630,7 +733,12 @@ function pickPostAngle(timezone: string): string {
     "시장 참여자 행동 변화(관망 vs 추격) 프레이밍",
   ];
   const todayPosts = memory.getTodayPostCount(timezone);
-  return angles[todayPosts % angles.length];
+  const lastTag = recentPosts.length > 0 ? inferTopicTag(recentPosts[recentPosts.length - 1].content) : "";
+  const candidates = angles.filter((angle) => inferTopicTag(angle) !== lastTag);
+  if (candidates.length === 0) {
+    return angles[todayPosts % angles.length];
+  }
+  return candidates[todayPosts % candidates.length];
 }
 
 function formatMarketAnchors(marketData: MarketData[]): string {
@@ -645,6 +753,138 @@ function formatMarketAnchors(marketData: MarketData[]): string {
       return `- ${coin.symbol}: $${Math.round(coin.price).toLocaleString("en-US")} (${sign}${coin.change24h.toFixed(2)}%)`;
     })
     .join("\n");
+}
+
+function buildFallbackPost(trend: TrendContext, postAngle: string): string | null {
+  const angle = postAngle.replace(/\s+/g, " ").trim();
+  const headline = trend.headlines.find((item) => typeof item === "string" && item.trim().length > 0);
+  const compactHeadline = headline ? headline.replace(/\s+/g, " ").trim().slice(0, 70) : "주요 시장 뉴스 업데이트";
+  const marketLine = trend.marketData[0]
+    ? `${trend.marketData[0].symbol} ${trend.marketData[0].change24h >= 0 ? "+" : ""}${trend.marketData[0].change24h.toFixed(1)}%`
+    : "주요 코인 변동";
+  const keywordPool = trend.keywords.filter((item) => item && !item.startsWith("$"));
+  const keyword = keywordPool.length > 0 ? keywordPool[Math.floor(Math.random() * keywordPool.length)] : "온체인";
+  const closingPool = [
+    "지금은 심리보다 확인 신호를 더 보자.",
+    "단기 소음보다 데이터 방향성이 먼저다.",
+    "추세 전환 판단은 거래량 확인이 우선이다.",
+    "해석보다 검증이 먼저인 구간으로 본다.",
+  ];
+  const closing = closingPool[Math.floor(Math.random() * closingPool.length)];
+  const text = `${angle}. ${compactHeadline}. ${marketLine}와 ${keyword} 흐름의 동조를 점검 중, ${closing}`;
+  const normalized = sanitizeTweetText(text);
+  if (normalized.length < 40) return null;
+  return normalized.slice(0, 220);
+}
+
+function getDefaultAdaptivePolicy(): AdaptivePolicy {
+  return {
+    postDuplicateThreshold: 0.82,
+    postNarrativeThreshold: 0.79,
+    replyDuplicateThreshold: 0.88,
+    replyNarrativeThreshold: 0.82,
+    minTrendScore: 2.8,
+    minTrendEngagement: 4,
+    minSourceTrust: 0.32,
+    rationale: "default",
+  };
+}
+
+function buildAdaptivePolicy(target: number, todayCount: number, timezone: string): AdaptivePolicy {
+  const base = getDefaultAdaptivePolicy();
+  const metrics = memory.getTodayPostGenerationMetrics(timezone);
+  const progress = target > 0 ? todayCount / target : 1;
+  const failLoad = metrics.postRuns > 0 ? metrics.postFailures / metrics.postRuns : 0;
+  const reasons: string[] = ["default"];
+
+  const policy: AdaptivePolicy = { ...base };
+
+  if (progress < 0.45) {
+    policy.postDuplicateThreshold += 0.04;
+    policy.postNarrativeThreshold += 0.04;
+    policy.replyDuplicateThreshold += 0.03;
+    policy.replyNarrativeThreshold += 0.02;
+    policy.minTrendScore -= 0.2;
+    policy.minSourceTrust -= 0.03;
+    reasons.push("under-target");
+  } else if (progress > 1.05) {
+    policy.postDuplicateThreshold -= 0.05;
+    policy.postNarrativeThreshold -= 0.05;
+    policy.replyDuplicateThreshold -= 0.03;
+    policy.replyNarrativeThreshold -= 0.03;
+    policy.minTrendScore += 0.35;
+    policy.minTrendEngagement += 1;
+    policy.minSourceTrust += 0.05;
+    reasons.push("over-target");
+  }
+
+  if (metrics.fallbackRate >= 0.35 || failLoad >= 0.5) {
+    policy.postDuplicateThreshold += 0.03;
+    policy.postNarrativeThreshold += 0.03;
+    policy.minTrendScore -= 0.1;
+    reasons.push("high-fallback-or-fail");
+  }
+
+  if ((metrics.failReasons["duplicate"] || 0) >= 2) {
+    policy.postDuplicateThreshold += 0.02;
+    policy.postNarrativeThreshold += 0.02;
+    reasons.push("duplicate-heavy");
+  }
+
+  policy.postDuplicateThreshold = clamp(policy.postDuplicateThreshold, 0.74, 0.92);
+  policy.postNarrativeThreshold = clamp(policy.postNarrativeThreshold, 0.72, 0.9);
+  policy.replyDuplicateThreshold = clamp(policy.replyDuplicateThreshold, 0.82, 0.94);
+  policy.replyNarrativeThreshold = clamp(policy.replyNarrativeThreshold, 0.76, 0.9);
+  policy.minTrendScore = clamp(policy.minTrendScore, 2.2, 4.2);
+  policy.minTrendEngagement = Math.floor(clamp(policy.minTrendEngagement, 3, 12));
+  policy.minSourceTrust = clamp(policy.minSourceTrust, 0.24, 0.55);
+  policy.rationale = reasons.join("+");
+  return policy;
+}
+
+function toReasonCode(reason: string): string {
+  const normalized = String(reason || "").toLowerCase();
+  if (!normalized) return "unknown";
+  if (normalized.includes("시장 숫자") || normalized.includes("100k") || normalized.includes("오차")) return "market-mismatch";
+  if (normalized.includes("중복") || normalized.includes("유사")) return "duplicate";
+  if (normalized.includes("주제 다양성")) return "topic-diversity";
+  if (normalized.includes("24h 내 동일")) return "topic-density";
+  if (normalized.includes("짧음")) return "too-short";
+  if (normalized.includes("fallback")) return "fallback";
+  return "quality-gate";
+}
+
+function inferTopicTag(text: string): string {
+  const lower = text.toLowerCase();
+  if (/\$btc|bitcoin|비트코인/.test(lower)) return "bitcoin";
+  if (/\$eth|ethereum|이더/.test(lower)) return "ethereum";
+  if (/fomc|fed|macro|금리|inflation|dxy/.test(lower)) return "macro";
+  if (/onchain|멤풀|수수료|고래|stable|유동성|tvl/.test(lower)) return "onchain";
+  if (/layer2|rollup|업그레이드|mainnet|testnet/.test(lower)) return "tech";
+  if (/ai|agent|inference/.test(lower)) return "ai";
+  if (/defi|dex|lending|staking/.test(lower)) return "defi";
+  return "general";
+}
+
+function isWithinHours(isoTimestamp: string, hours: number): boolean {
+  const timestamp = new Date(isoTimestamp).getTime();
+  if (!Number.isFinite(timestamp)) return false;
+  return Date.now() - timestamp <= hours * 60 * 60 * 1000;
+}
+
+function normalizeSourceLabel(source: string): string {
+  return String(source || "unknown")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "");
+}
+
+function estimateNewsSourceFallbackTrust(source: string): number {
+  const lower = String(source || "").toLowerCase();
+  if (/(coingecko|cryptocompare|reuters|coindesk|blockworks|bloomberg)/.test(lower)) return 0.62;
+  if (/(twitter|x|unknown|community)/.test(lower)) return 0.45;
+  return 0.52;
 }
 
 function normalizeDailyTarget(value: number | undefined): number {

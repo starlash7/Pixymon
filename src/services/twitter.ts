@@ -164,6 +164,12 @@ export async function searchRecentTrendTweets(
       .map((tweet) => {
         const authorId = String(tweet.author_id || "");
         const user = userMap.get(authorId);
+        const sourceKey = buildXSourceKey(user?.username, authorId);
+        const baseTrust = memory.getSourceTrustScore(
+          sourceKey,
+          estimateXSourceFallbackTrust(Boolean(user?.verified), user?.public_metrics?.followers_count)
+        );
+        const blendedTrust = blendXSourceTrust(baseTrust, Boolean(user?.verified), user?.public_metrics?.followers_count);
         const evaluation = evaluateTrendCandidate({
           text: String(tweet.text || ""),
           keywordHints: cleaned,
@@ -173,10 +179,10 @@ export async function searchRecentTrendTweets(
             verified: Boolean(user?.verified),
           },
         });
-        return { tweet, user, evaluation };
+        return { tweet, user, evaluation, sourceKey, sourceTrust: blendedTrust };
       })
-      .filter((item) => !item.evaluation.isLowSignal)
-      .sort((a, b) => b.evaluation.score - a.evaluation.score);
+      .filter((item) => !item.evaluation.isLowSignal && item.sourceTrust >= 0.24)
+      .sort((a, b) => (b.evaluation.score + b.sourceTrust * 2.2) - (a.evaluation.score + a.sourceTrust * 2.2));
 
     const selected: any[] = [];
     const seenAuthors = new Set<string>();
@@ -188,6 +194,8 @@ export async function searchRecentTrendTweets(
         ...item.tweet,
         __trendScore: item.evaluation.score,
         __trendEngagement: item.evaluation.engagementRaw,
+        __sourceKey: item.sourceKey,
+        __sourceTrustScore: item.sourceTrust,
         __authorFollowers: item.user?.public_metrics?.followers_count || 0,
       });
       if (authorId) {
@@ -205,6 +213,8 @@ export async function searchRecentTrendTweets(
       ...item.tweet,
       __trendScore: item.evaluation.score,
       __trendEngagement: item.evaluation.engagementRaw,
+      __sourceKey: item.sourceKey,
+      __sourceTrustScore: item.sourceTrust,
       __authorFollowers: item.user?.public_metrics?.followers_count || 0,
     }));
   } catch (error: any) {
@@ -425,6 +435,35 @@ function sanitizeTrendKeywords(keywords: string[]): string[] {
       .filter((keyword) => !/^(http|https)/i.test(keyword))
       .filter((keyword) => !/^[@#]/.test(keyword))
   )];
+}
+
+function buildXSourceKey(username: string | undefined, authorId: string): string {
+  const normalized = String(username || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "");
+  if (normalized) {
+    return `x:${normalized}`;
+  }
+  return `x:${String(authorId || "unknown").toLowerCase()}`;
+}
+
+function estimateXSourceFallbackTrust(verified: boolean, followersCount: unknown): number {
+  const followers = typeof followersCount === "number" && Number.isFinite(followersCount) ? followersCount : 0;
+  if (verified && followers >= 30000) return 0.66;
+  if (verified) return 0.58;
+  if (followers >= 100000) return 0.62;
+  if (followers >= 10000) return 0.56;
+  if (followers >= 3000) return 0.5;
+  return 0.42;
+}
+
+function blendXSourceTrust(baseTrust: number, verified: boolean, followersCount: unknown): number {
+  const followers = typeof followersCount === "number" && Number.isFinite(followersCount) ? followersCount : 0;
+  const followerBoost = Math.min(0.14, Math.log10(followers + 10) * 0.03);
+  const verifiedBoost = verified ? 0.06 : 0;
+  const blended = baseTrust * 0.8 + 0.2 * (baseTrust + followerBoost + verifiedBoost);
+  return Math.min(0.95, Math.max(0.05, Math.round(blended * 100) / 100));
 }
 
 // 트윗 발행 (Twitter API v2 only)

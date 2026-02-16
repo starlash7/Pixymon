@@ -56,6 +56,30 @@ interface AgentState {
   lastUpdated: string;
 }
 
+interface PostGenerationMetrics {
+  dateKey: string;
+  postRuns: number;
+  postSuccesses: number;
+  postFailures: number;
+  totalRetries: number;
+  fallbackUsed: number;
+  failReasons: Record<string, number>;
+  updatedAt: string;
+}
+
+interface SourceTrustRecord {
+  key: string;
+  score: number;
+  observations: number;
+  lastReason?: string;
+  lastUpdated: string;
+}
+
+interface QualityTelemetry {
+  postGenerationByDate: Record<string, PostGenerationMetrics>;
+  sourceTrust: Record<string, SourceTrustRecord>;
+}
+
 interface MemoryData {
   tweets: Tweet[];
   predictions: Prediction[];
@@ -63,6 +87,7 @@ interface MemoryData {
   lastProcessedMentionId?: string;  // 마지막 처리한 멘션 ID
   repliedTweets: string[];  // 댓글 단 트윗 ID들 (중복 방지)
   agentState: AgentState;
+  qualityTelemetry: QualityTelemetry;
   lastUpdated: string;
 }
 
@@ -78,6 +103,13 @@ function createEmptyAgentState(): AgentState {
   };
 }
 
+function createEmptyQualityTelemetry(): QualityTelemetry {
+  return {
+    postGenerationByDate: {},
+    sourceTrust: {},
+  };
+}
+
 function createEmptyMemoryData(): MemoryData {
   return {
     tweets: [],
@@ -85,6 +117,7 @@ function createEmptyMemoryData(): MemoryData {
     followers: {},
     repliedTweets: [],
     agentState: createEmptyAgentState(),
+    qualityTelemetry: createEmptyQualityTelemetry(),
     lastUpdated: new Date().toISOString(),
   };
 }
@@ -141,6 +174,7 @@ export class MemoryService {
 
   private normalizeMemoryData(raw: Partial<MemoryData>): MemoryData {
     const agentState = this.normalizeAgentState(raw.agentState);
+    const qualityTelemetry = this.normalizeQualityTelemetry(raw.qualityTelemetry);
     return {
       tweets: Array.isArray(raw.tweets) ? raw.tweets : [],
       predictions: Array.isArray(raw.predictions) ? raw.predictions : [],
@@ -148,6 +182,7 @@ export class MemoryService {
       lastProcessedMentionId: typeof raw.lastProcessedMentionId === "string" ? raw.lastProcessedMentionId : undefined,
       repliedTweets: Array.isArray(raw.repliedTweets) ? raw.repliedTweets : [],
       agentState,
+      qualityTelemetry,
       lastUpdated: typeof raw.lastUpdated === "string" ? raw.lastUpdated : new Date().toISOString(),
     };
   }
@@ -202,6 +237,78 @@ export class MemoryService {
       };
     }
 
+    return output;
+  }
+
+  private normalizeQualityTelemetry(raw: unknown): QualityTelemetry {
+    if (!raw || typeof raw !== "object") {
+      return createEmptyQualityTelemetry();
+    }
+
+    const telemetry = raw as Partial<QualityTelemetry>;
+    const postGenerationByDate = this.normalizePostGenerationByDate(telemetry.postGenerationByDate);
+    const sourceTrust = this.normalizeSourceTrustMap(telemetry.sourceTrust);
+
+    return {
+      postGenerationByDate,
+      sourceTrust,
+    };
+  }
+
+  private normalizePostGenerationByDate(raw: unknown): Record<string, PostGenerationMetrics> {
+    if (!raw || typeof raw !== "object") {
+      return {};
+    }
+
+    const now = new Date().toISOString();
+    const output: Record<string, PostGenerationMetrics> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (!value || typeof value !== "object") continue;
+      const entry = value as Partial<PostGenerationMetrics>;
+      const dateKey = typeof entry.dateKey === "string" && entry.dateKey ? entry.dateKey : key;
+      output[key] = {
+        dateKey,
+        postRuns: this.clampInt(entry.postRuns, 0, Number.MAX_SAFE_INTEGER, 0),
+        postSuccesses: this.clampInt(entry.postSuccesses, 0, Number.MAX_SAFE_INTEGER, 0),
+        postFailures: this.clampInt(entry.postFailures, 0, Number.MAX_SAFE_INTEGER, 0),
+        totalRetries: this.clampInt(entry.totalRetries, 0, Number.MAX_SAFE_INTEGER, 0),
+        fallbackUsed: this.clampInt(entry.fallbackUsed, 0, Number.MAX_SAFE_INTEGER, 0),
+        failReasons: this.normalizeFailReasons(entry.failReasons),
+        updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : now,
+      };
+    }
+    return output;
+  }
+
+  private normalizeSourceTrustMap(raw: unknown): Record<string, SourceTrustRecord> {
+    if (!raw || typeof raw !== "object") {
+      return {};
+    }
+
+    const now = new Date().toISOString();
+    const output: Record<string, SourceTrustRecord> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (!value || typeof value !== "object") continue;
+      const entry = value as Partial<SourceTrustRecord>;
+      output[key] = {
+        key,
+        score: this.clamp(typeof entry.score === "number" ? entry.score : 0.5, 0.05, 0.95),
+        observations: this.clampInt(entry.observations, 0, Number.MAX_SAFE_INTEGER, 0),
+        lastReason: typeof entry.lastReason === "string" ? entry.lastReason : undefined,
+        lastUpdated: typeof entry.lastUpdated === "string" ? entry.lastUpdated : now,
+      };
+    }
+    return output;
+  }
+
+  private normalizeFailReasons(raw: unknown): Record<string, number> {
+    if (!raw || typeof raw !== "object") {
+      return {};
+    }
+    const output: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      output[key] = this.clampInt(value, 0, Number.MAX_SAFE_INTEGER, 0);
+    }
     return output;
   }
 
@@ -536,6 +643,128 @@ export class MemoryService {
     return this.data.tweets.filter((tweet) => this.isTodayByTimezone(tweet.timestamp, timezone)).length;
   }
 
+  getTodayPostGenerationMetrics(timezone: string = "Asia/Seoul"): {
+    postRuns: number;
+    postSuccesses: number;
+    postFailures: number;
+    totalRetries: number;
+    avgRetries: number;
+    fallbackRate: number;
+    failReasons: Record<string, number>;
+  } {
+    const key = this.getDateKey(new Date(), timezone);
+    const bucket = this.data.qualityTelemetry.postGenerationByDate[key];
+    if (!bucket) {
+      return {
+        postRuns: 0,
+        postSuccesses: 0,
+        postFailures: 0,
+        totalRetries: 0,
+        avgRetries: 0,
+        fallbackRate: 0,
+        failReasons: {},
+      };
+    }
+
+    const avgRetries = bucket.postRuns > 0 ? bucket.totalRetries / bucket.postRuns : 0;
+    const fallbackRate = bucket.postRuns > 0 ? bucket.fallbackUsed / bucket.postRuns : 0;
+
+    return {
+      postRuns: bucket.postRuns,
+      postSuccesses: bucket.postSuccesses,
+      postFailures: bucket.postFailures,
+      totalRetries: bucket.totalRetries,
+      avgRetries: Math.round(avgRetries * 100) / 100,
+      fallbackRate: Math.round(fallbackRate * 100) / 100,
+      failReasons: { ...bucket.failReasons },
+    };
+  }
+
+  recordPostGeneration(params: {
+    timezone?: string;
+    retryCount: number;
+    usedFallback: boolean;
+    success: boolean;
+    failReason?: string;
+  }): void {
+    const timezone = params.timezone || "Asia/Seoul";
+    const key = this.getDateKey(new Date(), timezone);
+    if (!this.data.qualityTelemetry.postGenerationByDate[key]) {
+      this.data.qualityTelemetry.postGenerationByDate[key] = {
+        dateKey: key,
+        postRuns: 0,
+        postSuccesses: 0,
+        postFailures: 0,
+        totalRetries: 0,
+        fallbackUsed: 0,
+        failReasons: {},
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    const bucket = this.data.qualityTelemetry.postGenerationByDate[key];
+    bucket.postRuns += 1;
+    bucket.totalRetries += this.clampInt(params.retryCount, 0, 10, 0);
+    if (params.usedFallback) {
+      bucket.fallbackUsed += 1;
+    }
+    if (params.success) {
+      bucket.postSuccesses += 1;
+    } else {
+      bucket.postFailures += 1;
+      const reasonKey = this.normalizeFailReason(params.failReason || "unknown");
+      bucket.failReasons[reasonKey] = (bucket.failReasons[reasonKey] || 0) + 1;
+    }
+    bucket.updatedAt = new Date().toISOString();
+
+    this.compactPostGenerationMetrics(14);
+    this.save();
+  }
+
+  getSourceTrustScore(sourceKey: string, fallback: number = 0.5): number {
+    const key = this.normalizeSourceKey(sourceKey);
+    if (!key) return this.clamp(fallback, 0.05, 0.95);
+    const existing = this.data.qualityTelemetry.sourceTrust[key];
+    if (!existing) {
+      return this.clamp(fallback, 0.05, 0.95);
+    }
+    return this.clamp(existing.score, 0.05, 0.95);
+  }
+
+  adjustSourceTrust(sourceKey: string, delta: number, reason: string, fallback: number = 0.5): number {
+    const key = this.normalizeSourceKey(sourceKey);
+    if (!key) return this.clamp(fallback, 0.05, 0.95);
+
+    const existing = this.data.qualityTelemetry.sourceTrust[key];
+    const baseScore = existing ? existing.score : this.clamp(fallback, 0.05, 0.95);
+    const nextScore = this.clamp(baseScore + delta, 0.05, 0.95);
+    const now = new Date().toISOString();
+
+    this.data.qualityTelemetry.sourceTrust[key] = {
+      key,
+      score: nextScore,
+      observations: (existing?.observations || 0) + 1,
+      lastReason: this.normalizeFailReason(reason),
+      lastUpdated: now,
+    };
+
+    this.compactSourceTrust(500);
+    this.save();
+    return nextScore;
+  }
+
+  getSourceTrustSnapshot(sourceKeys: string[]): Array<{ key: string; score: number; observations: number }> {
+    const output: Array<{ key: string; score: number; observations: number }> = [];
+    for (const sourceKey of sourceKeys) {
+      const key = this.normalizeSourceKey(sourceKey);
+      if (!key) continue;
+      const row = this.data.qualityTelemetry.sourceTrust[key];
+      if (!row) continue;
+      output.push({ key, score: row.score, observations: row.observations });
+    }
+    return output;
+  }
+
   private getAbilitiesForLevel(level: number): string[] {
     if (level >= 5) {
       return [
@@ -597,6 +826,51 @@ export class MemoryService {
       return 0;
     }
     return Math.floor(value);
+  }
+
+  private normalizeSourceKey(raw: string): string {
+    return String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9:_-]/g, "");
+  }
+
+  private normalizeFailReason(reason: string): string {
+    return String(reason || "unknown")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_:-]/g, "")
+      .slice(0, 64) || "unknown";
+  }
+
+  private compactPostGenerationMetrics(keepDays: number): void {
+    const entries = Object.entries(this.data.qualityTelemetry.postGenerationByDate);
+    if (entries.length <= keepDays) return;
+
+    entries
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .slice(0, Math.max(0, entries.length - keepDays))
+      .forEach(([key]) => {
+        delete this.data.qualityTelemetry.postGenerationByDate[key];
+      });
+  }
+
+  private compactSourceTrust(keepItems: number): void {
+    const entries = Object.entries(this.data.qualityTelemetry.sourceTrust);
+    if (entries.length <= keepItems) return;
+
+    entries
+      .sort((a, b) => {
+        const aTs = new Date(a[1].lastUpdated).getTime();
+        const bTs = new Date(b[1].lastUpdated).getTime();
+        return aTs - bTs;
+      })
+      .slice(0, Math.max(0, entries.length - keepItems))
+      .forEach(([key]) => {
+        delete this.data.qualityTelemetry.sourceTrust[key];
+      });
   }
 
   private isTodayByTimezone(isoTimestamp: string, timezone: string): boolean {
