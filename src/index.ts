@@ -1,10 +1,8 @@
 import "dotenv/config";
 import cron from "node-cron";
-import { BlockchainNewsService } from "./services/blockchain-news.js";
 import { memory } from "./services/memory.js";
 import { initClaudeClient } from "./services/llm.js";
 import { TEST_MODE, validateEnvironment, initTwitterClient, getMentions } from "./services/twitter.js";
-import { postMarketBriefing } from "./services/briefing.js";
 import { proactiveEngagement, checkAndReplyMentions } from "./services/engagement.js";
 
 /**
@@ -34,7 +32,6 @@ async function main() {
   // 클라이언트 초기화
   const twitter = initTwitterClient();
   const claude = initClaudeClient();
-  const newsService = new BlockchainNewsService();
 
   console.log("[OK] Claude 연결됨");
 
@@ -53,8 +50,7 @@ async function main() {
   if (SCHEDULER_MODE) {
     console.log("\n=====================================");
     console.log("  Pixymon v2.1 - 24/7 자동 에이전트");
-    console.log("  ├─ 09:00 모닝 브리핑");
-    console.log("  ├─ 21:00 이브닝 리캡");
+    console.log("  ├─ 브리핑 자동 포스팅 비활성화");
     console.log("  ├─ 3시간마다 멘션 체크");
     console.log("  └─ 3시간마다 인플루언서 댓글 (3개)");
     console.log("=====================================\n");
@@ -75,18 +71,6 @@ async function main() {
         }
       }
     }
-
-    // 매일 오전 9시 모닝 브리핑 (한국 시간)
-    cron.schedule("0 9 * * *", async () => {
-      console.log("\n🌅 [09:00] 모닝 브리핑");
-      await postMarketBriefing(twitter, claude, newsService, "morning");
-    }, { timezone: "Asia/Seoul" });
-
-    // 매일 오후 9시 이브닝 리캡 (한국 시간)
-    cron.schedule("0 21 * * *", async () => {
-      console.log("\n🌙 [21:00] 이브닝 리캡");
-      await postMarketBriefing(twitter, claude, newsService, "evening");
-    }, { timezone: "Asia/Seoul" });
 
     // 3시간마다 멘션 체크 (0, 3, 6, 9, 12, 15, 18, 21시)
     cron.schedule("0 */3 * * *", async () => {
@@ -115,16 +99,11 @@ async function main() {
   } else {
     // 일회성 실행 모드
     console.log("\n=====================================");
-    console.log("  Pixymon v2.1 - 온체인 분석 에이전트");
-    console.log("  ├─ 뉴스 분석");
-    console.log("  ├─ 마켓 데이터");
-    console.log("  └─ Q&A");
+    console.log("  Pixymon v2.1 - 대화형 인게이지먼트");
+    console.log("  ├─ 브리핑 자동 포스팅 비활성화");
+    console.log("  ├─ 인플루언서 댓글");
+    console.log("  └─ 멘션 응답");
     console.log("=====================================\n");
-
-    // 현재 시간에 따라 morning/evening 결정
-    const hour = new Date().getHours();
-    const timeSlot = hour < 15 ? "morning" : "evening";
-    await postMarketBriefing(twitter, claude, newsService, timeSlot);
 
     // 프로액티브 인게이지먼트 (인플루언서 댓글)
     if (twitter) {
