@@ -34,7 +34,7 @@ export async function postMarketBriefing(
     }
 
     // Pixymon 무드 감지
-    const btcData = marketData?.find((c: any) => c.symbol === "btc");
+    const btcData = marketData?.find((c: any) => c.symbol?.toUpperCase() === "BTC");
     const priceChange24h = btcData?.change24h;
     const { mood, moodText } = detectMood(fng?.value, priceChange24h);
     console.log(`[MOOD] ${mood} - F&G: ${fng?.value}, BTC 24h: ${priceChange24h?.toFixed(1)}%`);

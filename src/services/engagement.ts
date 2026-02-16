@@ -22,12 +22,19 @@ export async function checkAndReplyMentions(
     if (mentions.length > 0) {
       console.log(`[INFO] ${mentions.length}개 새 멘션 발견`);
 
-      // 가장 최신 멘션 ID를 메모리에 저장 (영구 저장)
-      memory.setLastProcessedMentionId(mentions[0].id);
+      // 오래된 멘션부터 순차 처리하고, 성공한 멘션까지만 포인터를 전진시킨다.
+      const mentionsToProcess = mentions.slice(0, 5).reverse();
 
-      for (const mention of mentions.slice(0, 5)) {
+      for (const mention of mentionsToProcess) {
         console.log(`  └─ "${mention.text.substring(0, 40)}..."`);
-        await replyToMention(twitter, claude, mention);
+        const replied = await replyToMention(twitter, claude, mention);
+
+        if (!replied) {
+          console.log(`[WARN] 멘션 처리 실패로 중단: ${mention.id}`);
+          break;
+        }
+
+        memory.setLastProcessedMentionId(mention.id);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     } else {

@@ -123,7 +123,7 @@ export async function replyToMention(
   twitter: TwitterApi,
   claude: Anthropic,
   mention: any
-): Promise<void> {
+): Promise<boolean> {
   try {
     // 팔로워 기록 (멘션한 사람 추적)
     if (mention.author_id) {
@@ -170,15 +170,17 @@ ${mention.text}`,
 
     const replyText = extractTextFromClaude(message.content);
 
-    if (!replyText) return;
+    if (!replyText) return false;
 
     const reply = await twitter.v2.reply(replyText, mention.id);
     console.log(`[OK] 멘션 답글: ${reply.data.id}`);
 
     // 답글도 메모리에 저장
     memory.saveTweet(reply.data.id, replyText, "reply");
+    return true;
   } catch (error: any) {
     console.error(`[ERROR] 멘션 답글 실패:`, error.message);
+    return false;
   }
 }
 
