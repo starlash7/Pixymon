@@ -732,6 +732,40 @@ export class MemoryService {
   }
 
   adjustSourceTrust(sourceKey: string, delta: number, reason: string, fallback: number = 0.5): number {
+    return this.applySourceTrustDelta(sourceKey, delta, reason, fallback, true);
+  }
+
+  applySourceTrustDeltaBatch(
+    updates: Array<{ sourceKey: string; delta: number; reason: string; fallback?: number }>
+  ): void {
+    if (!Array.isArray(updates) || updates.length === 0) return;
+
+    let changed = false;
+    for (const update of updates) {
+      const result = this.applySourceTrustDelta(
+        update.sourceKey,
+        update.delta,
+        update.reason,
+        typeof update.fallback === "number" ? update.fallback : 0.5,
+        false
+      );
+      if (Number.isFinite(result)) {
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+    this.compactSourceTrust(500);
+    this.save();
+  }
+
+  private applySourceTrustDelta(
+    sourceKey: string,
+    delta: number,
+    reason: string,
+    fallback: number,
+    persist: boolean
+  ): number {
     const key = this.normalizeSourceKey(sourceKey);
     if (!key) return this.clamp(fallback, 0.05, 0.95);
 
@@ -748,8 +782,10 @@ export class MemoryService {
       lastUpdated: now,
     };
 
-    this.compactSourceTrust(500);
-    this.save();
+    if (persist) {
+      this.compactSourceTrust(500);
+      this.save();
+    }
     return nextScore;
   }
 
