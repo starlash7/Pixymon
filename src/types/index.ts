@@ -62,8 +62,8 @@ export interface AgentConfig {
     accessSecret: string;
   };
 
-  // OpenAI 설정
-  openai: {
+  // Anthropic 설정
+  anthropic: {
     apiKey: string;
     model?: string;
     maxTokens?: number;

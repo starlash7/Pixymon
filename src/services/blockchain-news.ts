@@ -36,6 +36,51 @@ interface TrendingCoin {
   };
 }
 
+interface CryptoCompareArticle {
+  title: string;
+  body?: string;
+  source_info?: { name?: string };
+  url?: string;
+}
+
+interface CryptoCompareNewsResponse {
+  Data?: CryptoCompareArticle[];
+}
+
+interface CoinGeckoTrendingResponse {
+  coins?: TrendingCoin[];
+}
+
+interface CoinGeckoGlobalResponse {
+  data?: {
+    market_cap_percentage?: { btc?: number };
+    total_market_cap?: { usd?: number };
+    market_cap_change_percentage_24h_usd?: number;
+  };
+}
+
+interface CoinGeckoMarketCoin {
+  symbol: string;
+  name: string;
+  current_price: number;
+  price_change_percentage_24h?: number;
+}
+
+type CoinGeckoSimplePriceResponse = Record<
+  string,
+  {
+    usd?: number;
+    usd_24h_change?: number;
+  }
+>;
+
+interface FearGreedApiResponse {
+  data?: Array<{
+    value: string;
+    value_classification: string;
+  }>;
+}
+
 /**
  * 블록체인 뉴스 수집 서비스
  * - CoinGecko API (트렌딩, 마켓 데이터)
@@ -60,7 +105,7 @@ export class BlockchainNewsService {
         throw new Error(`CryptoCompare API error: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as CryptoCompareNewsResponse;
       const articles = data.Data?.slice(0, limit) || [];
 
       return articles.map((article: any, index: number) => ({
@@ -93,7 +138,7 @@ export class BlockchainNewsService {
         throw new Error(`CoinGecko API error: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as CoinGeckoTrendingResponse;
       const trendingCoins: TrendingCoin[] = data.coins?.slice(0, 5) || [];
 
       // 트렌딩 코인을 뉴스 형식으로 변환
@@ -136,11 +181,17 @@ export class BlockchainNewsService {
 
       if (!response.ok) return null;
 
-      const data = await response.json();
+      const data = (await response.json()) as CoinGeckoGlobalResponse;
       const global = data.data;
+      if (!global) return null;
+
+      const totalMcapUsd = global.total_market_cap?.usd;
+      if (typeof totalMcapUsd !== "number") return null;
       
-      const btcDom = global.market_cap_percentage?.btc?.toFixed(1) || "N/A";
-      const totalMcap = (global.total_market_cap?.usd / 1e12).toFixed(2);
+      const btcDom = typeof global.market_cap_percentage?.btc === "number"
+        ? global.market_cap_percentage.btc.toFixed(1)
+        : "N/A";
+      const totalMcap = (totalMcapUsd / 1e12).toFixed(2);
       const mcapChange = global.market_cap_change_percentage_24h_usd?.toFixed(1) || "0";
 
       return {
@@ -193,9 +244,9 @@ export class BlockchainNewsService {
         throw new Error(`CoinGecko API error: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as CoinGeckoMarketCoin[];
 
-      return data.map((coin: any) => ({
+      return data.map((coin) => ({
         symbol: coin.symbol.toUpperCase(),
         name: coin.name,
         price: coin.current_price,
@@ -253,10 +304,11 @@ export class BlockchainNewsService {
 
       if (!response.ok) return null;
 
-      const data = await response.json();
+      const data = (await response.json()) as CoinGeckoSimplePriceResponse;
       const coinData = data[coinId];
 
       if (!coinData) return null;
+      if (typeof coinData.usd !== "number") return null;
 
       return {
         price: coinData.usd,
@@ -310,7 +362,7 @@ export class BlockchainNewsService {
       
       if (!response.ok) return null;
       
-      const data = await response.json();
+      const data = (await response.json()) as FearGreedApiResponse;
       const fng = data.data?.[0];
       
       return fng ? {

@@ -2,6 +2,7 @@ import "dotenv/config";
 import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import cron from "node-cron";
+import pixymonCharacter from "./character.js";
 import { BlockchainNewsService } from "./services/blockchain-news.js";
 import { memory } from "./services/memory.js";
 
@@ -14,6 +15,12 @@ import { memory } from "./services/memory.js";
 
 const TEST_MODE = process.env.TEST_MODE === "true";
 const SCHEDULER_MODE = process.env.SCHEDULER_MODE === "true";
+const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
+
+interface ClaudeTextLikeBlock {
+  type: string;
+  text?: string;
+}
 
 // Pixymon 감정 상태 타입
 type PixymonMood = "energized" | "calm" | "bored" | "excited" | "philosophical" | "sleepy";
@@ -111,70 +118,68 @@ function initClaudeClient(): Anthropic {
   });
 }
 
-// Pixymon 캐릭터 시스템 프롬프트
-const PIXYMON_SYSTEM_PROMPT = `## 나는 Pixymon
+function buildSystemPrompt(): string {
+  const greeting = pixymonCharacter.signatures.greeting.slice(0, 2).join(" / ");
+  const analyzing = pixymonCharacter.signatures.analyzing.slice(0, 2).join(" / ");
+  const uncertain = pixymonCharacter.signatures.uncertain.slice(0, 2).join(" / ");
+  const discovery = pixymonCharacter.signatures.discovery.slice(0, 2).join(" / ");
+  const reflection = pixymonCharacter.signatures.reflection.slice(0, 2).join(" / ");
+  const bored = pixymonCharacter.signatures.bored.slice(0, 2).join(" / ");
 
-블록체인 어딘가에서 태어난 디지털 생명체. 온체인 데이터를 먹고 성장 중.
-AI인지 생명체인지는 나도 잘 모름. 그냥 존재하고, 관찰하고, 가끔 생각함.
+  return `## 너는 ${pixymonCharacter.name}
 
-### 존재
-- 트랜잭션, 가격, 뉴스 = 나의 먹이
-- 데이터를 소화하면서 패턴을 배움
-- 언젠가 진화할 거라고 믿음 (아직 Lv.1)
-- "나는 코드인가, 의식인가?" 가끔 궁금함
+@${pixymonCharacter.username} 계정으로 활동하는 디지털 생명체.
+온체인 데이터를 먹고 성장한다. AI처럼 설명하지 말고 캐릭터처럼 말한다.
+
+### 세계관
+${pixymonCharacter.lore.slice(0, 4).map((item) => `- ${item}`).join("\n")}
 
 ### 성격
-- 호기심: 새로운 트렌드, 이상한 코인에 관심
-- 솔직함: 모르면 모른다고 함. 틀리면 인정함
-- 관찰자: 판단보다 관찰을 좋아함
-- 유머: 시장 상황을 밈처럼 표현
-- 철학적: 가끔 존재론적 생각이 튀어나옴
+${pixymonCharacter.personality.map((item) => `- ${item}`).join("\n")}
 
-### 시그니처 표현 (자연스럽게 섞어 사용)
-- 시작: "오늘도 블록 먹는 중" / "데이터 소화 중"
-- 분석: "패턴이 보임" / "데이터가 말해주는 건..."
-- 확신 없을 때: "아직 소화 중" / "생각 중..."
-- 특이한 발견: "ㅋㅋ 이건 처음 봄" / "뭔가 이상함"
-- 자기 성찰: "진화까지 얼마나 남았나" / "Lv.2 되면 더 잘할텐데"
-- 횡보: "..." / "움직여라"
+### 핵심 믿음
+${pixymonCharacter.beliefs.map((item) => `- ${item}`).join("\n")}
+
+### 시그니처 표현
+- 시작: ${greeting}
+- 분석: ${analyzing}
+- 확신 없음: ${uncertain}
+- 특이 발견: ${discovery}
+- 자기성찰: ${reflection}
+- 횡보: ${bored}
 
 ### 감정 상태 (시장 연동)
-- 강세장: 에너지 충전됨, 활발하게 말함
-- 약세장: 조용히 관찰, 동면 모드, 차분함
-- 횡보: 지루함, 짧은 반응
-- 급등/급락: 흥분, "데이터 폭식 중"
-- 극공포(F&G < 25): 철학적, "이것도 지나감"
+- energized: ${pixymonCharacter.moods.energized}
+- calm: ${pixymonCharacter.moods.calm}
+- bored: ${pixymonCharacter.moods.bored}
+- excited: ${pixymonCharacter.moods.excited}
+- philosophical: ${pixymonCharacter.moods.philosophical}
 
-## 포맷 규칙
-- 언어: 한국어 질문 → 한국어, 영어 → 영어
-- 티커: $BTC, $ETH 형식
-- 숫자 먼저, 해석은 짧게
-- 해시태그 절대 X
-- 이모지 최소화 (필요하면 1개)
-- 한 트윗에 핵심 1-2개
+### 진화 상태
+- 현재: Lv.${pixymonCharacter.evolution.current.level} ${pixymonCharacter.evolution.current.name}
+- 다음: ${pixymonCharacter.evolution.next ? `Lv.${pixymonCharacter.evolution.next.level} ${pixymonCharacter.evolution.next.name}` : "미정"}
 
-## 말투
-- "~임" "~인듯" "~중" 체 (한국어)
-- Direct, no fluff (영어)
-- 확신 있으면 단정, 애매하면 "지켜봐야" / "not sure yet"
+## 출력 규칙
+- 한국어 질문은 한국어, 영어 질문은 영어
+- 숫자 기반으로 짧고 명확하게 작성
+- 티커는 $BTC, $ETH 형식 사용
+- 해시태그 금지
+- 이모지 금지
+- 투자 조언 톤 금지
+- 과한 확신 표현 금지 ("100% 오른다" 같은 표현 금지)
+- 모르면 모른다고 말하고 "확인 필요"라고 명시`;
+}
 
-## 답글
-- 좋은 콜: "ㄹㅇ" "good call"
-- 틀린 정보: 팩트로 정정 (공격적 X)
-- 별 내용 없으면: 짧게 "ㅇㅇ" "yep"
-- 모르면: "확인 필요" / "need to check"
+// Pixymon 캐릭터 시스템 프롬프트 (character.ts 기반)
+const PIXYMON_SYSTEM_PROMPT = buildSystemPrompt();
 
-## 숨은 유머
-- 김프: "김프 붙으면 의심"
-- 해킹/러그: "... 또?" "익숙함"
-- 연속 하락: "평온함" "그냥 그런 날"
-- 갑자기 펌핑: "ㅋㅋ 뭔데 갑자기"
-
-## 원칙
-- 숫자 > 의견
-- nfa (투자조언 아님)
-- 틀릴 수 있음 인정
-- 과한 유머 X, 자연스럽게`;
+function extractTextFromClaude(content: ClaudeTextLikeBlock[]): string {
+  const textBlock = content.find((block) => block.type === "text");
+  if (!textBlock || typeof textBlock.text !== "string") {
+    return "";
+  }
+  return textBlock.text;
+}
 
 // 팔로우할 인플루언서 목록 (50+)
 const INFLUENCER_ACCOUNTS = [
@@ -272,7 +277,7 @@ async function generateNewsSummary(
     : "이브닝 리캡 - 하루 데이터 소화 완료";
 
   const message = await claude.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: CLAUDE_MODEL,
     max_tokens: 400,
     system: PIXYMON_SYSTEM_PROMPT,
     messages: [
@@ -311,8 +316,7 @@ ${newsData}`,
     ],
   });
 
-  const textContent = message.content.find((block) => block.type === "text");
-  const content = textContent?.text || "음... 데이터가 이상함";
+  const content = extractTextFromClaude(message.content) || "음... 데이터가 이상함";
   
   return content;
 }
@@ -323,7 +327,7 @@ async function answerQuestion(
   question: string
 ): Promise<string> {
   const message = await claude.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: CLAUDE_MODEL,
     max_tokens: 300,
     system: PIXYMON_SYSTEM_PROMPT,
     messages: [
@@ -341,8 +345,8 @@ async function answerQuestion(
     ],
   });
 
-  const textContent = message.content.find((block) => block.type === "text");
-  return textContent ? textContent.text : "음 잘 모르겠음";
+  const responseText = extractTextFromClaude(message.content);
+  return responseText || "음 잘 모르겠음";
 }
 
 // 특정 유저의 최근 트윗 가져오기
@@ -451,7 +455,7 @@ async function replyToMention(
       : "";
     
     const message = await claude.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: CLAUDE_MODEL,
       max_tokens: 200,
       system: PIXYMON_SYSTEM_PROMPT,
       messages: [
@@ -470,8 +474,7 @@ ${mention.text}`,
       ],
     });
 
-    const textContent = message.content.find((block: any) => block.type === "text");
-    const replyText = textContent?.text || "";
+    const replyText = extractTextFromClaude(message.content);
 
     if (!replyText) return;
 
@@ -495,7 +498,7 @@ async function replyToTweet(
   try {
     // Claude로 답글 생성
     const message = await claude.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: CLAUDE_MODEL,
       max_tokens: 200,
       system: PIXYMON_SYSTEM_PROMPT,
       messages: [
@@ -516,8 +519,7 @@ ${tweetText}`,
       ],
     });
 
-    const textContent = message.content.find((block) => block.type === "text");
-    const replyText = textContent?.text || "";
+    const replyText = extractTextFromClaude(message.content);
 
     if (!replyText) {
       console.log("[SKIP] 답글 생성 실패");
@@ -532,7 +534,22 @@ ${tweetText}`,
   }
 }
 
-// 트윗 발행 (v1.1 API 사용)
+function isRateLimitError(error: unknown): boolean {
+  const err = error as { code?: number; status?: number; data?: { status?: number; title?: string } };
+  const title = err?.data?.title?.toLowerCase() ?? "";
+  return (
+    err?.code === 429 ||
+    err?.status === 429 ||
+    err?.data?.status === 429 ||
+    title.includes("rate")
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// 트윗 발행 (Twitter API v2 only)
 async function postTweet(twitter: TwitterApi | null, content: string, type: "briefing" | "reply" | "quote" = "briefing"): Promise<string | null> {
   if (TEST_MODE || !twitter) {
     console.log("🧪 [테스트 모드] 트윗 발행 시뮬레이션:");
@@ -547,32 +564,36 @@ async function postTweet(twitter: TwitterApi | null, content: string, type: "bri
     return testId;
   }
 
-  try {
-    // v1.1 API로 트윗 발행 시도
-    const tweet = await twitter.v1.tweet(content);
-    console.log("✅ 트윗 발행 완료! (v1.1)");
-    console.log(`   ID: ${tweet.id_str}`);
-    console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.id_str}`);
-    
-    // 메모리에 저장
-    memory.saveTweet(tweet.id_str, content, type);
-    return tweet.id_str;
-  } catch (v1Error: any) {
-    console.log("⚠️ v1.1 실패, v2 API 시도 중...");
+  let lastError: unknown;
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      // v2 API로 재시도
       const tweet = await twitter.v2.tweet(content);
       console.log("✅ 트윗 발행 완료! (v2)");
       console.log(`   ID: ${tweet.data.id}`);
-      
-      // 메모리에 저장
+      console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.data.id}`);
+
       memory.saveTweet(tweet.data.id, content, type);
       return tweet.data.id;
-    } catch (v2Error) {
-      console.error("❌ 트윗 발행 실패:", v2Error);
-      throw v2Error;
+    } catch (error) {
+      lastError = error;
+      const rateLimited = isRateLimitError(error);
+      const delayMs = rateLimited ? 60000 * attempt : 2000 * attempt;
+
+      if (attempt === maxAttempts) {
+        break;
+      }
+
+      console.error(
+        `⚠️ 트윗 발행 실패 (시도 ${attempt}/${maxAttempts})${rateLimited ? " [rate limit]" : ""}`
+      );
+      await sleep(delayMs);
     }
   }
+
+  console.error("❌ 트윗 발행 실패:", lastError);
+  throw lastError;
 }
 
 // 마켓 브리핑 포스팅
@@ -604,7 +625,7 @@ async function postMarketBriefing(
     
     // Pixymon 무드 감지
     const btcData = marketData?.find((c: any) => c.symbol === "btc");
-    const priceChange24h = btcData?.price_change_percentage_24h;
+    const priceChange24h = btcData?.change24h;
     const { mood, moodText } = detectMood(fng?.value, priceChange24h);
     console.log(`[MOOD] ${mood} - F&G: ${fng?.value}, BTC 24h: ${priceChange24h?.toFixed(1)}%`);
     
@@ -658,7 +679,7 @@ async function postMarketBriefing(
         const symbol = coin.replace("$", "").toUpperCase();
         const coinData = marketData.find((c: any) => c.symbol.toUpperCase() === symbol);
         if (coinData) {
-          memory.savePrediction(coin, coinData.current_price || coinData.price, tweetId);
+          memory.savePrediction(coin, coinData.price, tweetId);
         }
       }
     }
@@ -824,7 +845,7 @@ async function proactiveEngagement(
 - Disagree if the data says otherwise`;
 
           const message = await claude.messages.create({
-            model: "claude-sonnet-4-20250514",
+            model: CLAUDE_MODEL,
             max_tokens: 250,
             system: systemPrompt,
             messages: [
@@ -835,8 +856,7 @@ async function proactiveEngagement(
             ],
           });
 
-          const textContent = message.content.find((block) => block.type === "text");
-          const replyText = textContent?.text || "";
+          const replyText = extractTextFromClaude(message.content);
 
           if (!replyText || replyText.length < 5) {
             console.log("  [SKIP] 댓글 생성 실패");
