@@ -2,9 +2,17 @@ import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
 import { INFLUENCER_ACCOUNTS } from "../config/influencers.js";
-import { CLAUDE_MODEL, PIXYMON_SYSTEM_PROMPT, extractTextFromClaude } from "./llm.js";
+import { CLAUDE_MODEL, CLAUDE_RESEARCH_MODEL, PIXYMON_SYSTEM_PROMPT, extractTextFromClaude } from "./llm.js";
+import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
+import { CognitiveRunContext } from "../types/agent.js";
+import { detectLanguage } from "../utils/mood.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
+
+interface MentionReplyOptions {
+  cognitiveEngine?: FiveLayerCognitiveEngine;
+  runContext?: CognitiveRunContext;
+}
 
 // 환경 변수 검증
 export function validateEnvironment() {
@@ -118,11 +126,43 @@ export async function getMentions(twitter: TwitterApi, sinceId?: string): Promis
   }
 }
 
+// 트렌드 키워드 기반 최근 트윗 검색
+export async function searchRecentTrendTweets(
+  twitter: TwitterApi,
+  keywords: string[],
+  count: number = 30
+): Promise<any[]> {
+  try {
+    const cleaned = [...new Set(keywords.map((keyword) => keyword.trim()).filter((keyword) => keyword.length >= 2))]
+      .slice(0, 10);
+
+    const keywordQuery = cleaned.length > 0
+      ? cleaned.map((keyword) => `"${keyword}"`).join(" OR ")
+      : "crypto OR blockchain OR onchain OR layer2";
+
+    const query = `(${keywordQuery}) -is:retweet -is:reply`;
+    const maxResults = Math.max(10, Math.min(100, count));
+
+    const result = await twitter.v2.search(query, {
+      max_results: maxResults,
+      "tweet.fields": ["created_at", "text", "author_id", "lang", "public_metrics"],
+      expansions: ["author_id"],
+    });
+
+    const rows = result.data?.data || [];
+    return rows;
+  } catch (error: any) {
+    console.log(`[TREND] 검색 실패: ${error.message || "unknown"}`);
+    return [];
+  }
+}
+
 // 멘션에 답글 달기
 export async function replyToMention(
   twitter: TwitterApi,
   claude: Anthropic,
-  mention: any
+  mention: any,
+  options?: MentionReplyOptions
 ): Promise<boolean> {
   try {
     // 팔로워 기록 (멘션한 사람 추적)
@@ -139,8 +179,10 @@ export async function replyToMention(
       }
     }
 
-    // 언어 감지 (간단한 방식)
-    const isEnglish = /^[a-zA-Z0-9\s.,!?@#$%^&*()_+\-=\[\]{}|;':"<>\/\\`~]+$/.test(mention.text.replace(/@\w+/g, '').trim());
+    // 언어 감지
+    const cleanedMentionText = String(mention.text || "").replace(/@\w+/g, "").trim();
+    const lang = detectLanguage(cleanedMentionText);
+    const isEnglish = lang === "en";
 
     // 팔로워 컨텍스트 가져오기
     const follower = mention.author_id ? memory.getFollower(mention.author_id) : null;
@@ -148,19 +190,36 @@ export async function replyToMention(
       ? `\n(이 사람은 ${follower.mentionCount}번째 멘션, 친근하게)`
       : "";
 
+    const cognitive =
+      options?.cognitiveEngine ||
+      new FiveLayerCognitiveEngine(claude, CLAUDE_MODEL, PIXYMON_SYSTEM_PROMPT, CLAUDE_RESEARCH_MODEL);
+    const runContext = options?.runContext || (await cognitive.prepareRunContext("reply"));
+    const packet = await cognitive.analyzeTarget({
+      objective: "reply",
+      text: cleanedMentionText || String(mention.text || ""),
+      author: follower?.username,
+      language: lang,
+      runContext,
+    });
+
     const message = await claude.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 200,
+      max_tokens: 260,
       system: PIXYMON_SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
           content: `멘션에 답글 작성.
 
-- 100자 이내
+- ${packet.action.maxChars}자 이내
 - ${isEnglish ? '영어로 답변' : '한국어로 답변'}
 - 질문이면 답변, 아니면 짧은 리액션
+- 단정은 confidence가 높을 때만
+- 마지막 문장 ${packet.action.shouldEndWithQuestion ? "질문형" : "관찰형"}
 - 해시태그 X, 이모지 X${followerContext}
+
+Layer Context:
+${packet.promptContext}
 
 멘션 내용:
 ${mention.text}`,
@@ -177,6 +236,7 @@ ${mention.text}`,
 
     // 답글도 메모리에 저장
     memory.saveTweet(reply.data.id, replyText, "reply");
+    memory.recordCognitiveActivity("social", 2);
     return true;
   } catch (error: any) {
     console.error(`[ERROR] 멘션 답글 실패:`, error.message);

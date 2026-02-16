@@ -43,23 +43,54 @@ interface Follower {
   sentiment: "positive" | "neutral" | "negative";
 }
 
+type CognitiveActivityType = "signal" | "social" | "reasoning";
+
+interface AgentState {
+  level: number;
+  readiness: number;
+  signalXp: number;
+  socialXp: number;
+  reasoningXp: number;
+  unlockedAbilities: string[];
+  lastEvolutionAt?: string;
+  lastUpdated: string;
+}
+
 interface MemoryData {
   tweets: Tweet[];
   predictions: Prediction[];
   followers: Record<string, Follower>;
   lastProcessedMentionId?: string;  // 마지막 처리한 멘션 ID
   repliedTweets: string[];  // 댓글 단 트윗 ID들 (중복 방지)
+  agentState: AgentState;
   lastUpdated: string;
 }
 
+function createEmptyAgentState(): AgentState {
+  return {
+    level: 1,
+    readiness: 0,
+    signalXp: 0,
+    socialXp: 0,
+    reasoningXp: 0,
+    unlockedAbilities: ["뉴스 요약", "기본 마켓 분석", "멘션 응답"],
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
+function createEmptyMemoryData(): MemoryData {
+  return {
+    tweets: [],
+    predictions: [],
+    followers: {},
+    repliedTweets: [],
+    agentState: createEmptyAgentState(),
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
 // 초기 데이터
-const EMPTY_MEMORY: MemoryData = {
-  tweets: [],
-  predictions: [],
-  followers: {},
-  repliedTweets: [],
-  lastUpdated: new Date().toISOString(),
-};
+const EMPTY_MEMORY: MemoryData = createEmptyMemoryData();
 
 export class MemoryService {
   private data: MemoryData;
@@ -81,18 +112,19 @@ export class MemoryService {
 
       // 파일 없으면 초기화
       if (!fs.existsSync(this.dataPath)) {
-        this.save(EMPTY_MEMORY);
+        const empty = createEmptyMemoryData();
+        this.save(empty);
         console.log("[MEMORY] 새 메모리 파일 생성됨");
-        return EMPTY_MEMORY;
+        return empty;
       }
 
       const raw = fs.readFileSync(this.dataPath, "utf-8");
-      const data = JSON.parse(raw) as MemoryData;
+      const data = this.normalizeMemoryData(JSON.parse(raw) as Partial<MemoryData>);
       console.log(`[MEMORY] 로드됨 - 트윗: ${data.tweets.length}, 예측: ${data.predictions.length}`);
       return data;
     } catch (error) {
       console.error("[MEMORY] 로드 실패, 초기화:", error);
-      return EMPTY_MEMORY;
+      return createEmptyMemoryData();
     }
   }
 
@@ -105,6 +137,72 @@ export class MemoryService {
     } catch (error) {
       console.error("[MEMORY] 저장 실패:", error);
     }
+  }
+
+  private normalizeMemoryData(raw: Partial<MemoryData>): MemoryData {
+    const agentState = this.normalizeAgentState(raw.agentState);
+    return {
+      tweets: Array.isArray(raw.tweets) ? raw.tweets : [],
+      predictions: Array.isArray(raw.predictions) ? raw.predictions : [],
+      followers: this.normalizeFollowers(raw.followers),
+      lastProcessedMentionId: typeof raw.lastProcessedMentionId === "string" ? raw.lastProcessedMentionId : undefined,
+      repliedTweets: Array.isArray(raw.repliedTweets) ? raw.repliedTweets : [],
+      agentState,
+      lastUpdated: typeof raw.lastUpdated === "string" ? raw.lastUpdated : new Date().toISOString(),
+    };
+  }
+
+  private normalizeAgentState(raw?: Partial<AgentState>): AgentState {
+    const now = new Date().toISOString();
+    const level = this.clampInt(raw?.level, 1, 5, 1);
+    const signalXp = this.toSafeNumber(raw?.signalXp);
+    const socialXp = this.toSafeNumber(raw?.socialXp);
+    const reasoningXp = this.toSafeNumber(raw?.reasoningXp);
+    const readinessFromXp = this.calculateReadiness(signalXp, socialXp, reasoningXp);
+    const readiness = typeof raw?.readiness === "number"
+      ? this.clamp(raw.readiness, 0, 1)
+      : readinessFromXp;
+
+    const unlocked = Array.isArray(raw?.unlockedAbilities) && raw?.unlockedAbilities.length > 0
+      ? [...new Set(raw.unlockedAbilities.filter((ability): ability is string => typeof ability === "string" && ability.trim().length > 0))]
+      : this.getAbilitiesForLevel(level);
+
+    return {
+      level,
+      readiness,
+      signalXp,
+      socialXp,
+      reasoningXp,
+      unlockedAbilities: unlocked,
+      lastEvolutionAt: typeof raw?.lastEvolutionAt === "string" ? raw.lastEvolutionAt : undefined,
+      lastUpdated: typeof raw?.lastUpdated === "string" ? raw.lastUpdated : now,
+    };
+  }
+
+  private normalizeFollowers(raw: unknown): Record<string, Follower> {
+    if (!raw || typeof raw !== "object") {
+      return {};
+    }
+
+    const output: Record<string, Follower> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (!value || typeof value !== "object") {
+        continue;
+      }
+      const follower = value as Partial<Follower>;
+      output[key] = {
+        userId: typeof follower.userId === "string" ? follower.userId : key,
+        username: typeof follower.username === "string" ? follower.username : `user_${key}`,
+        mentionCount: this.clampInt(follower.mentionCount, 0, Number.MAX_SAFE_INTEGER, 0),
+        lastMention: typeof follower.lastMention === "string" ? follower.lastMention : "",
+        sentiment:
+          follower.sentiment === "positive" || follower.sentiment === "negative" || follower.sentiment === "neutral"
+            ? follower.sentiment
+            : "neutral",
+      };
+    }
+
+    return output;
   }
 
   // ============================================
@@ -294,6 +392,7 @@ export class MemoryService {
     const recentPredictions = this.data.predictions.slice(-5);
 
     let context = "## 내 기억 (참고용, 강제로 언급할 필요 없음)\n\n";
+    context += `${this.getAgentStateContext()}\n\n`;
 
     // 최근 트윗 (중복 방지)
     if (recentTweets.length > 0) {
@@ -370,14 +469,148 @@ export class MemoryService {
     this.save();
   }
 
+  // ============================================
+  // 인지/진화 상태
+  // ============================================
+
+  getAgentState(): AgentState {
+    return {
+      ...this.data.agentState,
+      unlockedAbilities: [...this.data.agentState.unlockedAbilities],
+    };
+  }
+
+  getAgentStateContext(): string {
+    const state = this.getAgentState();
+    const readinessPercent = Math.round(state.readiness * 100);
+    const unlocked = state.unlockedAbilities.slice(0, 4).join(", ") || "없음";
+
+    return [
+      "## 진화 상태",
+      `- Lv.${state.level} | readiness ${readinessPercent}%`,
+      `- XP(signal/social/reasoning): ${state.signalXp}/${state.socialXp}/${state.reasoningXp}`,
+      `- 활성 능력: ${unlocked}`,
+    ].join("\n");
+  }
+
+  recordCognitiveActivity(type: CognitiveActivityType, amount: number = 1): AgentState {
+    const state = this.data.agentState;
+    const gain = this.clampInt(amount, 1, 10, 1);
+
+    if (type === "signal") state.signalXp += gain;
+    if (type === "social") state.socialXp += gain;
+    if (type === "reasoning") state.reasoningXp += gain;
+
+    state.readiness = this.calculateReadiness(state.signalXp, state.socialXp, state.reasoningXp);
+    state.lastUpdated = new Date().toISOString();
+
+    // readiness가 100%면 레벨업
+    if (state.readiness >= 1 && state.level < 5) {
+      state.level += 1;
+      state.lastEvolutionAt = new Date().toISOString();
+      state.unlockedAbilities = this.getAbilitiesForLevel(state.level);
+
+      // 레벨업 후 일부 경험치는 다음 단계로 carry
+      state.signalXp = Math.round(state.signalXp * 0.45);
+      state.socialXp = Math.round(state.socialXp * 0.45);
+      state.reasoningXp = Math.round(state.reasoningXp * 0.45);
+      state.readiness = this.calculateReadiness(state.signalXp, state.socialXp, state.reasoningXp);
+    }
+
+    this.save();
+    return this.getAgentState();
+  }
+
   // 오늘 댓글 단 개수
-  getTodayReplyCount(): number {
-    // 오늘 날짜 기준으로 답글 트윗 수 계산
-    const today = new Date().toISOString().split("T")[0];
-    const todayReplies = this.data.tweets.filter(t => 
-      t.type === "reply" && t.timestamp.startsWith(today)
-    );
-    return todayReplies.length;
+  getTodayReplyCount(timezone: string = "Asia/Seoul"): number {
+    return this.data.tweets.filter((tweet) => this.isTodayByTimezone(tweet.timestamp, timezone) && tweet.type === "reply").length;
+  }
+
+  // 오늘 글(원글/브리핑) 개수
+  getTodayPostCount(timezone: string = "Asia/Seoul"): number {
+    return this.data.tweets.filter((tweet) => this.isTodayByTimezone(tweet.timestamp, timezone) && tweet.type === "briefing").length;
+  }
+
+  // 오늘 총 활동 개수 (댓글 + 글 + quote)
+  getTodayActivityCount(timezone: string = "Asia/Seoul"): number {
+    return this.data.tweets.filter((tweet) => this.isTodayByTimezone(tweet.timestamp, timezone)).length;
+  }
+
+  private getAbilitiesForLevel(level: number): string[] {
+    if (level >= 5) {
+      return [
+        "멀티시나리오 추론",
+        "온체인/소셜 공진화 분석",
+        "고신뢰 반론 설계",
+        "자율 전략 전환",
+      ];
+    }
+    if (level === 4) {
+      return [
+        "서사형 마켓 해석",
+        "리스크 플래그 우선경보",
+        "논점별 신뢰도 제어",
+        "고래 행위 탐지 강화",
+      ];
+    }
+    if (level === 3) {
+      return [
+        "클러스터 모멘텀 추적",
+        "가설-반가설 비교",
+        "질문형 토론 유도",
+        "맥락 기반 답글 최적화",
+      ];
+    }
+    if (level === 2) {
+      return [
+        "온체인 데이터 분석",
+        "지갑/플로우 프록시 추적",
+        "리서치 레이어 적용",
+        "회고 정책 반영",
+      ];
+    }
+    return ["뉴스 요약", "기본 마켓 분석", "멘션 응답"];
+  }
+
+  private calculateReadiness(signalXp: number, socialXp: number, reasoningXp: number): number {
+    const weightedScore = signalXp * 0.35 + socialXp * 0.35 + reasoningXp * 0.3;
+    const readiness = weightedScore / 120;
+    return this.clamp(Math.round(readiness * 100) / 100, 0, 1);
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  private clampInt(value: unknown, min: number, max: number, fallback: number): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return fallback;
+    }
+    return Math.floor(this.clamp(value, min, max));
+  }
+
+  private toSafeNumber(value: unknown): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return 0;
+    }
+    if (value < 0) {
+      return 0;
+    }
+    return Math.floor(value);
+  }
+
+  private isTodayByTimezone(isoTimestamp: string, timezone: string): boolean {
+    const date = new Date(isoTimestamp);
+    if (Number.isNaN(date.getTime())) {
+      return false;
+    }
+    const today = this.getDateKey(new Date(), timezone);
+    const target = this.getDateKey(date, timezone);
+    return target === today;
+  }
+
+  private getDateKey(date: Date, timezone: string): string {
+    return date.toLocaleDateString("en-CA", { timeZone: timezone });
   }
 }
 

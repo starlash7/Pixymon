@@ -7,6 +7,7 @@ export interface ClaudeTextLikeBlock {
 }
 
 export const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
+export const CLAUDE_RESEARCH_MODEL = process.env.ANTHROPIC_RESEARCH_MODEL || "claude-3-5-haiku-latest";
 
 function buildSystemPrompt(): string {
   const greeting = pixymonCharacter.signatures.greeting.slice(0, 2).join(" / ");

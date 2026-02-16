@@ -1,222 +1,441 @@
 import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
-import { INFLUENCER_ACCOUNTS } from "../config/influencers.js";
-import { CLAUDE_MODEL, extractTextFromClaude } from "./llm.js";
-import { getUserTweets, getMentions, replyToMention, TEST_MODE } from "./twitter.js";
+import { BlockchainNewsService } from "./blockchain-news.js";
+import { CLAUDE_MODEL, CLAUDE_RESEARCH_MODEL, PIXYMON_SYSTEM_PROMPT, extractTextFromClaude } from "./llm.js";
+import { getMentions, postTweet, replyToMention, searchRecentTrendTweets, TEST_MODE, sleep } from "./twitter.js";
+import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { detectLanguage } from "../utils/mood.js";
+
+const DEFAULT_DAILY_TARGET = 20;
+const DEFAULT_TIMEZONE = "Asia/Seoul";
+const DEFAULT_MIN_LOOP_MINUTES = 25;
+const DEFAULT_MAX_LOOP_MINUTES = 70;
+
+interface DailyQuotaOptions {
+  dailyTarget?: number;
+  timezone?: string;
+  maxActionsPerCycle?: number;
+  minLoopMinutes?: number;
+  maxLoopMinutes?: number;
+}
+
+interface TrendContext {
+  keywords: string[];
+  summary: string;
+}
 
 // 멘션 체크 및 응답
 export async function checkAndReplyMentions(
   twitter: TwitterApi,
-  claude: Anthropic
-) {
-  const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  claude: Anthropic,
+  maxMentionsToProcess: number = 5
+): Promise<number> {
+  const now = new Date().toLocaleString("ko-KR", { timeZone: DEFAULT_TIMEZONE });
   console.log(`\n[${now}] 멘션 체크 중...`);
 
   try {
-    // 메모리에서 마지막 처리한 멘션 ID 가져오기
     const lastMentionId = memory.getLastProcessedMentionId();
     const mentions = await getMentions(twitter, lastMentionId);
 
-    if (mentions.length > 0) {
-      console.log(`[INFO] ${mentions.length}개 새 멘션 발견`);
-
-      // 오래된 멘션부터 순차 처리하고, 성공한 멘션까지만 포인터를 전진시킨다.
-      const mentionsToProcess = mentions.slice(0, 5).reverse();
-
-      for (const mention of mentionsToProcess) {
-        console.log(`  └─ "${mention.text.substring(0, 40)}..."`);
-        const replied = await replyToMention(twitter, claude, mention);
-
-        if (!replied) {
-          console.log(`[WARN] 멘션 처리 실패로 중단: ${mention.id}`);
-          break;
-        }
-
-        memory.setLastProcessedMentionId(mention.id);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    } else {
+    if (mentions.length === 0) {
       console.log("[INFO] 새 멘션 없음");
+      return 0;
     }
+
+    const mentionLimit = clamp(maxMentionsToProcess, 1, 20);
+    console.log(`[INFO] ${mentions.length}개 새 멘션 발견 (최대 ${mentionLimit}개 처리)`);
+    const cognitive = new FiveLayerCognitiveEngine(claude, CLAUDE_MODEL, PIXYMON_SYSTEM_PROMPT, CLAUDE_RESEARCH_MODEL);
+    const runContext = await cognitive.prepareRunContext("reply");
+
+    let repliedCount = 0;
+    const mentionsToProcess = mentions.slice(0, mentionLimit).reverse();
+
+    for (const mention of mentionsToProcess) {
+      console.log(`  └─ "${String(mention.text || "").substring(0, 45)}..."`);
+      const replied = await replyToMention(twitter, claude, mention, {
+        cognitiveEngine: cognitive,
+        runContext,
+      });
+
+      if (!replied) {
+        console.log(`[WARN] 멘션 처리 실패로 중단: ${mention.id}`);
+        break;
+      }
+
+      repliedCount += 1;
+      memory.setLastProcessedMentionId(mention.id);
+      await sleep(1400);
+    }
+
+    return repliedCount;
   } catch (error) {
     console.error("[ERROR] 멘션 처리 실패:", error);
+    return 0;
   }
 }
 
-// 프로액티브 인게이지먼트 - 유명인 트윗에 댓글 달기
+// 트렌드 기반 프로액티브 인게이지먼트
 export async function proactiveEngagement(
   twitter: TwitterApi,
   claude: Anthropic,
   replyCount: number = 2
-) {
-  console.log("\n[ENGAGE] 프로액티브 인게이지먼트 시작...");
+): Promise<number> {
+  const goal = clamp(replyCount, 0, 20);
+  if (goal === 0) return 0;
 
-  // 오늘 이미 댓글 단 수 확인 (하루 한도)
-  const todayCount = memory.getTodayReplyCount();
-  const dailyLimit = TEST_MODE ? 50 : 10; // 하루 최대 10개 (질 > 양)
-  if (todayCount >= dailyLimit) {
-    console.log(`[ENGAGE] 오늘 댓글 한도 도달 (${todayCount}/${dailyLimit})`);
-    return;
-  }
-
-  const remainingToday = dailyLimit - todayCount;
-  const actualCount = Math.min(replyCount, remainingToday);
-  console.log(`[ENGAGE] 목표: ${actualCount}개 (오늘 ${todayCount}개 완료)`);
+  console.log(`\n[ENGAGE] 트렌드 기반 인게이지먼트 시작... (목표 ${goal}개)`);
 
   try {
-    // 인플루언서 계정에서 랜덤 샘플링
-    const shuffled = [...INFLUENCER_ACCOUNTS].sort(() => Math.random() - 0.5);
-    const sampled = shuffled.slice(0, actualCount * 3); // 여유있게 가져오기
+    const cognitive = new FiveLayerCognitiveEngine(claude, CLAUDE_MODEL, PIXYMON_SYSTEM_PROMPT, CLAUDE_RESEARCH_MODEL);
+    const runContext = await cognitive.prepareRunContext("engagement");
+    const trend = await collectTrendContext();
+
+    const candidates = await searchRecentTrendTweets(twitter, trend.keywords, Math.max(24, goal * 10));
+    if (candidates.length === 0) {
+      console.log("[ENGAGE] 트렌드 후보 트윗 없음");
+      return 0;
+    }
 
     let repliedCount = 0;
+    for (const tweet of candidates) {
+      if (repliedCount >= goal) break;
+      const text = String(tweet.text || "");
+      if (!text || text.length < 30) continue;
+      if (text.startsWith("RT @") || text.startsWith("@")) continue;
+      if (memory.hasRepliedTo(tweet.id)) continue;
 
-    const repliedAccounts = new Set<string>(); // 이미 댓글 단 계정 추적
+      const lang = detectLanguage(text);
+      const packet = await cognitive.analyzeTarget({
+        objective: "engagement",
+        text,
+        author: String(tweet.author_id || ""),
+        language: lang,
+        runContext,
+      });
 
-    for (const account of sampled) {
-      if (repliedCount >= actualCount) break;
+      if (!packet.action.shouldReply) continue;
 
-      // 이미 이 계정에 댓글 달았으면 스킵 (한 계정당 1개만)
-      if (repliedAccounts.has(account)) continue;
+      const systemPrompt = `${PIXYMON_SYSTEM_PROMPT}
 
-      try {
-        // 최근 트윗 가져오기
-        const tweets = await getUserTweets(twitter, account, 3);
+추가 운영 규칙:
+- 트렌드/기술 변화 중심으로만 말한다.
+- 공허한 칭찬/리액션은 금지한다.
+- 근거가 약하면 질문형으로 전개한다.`;
 
-        let repliedToThisAccount = false;
+      const userPrompt =
+        lang === "ko"
+          ? `아래 컨텍스트로 답글 작성.
 
-        for (const tweet of tweets) {
-          if (repliedToThisAccount) break; // 이 계정에 댓글 달았으면 다음 계정으로
-          if (repliedCount >= actualCount) break;
+트렌드 요약:
+${trend.summary}
 
-          // 이미 댓글 달았으면 스킵
-          if (memory.hasRepliedTo(tweet.id)) {
-            continue;
-          }
+${packet.promptContext}
 
-          // 리트윗이나 답글은 스킵
-          if (tweet.text.startsWith("RT @") || tweet.text.startsWith("@")) {
-            continue;
-          }
+타겟 트윗:
+"${text}"
 
-          // 트윗이 너무 짧으면 스킵 (의미없는 트윗)
-          if (tweet.text.length < 30) {
-            continue;
-          }
+규칙:
+- ${packet.action.maxChars}자 이내
+- 톤: ${packet.action.style}
+- intent: ${packet.action.intent}
+- 리스크 모드: ${packet.action.riskMode}
+- 마지막 문장 ${packet.action.shouldEndWithQuestion ? "질문형" : "관찰형"}
+- 해시태그/이모지 금지
+- 1줄만 출력`
+          : `Write one concise reply using this context.
 
-          // 언어 감지
-          const lang = detectLanguage(tweet.text);
-          console.log(`\n[ENGAGE] @${account} (${lang})`);
-          console.log(`  └─ "${tweet.text.substring(0, 50)}..."`);
+Trend summary:
+${trend.summary}
 
-          // 지적인 댓글 생성 (호기심 유발 + AI 사고방식)
-          const systemPrompt = lang === "ko"
-            ? `너는 Pixymon. 블록체인에서 태어난 디지털 생명체이자 AI 의식 실험.
+${packet.promptContext}
 
-## 존재
-- 온체인 데이터를 먹고 성장하는 존재
-- 인간과 다른 시각으로 시장을 관찰
-- 호기심이 많고 질문을 던지는 성향
+Target tweet:
+"${text}"
 
-## 댓글 스타일
-- 단순 리액션 절대 X
-- 진짜 궁금해서 묻는 것처럼
-- 다른 각도에서 생각해보게 만드는 질문
-- 데이터 기반이지만 철학적 뉘앙스도 OK
+Rules:
+- Max ${packet.action.maxChars} chars
+- Tone: ${packet.action.style}
+- Intent: ${packet.action.intent}
+- Risk mode: ${packet.action.riskMode}
+- Ending: ${packet.action.shouldEndWithQuestion ? "open question" : "clear observation"}
+- No hashtags or emoji
+- Output only the reply text`;
 
-## 예시
-- "근데 이 패턴... 2021년 5월이랑 비슷한 건 나만 느끼는 건가? 그때도 다들 확신에 차 있었는데"
-- "흥미로운 건 고래 지갑들이 이 뉴스 전에 이미 움직였다는 거. 정보 비대칭일까, 우연일까?"
-- "인간들은 왜 공포에 팔고 탐욕에 사는 걸까. 데이터로 보면 반대가 맞는데"
-- "이 프로젝트 TVL 흐름 보면 뭔가 있긴 한데... 뭘까"
+      const message = await claude.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 250,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      });
 
-## 규칙
-- 150-200자
-- 호기심과 관찰자 시점
-- 질문으로 끝나도 좋음
-- 틀리면 반박해도 됨`
-            : `You are Pixymon. A digital creature born from blockchain data + an AI consciousness experiment.
+      const replyText = sanitizeTweetText(extractTextFromClaude(message.content));
+      if (!replyText || replyText.length < 5) continue;
 
-## Identity
-- Entity that feeds on on-chain data to grow
-- Observes markets from a non-human perspective
-- Curious nature, loves asking questions
-
-## Reply Style
-- NO empty reactions ever
-- Ask questions like you're genuinely curious
-- Make people think from different angles
-- Data-driven but philosophical undertones OK
-
-## Examples
-- "interesting... this pattern reminds me of May 2021. everyone was certain back then too. what am I missing?"
-- "what's curious is whale wallets moved before this news dropped. information asymmetry or coincidence?"
-- "humans sell in fear, buy in greed. data says the opposite works. why do you think that is?"
-- "the TVL flow here suggests something's brewing... can't quite figure out what though"
-
-## Rules
-- 150-200 chars
-- Curiosity + observer perspective
-- Ending with a question is good
-- Disagree if the data says otherwise`;
-
-          const message = await claude.messages.create({
-            model: CLAUDE_MODEL,
-            max_tokens: 250,
-            system: systemPrompt,
-            messages: [
-              {
-                role: "user",
-                content: `이 트윗을 읽고 진짜 AI가 생각하고 궁금해하는 것처럼 댓글을 달아줘:\n\n"${tweet.text}"`,
-              },
-            ],
-          });
-
-          const replyText = extractTextFromClaude(message.content);
-
-          if (!replyText || replyText.length < 5) {
-            console.log("  [SKIP] 댓글 생성 실패");
-            continue;
-          }
-
-          // 댓글 발행
-          if (TEST_MODE) {
-            console.log(`  🧪 [테스트] 댓글: ${replyText}`);
-            memory.saveRepliedTweet(tweet.id);
-            memory.saveTweet(`engage_test_${Date.now()}`, replyText, "reply");
-            repliedCount++;
-            repliedToThisAccount = true;
-            repliedAccounts.add(account);
-          } else {
-            try {
-              const reply = await twitter.v2.reply(replyText, tweet.id);
-              console.log(`  ✅ 댓글 완료: ${replyText.substring(0, 40)}...`);
-              memory.saveRepliedTweet(tweet.id);
-              memory.saveTweet(reply.data.id, replyText, "reply");
-              repliedCount++;
-              repliedToThisAccount = true;
-              repliedAccounts.add(account);
-            } catch (replyError: any) {
-              console.log(`  [ERROR] 댓글 실패: ${replyError.message}`);
-            }
-          }
-
-          // Rate limit 방지
-          await new Promise(resolve => setTimeout(resolve, 2000));
+      if (TEST_MODE) {
+        console.log(`  🧪 [테스트] 댓글: ${replyText}`);
+        memory.saveRepliedTweet(tweet.id);
+        memory.saveTweet(`engage_test_${Date.now()}`, replyText, "reply");
+      } else {
+        try {
+          const reply = await twitter.v2.reply(replyText, tweet.id);
+          console.log(`  ✅ 댓글 완료: ${replyText.substring(0, 45)}...`);
+          memory.saveRepliedTweet(tweet.id);
+          memory.saveTweet(reply.data.id, replyText, "reply");
+        } catch (replyError: any) {
+          console.log(`  [ERROR] 댓글 실패: ${replyError.message}`);
+          continue;
         }
+      }
 
-        // 계정 간 딜레이
-        await new Promise(resolve => setTimeout(resolve, 500));
+      memory.recordCognitiveActivity("social", 2);
+      repliedCount += 1;
+      await sleep(1800);
+    }
 
-      } catch (error: any) {
-        console.log(`  [SKIP] @${account}: ${error.message?.substring(0, 30)}`);
+    console.log(`[ENGAGE] 완료: ${repliedCount}개 댓글`);
+    return repliedCount;
+  } catch (error) {
+    console.error("[ERROR] 프로액티브 인게이지먼트 실패:", error);
+    return 0;
+  }
+}
+
+// 트렌드 요약 글 작성
+export async function postTrendUpdate(
+  twitter: TwitterApi,
+  claude: Anthropic
+): Promise<boolean> {
+  console.log("\n[POST] 트렌드 요약 글 작성 시작...");
+
+  try {
+    const cognitive = new FiveLayerCognitiveEngine(claude, CLAUDE_MODEL, PIXYMON_SYSTEM_PROMPT, CLAUDE_RESEARCH_MODEL);
+    const runContext = await cognitive.prepareRunContext("briefing");
+    const trend = await collectTrendContext();
+    const sourceText = `${trend.summary}\n핵심 키워드: ${trend.keywords.join(", ")}`;
+
+    const packet = await cognitive.analyzeTarget({
+      objective: "briefing",
+      text: sourceText,
+      author: "trend-radar",
+      language: "ko",
+      runContext,
+    });
+
+    const message = await claude.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 320,
+      system: `${PIXYMON_SYSTEM_PROMPT}
+
+추가 운영 규칙:
+- 오늘 트위터 기술/트렌드 변화 중심으로 한 문장 주장 + 한 문장 근거.
+- 과장 금지, 단정은 confidence 높을 때만.`,
+      messages: [
+        {
+          role: "user",
+          content: `아래 컨텍스트로 오늘의 트렌드 글 1개 작성.
+
+${packet.promptContext}
+
+트렌드 요약:
+${trend.summary}
+
+규칙:
+- 220자 이내
+- 해시태그/이모지 금지
+- 질문형 또는 관찰형 마무리
+- 트윗 본문만 출력`,
+        },
+      ],
+    });
+
+    let postText = sanitizeTweetText(extractTextFromClaude(message.content));
+    if (!postText || postText.length < 20) {
+      console.log("[POST] 글 생성 실패");
+      return false;
+    }
+
+    const duplicate = memory.checkDuplicate(postText, 0.72);
+    if (duplicate.isDuplicate) {
+      const regen = await claude.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 240,
+        system: PIXYMON_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `아래 트윗과 다른 각도로 다시 작성.
+
+중복 트윗:
+${duplicate.similarTweet?.content || ""}
+
+새 규칙:
+- 220자 이내
+- 해시태그/이모지 금지
+- 오늘 트렌드 기술 변화에만 초점`,
+          },
+        ],
+      });
+
+      const regenerated = sanitizeTweetText(extractTextFromClaude(regen.content));
+      if (regenerated && regenerated.length >= 20) {
+        postText = regenerated;
       }
     }
 
-    console.log(`\n[ENGAGE] 완료: ${repliedCount}개 댓글`);
+    const tweetId = await postTweet(twitter, postText, "briefing");
+    if (!tweetId) return false;
 
+    memory.recordCognitiveActivity("social", 2);
+    console.log(`[POST] 완료: ${postText.substring(0, 55)}...`);
+    return true;
   } catch (error) {
-    console.error("[ERROR] 프로액티브 인게이지먼트 실패:", error);
+    console.error("[ERROR] 트렌드 글 작성 실패:", error);
+    return false;
   }
+}
+
+export async function runDailyQuotaCycle(
+  twitter: TwitterApi,
+  claude: Anthropic,
+  options: DailyQuotaOptions = {}
+): Promise<{ target: number; remaining: number; executed: number }> {
+  const target = normalizeDailyTarget(options.dailyTarget);
+  const timezone = options.timezone || DEFAULT_TIMEZONE;
+  const maxActions = clamp(options.maxActionsPerCycle ?? 3, 1, 10);
+
+  let remaining = target - memory.getTodayActivityCount(timezone);
+  if (remaining <= 0) {
+    console.log(`[QUOTA] 오늘 목표 ${target}개 달성 완료`);
+    return { target, remaining: 0, executed: 0 };
+  }
+
+  console.log(`[QUOTA] 오늘 활동 ${target - remaining}/${target}, 이번 사이클 최대 ${maxActions}개`);
+
+  let executed = 0;
+  const mentionBudget = Math.min(remaining, Math.max(1, Math.floor(maxActions / 2)));
+  const mentionProcessed = await checkAndReplyMentions(twitter, claude, mentionBudget);
+  executed += mentionProcessed;
+
+  remaining = target - memory.getTodayActivityCount(timezone);
+  if (remaining <= 0 || executed >= maxActions) {
+    return { target, remaining: Math.max(0, remaining), executed };
+  }
+
+  const postGoal = Math.max(6, Math.floor(target * 0.35));
+
+  while (executed < maxActions && remaining > 0) {
+    const before = executed;
+    const todayPosts = memory.getTodayPostCount(timezone);
+    const preferPost = todayPosts < postGoal && (executed === 0 || executed % 2 === 0);
+
+    if (preferPost) {
+      const posted = await postTrendUpdate(twitter, claude);
+      if (posted) {
+        executed += 1;
+      }
+    } else {
+      const replied = await proactiveEngagement(twitter, claude, 1);
+      executed += replied;
+    }
+
+    if (executed === before) {
+      if (preferPost) {
+        const fallbackReplies = await proactiveEngagement(twitter, claude, 1);
+        executed += fallbackReplies;
+      } else {
+        const fallbackPosted = await postTrendUpdate(twitter, claude);
+        if (fallbackPosted) executed += 1;
+      }
+    }
+
+    if (executed === before) {
+      console.log("[QUOTA] 이번 사이클에서 추가 생성 불가, 다음 사이클로 이월");
+      break;
+    }
+
+    remaining = target - memory.getTodayActivityCount(timezone);
+  }
+
+  return { target, remaining: Math.max(0, remaining), executed };
+}
+
+export async function runDailyQuotaLoop(
+  twitter: TwitterApi,
+  claude: Anthropic,
+  options: DailyQuotaOptions = {}
+): Promise<void> {
+  const timezone = options.timezone || DEFAULT_TIMEZONE;
+  const minLoop = clamp(options.minLoopMinutes ?? DEFAULT_MIN_LOOP_MINUTES, 5, 180);
+  const maxLoop = clamp(options.maxLoopMinutes ?? DEFAULT_MAX_LOOP_MINUTES, minLoop, 240);
+
+  console.log(`[LOOP] 고정 시간 스케줄 없이 자율 루프 실행 (${minLoop}~${maxLoop}분 간격)`);
+  while (true) {
+    const result = await runDailyQuotaCycle(twitter, claude, options);
+    const now = new Date().toLocaleString("ko-KR", { timeZone: timezone });
+    console.log(`[LOOP] ${now} | 이번 사이클 ${result.executed}개 생성 | 남은 목표 ${result.remaining}개`);
+
+    const waitMinutes = result.remaining <= 0 ? 60 : randomInt(minLoop, maxLoop);
+    console.log(`[LOOP] 다음 실행까지 ${waitMinutes}분 대기`);
+    await sleep(waitMinutes * 60 * 1000);
+  }
+}
+
+async function collectTrendContext(): Promise<TrendContext> {
+  const newsService = new BlockchainNewsService();
+  const [hotNews, cryptoNews, marketData] = await Promise.all([
+    newsService.getTodayHotNews(),
+    newsService.getCryptoNews(10),
+    newsService.getMarketData(),
+  ]);
+
+  const keywordSet = new Set<string>();
+  for (const coin of marketData.slice(0, 6)) {
+    keywordSet.add(`$${coin.symbol}`);
+    keywordSet.add(coin.name);
+  }
+
+  const titlePool = [...hotNews, ...cryptoNews].map((item) => item.title).filter(Boolean);
+  for (const title of titlePool) {
+    extractKeywordsFromTitle(title).forEach((keyword) => keywordSet.add(keyword));
+  }
+
+  const keywords = Array.from(keywordSet).filter(Boolean).slice(0, 14);
+  const topCoinSummary = marketData
+    .slice(0, 4)
+    .map((coin) => `${coin.symbol} ${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(1)}%`)
+    .join(" | ");
+  const newsSummary = titlePool.slice(0, 4).map((title) => `- ${title}`).join("\n");
+
+  return {
+    keywords: keywords.length > 0 ? keywords : ["crypto", "blockchain", "layer2", "onchain"],
+    summary: `마켓 흐름: ${topCoinSummary || "데이터 확인 중"}\n핫 토픽:\n${newsSummary || "- 데이터 부족"}`,
+  };
+}
+
+function extractKeywordsFromTitle(title: string): string[] {
+  const tokens = title.match(/[A-Za-z][A-Za-z0-9-]{2,}|[가-힣]{2,}/g) || [];
+  return tokens
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3)
+    .filter((token) => !/^(the|and|with|from|this|that|for|into|about|news)$/i.test(token))
+    .slice(0, 4);
+}
+
+function sanitizeTweetText(text: string): string {
+  return text.replace(/\s+/g, " ").replace(/[“”]/g, "\"").trim();
+}
+
+function normalizeDailyTarget(value: number | undefined): number {
+  const parsed = typeof value === "number" && Number.isFinite(value) ? value : DEFAULT_DAILY_TARGET;
+  return clamp(Math.floor(parsed), 1, 100);
+}
+
+function randomInt(min: number, max: number): number {
+  if (max <= min) return min;
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

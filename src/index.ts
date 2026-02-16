@@ -1,9 +1,8 @@
 import "dotenv/config";
-import cron from "node-cron";
 import { memory } from "./services/memory.js";
 import { initClaudeClient } from "./services/llm.js";
 import { TEST_MODE, validateEnvironment, initTwitterClient, getMentions } from "./services/twitter.js";
-import { proactiveEngagement, checkAndReplyMentions } from "./services/engagement.js";
+import { runDailyQuotaCycle, runDailyQuotaLoop } from "./services/engagement.js";
 
 /**
  * Pixymon AI Agent - 메인 진입점
@@ -13,6 +12,8 @@ import { proactiveEngagement, checkAndReplyMentions } from "./services/engagemen
  */
 
 const SCHEDULER_MODE = process.env.SCHEDULER_MODE === "true";
+const DAILY_ACTIVITY_TARGET = Number.parseInt(process.env.DAILY_ACTIVITY_TARGET || "20", 10);
+const DAILY_TIMEZONE = process.env.DAILY_TARGET_TIMEZONE || "Asia/Seoul";
 
 // 메인 실행
 async function main() {
@@ -28,6 +29,8 @@ async function main() {
   console.log("=====================================\n");
 
   validateEnvironment();
+  console.log("[COGNITION] 5-layer 루프 활성화 (signal → cluster → belief → action → reflection)");
+  console.log(memory.getAgentStateContext());
 
   // 클라이언트 초기화
   const twitter = initTwitterClient();
@@ -49,10 +52,10 @@ async function main() {
   // 스케줄러 모드
   if (SCHEDULER_MODE) {
     console.log("\n=====================================");
-    console.log("  Pixymon v2.1 - 24/7 자동 에이전트");
-    console.log("  ├─ 브리핑 자동 포스팅 비활성화");
-    console.log("  ├─ 3시간마다 멘션 체크");
-    console.log("  └─ 3시간마다 인플루언서 댓글 (3개)");
+    console.log("  Pixymon v3 - Daily Quota Autopilot");
+    console.log(`  ├─ 하루 목표: ${DAILY_ACTIVITY_TARGET}개`);
+    console.log("  ├─ 구성: 트렌드 글 + 트렌드 댓글 + 멘션 답글");
+    console.log("  └─ 고정 시간 크론 미사용 (자율 간격 루프)");
     console.log("=====================================\n");
 
     // 메모리에서 마지막 처리 멘션 ID 확인 (영구 저장됨)
@@ -72,46 +75,33 @@ async function main() {
       }
     }
 
-    // 3시간마다 멘션 체크 (0, 3, 6, 9, 12, 15, 18, 21시)
-    cron.schedule("0 */3 * * *", async () => {
-      if (twitter && !TEST_MODE) {
-        console.log("\n📬 멘션 체크");
-        await checkAndReplyMentions(twitter, claude);
-      }
-    }, { timezone: "Asia/Seoul" });
-
-    // 3시간마다 인플루언서 댓글 (30분 오프셋: 0:30, 3:30, 6:30...)
-    cron.schedule("30 */3 * * *", async () => {
-      if (twitter && !TEST_MODE) {
-        console.log("\n💬 프로액티브 인게이지먼트");
-        await proactiveEngagement(twitter, claude, 3);
-      }
-    }, { timezone: "Asia/Seoul" });
-
-    console.log("[SCHEDULER] 대기 중... (Ctrl+C로 종료)\n");
-
-    // 프로세스 유지
-    process.on("SIGINT", () => {
-      console.log("\n▶ Pixymon 종료.");
-      process.exit(0);
-    });
+    if (twitter) {
+      await runDailyQuotaLoop(twitter, claude, {
+        dailyTarget: DAILY_ACTIVITY_TARGET,
+        timezone: DAILY_TIMEZONE,
+        maxActionsPerCycle: 4,
+        minLoopMinutes: 25,
+        maxLoopMinutes: 70,
+      });
+    } else {
+      console.log("[WARN] Twitter 클라이언트 없음. 루프 시작 불가");
+    }
 
   } else {
     // 일회성 실행 모드
     console.log("\n=====================================");
-    console.log("  Pixymon v2.1 - 대화형 인게이지먼트");
-    console.log("  ├─ 브리핑 자동 포스팅 비활성화");
-    console.log("  ├─ 인플루언서 댓글");
-    console.log("  └─ 멘션 응답");
+    console.log("  Pixymon v3 - Quota Cycle (One-shot)");
+    console.log(`  ├─ 하루 목표: ${DAILY_ACTIVITY_TARGET}개`);
+    console.log("  ├─ 이번 실행: 멘션 + 트렌드 글/댓글 사이클");
+    console.log("  └─ 고정 시간 없음");
     console.log("=====================================\n");
 
-    // 프로액티브 인게이지먼트 (인플루언서 댓글)
     if (twitter) {
-      await proactiveEngagement(twitter, claude, 3);
-    }
-
-    if (twitter && !TEST_MODE) {
-      await checkAndReplyMentions(twitter, claude);
+      await runDailyQuotaCycle(twitter, claude, {
+        dailyTarget: DAILY_ACTIVITY_TARGET,
+        timezone: DAILY_TIMEZONE,
+        maxActionsPerCycle: 4,
+      });
     }
 
     console.log("=====================================");
