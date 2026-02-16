@@ -52,8 +52,16 @@ export function detectMood(fearGreed?: number, priceChange24h?: number): { mood:
 
 // 언어 감지 (간단한 휴리스틱)
 export function detectLanguage(text: string): "ko" | "en" {
-  const koreanRegex = /[가-힣]/g;
-  const koreanMatches = text.match(koreanRegex) || [];
-  // 한글이 10자 이상이면 한국어로 판단
-  return koreanMatches.length > 10 ? "ko" : "en";
+  const normalized = text
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/@\w+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const koreanCount = (normalized.match(/[가-힣]/g) || []).length;
+  const latinCount = (normalized.match(/[A-Za-z]/g) || []).length;
+
+  if (koreanCount >= 2) return "ko";
+  if (koreanCount === 1 && latinCount <= 20) return "ko";
+  return "en";
 }

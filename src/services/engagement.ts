@@ -2,7 +2,14 @@ import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
 import { BlockchainNewsService } from "./blockchain-news.js";
-import { CLAUDE_MODEL, CLAUDE_RESEARCH_MODEL, PIXYMON_SYSTEM_PROMPT, extractTextFromClaude } from "./llm.js";
+import {
+  CLAUDE_MODEL,
+  CLAUDE_RESEARCH_MODEL,
+  PIXYMON_SYSTEM_PROMPT,
+  REPLY_TONE_MODE,
+  extractTextFromClaude,
+  getReplyToneGuide,
+} from "./llm.js";
 import { getMentions, postTweet, replyToMention, searchRecentTrendTweets, TEST_MODE, sleep } from "./twitter.js";
 import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { detectLanguage } from "../utils/mood.js";
@@ -116,6 +123,8 @@ export async function proactiveEngagement(
 
       if (!packet.action.shouldReply) continue;
 
+      const toneGuide = getReplyToneGuide(lang);
+
       const systemPrompt = `${PIXYMON_SYSTEM_PROMPT}
 
 추가 운영 규칙:
@@ -138,6 +147,8 @@ ${packet.promptContext}
 규칙:
 - ${packet.action.maxChars}자 이내
 - 톤: ${packet.action.style}
+- 톤 가이드:
+${toneGuide}
 - intent: ${packet.action.intent}
 - 리스크 모드: ${packet.action.riskMode}
 - 마지막 문장 ${packet.action.shouldEndWithQuestion ? "질문형" : "관찰형"}
@@ -156,6 +167,8 @@ Target tweet:
 Rules:
 - Max ${packet.action.maxChars} chars
 - Tone: ${packet.action.style}
+- Tone guide:
+${toneGuide}
 - Intent: ${packet.action.intent}
 - Risk mode: ${packet.action.riskMode}
 - Ending: ${packet.action.shouldEndWithQuestion ? "open question" : "clear observation"}
@@ -169,8 +182,15 @@ Rules:
         messages: [{ role: "user", content: userPrompt }],
       });
 
-      const replyText = sanitizeTweetText(extractTextFromClaude(message.content));
+      let replyText = sanitizeTweetText(extractTextFromClaude(message.content));
       if (!replyText || replyText.length < 5) continue;
+
+      if (detectLanguage(replyText) !== lang) {
+        const rewritten = await rewriteByLanguage(claude, replyText, lang, packet.action.maxChars);
+        if (rewritten) {
+          replyText = rewritten;
+        }
+      }
 
       if (TEST_MODE) {
         console.log(`  🧪 [테스트] 댓글: ${replyText}`);
@@ -242,6 +262,7 @@ ${trend.summary}
 
 규칙:
 - 220자 이내
+- 반드시 한국어로 작성 (고유명사 제외 영어 최소화)
 - 해시태그/이모지 금지
 - 질문형 또는 관찰형 마무리
 - 트윗 본문만 출력`,
@@ -271,6 +292,7 @@ ${duplicate.similarTweet?.content || ""}
 
 새 규칙:
 - 220자 이내
+- 반드시 한국어로 작성
 - 해시태그/이모지 금지
 - 오늘 트렌드 기술 변화에만 초점`,
           },
@@ -280,6 +302,13 @@ ${duplicate.similarTweet?.content || ""}
       const regenerated = sanitizeTweetText(extractTextFromClaude(regen.content));
       if (regenerated && regenerated.length >= 20) {
         postText = regenerated;
+      }
+    }
+
+    if (detectLanguage(postText) !== "ko") {
+      const rewrittenKo = await rewriteByLanguage(claude, postText, "ko", 220);
+      if (rewrittenKo) {
+        postText = rewrittenKo;
       }
     }
 
@@ -370,6 +399,7 @@ export async function runDailyQuotaLoop(
   const maxLoop = clamp(options.maxLoopMinutes ?? DEFAULT_MAX_LOOP_MINUTES, minLoop, 240);
 
   console.log(`[LOOP] 고정 시간 스케줄 없이 자율 루프 실행 (${minLoop}~${maxLoop}분 간격)`);
+  console.log(`[LOOP] 댓글 톤 모드: ${REPLY_TONE_MODE}`);
   while (true) {
     const result = await runDailyQuotaCycle(twitter, claude, options);
     const now = new Date().toLocaleString("ko-KR", { timeZone: timezone });
@@ -424,6 +454,51 @@ function extractKeywordsFromTitle(title: string): string[] {
 
 function sanitizeTweetText(text: string): string {
   return text.replace(/\s+/g, " ").replace(/[“”]/g, "\"").trim();
+}
+
+async function rewriteByLanguage(
+  claude: Anthropic,
+  text: string,
+  lang: "ko" | "en",
+  maxChars: number
+): Promise<string | null> {
+  try {
+    const prompt =
+      lang === "ko"
+        ? `아래 문장을 자연스러운 한국어 한 줄로 다시 써줘.
+
+원문:
+${text}
+
+규칙:
+- ${maxChars}자 이내
+- 의미 유지
+- 해시태그/이모지 금지
+- 최종 문장만 출력`
+        : `Rewrite the text in natural English, one line.
+
+Original:
+${text}
+
+Rules:
+- Max ${maxChars} chars
+- Keep meaning
+- No hashtags or emoji
+- Output only the final sentence`;
+
+    const message = await claude.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 220,
+      system: PIXYMON_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const rewritten = sanitizeTweetText(extractTextFromClaude(message.content));
+    if (!rewritten) return null;
+    return rewritten.slice(0, maxChars);
+  } catch {
+    return null;
+  }
 }
 
 function normalizeDailyTarget(value: number | undefined): number {

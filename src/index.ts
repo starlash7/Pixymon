@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { memory } from "./services/memory.js";
-import { initClaudeClient } from "./services/llm.js";
+import { REPLY_TONE_MODE, initClaudeClient } from "./services/llm.js";
 import { validateEnvironment, initTwitterClient } from "./services/twitter.js";
 import { loadRuntimeConfig } from "./config/runtime.js";
 import { printStartupBanner, runOneShotMode, runSchedulerMode } from "./services/runtime.js";
@@ -20,6 +20,7 @@ async function main() {
 
   validateEnvironment();
   console.log("[COGNITION] 5-layer 루프 활성화 (signal → cluster → belief → action → reflection)");
+  console.log(`[STYLE] 댓글 톤 모드: ${REPLY_TONE_MODE} (env: REPLY_TONE_MODE=signal|personal)`);
   console.log(memory.getAgentStateContext());
 
   // 클라이언트 초기화

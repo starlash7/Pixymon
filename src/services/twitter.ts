@@ -2,7 +2,13 @@ import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
 import { INFLUENCER_ACCOUNTS } from "../config/influencers.js";
-import { CLAUDE_MODEL, CLAUDE_RESEARCH_MODEL, PIXYMON_SYSTEM_PROMPT, extractTextFromClaude } from "./llm.js";
+import {
+  CLAUDE_MODEL,
+  CLAUDE_RESEARCH_MODEL,
+  PIXYMON_SYSTEM_PROMPT,
+  extractTextFromClaude,
+  getReplyToneGuide,
+} from "./llm.js";
 import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { CognitiveRunContext } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
@@ -189,6 +195,7 @@ export async function replyToMention(
     const followerContext = follower && follower.mentionCount > 1
       ? `\n(이 사람은 ${follower.mentionCount}번째 멘션, 친근하게)`
       : "";
+    const toneGuide = getReplyToneGuide(lang);
 
     const cognitive =
       options?.cognitiveEngine ||
@@ -214,6 +221,8 @@ export async function replyToMention(
 - ${packet.action.maxChars}자 이내
 - ${isEnglish ? '영어로 답변' : '한국어로 답변'}
 - 질문이면 답변, 아니면 짧은 리액션
+- 톤 가이드:
+${toneGuide}
 - 단정은 confidence가 높을 때만
 - 마지막 문장 ${packet.action.shouldEndWithQuestion ? "질문형" : "관찰형"}
 - 해시태그 X, 이모지 X${followerContext}
@@ -227,9 +236,16 @@ ${mention.text}`,
       ],
     });
 
-    const replyText = extractTextFromClaude(message.content);
+    let replyText = extractTextFromClaude(message.content);
 
     if (!replyText) return false;
+
+    if (detectLanguage(replyText) !== lang) {
+      const rewritten = await rewriteReplyByLanguage(claude, replyText, lang, packet.action.maxChars);
+      if (rewritten) {
+        replyText = rewritten;
+      }
+    }
 
     const reply = await twitter.v2.reply(replyText, mention.id);
     console.log(`[OK] 멘션 답글: ${reply.data.id}`);
@@ -303,6 +319,51 @@ export function isRateLimitError(error: unknown): boolean {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function rewriteReplyByLanguage(
+  claude: Anthropic,
+  text: string,
+  lang: "ko" | "en",
+  maxChars: number
+): Promise<string | null> {
+  try {
+    const prompt =
+      lang === "ko"
+        ? `아래 문장을 한국어 한 줄 답글로 다시 써줘.
+
+원문:
+${text}
+
+규칙:
+- ${maxChars}자 이내
+- 의미 유지
+- 해시태그/이모지 금지
+- 문장만 출력`
+        : `Rewrite this as a one-line English reply.
+
+Original:
+${text}
+
+Rules:
+- Max ${maxChars} chars
+- Keep meaning
+- No hashtags or emoji
+- Output sentence only`;
+
+    const message = await claude.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 220,
+      system: PIXYMON_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const rewritten = extractTextFromClaude(message.content).trim();
+    if (!rewritten) return null;
+    return rewritten.slice(0, maxChars);
+  } catch {
+    return null;
+  }
 }
 
 // 트윗 발행 (Twitter API v2 only)

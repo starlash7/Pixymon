@@ -8,6 +8,38 @@ export interface ClaudeTextLikeBlock {
 
 export const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
 export const CLAUDE_RESEARCH_MODEL = process.env.ANTHROPIC_RESEARCH_MODEL || "claude-3-5-haiku-latest";
+export type ReplyToneMode = "signal" | "personal";
+export const REPLY_TONE_MODE = resolveReplyToneMode(process.env.REPLY_TONE_MODE);
+
+function resolveReplyToneMode(raw?: string): ReplyToneMode {
+  if (typeof raw !== "string") return "signal";
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "personal" ? "personal" : "signal";
+}
+
+export function getReplyToneGuide(language: "ko" | "en"): string {
+  if (REPLY_TONE_MODE === "personal") {
+    return language === "ko"
+      ? `톤 모드: personal
+- 단정 대신 공감 + 관찰 중심
+- 강한 반박보다 대화 유도 우선
+- 데이터는 1개만 짧게 언급`
+      : `Tone mode: personal
+- Empathy + observation first
+- Invite discussion over hard confrontation
+- Mention only one short data point`;
+  }
+
+  return language === "ko"
+    ? `톤 모드: signal
+- 핵심 주장 명확히
+- 근거 데이터/논리 우선
+- 필요 시 반론을 짧게 제시`
+    : `Tone mode: signal
+- Clear claim first
+- Data and logic first
+- Brief counterpoint when needed`;
+}
 
 function buildSystemPrompt(): string {
   const greeting = pixymonCharacter.signatures.greeting.slice(0, 2).join(" / ");
