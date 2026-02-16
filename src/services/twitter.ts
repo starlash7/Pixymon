@@ -100,7 +100,7 @@ export async function getInfluencerTweets(twitter: TwitterApi, sampleSize: numbe
         console.log(`  [OK] @${account}`);
       }
       // Rate limit 방지
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await sleep(500);
     } catch (error) {
       console.log(`  [SKIP] @${account}`);
     }
