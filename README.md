@@ -37,6 +37,11 @@
    - 멘션 응답
    - 트렌드 글 생성
    - 트렌드 댓글
+5. X API read 비용 가드:
+   - 일일 예상비용 상한(`X_API_DAILY_MAX_USD`)
+   - 일일 read 요청 상한(`X_API_DAILY_READ_REQUEST_LIMIT`)
+   - 멘션/트렌드 검색 최소 간격(`X_MENTION_*`, `X_TREND_*`)
+   - Content Create 요청 상한(`X_API_DAILY_CREATE_REQUEST_LIMIT`)
 
 ## 3. 핵심 아키텍처
 
@@ -130,6 +135,17 @@ MAX_ACTIONS_PER_CYCLE=4
 MIN_LOOP_MINUTES=25
 MAX_LOOP_MINUTES=70
 
+# X API read cost guard
+X_API_COST_GUARD_ENABLED=true
+X_API_DAILY_MAX_USD=0.10
+X_API_ESTIMATED_READ_COST_USD=0.012
+X_API_ESTIMATED_CREATE_COST_USD=0.010
+X_API_DAILY_READ_REQUEST_LIMIT=8
+X_API_DAILY_CREATE_REQUEST_LIMIT=10
+X_MENTION_READ_MIN_INTERVAL_MINUTES=120
+X_TREND_READ_MIN_INTERVAL_MINUTES=180
+X_CREATE_MIN_INTERVAL_MINUTES=20
+
 # Engagement tuning
 POST_GENERATION_MAX_ATTEMPTS=2
 POST_MAX_CHARS=220
@@ -175,7 +191,8 @@ src/
 │   ├── reflection.ts
 │   ├── research-engine.ts
 │   ├── runtime.ts
-│   └── twitter.ts
+│   ├── twitter.ts
+│   └── x-api-budget.ts
 ├── types/
 │   ├── agent.ts
 │   ├── index.ts

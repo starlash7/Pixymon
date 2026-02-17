@@ -12,8 +12,17 @@ import {
 import { getMentions, postTweet, replyToMention, searchRecentTrendTweets, TEST_MODE, sleep } from "./twitter.js";
 import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { detectLanguage } from "../utils/mood.js";
-import { DEFAULT_ENGAGEMENT_SETTINGS, DEFAULT_OBSERVABILITY_SETTINGS } from "../config/runtime.js";
-import { ContentLanguage, EngagementRuntimeSettings, ObservabilityRuntimeSettings } from "../types/runtime.js";
+import {
+  DEFAULT_ENGAGEMENT_SETTINGS,
+  DEFAULT_OBSERVABILITY_SETTINGS,
+  DEFAULT_X_API_COST_SETTINGS,
+} from "../config/runtime.js";
+import {
+  ContentLanguage,
+  EngagementRuntimeSettings,
+  ObservabilityRuntimeSettings,
+  XApiCostRuntimeSettings,
+} from "../types/runtime.js";
 import { buildFallbackPost, collectTrendContext, formatMarketAnchors, pickPostAngle } from "./engagement/trend-context.js";
 import {
   buildAdaptivePolicy,
@@ -32,6 +41,7 @@ import {
 import { AdaptivePolicy, CycleCacheMetrics, DailyQuotaOptions, TrendContext } from "./engagement/types.js";
 import { CognitiveObjective, CognitiveRunContext } from "../types/agent.js";
 import { emitCycleObservability } from "./observability.js";
+import { XReadGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 
 const DEFAULT_TIMEZONE = "Asia/Seoul";
 const DEFAULT_MIN_LOOP_MINUTES = 25;
@@ -60,12 +70,39 @@ export async function checkAndReplyMentions(
   twitter: TwitterApi,
   claude: Anthropic,
   maxMentionsToProcess: number = 5,
+  timezone: string = DEFAULT_TIMEZONE,
+  xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
   cache?: EngagementCycleCache
 ): Promise<number> {
-  const now = new Date().toLocaleString("ko-KR", { timeZone: DEFAULT_TIMEZONE });
+  const now = new Date().toLocaleString("ko-KR", { timeZone: timezone });
   console.log(`\n[${now}] 멘션 체크 중...`);
 
   try {
+    const mentionReadGuard = xApiBudget.checkReadAllowance({
+      enabled: xApiCostSettings.enabled,
+      timezone,
+      dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+      estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+      dailyReadRequestLimit: xApiCostSettings.dailyReadRequestLimit,
+      kind: "mentions",
+      minIntervalMinutes: xApiCostSettings.mentionReadMinIntervalMinutes,
+    });
+    if (!mentionReadGuard.allowed) {
+      console.log(
+        `[BUDGET] 멘션 조회 스킵: ${formatReadBlockReason(mentionReadGuard.reason, mentionReadGuard.waitSeconds)}`
+      );
+      return 0;
+    }
+
+    const mentionUsage = xApiBudget.recordRead({
+      timezone,
+      estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+      kind: "mentions",
+    });
+    console.log(
+      `[BUDGET] read=${mentionUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${mentionUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mentions)`
+    );
+
     const lastMentionId = memory.getLastProcessedMentionId();
     const mentions = await getMentions(twitter, lastMentionId);
 
@@ -87,6 +124,8 @@ export async function checkAndReplyMentions(
       const replied = await replyToMention(twitter, claude, mention, {
         cognitiveEngine: cognitive,
         runContext,
+        timezone,
+        xApiCostSettings,
       });
 
       if (!replied) {
@@ -113,6 +152,8 @@ export async function proactiveEngagement(
   replyCount: number = 2,
   policy: AdaptivePolicy = getDefaultAdaptivePolicy(),
   settings: Partial<EngagementRuntimeSettings> = {},
+  timezone: string = DEFAULT_TIMEZONE,
+  xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
   cache?: EngagementCycleCache
 ): Promise<number> {
   const goal = clamp(replyCount, 0, 20);
@@ -134,7 +175,7 @@ export async function proactiveEngagement(
       minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
       minScore: runtimeSettings.minTrendTweetScore,
       minEngagement: runtimeSettings.minTrendTweetEngagement,
-    }, cache);
+    }, timezone, xApiCostSettings, cache);
     if (candidates.length === 0) {
       console.log("[ENGAGE] 트렌드 후보 트윗 없음");
       return 0;
@@ -266,6 +307,27 @@ ${toneGuide}
         memory.saveRepliedTweet(tweet.id);
         memory.saveTweet(`engage_test_${Date.now()}`, replyText, "reply");
       } else {
+        const createGuard = xApiBudget.checkCreateAllowance({
+          enabled: xApiCostSettings.enabled,
+          timezone,
+          dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+          estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+          dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
+          kind: "reply:engagement",
+          minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
+        });
+        if (!createGuard.allowed) {
+          console.log(`  [BUDGET] 댓글 스킵: ${formatReadBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
+          break;
+        }
+        const createUsage = xApiBudget.recordCreate({
+          timezone,
+          estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+          kind: "reply:engagement",
+        });
+        console.log(
+          `  [BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)}`
+        );
         try {
           const reply = await twitter.v2.reply(replyText, tweet.id);
           console.log(`  ✅ 댓글 완료: ${replyText.substring(0, 45)}...`);
@@ -306,6 +368,7 @@ export async function postTrendUpdate(
   policy: AdaptivePolicy = getDefaultAdaptivePolicy(),
   timezone: string = DEFAULT_TIMEZONE,
   settings: Partial<EngagementRuntimeSettings> = {},
+  xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
   cache?: EngagementCycleCache
 ): Promise<boolean> {
   console.log("\n[POST] 트렌드 요약 글 작성 시작...");
@@ -509,7 +572,11 @@ Rules:
       return false;
     }
 
-    const tweetId = await postTweet(twitter, postText, "briefing");
+    const tweetId = await postTweet(twitter, postText, "briefing", {
+      timezone,
+      xApiCostSettings,
+      createKind: "post:briefing",
+    });
     if (!tweetId) return false;
 
     memory.recordCognitiveActivity("social", 2);
@@ -549,6 +616,7 @@ export async function runDailyQuotaCycle(
   const timezone = options.timezone || DEFAULT_TIMEZONE;
   const maxActions = clamp(options.maxActionsPerCycle ?? 3, 1, 10);
   const runtimeSettings = resolveEngagementSettings(options.engagement);
+  const xApiCostSettings = resolveXApiCostSettings(options.xApiCost);
   const observabilitySettings = resolveObservabilitySettings(options.observability);
   const cycleCache: EngagementCycleCache = {
     runContexts: {},
@@ -594,10 +662,20 @@ export async function runDailyQuotaCycle(
   console.log(
     `[TUNING] postLang=${runtimeSettings.postLanguage}, replyLang=${runtimeSettings.replyLanguageMode}, trend(score>=${runtimeSettings.minTrendTweetScore.toFixed(1)}, engage>=${runtimeSettings.minTrendTweetEngagement})`
   );
+  console.log(
+    `[COST] guard=${xApiCostSettings.enabled ? "on" : "off"} budget=$${xApiCostSettings.dailyMaxUsd.toFixed(2)} read_limit=${xApiCostSettings.dailyReadRequestLimit}/day create_limit=${xApiCostSettings.dailyCreateRequestLimit}/day mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m create>=${xApiCostSettings.createMinIntervalMinutes}m`
+  );
 
   let executed = 0;
   const mentionBudget = Math.min(remaining, Math.max(1, Math.floor(maxActions / 2)));
-  const mentionProcessed = await checkAndReplyMentions(twitter, claude, mentionBudget, cycleCache);
+  const mentionProcessed = await checkAndReplyMentions(
+    twitter,
+    claude,
+    mentionBudget,
+    timezone,
+    xApiCostSettings,
+    cycleCache
+  );
   executed += mentionProcessed;
 
   remaining = target - memory.getTodayActivityCount(timezone);
@@ -613,12 +691,29 @@ export async function runDailyQuotaCycle(
     const preferPost = todayPosts < postGoal && (executed === 0 || executed % 2 === 0);
 
     if (preferPost) {
-      const posted = await postTrendUpdate(twitter, claude, adaptivePolicy, timezone, runtimeSettings, cycleCache);
+      const posted = await postTrendUpdate(
+        twitter,
+        claude,
+        adaptivePolicy,
+        timezone,
+        runtimeSettings,
+        xApiCostSettings,
+        cycleCache
+      );
       if (posted) {
         executed += 1;
       }
     } else {
-      const replied = await proactiveEngagement(twitter, claude, 1, adaptivePolicy, runtimeSettings, cycleCache);
+      const replied = await proactiveEngagement(
+        twitter,
+        claude,
+        1,
+        adaptivePolicy,
+        runtimeSettings,
+        timezone,
+        xApiCostSettings,
+        cycleCache
+      );
       executed += replied;
     }
 
@@ -630,6 +725,8 @@ export async function runDailyQuotaCycle(
           1,
           adaptivePolicy,
           runtimeSettings,
+          timezone,
+          xApiCostSettings,
           cycleCache
         );
         executed += fallbackReplies;
@@ -640,6 +737,7 @@ export async function runDailyQuotaCycle(
           adaptivePolicy,
           timezone,
           runtimeSettings,
+          xApiCostSettings,
           cycleCache
         );
         if (fallbackPosted) executed += 1;
@@ -666,11 +764,15 @@ export async function runDailyQuotaLoop(
   const minLoop = clamp(options.minLoopMinutes ?? DEFAULT_MIN_LOOP_MINUTES, 5, 180);
   const maxLoop = clamp(options.maxLoopMinutes ?? DEFAULT_MAX_LOOP_MINUTES, minLoop, 240);
   const runtimeSettings = resolveEngagementSettings(options.engagement);
+  const xApiCostSettings = resolveXApiCostSettings(options.xApiCost);
 
   console.log(`[LOOP] 고정 시간 스케줄 없이 자율 루프 실행 (${minLoop}~${maxLoop}분 간격)`);
   console.log(`[LOOP] 댓글 톤 모드: ${REPLY_TONE_MODE}`);
   console.log(
     `[LOOP] 언어 설정: post=${runtimeSettings.postLanguage}, reply=${runtimeSettings.replyLanguageMode}`
+  );
+  console.log(
+    `[LOOP] X budget: $${xApiCostSettings.dailyMaxUsd.toFixed(2)}/day, read=${xApiCostSettings.dailyReadRequestLimit}, create=${xApiCostSettings.dailyCreateRequestLimit}, mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m, trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m, create>=${xApiCostSettings.createMinIntervalMinutes}m`
   );
   while (true) {
     const result = await runDailyQuotaCycle(twitter, claude, options);
@@ -793,6 +895,8 @@ async function getOrSearchTrendTweets(
     minScore: number;
     minEngagement: number;
   },
+  timezone: string,
+  xApiCostSettings: XApiCostRuntimeSettings,
   cache?: EngagementCycleCache
 ): Promise<any[]> {
   const key = buildTrendTweetCacheKey(keywords, count, rules);
@@ -803,6 +907,29 @@ async function getOrSearchTrendTweets(
   if (cache) {
     cache.cacheMetrics.trendTweetsMisses += 1;
   }
+
+  const trendReadGuard = xApiBudget.checkReadAllowance({
+    enabled: xApiCostSettings.enabled,
+    timezone,
+    dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+    estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+    dailyReadRequestLimit: xApiCostSettings.dailyReadRequestLimit,
+    kind: "trend-search",
+    minIntervalMinutes: xApiCostSettings.trendReadMinIntervalMinutes,
+  });
+  if (!trendReadGuard.allowed) {
+    console.log(`[BUDGET] 트렌드 검색 스킵: ${formatReadBlockReason(trendReadGuard.reason, trendReadGuard.waitSeconds)}`);
+    return [];
+  }
+  const trendUsage = xApiBudget.recordRead({
+    timezone,
+    estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+    kind: "trend-search",
+  });
+  console.log(
+    `[BUDGET] read=${trendUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${trendUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (trend-search)`
+  );
+
   const result = await searchRecentTrendTweets(twitter, keywords, count, rules);
   if (cache) {
     cache.trendTweets = { key, data: result };
@@ -922,6 +1049,79 @@ function resolveEngagementSettings(
         ? settings.topicBlockConsecutiveTag
         : DEFAULT_ENGAGEMENT_SETTINGS.topicBlockConsecutiveTag,
   };
+}
+
+function resolveXApiCostSettings(
+  settings: Partial<XApiCostRuntimeSettings> = {}
+): XApiCostRuntimeSettings {
+  return {
+    enabled:
+      typeof settings.enabled === "boolean"
+        ? settings.enabled
+        : DEFAULT_X_API_COST_SETTINGS.enabled,
+    dailyMaxUsd: clampNumber(
+      settings.dailyMaxUsd,
+      0.01,
+      100,
+      DEFAULT_X_API_COST_SETTINGS.dailyMaxUsd
+    ),
+    estimatedReadCostUsd: clampNumber(
+      settings.estimatedReadCostUsd,
+      0.001,
+      10,
+      DEFAULT_X_API_COST_SETTINGS.estimatedReadCostUsd
+    ),
+    estimatedCreateCostUsd: clampNumber(
+      settings.estimatedCreateCostUsd,
+      0.001,
+      10,
+      DEFAULT_X_API_COST_SETTINGS.estimatedCreateCostUsd
+    ),
+    dailyReadRequestLimit: clampInt(
+      settings.dailyReadRequestLimit,
+      1,
+      1000,
+      DEFAULT_X_API_COST_SETTINGS.dailyReadRequestLimit
+    ),
+    dailyCreateRequestLimit: clampInt(
+      settings.dailyCreateRequestLimit,
+      1,
+      1000,
+      DEFAULT_X_API_COST_SETTINGS.dailyCreateRequestLimit
+    ),
+    mentionReadMinIntervalMinutes: clampInt(
+      settings.mentionReadMinIntervalMinutes,
+      0,
+      1440,
+      DEFAULT_X_API_COST_SETTINGS.mentionReadMinIntervalMinutes
+    ),
+    trendReadMinIntervalMinutes: clampInt(
+      settings.trendReadMinIntervalMinutes,
+      0,
+      1440,
+      DEFAULT_X_API_COST_SETTINGS.trendReadMinIntervalMinutes
+    ),
+    createMinIntervalMinutes: clampInt(
+      settings.createMinIntervalMinutes,
+      0,
+      1440,
+      DEFAULT_X_API_COST_SETTINGS.createMinIntervalMinutes
+    ),
+  };
+}
+
+function formatReadBlockReason(reason: XReadGuardBlockReason | undefined, waitSeconds?: number): string {
+  if (reason === "min-interval") {
+    const seconds = Math.max(1, Math.floor(waitSeconds || 0));
+    return `최소 조회 간격 제한 (${seconds}초 후 재시도)`;
+  }
+  if (reason === "daily-request-limit") {
+    return "일일 요청 한도 도달";
+  }
+  if (reason === "daily-usd-limit") {
+    return "일일 예상 비용 한도 도달";
+  }
+  return "비용 가드 정책";
 }
 
 function resolveObservabilitySettings(

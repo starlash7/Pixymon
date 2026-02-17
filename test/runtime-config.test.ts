@@ -40,6 +40,15 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       REPLY_LANGUAGE_MODE: "match",
       POST_GENERATION_MAX_ATTEMPTS: "2",
       TREND_TWEET_MIN_SCORE: "4.4",
+      X_API_COST_GUARD_ENABLED: "true",
+      X_API_DAILY_MAX_USD: "0.10",
+      X_API_ESTIMATED_READ_COST_USD: "0.02",
+      X_API_ESTIMATED_CREATE_COST_USD: "0.03",
+      X_API_DAILY_READ_REQUEST_LIMIT: "4",
+      X_API_DAILY_CREATE_REQUEST_LIMIT: "3",
+      X_MENTION_READ_MIN_INTERVAL_MINUTES: "90",
+      X_TREND_READ_MIN_INTERVAL_MINUTES: "150",
+      X_CREATE_MIN_INTERVAL_MINUTES: "45",
       OBSERVABILITY_ENABLED: "true",
       OBSERVABILITY_STDOUT_JSON: "false",
       OBSERVABILITY_EVENT_LOG_PATH: "data/custom-observability.ndjson",
@@ -52,6 +61,15 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.engagement.postLanguage, "ko");
       assert.equal(config.engagement.replyLanguageMode, "match");
       assert.equal(config.engagement.minTrendTweetScore, 4.4);
+      assert.equal(config.xApiCost.enabled, true);
+      assert.equal(config.xApiCost.dailyMaxUsd, 0.1);
+      assert.equal(config.xApiCost.estimatedReadCostUsd, 0.02);
+      assert.equal(config.xApiCost.estimatedCreateCostUsd, 0.03);
+      assert.equal(config.xApiCost.dailyReadRequestLimit, 4);
+      assert.equal(config.xApiCost.dailyCreateRequestLimit, 3);
+      assert.equal(config.xApiCost.mentionReadMinIntervalMinutes, 90);
+      assert.equal(config.xApiCost.trendReadMinIntervalMinutes, 150);
+      assert.equal(config.xApiCost.createMinIntervalMinutes, 45);
       assert.equal(config.observability.enabled, true);
       assert.equal(config.observability.stdoutJson, false);
       assert.equal(config.observability.eventLogPath, "data/custom-observability.ndjson");
@@ -65,12 +83,25 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       OBSERVABILITY_ENABLED: "invalid",
       OBSERVABILITY_STDOUT_JSON: "invalid",
       OBSERVABILITY_EVENT_LOG_PATH: "   ",
+      X_API_COST_GUARD_ENABLED: "invalid",
+      X_API_DAILY_MAX_USD: "invalid",
+      X_API_ESTIMATED_READ_COST_USD: "invalid",
+      X_API_ESTIMATED_CREATE_COST_USD: "invalid",
+      X_API_DAILY_READ_REQUEST_LIMIT: "invalid",
+      X_API_DAILY_CREATE_REQUEST_LIMIT: "invalid",
     },
     () => {
       const config = loadRuntimeConfig();
       assert.equal(config.observability.enabled, true);
       assert.equal(config.observability.stdoutJson, true);
       assert.equal(config.observability.eventLogPath, "data/metrics-events.ndjson");
+      assert.equal(config.xApiCost.enabled, true);
+      assert.equal(config.xApiCost.dailyMaxUsd, 0.1);
+      assert.equal(config.xApiCost.estimatedReadCostUsd, 0.012);
+      assert.equal(config.xApiCost.estimatedCreateCostUsd, 0.01);
+      assert.equal(config.xApiCost.dailyReadRequestLimit, 8);
+      assert.equal(config.xApiCost.dailyCreateRequestLimit, 10);
+      assert.equal(config.xApiCost.createMinIntervalMinutes, 20);
     }
   );
 });
