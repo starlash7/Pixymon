@@ -1,10 +1,11 @@
 import { BlockchainNewsService, MarketData } from "../blockchain-news.js";
 import { memory } from "../memory.js";
 import { inferTopicTag, sanitizeTweetText } from "./quality.js";
-import { RecentPostRecord, TrendContext } from "./types.js";
+import { RecentPostRecord, TrendContext, TrendContextOptions } from "./types.js";
 
-export async function collectTrendContext(): Promise<TrendContext> {
+export async function collectTrendContext(options: Partial<TrendContextOptions> = {}): Promise<TrendContext> {
   const newsService = new BlockchainNewsService();
+  const minNewsSourceTrust = clampNumber(options.minNewsSourceTrust, 0.05, 0.9, 0.28);
   const [hotNews, cryptoNews, marketData] = await Promise.all([
     newsService.getTodayHotNews(),
     newsService.getCryptoNews(10),
@@ -25,7 +26,7 @@ export async function collectTrendContext(): Promise<TrendContext> {
   });
 
   const trustedNews = mergedNews
-    .filter((row) => row.trust >= 0.28)
+    .filter((row) => row.trust >= minNewsSourceTrust)
     .sort((a, b) => b.trust - a.trust);
 
   const filteredNews = trustedNews.length > 0 ? trustedNews : mergedNews.sort((a, b) => b.trust - a.trust);
@@ -85,7 +86,7 @@ export function formatMarketAnchors(marketData: MarketData[]): string {
     .join("\n");
 }
 
-export function buildFallbackPost(trend: TrendContext, postAngle: string): string | null {
+export function buildFallbackPost(trend: TrendContext, postAngle: string, maxChars: number = 220): string | null {
   const angle = postAngle.replace(/\s+/g, " ").trim();
   const headline = trend.headlines.find((item) => typeof item === "string" && item.trim().length > 0);
   const compactHeadline = headline ? headline.replace(/\s+/g, " ").trim().slice(0, 70) : "주요 시장 뉴스 업데이트";
@@ -104,7 +105,7 @@ export function buildFallbackPost(trend: TrendContext, postAngle: string): strin
   const text = `${angle}. ${compactHeadline}. ${marketLine}와 ${keyword} 흐름의 동조를 점검 중, ${closing}`;
   const normalized = sanitizeTweetText(text);
   if (normalized.length < 40) return null;
-  return normalized.slice(0, 220);
+  return normalized.slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
 }
 
 function extractKeywordsFromTitle(title: string): string[] {
@@ -130,4 +131,9 @@ function estimateNewsSourceFallbackTrust(source: string): number {
   if (/(coingecko|cryptocompare|reuters|coindesk|blockworks|bloomberg)/.test(lower)) return 0.62;
   if (/(twitter|x|unknown|community)/.test(lower)) return 0.45;
   return 0.52;
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, value));
 }

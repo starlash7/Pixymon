@@ -26,6 +26,7 @@ type TweetEngagementMap = Record<string, TweetPublicMetrics>;
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const REFLECTION_PATH = path.join(DATA_DIR, "reflection.json");
+const REFLECTION_SAVE_DEBOUNCE_MS = 350;
 
 const EMPTY_STORE: ReflectionStore = {
   notes: [],
@@ -34,9 +35,13 @@ const EMPTY_STORE: ReflectionStore = {
 
 export class ReflectionService {
   private store: ReflectionStore;
+  private writeTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     this.store = this.load();
+    process.once("exit", () => {
+      this.flushWrite();
+    });
   }
 
   createPolicyFromTweets(
@@ -195,7 +200,7 @@ export class ReflectionService {
       }
 
       if (!fs.existsSync(REFLECTION_PATH)) {
-        this.write(EMPTY_STORE);
+        this.write(EMPTY_STORE, true);
         return EMPTY_STORE;
       }
 
@@ -211,9 +216,28 @@ export class ReflectionService {
     }
   }
 
-  private write(store: ReflectionStore): void {
+  private write(store: ReflectionStore, immediate: boolean = false): void {
+    this.store = store;
+    if (immediate) {
+      this.flushWrite();
+      return;
+    }
+    if (this.writeTimer) {
+      return;
+    }
+    this.writeTimer = setTimeout(() => {
+      this.writeTimer = null;
+      this.flushWrite();
+    }, REFLECTION_SAVE_DEBOUNCE_MS);
+  }
+
+  private flushWrite(): void {
     try {
-      fs.writeFileSync(REFLECTION_PATH, JSON.stringify(store, null, 2));
+      if (this.writeTimer) {
+        clearTimeout(this.writeTimer);
+        this.writeTimer = null;
+      }
+      fs.writeFileSync(REFLECTION_PATH, JSON.stringify(this.store, null, 2));
     } catch (error) {
       console.error("[REFLECTION] 저장 실패:", error);
     }

@@ -1,7 +1,24 @@
 import { MarketData } from "../blockchain-news.js";
 import { findNarrativeDuplicate, validateMarketConsistency } from "../content-guard.js";
 import { memory } from "../memory.js";
-import { AdaptivePolicy, ContentQualityCheck, RecentPostRecord } from "./types.js";
+import { AdaptivePolicy, ContentQualityCheck, ContentQualityRules, RecentPostRecord } from "./types.js";
+
+const DEFAULT_CONTENT_QUALITY_RULES: ContentQualityRules = {
+  minPostLength: 20,
+  topicMaxSameTag24h: 3,
+  topicBlockConsecutiveTag: true,
+};
+
+export function resolveContentQualityRules(raw?: Partial<ContentQualityRules>): ContentQualityRules {
+  return {
+    minPostLength: clampInt(raw?.minPostLength, 10, 120, DEFAULT_CONTENT_QUALITY_RULES.minPostLength),
+    topicMaxSameTag24h: clampInt(raw?.topicMaxSameTag24h, 1, 8, DEFAULT_CONTENT_QUALITY_RULES.topicMaxSameTag24h),
+    topicBlockConsecutiveTag:
+      typeof raw?.topicBlockConsecutiveTag === "boolean"
+        ? raw.topicBlockConsecutiveTag
+        : DEFAULT_CONTENT_QUALITY_RULES.topicBlockConsecutiveTag,
+  };
+}
 
 export function sanitizeTweetText(text: string): string {
   return text.replace(/\s+/g, " ").replace(/[“”]/g, "\"").trim();
@@ -38,9 +55,10 @@ export function evaluatePostQuality(
   text: string,
   marketData: MarketData[],
   recentPosts: RecentPostRecord[],
-  policy: AdaptivePolicy
+  policy: AdaptivePolicy,
+  rules: ContentQualityRules = DEFAULT_CONTENT_QUALITY_RULES
 ): ContentQualityCheck {
-  if (!text || text.length < 20) {
+  if (!text || text.length < rules.minPostLength) {
     return { ok: false, reason: "문장이 너무 짧음" };
   }
 
@@ -73,11 +91,11 @@ export function evaluatePostQuality(
     const candidateTag = inferTopicTag(text);
     const recentTags = recentWithin24.map((post) => inferTopicTag(post.content));
     const lastTag = recentTags[recentTags.length - 1];
-    if (lastTag === candidateTag) {
+    if (rules.topicBlockConsecutiveTag && lastTag === candidateTag) {
       return { ok: false, reason: `주제 다양성 부족(${candidateTag} 연속)` };
     }
     const sameTagCount = recentTags.filter((tag) => tag === candidateTag).length;
-    if (sameTagCount >= 3) {
+    if (sameTagCount >= rules.topicMaxSameTag24h) {
       return { ok: false, reason: `24h 내 동일 주제 과밀(${candidateTag})` };
     }
   }
@@ -101,4 +119,12 @@ function isWithinHours(isoTimestamp: string, hours: number): boolean {
   const timestamp = new Date(isoTimestamp).getTime();
   if (!Number.isFinite(timestamp)) return false;
   return Date.now() - timestamp <= hours * 60 * 60 * 1000;
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  const floored = Math.floor(value);
+  return Math.max(min, Math.min(max, floored));
 }

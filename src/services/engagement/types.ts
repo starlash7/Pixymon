@@ -1,4 +1,5 @@
 import { MarketData } from "../blockchain-news.js";
+import { EngagementRuntimeSettings } from "../../types/runtime.js";
 
 export interface DailyQuotaOptions {
   dailyTarget?: number;
@@ -6,6 +7,7 @@ export interface DailyQuotaOptions {
   maxActionsPerCycle?: number;
   minLoopMinutes?: number;
   maxLoopMinutes?: number;
+  engagement?: Partial<EngagementRuntimeSettings>;
 }
 
 export interface TrendContext {
@@ -19,6 +21,12 @@ export interface TrendContext {
 export interface ContentQualityCheck {
   ok: boolean;
   reason?: string;
+}
+
+export interface ContentQualityRules {
+  minPostLength: number;
+  topicMaxSameTag24h: number;
+  topicBlockConsecutiveTag: boolean;
 }
 
 export interface AdaptivePolicy {
@@ -35,4 +43,14 @@ export interface AdaptivePolicy {
 export interface RecentPostRecord {
   content: string;
   timestamp: string;
+}
+
+export interface TrendContextOptions {
+  minNewsSourceTrust: number;
+}
+
+export interface TrendTweetSearchRules {
+  minSourceTrust: number;
+  minScore: number;
+  minEngagement: number;
 }

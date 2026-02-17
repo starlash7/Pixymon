@@ -18,11 +18,12 @@ Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 인플루�
 
 - LLM: Anthropic Claude (`claude-sonnet-4-5-20250929`)
 - 스케줄러 모드(`SCHEDULER_MODE=true`)
-- 3시간마다 멘션 체크 + 자동 답글
-- 3시간마다 인플루언서 댓글 (30분 오프셋)
-- **브리핑 자동 포스팅은 현재 엔트리포인트에서 비활성화**
+- 고정 시간 크론 없이 자율 루프 실행
+- 하루 활동 목표(`DAILY_ACTIVITY_TARGET`)를 댓글 + 글 합산으로 채움
+- 트렌드 글 + 트렌드 댓글 + 멘션 답글을 균형 실행
+- 기본 언어 정책: 글은 한국어(`POST_LANGUAGE=ko`), 댓글은 입력 언어 매칭(`REPLY_LANGUAGE_MODE=match`)
 
-즉, 지금 운영 포커스는 `briefing`보다 **대화형 인게이지먼트**입니다.
+즉, 운영 포커스는 **대화형 인게이지먼트 + 트렌드 포스팅** 동시 최적화입니다.
 
 ## 2. 핵심 기능
 
@@ -118,6 +119,12 @@ npm run dev
 SCHEDULER_MODE=true npm run dev
 ```
 
+권장 예시:
+
+```bash
+SCHEDULER_MODE=true DAILY_ACTIVITY_TARGET=20 DAILY_TARGET_TIMEZONE=Asia/Seoul npm run dev
+```
+
 ### 7.4 테스트 모드 (실제 포스팅/답글 미발행)
 
 ```bash
@@ -140,6 +147,24 @@ TWITTER_USERNAME=Pixy_mon
 # Runtime
 TEST_MODE=true
 SCHEDULER_MODE=false
+DAILY_ACTIVITY_TARGET=20
+DAILY_TARGET_TIMEZONE=Asia/Seoul
+MAX_ACTIONS_PER_CYCLE=4
+MIN_LOOP_MINUTES=25
+MAX_LOOP_MINUTES=70
+
+# Engagement tuning
+POST_GENERATION_MAX_ATTEMPTS=2
+POST_MAX_CHARS=220
+POST_MIN_LENGTH=20
+POST_LANGUAGE=ko
+REPLY_LANGUAGE_MODE=match
+TREND_NEWS_MIN_SOURCE_TRUST=0.28
+TREND_TWEET_MIN_SOURCE_TRUST=0.24
+TREND_TWEET_MIN_SCORE=3.2
+TREND_TWEET_MIN_ENGAGEMENT=6
+TOPIC_MAX_SAME_TAG_24H=3
+TOPIC_BLOCK_CONSECUTIVE_TAG=true
 NODE_ENV=development
 LOG_LEVEL=info
 ```

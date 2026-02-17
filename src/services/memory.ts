@@ -12,6 +12,25 @@ import path from "path";
 
 // 데이터 디렉토리
 const DATA_DIR = path.join(process.cwd(), "data");
+const MEMORY_SAVE_DEBOUNCE_MS = 250;
+const MAX_REPLIED_TWEETS = 500;
+const DUPLICATE_STOP_WORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "is",
+  "are",
+  "was",
+  "were",
+  "by",
+  "for",
+  "to",
+  "of",
+  "and",
+  "in",
+  "on",
+  "at",
+]);
 
 // 데이터 타입 정의
 interface Tweet {
@@ -128,10 +147,16 @@ const EMPTY_MEMORY: MemoryData = createEmptyMemoryData();
 export class MemoryService {
   private data: MemoryData;
   private dataPath: string;
+  private saveTimer: NodeJS.Timeout | null = null;
+  private repliedTweetSet = new Set<string>();
 
   constructor() {
     this.dataPath = path.join(DATA_DIR, "memory.json");
     this.data = this.load();
+    this.repliedTweetSet = new Set(this.data.repliedTweets || []);
+    process.once("exit", () => {
+      this.flushSave();
+    });
   }
 
   // 데이터 로드
@@ -146,7 +171,7 @@ export class MemoryService {
       // 파일 없으면 초기화
       if (!fs.existsSync(this.dataPath)) {
         const empty = createEmptyMemoryData();
-        this.save(empty);
+        this.save(empty, true);
         console.log("[MEMORY] 새 메모리 파일 생성됨");
         return empty;
       }
@@ -162,11 +187,32 @@ export class MemoryService {
   }
 
   // 데이터 저장
-  private save(data?: MemoryData): void {
+  private save(data?: MemoryData, immediate: boolean = false): void {
+    if (data) {
+      this.data = data;
+      this.repliedTweetSet = new Set(this.data.repliedTweets || []);
+    }
+    if (immediate) {
+      this.flushSave();
+      return;
+    }
+    if (this.saveTimer) {
+      return;
+    }
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.flushSave();
+    }, MEMORY_SAVE_DEBOUNCE_MS);
+  }
+
+  private flushSave(): void {
     try {
-      const toSave = data || this.data;
-      toSave.lastUpdated = new Date().toISOString();
-      fs.writeFileSync(this.dataPath, JSON.stringify(toSave, null, 2));
+      if (this.saveTimer) {
+        clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
+      this.data.lastUpdated = new Date().toISOString();
+      fs.writeFileSync(this.dataPath, JSON.stringify(this.data, null, 2));
     } catch (error) {
       console.error("[MEMORY] 저장 실패:", error);
     }
@@ -180,11 +226,21 @@ export class MemoryService {
       predictions: Array.isArray(raw.predictions) ? raw.predictions : [],
       followers: this.normalizeFollowers(raw.followers),
       lastProcessedMentionId: typeof raw.lastProcessedMentionId === "string" ? raw.lastProcessedMentionId : undefined,
-      repliedTweets: Array.isArray(raw.repliedTweets) ? raw.repliedTweets : [],
+      repliedTweets: this.normalizeRepliedTweets(raw.repliedTweets),
       agentState,
       qualityTelemetry,
       lastUpdated: typeof raw.lastUpdated === "string" ? raw.lastUpdated : new Date().toISOString(),
     };
+  }
+
+  private normalizeRepliedTweets(raw: unknown): string[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const normalized = raw
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item) => item.length > 0);
+    return [...new Set(normalized)].slice(-MAX_REPLIED_TWEETS);
   }
 
   private normalizeAgentState(raw?: Partial<AgentState>): AgentState {
@@ -380,12 +436,11 @@ export class MemoryService {
 
   // 단어 추출 (불용어 제거)
   private getWords(text: string): Set<string> {
-    const stopWords = new Set(["the", "a", "an", "is", "are", "was", "were", "by", "for", "to", "of", "and", "in", "on", "at"]);
     const words = text
       .toLowerCase()
       .replace(/[^\w\s$]/g, "")
       .split(/\s+/)
-      .filter(w => w.length > 2 && !stopWords.has(w));
+      .filter((w) => w.length > 2 && !DUPLICATE_STOP_WORDS.has(w));
     return new Set(words);
   }
 
@@ -558,7 +613,10 @@ export class MemoryService {
     if (!this.data.repliedTweets) {
       this.data.repliedTweets = [];
     }
-    return this.data.repliedTweets.includes(tweetId);
+    if (this.repliedTweetSet.size !== this.data.repliedTweets.length) {
+      this.repliedTweetSet = new Set(this.data.repliedTweets);
+    }
+    return this.repliedTweetSet.has(tweetId);
   }
 
   // 댓글 단 트윗 저장
@@ -566,11 +624,17 @@ export class MemoryService {
     if (!this.data.repliedTweets) {
       this.data.repliedTweets = [];
     }
+    if (this.repliedTweetSet.has(tweetId)) {
+      return;
+    }
     this.data.repliedTweets.push(tweetId);
+    this.repliedTweetSet.add(tweetId);
     
-    // 최근 500개만 유지 (메모리 관리)
-    if (this.data.repliedTweets.length > 500) {
-      this.data.repliedTweets = this.data.repliedTweets.slice(-500);
+    // 최근 MAX_REPLIED_TWEETS개만 유지 (메모리 관리)
+    if (this.data.repliedTweets.length > MAX_REPLIED_TWEETS) {
+      const overflow = this.data.repliedTweets.length - MAX_REPLIED_TWEETS;
+      const dropped = this.data.repliedTweets.splice(0, overflow);
+      dropped.forEach((id) => this.repliedTweetSet.delete(id));
     }
     
     this.save();

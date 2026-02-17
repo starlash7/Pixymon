@@ -13,8 +13,14 @@ import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { CognitiveRunContext } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
 import { evaluateTrendCandidate } from "./content-guard.js";
+import { TrendTweetSearchRules } from "./engagement/types.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
+const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
+  minSourceTrust: 0.24,
+  minScore: 3.2,
+  minEngagement: 6,
+};
 
 interface MentionReplyOptions {
   cognitiveEngine?: FiveLayerCognitiveEngine;
@@ -93,7 +99,8 @@ export async function getInfluencerTweets(twitter: TwitterApi, sampleSize: numbe
   console.log(`[INTEL] 인플루언서 트윗 수집 중... (${sampleSize}개 샘플링)\n`);
 
   // 랜덤 샘플링 (rate limit 방지)
-  const shuffled = [...INFLUENCER_ACCOUNTS].sort(() => Math.random() - 0.5);
+  const shuffled = [...INFLUENCER_ACCOUNTS];
+  shuffleInPlace(shuffled);
   const sampled = shuffled.slice(0, sampleSize);
 
   const allTweets: string[] = [];
@@ -137,9 +144,23 @@ export async function getMentions(twitter: TwitterApi, sinceId?: string): Promis
 export async function searchRecentTrendTweets(
   twitter: TwitterApi,
   keywords: string[],
-  count: number = 30
+  count: number = 30,
+  rules: Partial<TrendTweetSearchRules> = {}
 ): Promise<any[]> {
   try {
+    const minSourceTrust = clampNumber(
+      rules.minSourceTrust,
+      0.05,
+      0.9,
+      DEFAULT_TREND_TWEET_SEARCH_RULES.minSourceTrust
+    );
+    const minScore = clampNumber(rules.minScore, 0.5, 12, DEFAULT_TREND_TWEET_SEARCH_RULES.minScore);
+    const minEngagement = clampNumber(
+      rules.minEngagement,
+      1,
+      200,
+      DEFAULT_TREND_TWEET_SEARCH_RULES.minEngagement
+    );
     const cleaned = sanitizeTrendKeywords(keywords).slice(0, 12);
 
     const keywordQuery = cleaned.length > 0
@@ -181,7 +202,7 @@ export async function searchRecentTrendTweets(
         });
         return { tweet, user, evaluation, sourceKey, sourceTrust: blendedTrust };
       })
-      .filter((item) => !item.evaluation.isLowSignal && item.sourceTrust >= 0.24)
+      .filter((item) => !item.evaluation.isLowSignal && item.sourceTrust >= minSourceTrust)
       .sort((a, b) => (b.evaluation.score + b.sourceTrust * 2.2) - (a.evaluation.score + a.sourceTrust * 2.2));
 
     const selected: any[] = [];
@@ -189,7 +210,7 @@ export async function searchRecentTrendTweets(
     for (const item of ranked) {
       const authorId = String(item.tweet.author_id || "");
       if (authorId && seenAuthors.has(authorId)) continue;
-      if (item.evaluation.engagementRaw < 6 || item.evaluation.score < 3.2) continue;
+      if (item.evaluation.engagementRaw < minEngagement || item.evaluation.score < minScore) continue;
       selected.push({
         ...item.tweet,
         __trendScore: item.evaluation.score,
@@ -464,6 +485,18 @@ function blendXSourceTrust(baseTrust: number, verified: boolean, followersCount:
   const verifiedBoost = verified ? 0.06 : 0;
   const blended = baseTrust * 0.8 + 0.2 * (baseTrust + followerBoost + verifiedBoost);
   return Math.min(0.95, Math.max(0.05, Math.round(blended * 100) / 100));
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, value));
+}
+
+function shuffleInPlace<T>(items: T[]): void {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
 }
 
 // 트윗 발행 (Twitter API v2 only)
