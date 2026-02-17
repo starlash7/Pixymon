@@ -40,13 +40,15 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postGenerationMaxAttempts: 2,
   postMaxChars: 220,
   postMinLength: 20,
+  postMinIntervalMinutes: 90,
+  maxPostsPerCycle: 1,
   postLanguage: "ko",
   replyLanguageMode: "match",
   minNewsSourceTrust: 0.28,
   minTrendTweetSourceTrust: 0.24,
   minTrendTweetScore: 3.2,
   minTrendTweetEngagement: 6,
-  topicMaxSameTag24h: 3,
+  topicMaxSameTag24h: 2,
   topicBlockConsecutiveTag: true,
 };
 
@@ -206,6 +208,18 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.postMinLength,
       10,
       120
+    ),
+    postMinIntervalMinutes: parseIntInRange(
+      process.env.POST_MIN_INTERVAL_MINUTES,
+      DEFAULT_ENGAGEMENT_SETTINGS.postMinIntervalMinutes,
+      0,
+      360
+    ),
+    maxPostsPerCycle: parseIntInRange(
+      process.env.MAX_POSTS_PER_CYCLE,
+      DEFAULT_ENGAGEMENT_SETTINGS.maxPostsPerCycle,
+      0,
+      4
     ),
     postLanguage: parseContentLanguage(
       process.env.POST_LANGUAGE,

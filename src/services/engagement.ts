@@ -388,6 +388,16 @@ export async function postTrendUpdate(
       .getRecentTweets(120)
       .filter((tweet) => tweet.type === "briefing")
       .map((tweet) => ({ content: tweet.content, timestamp: tweet.timestamp }));
+    const lastBriefingPost = recentBriefingPosts.length > 0 ? recentBriefingPosts[recentBriefingPosts.length - 1] : null;
+    if (runtimeSettings.postMinIntervalMinutes > 0 && lastBriefingPost) {
+      const minutesSinceLast = getMinutesSince(lastBriefingPost.timestamp);
+      if (minutesSinceLast >= 0 && minutesSinceLast < runtimeSettings.postMinIntervalMinutes) {
+        console.log(
+          `[POST] 스킵: 마지막 글 이후 ${minutesSinceLast}분 경과 (최소 ${runtimeSettings.postMinIntervalMinutes}분 필요)`
+        );
+        return false;
+      }
+    }
     const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
     const postAngle = pickPostAngle(timezone, recentBriefingPosts);
     const marketAnchors = formatMarketAnchors(trend.marketData);
@@ -663,10 +673,14 @@ export async function runDailyQuotaCycle(
     `[TUNING] postLang=${runtimeSettings.postLanguage}, replyLang=${runtimeSettings.replyLanguageMode}, trend(score>=${runtimeSettings.minTrendTweetScore.toFixed(1)}, engage>=${runtimeSettings.minTrendTweetEngagement})`
   );
   console.log(
+    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}`
+  );
+  console.log(
     `[COST] guard=${xApiCostSettings.enabled ? "on" : "off"} budget=$${xApiCostSettings.dailyMaxUsd.toFixed(2)} read_limit=${xApiCostSettings.dailyReadRequestLimit}/day create_limit=${xApiCostSettings.dailyCreateRequestLimit}/day mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m create>=${xApiCostSettings.createMinIntervalMinutes}m`
   );
 
   let executed = 0;
+  let postsCreatedThisCycle = 0;
   const mentionBudget = Math.min(remaining, Math.max(1, Math.floor(maxActions / 2)));
   const mentionProcessed = await checkAndReplyMentions(
     twitter,
@@ -688,7 +702,8 @@ export async function runDailyQuotaCycle(
   while (executed < maxActions && remaining > 0) {
     const before = executed;
     const todayPosts = memory.getTodayPostCount(timezone);
-    const preferPost = todayPosts < postGoal && (executed === 0 || executed % 2 === 0);
+    const canPostInCycle = postsCreatedThisCycle < runtimeSettings.maxPostsPerCycle;
+    const preferPost = canPostInCycle && todayPosts < postGoal && (executed === 0 || executed % 2 === 0);
 
     if (preferPost) {
       const posted = await postTrendUpdate(
@@ -702,6 +717,7 @@ export async function runDailyQuotaCycle(
       );
       if (posted) {
         executed += 1;
+        postsCreatedThisCycle += 1;
       }
     } else {
       const replied = await proactiveEngagement(
@@ -730,7 +746,7 @@ export async function runDailyQuotaCycle(
           cycleCache
         );
         executed += fallbackReplies;
-      } else {
+      } else if (canPostInCycle) {
         const fallbackPosted = await postTrendUpdate(
           twitter,
           claude,
@@ -740,7 +756,10 @@ export async function runDailyQuotaCycle(
           xApiCostSettings,
           cycleCache
         );
-        if (fallbackPosted) executed += 1;
+        if (fallbackPosted) {
+          executed += 1;
+          postsCreatedThisCycle += 1;
+        }
       }
     }
 
@@ -1006,6 +1025,18 @@ function resolveEngagementSettings(
     ),
     postMaxChars: clampInt(settings.postMaxChars, 120, 280, DEFAULT_ENGAGEMENT_SETTINGS.postMaxChars),
     postMinLength: clampInt(settings.postMinLength, 10, 120, DEFAULT_ENGAGEMENT_SETTINGS.postMinLength),
+    postMinIntervalMinutes: clampInt(
+      settings.postMinIntervalMinutes,
+      0,
+      360,
+      DEFAULT_ENGAGEMENT_SETTINGS.postMinIntervalMinutes
+    ),
+    maxPostsPerCycle: clampInt(
+      settings.maxPostsPerCycle,
+      0,
+      4,
+      DEFAULT_ENGAGEMENT_SETTINGS.maxPostsPerCycle
+    ),
     postLanguage:
       settings.postLanguage === "en" || settings.postLanguage === "ko"
         ? settings.postLanguage
@@ -1165,4 +1196,10 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
     return fallback;
   }
   return Math.max(min, Math.min(max, value));
+}
+
+function getMinutesSince(isoTimestamp: string): number {
+  const ts = new Date(isoTimestamp).getTime();
+  if (!Number.isFinite(ts)) return -1;
+  return Math.floor((Date.now() - ts) / (1000 * 60));
 }

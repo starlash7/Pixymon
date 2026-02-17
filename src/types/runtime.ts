@@ -5,6 +5,8 @@ export interface EngagementRuntimeSettings {
   postGenerationMaxAttempts: number;
   postMaxChars: number;
   postMinLength: number;
+  postMinIntervalMinutes: number;
+  maxPostsPerCycle: number;
   postLanguage: ContentLanguage;
   replyLanguageMode: ReplyLanguageMode;
   minNewsSourceTrust: number;

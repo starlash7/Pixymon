@@ -22,6 +22,8 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
       postGenerationMaxAttempts: 2,
       postMaxChars: 220,
       postMinLength: 20,
+      postMinIntervalMinutes: 90,
+      maxPostsPerCycle: 1,
       postLanguage: "ko",
       replyLanguageMode: "match",
       minNewsSourceTrust: 0.28,

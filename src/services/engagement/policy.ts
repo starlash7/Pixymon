@@ -5,10 +5,10 @@ export const DEFAULT_DAILY_TARGET = 20;
 
 export function getDefaultAdaptivePolicy(): AdaptivePolicy {
   return {
-    postDuplicateThreshold: 0.82,
-    postNarrativeThreshold: 0.79,
-    replyDuplicateThreshold: 0.88,
-    replyNarrativeThreshold: 0.82,
+    postDuplicateThreshold: 0.74,
+    postNarrativeThreshold: 0.7,
+    replyDuplicateThreshold: 0.84,
+    replyNarrativeThreshold: 0.78,
     minTrendScore: 2.8,
     minTrendEngagement: 4,
     minSourceTrust: 0.32,
@@ -26,10 +26,6 @@ export function buildAdaptivePolicy(target: number, todayCount: number, timezone
   const policy: AdaptivePolicy = { ...base };
 
   if (progress < 0.45) {
-    policy.postDuplicateThreshold += 0.04;
-    policy.postNarrativeThreshold += 0.04;
-    policy.replyDuplicateThreshold += 0.03;
-    policy.replyNarrativeThreshold += 0.02;
     policy.minTrendScore -= 0.2;
     policy.minSourceTrust -= 0.03;
     reasons.push("under-target");
@@ -45,22 +41,22 @@ export function buildAdaptivePolicy(target: number, todayCount: number, timezone
   }
 
   if (metrics.fallbackRate >= 0.35 || failLoad >= 0.5) {
-    policy.postDuplicateThreshold += 0.03;
-    policy.postNarrativeThreshold += 0.03;
     policy.minTrendScore -= 0.1;
     reasons.push("high-fallback-or-fail");
   }
 
   if ((metrics.failReasons["duplicate"] || 0) >= 2) {
-    policy.postDuplicateThreshold += 0.02;
-    policy.postNarrativeThreshold += 0.02;
+    policy.postDuplicateThreshold -= 0.03;
+    policy.postNarrativeThreshold -= 0.03;
+    policy.replyDuplicateThreshold -= 0.02;
+    policy.replyNarrativeThreshold -= 0.02;
     reasons.push("duplicate-heavy");
   }
 
-  policy.postDuplicateThreshold = clamp(policy.postDuplicateThreshold, 0.74, 0.92);
-  policy.postNarrativeThreshold = clamp(policy.postNarrativeThreshold, 0.72, 0.9);
-  policy.replyDuplicateThreshold = clamp(policy.replyDuplicateThreshold, 0.82, 0.94);
-  policy.replyNarrativeThreshold = clamp(policy.replyNarrativeThreshold, 0.76, 0.9);
+  policy.postDuplicateThreshold = clamp(policy.postDuplicateThreshold, 0.65, 0.86);
+  policy.postNarrativeThreshold = clamp(policy.postNarrativeThreshold, 0.62, 0.84);
+  policy.replyDuplicateThreshold = clamp(policy.replyDuplicateThreshold, 0.74, 0.9);
+  policy.replyNarrativeThreshold = clamp(policy.replyNarrativeThreshold, 0.7, 0.86);
   policy.minTrendScore = clamp(policy.minTrendScore, 2.2, 4.2);
   policy.minTrendEngagement = Math.floor(clamp(policy.minTrendEngagement, 3, 12));
   policy.minSourceTrust = clamp(policy.minSourceTrust, 0.24, 0.55);

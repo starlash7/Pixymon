@@ -64,6 +64,8 @@ export interface CycleObservabilityEvent {
   runtime: {
     postLanguage: string;
     replyLanguageMode: string;
+    postMinIntervalMinutes: number;
+    maxPostsPerCycle: number;
     minNewsSourceTrust: number;
     minTrendTweetSourceTrust: number;
     minTrendTweetScore: number;
@@ -132,6 +134,8 @@ export function buildCycleObservabilityEvent(
     runtime: {
       postLanguage: input.runtimeSettings.postLanguage,
       replyLanguageMode: input.runtimeSettings.replyLanguageMode,
+      postMinIntervalMinutes: input.runtimeSettings.postMinIntervalMinutes,
+      maxPostsPerCycle: input.runtimeSettings.maxPostsPerCycle,
       minNewsSourceTrust: round(input.runtimeSettings.minNewsSourceTrust, 2),
       minTrendTweetSourceTrust: round(input.runtimeSettings.minTrendTweetSourceTrust, 2),
       minTrendTweetScore: round(input.runtimeSettings.minTrendTweetScore, 2),

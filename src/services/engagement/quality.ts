@@ -5,7 +5,7 @@ import { AdaptivePolicy, ContentQualityCheck, ContentQualityRules, RecentPostRec
 
 const DEFAULT_CONTENT_QUALITY_RULES: ContentQualityRules = {
   minPostLength: 20,
-  topicMaxSameTag24h: 3,
+  topicMaxSameTag24h: 2,
   topicBlockConsecutiveTag: true,
 };
 
@@ -80,10 +80,31 @@ export function evaluatePostQuality(
       reason: `최근 포스트와 내러티브 중복(sim=${narrativeDup.similarity})`,
     };
   }
+  const candidateMotifs = extractNarrativeMotifs(text);
+  if (candidateMotifs.size >= 3) {
+    const motifDup = recentPostTexts
+      .slice(-16)
+      .some((item) => motifSimilarity(candidateMotifs, extractNarrativeMotifs(item)) >= 0.7);
+    if (motifDup) {
+      return { ok: false, reason: "핵심 서사 모티프 반복" };
+    }
+  }
 
   const normalized = sanitizeTweetText(text).slice(0, 24);
   if (normalized && recentPostTexts.some((item) => sanitizeTweetText(item).slice(0, 24) === normalized)) {
     return { ok: false, reason: "문장 시작 패턴 중복" };
+  }
+  const recentStructures = recentPostTexts.slice(-20).map((item) => normalizeNarrativeStructure(item));
+  const candidateStructure = normalizeNarrativeStructure(text);
+  if (candidateStructure) {
+    const prefix = candidateStructure.slice(0, 34);
+    if (prefix && recentStructures.some((item) => item.slice(0, 34) === prefix)) {
+      return { ok: false, reason: "서두 구조 반복" };
+    }
+    const suffix = candidateStructure.slice(-32);
+    if (suffix.length >= 16 && recentStructures.some((item) => item.slice(-32) === suffix)) {
+      return { ok: false, reason: "마무리 패턴 반복" };
+    }
   }
 
   const recentWithin24 = recentPosts.filter((post) => isWithinHours(post.timestamp, 24));
@@ -105,6 +126,7 @@ export function evaluatePostQuality(
 
 export function inferTopicTag(text: string): string {
   const lower = text.toLowerCase();
+  if (/fear|greed|fgi|극공포|공포\s*지수|탐욕\s*지수/.test(lower)) return "sentiment";
   if (/\$btc|bitcoin|비트코인/.test(lower)) return "bitcoin";
   if (/\$eth|ethereum|이더/.test(lower)) return "ethereum";
   if (/fomc|fed|macro|금리|inflation|dxy/.test(lower)) return "macro";
@@ -127,4 +149,41 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   }
   const floored = Math.floor(value);
   return Math.max(min, Math.min(max, floored));
+}
+
+function normalizeNarrativeStructure(text: string): string {
+  return sanitizeTweetText(text)
+    .toLowerCase()
+    .replace(/\$[a-z]{2,10}/g, " ticker ")
+    .replace(/[+-]?\d+(?:\.\d+)?%/g, " pct ")
+    .replace(/\d[\d,]*(?:\.\d+)?\s*(?:k|m|b|t|만|억|조)?/gi, " num ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractNarrativeMotifs(text: string): Set<string> {
+  const lower = sanitizeTweetText(text).toLowerCase();
+  const motifs: string[] = [];
+  if (/fear|greed|fgi|극공포|공포\s*지수/.test(lower)) motifs.push("sentiment-fear");
+  if (/stable|스테이블|유동성/.test(lower)) motifs.push("stable-flow");
+  if (/고래|whale|대형\s*주소/.test(lower)) motifs.push("whale-flow");
+  if (/\$btc|bitcoin|비트코인/.test(lower)) motifs.push("btc");
+  if (/onchain|온체인|멤풀|수수료/.test(lower)) motifs.push("onchain");
+  if (/괴리|비동기|엇갈/.test(lower)) motifs.push("divergence");
+  if (/바닥|반등|데드캣|함정|불트랩|베어트랩/.test(lower)) motifs.push("turning-point");
+  if (/\?$|일까|어떻게\s*봐|어떻게\s*읽/.test(lower)) motifs.push("question-ending");
+
+  return new Set(motifs);
+}
+
+function motifSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const item of a) {
+    if (b.has(item)) intersection += 1;
+  }
+  const union = a.size + b.size - intersection;
+  if (union <= 0) return 0;
+  return intersection / union;
 }
