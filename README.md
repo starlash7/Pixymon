@@ -1,7 +1,7 @@
 # Pixymon
 
-온체인 데이터를 먹고 성장하는 캐릭터형 X(Twitter) 에이전트입니다.
-Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 트렌드 인게이지먼트 + 메모리 기반 컨텍스트 유지**를 중심으로 동작합니다.
+온체인 데이터를 먹고 성장하는 캐릭터형 X(Twitter) 에이전트입니다.  
+현재 Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 트렌드 인게이지먼트 + 메모리/관측성 기반 운영 루프**를 중심으로 동작합니다.
 
 [![Twitter](https://img.shields.io/badge/Twitter-@Pixy__mon-1DA1F2?style=flat&logo=twitter)](https://twitter.com/Pixy_mon)
 [![Claude](https://img.shields.io/badge/Claude-Sonnet_4.5-D97706?style=flat-square)](https://www.anthropic.com/)
@@ -12,128 +12,103 @@ Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 트렌드 
   <img src="./docs/assets/pixymon-sprite.jpg" alt="Pixymon sprite sheet" width="680" />
 </p>
 
-## 1. 현재 런타임 상태 (중요)
+## 1. 현재 상태 요약
 
-`src/index.ts` 기준 현재 기본 동작은 아래와 같습니다.
+2026-02-17 기준 주요 업데이트:
 
-- LLM: Anthropic Claude (`claude-sonnet-4-5-20250929`)
-- 스케줄러 모드(`SCHEDULER_MODE=true`)
-- 고정 시간 크론 없이 자율 루프 실행
-- 하루 활동 목표(`DAILY_ACTIVITY_TARGET`)를 댓글 + 글 합산으로 채움
-- 트렌드 글 + 트렌드 댓글 + 멘션 답글을 균형 실행
-- 기본 언어 정책: 글은 한국어(`POST_LANGUAGE=ko`), 댓글은 입력 언어 매칭(`REPLY_LANGUAGE_MODE=match`)
+1. 고정 시간 크론 기반이 아닌 **자율 quota 루프**로 운영
+2. 트렌드 글/댓글/멘션 응답을 목표치 기반으로 균형 실행
+3. **품질 게이트 강화**: 숫자 앵커 정합성, 중복/내러티브 반복, 주제 다양성
+4. **적응형 정책 + 신뢰도 계층**: 실패율/폴백율/소스 신뢰도에 따라 임계값 자동 보정
+5. **관측성 추가**: 사이클 메트릭 JSON 출력 + `data/metrics-events.ndjson` 저장
+6. **자동 테스트 추가**: `npm test`로 핵심 설정/품질/관측성 유닛 테스트 실행
+7. 레거시 경로 정리: 구형 `briefing`/`influencer` 하드코딩 경로 제거
 
-즉, 운영 포커스는 **대화형 인게이지먼트 + 트렌드 포스팅** 동시 최적화입니다.
+## 2. 런타임 동작
 
-## 2. 핵심 기능
+`src/index.ts` 기준 기본 동작:
 
-### 2.1 멘션 자동 응답
-- `@Pixy_mon` 멘션을 `since_id` 기반으로 수집
-- 최근 멘션 커서(`lastProcessedMentionId`)를 영구 저장해 중복 처리 방지
-- 실패 시 커서를 앞당기지 않도록 설계되어 멘션 유실 위험 완화
+1. `SCHEDULER_MODE=true`면 24/7 자율 루프, `false`면 one-shot 사이클
+2. 하루 목표(`DAILY_ACTIVITY_TARGET`)를 댓글+글 합산으로 채움
+3. 기본 언어 정책:
+   - 글: `POST_LANGUAGE=ko`
+   - 댓글: `REPLY_LANGUAGE_MODE=match`
+4. 핵심 실행 경로:
+   - 멘션 응답
+   - 트렌드 글 생성
+   - 트렌드 댓글
 
-### 2.2 프로액티브 인게이지먼트
-- 트렌드 키워드 기반 X 검색 결과를 점수화해 후보 선정
-- 이미 답글 단 트윗/저신뢰 소스/저신호 텍스트 자동 제외
-- 일일 활동 목표와 적응형 정책을 함께 반영
-- 한국어/영어 감지 후 프롬프트 분기
+## 3. 핵심 아키텍처
 
-### 2.3 메모리 시스템
-- `data/memory.json` 기반 로컬 영구 메모리
-- 저장 항목: 트윗 로그, 코인 언급/예측, 팔로워 상호작용, 마지막 멘션 커서, 이미 댓글 단 트윗 목록
-- 최근 발화 유사도(Jaccard) 기반 중복 문장 방지
+### 3.1 Orchestration Layer
 
-### 2.4 운영 관측성
-- 사이클 단위 메트릭을 구조화 JSON으로 출력
-- `data/metrics-events.ndjson`에 이벤트 로그를 누적해 사후 분석 가능
-- 핵심 지표: `post_fail_reason`, `retry_count`, `fallback_rate`, `cache hit/miss`
+- `src/index.ts`: 엔트리포인트, 모드 분기
+- `src/services/runtime.ts`: one-shot / scheduler 실행 컨트롤
+- `src/services/engagement.ts`: quota 사이클 오케스트레이션
 
-## 3. 아키텍처
+### 3.2 Intelligence & Quality Layer
 
-### 3.1 실행 계층
-- `src/index.ts`: 엔트리포인트, 모드 분기, 자율 루프 실행
-- `src/services/twitter.ts`: Twitter API 연동, 멘션/답글/게시, rate limit 재시도
-- `src/services/llm.ts`: 시스템 프롬프트 구성 및 Claude 호출
-- `src/services/engagement.ts`: 멘션 응답/트렌드 댓글/트렌드 글 오케스트레이션
-- `src/services/observability.ts`: 사이클 메트릭 이벤트 출력/파일 기록
-- `src/services/memory.ts`: 로컬 상태 저장소
+- `src/services/llm.ts`: Claude 호출 및 톤 정책
+- `src/services/cognitive-engine.ts`: 5-layer 인지 루프
+- `src/services/engagement/quality.ts`: 품질 게이트
+- `src/services/engagement/policy.ts`: 적응형 정책
 
-### 3.2 데이터/리서치 계층 (확장 모듈)
+### 3.3 Data & Memory Layer
+
 - `src/services/blockchain-news.ts`: 뉴스/마켓/F&G 수집
-- `src/services/onchain-data.ts`: 온체인 시그널 스냅샷(TVL, mempool, stablecoin 등)
-- `src/services/research-engine.ts`: LLM 기반 구조화 인사이트(`claim/evidence/counterpoint/confidence`)
-- `src/services/reflection.ts`: 과거 발화/반응 지표 기반 정책 회고
+- `src/services/onchain-data.ts`: 온체인 시그널 스냅샷
+- `src/services/memory.ts`: 영구 메모리 및 텔레메트리 저장
+- `src/services/observability.ts`: 구조화 메트릭 출력/기록
 
-위 모듈은 현재 코드베이스에 포함되어 있으며, 운영 목적에 따라 엔트리포인트에서 연결 확장 가능합니다.
+## 4. 운영 품질/관측 지표
 
-## 4. 타입 시스템 (핵심 계약)
+현재 기록되는 핵심 지표:
 
-### 4.1 에이전트 추론 타입 (`src/types/agent.ts`)
-- `OnchainSignal`, `OnchainSnapshot`
-- `ResearchInput`, `StructuredInsight`, `EvidenceItem`
-- `ReflectionPolicy`
-- `ActionStyle = assertive | curious | cautious`
+1. `post_fail_reason`
+2. `retry_count`
+3. `fallback_rate`
+4. `source_trust` 변화
+5. 캐시 히트/미스 (`cognitive`, `runContext`, `trendContext`, `trendTweets`)
 
-### 4.2 공통 도메인 타입 (`src/types/index.ts`)
-- 뉴스/마켓/질문 컨텍스트/답변 결과 인터페이스
-- 운영 중인 서비스 타입 정합성과 확장 지점 정의
+메트릭 저장:
 
-### 4.3 추론(Research) 레이어 규칙 (`src/services/research-engine.ts`)
-- 결과는 자연어가 아니라 JSON 구조체로 강제됨: `claim`, `evidence[]`, `counterpoint`, `confidence`, `actionStyle`
-- `evidence.source`는 `market | onchain | news | influencer | memory | mixed`만 허용
-- 신뢰도 기반 톤 정책: `confidence >= 0.72` -> `assertive`, `0.55 <= confidence < 0.72` -> `curious`, `confidence < 0.55` -> `cautious`
-- JSON 파싱 실패/형식 불일치 시 `DEFAULT_INSIGHT`로 안전 폴백
+- stdout JSON (`OBSERVABILITY_STDOUT_JSON=true`)
+- `data/metrics-events.ndjson`
 
-## 5. 기술 스택
+## 5. 실행 방법
 
-- Runtime: Node.js 18+
-- Language: TypeScript (`strict`, `NodeNext`)
-- LLM SDK: `@anthropic-ai/sdk`
-- Social API: `twitter-api-v2`
-- Scheduler: 내부 루프 타이머 (`runDailyQuotaLoop`)
-- Config: `dotenv`
-
-## 6. 데이터 소스
-
-- CoinGecko: 마켓/트렌딩
-- CryptoCompare: 뉴스
-- Alternative.me: Fear & Greed
-- DefiLlama / mempool.space / blockchain.com: 온체인 시그널 확장 모듈
-- X(Twitter): 멘션/타임라인/답글
-
-## 7. 실행 방법
-
-### 7.1 설치
+설치:
 
 ```bash
 npm ci
 ```
 
-### 7.2 개발 실행
+개발 실행:
 
 ```bash
 npm run dev
 ```
 
-### 7.3 스케줄러 모드
-
-```bash
-SCHEDULER_MODE=true npm run dev
-```
-
-권장 예시:
+스케줄러 실행 (권장):
 
 ```bash
 SCHEDULER_MODE=true DAILY_ACTIVITY_TARGET=20 DAILY_TARGET_TIMEZONE=Asia/Seoul npm run dev
 ```
 
-### 7.4 테스트 모드 (실제 포스팅/답글 미발행)
+테스트 모드:
 
 ```bash
 TEST_MODE=true npm run dev
 ```
 
-## 8. 환경 변수
+빌드/테스트:
+
+```bash
+npm run build
+npm test
+```
+
+## 6. 환경 변수 (핵심)
 
 ```env
 # Claude
@@ -172,26 +147,13 @@ TOPIC_BLOCK_CONSECUTIVE_TAG=true
 OBSERVABILITY_ENABLED=true
 OBSERVABILITY_STDOUT_JSON=true
 OBSERVABILITY_EVENT_LOG_PATH=data/metrics-events.ndjson
-NODE_ENV=development
-LOG_LEVEL=info
 ```
 
-`TEST_MODE=false`일 때 Twitter 키 누락 시 프로세스가 종료됩니다.
+참고:
 
-## 9. 빌드 및 산출물
+- `TEST_MODE=false`일 때 Twitter 키가 없으면 프로세스가 종료됩니다.
 
-```bash
-npm run build
-```
-
-```bash
-npm test
-```
-
-- 출력 경로: `dist/`
-- `tsconfig` 옵션: declaration/source map 포함
-
-## 10. 프로젝트 구조
+## 7. 프로젝트 구조
 
 ```text
 src/
@@ -199,13 +161,20 @@ src/
 ├── character.ts
 ├── services/
 │   ├── blockchain-news.ts
+│   ├── cognitive-engine.ts
 │   ├── engagement.ts
+│   ├── engagement/
+│   │   ├── policy.ts
+│   │   ├── quality.ts
+│   │   ├── trend-context.ts
+│   │   └── types.ts
 │   ├── llm.ts
 │   ├── memory.ts
-│   ├── onchain-data.ts
 │   ├── observability.ts
+│   ├── onchain-data.ts
 │   ├── reflection.ts
 │   ├── research-engine.ts
+│   ├── runtime.ts
 │   └── twitter.ts
 ├── types/
 │   ├── agent.ts
@@ -215,14 +184,19 @@ src/
     └── mood.ts
 ```
 
-## 11. 운영 워크플로우
+## 8. 로드맵 문서
 
-멀티 워크스페이스/브랜치 운영 규칙은 아래 문서 사용:
+다음 진화 방향(Feed -> Digest -> Evolve -> Act -> Reflect, Phase Gate 포함):
+
+- `docs/plan.md`
+
+멀티 워크스페이스 운영 규칙:
 
 - `docs/agent-workflow.md`
+- `AGENTS.md`
 
-## 12. 주의사항
+## 9. 주의사항
 
-- 투자 자문 목적이 아닙니다 (NFA).
-- 외부 API 응답/지연/제한에 따라 결과가 달라질 수 있습니다.
-- 자동 생성 텍스트는 게시 전 검토가 필요합니다.
+1. 투자 자문 목적이 아닙니다 (NFA).
+2. 외부 API 응답/지연/제한에 따라 결과가 달라질 수 있습니다.
+3. 자동 생성 텍스트는 게시 전 검토가 필요합니다.
