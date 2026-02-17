@@ -13,6 +13,9 @@ import { CognitiveRunContext } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
 import { evaluateTrendCandidate } from "./content-guard.js";
 import { TrendTweetSearchRules } from "./engagement/types.js";
+import { XApiCostRuntimeSettings } from "../types/runtime.js";
+import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
+import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
 const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
@@ -24,6 +27,14 @@ const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
 interface MentionReplyOptions {
   cognitiveEngine?: FiveLayerCognitiveEngine;
   runContext?: CognitiveRunContext;
+  timezone?: string;
+  xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
+}
+
+interface PostTweetOptions {
+  timezone?: string;
+  xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
+  createKind?: string;
 }
 
 // 환경 변수 검증
@@ -192,6 +203,9 @@ export async function replyToMention(
   options?: MentionReplyOptions
 ): Promise<boolean> {
   try {
+    const timezone = normalizeTimezone(options?.timezone);
+    const xApiCostSettings = resolveXApiCostSettings(options?.xApiCostSettings);
+
     // 팔로워 기록 (멘션한 사람 추적)
     if (mention.author_id) {
       // 유저 정보 가져오기 (username 확인용)
@@ -267,6 +281,35 @@ ${mention.text}`,
         replyText = rewritten;
       }
     }
+
+    if (TEST_MODE) {
+      console.log(`🧪 [테스트] 멘션 답글 시뮬레이션: ${replyText}`);
+      memory.saveTweet(`mention_test_${Date.now()}`, replyText, "reply");
+      return true;
+    }
+
+    const createGuard = xApiBudget.checkCreateAllowance({
+      enabled: xApiCostSettings.enabled,
+      timezone,
+      dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+      estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+      dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
+      kind: "reply:mention",
+      minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
+    });
+    if (!createGuard.allowed) {
+      console.log(`[BUDGET] 멘션 답글 스킵: ${formatCreateBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
+      return false;
+    }
+
+    const createUsage = xApiBudget.recordCreate({
+      timezone,
+      estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+      kind: "reply:mention",
+    });
+    console.log(
+      `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mention-reply)`
+    );
 
     const reply = await twitter.v2.reply(replyText, mention.id);
     console.log(`[OK] 멘션 답글: ${reply.data.id}`);
@@ -432,8 +475,102 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizeTimezone(raw: string | undefined): string {
+  const value = String(raw || "").trim();
+  return value || "Asia/Seoul";
+}
+
+function resolveXApiCostSettings(
+  settings: Partial<XApiCostRuntimeSettings> | undefined
+): XApiCostRuntimeSettings {
+  const source = settings || {};
+  return {
+    enabled:
+      typeof source.enabled === "boolean"
+        ? source.enabled
+        : DEFAULT_X_API_COST_SETTINGS.enabled,
+    dailyMaxUsd: clampNumber(
+      source.dailyMaxUsd,
+      0.01,
+      100,
+      DEFAULT_X_API_COST_SETTINGS.dailyMaxUsd
+    ),
+    estimatedReadCostUsd: clampNumber(
+      source.estimatedReadCostUsd,
+      0.001,
+      10,
+      DEFAULT_X_API_COST_SETTINGS.estimatedReadCostUsd
+    ),
+    estimatedCreateCostUsd: clampNumber(
+      source.estimatedCreateCostUsd,
+      0.001,
+      10,
+      DEFAULT_X_API_COST_SETTINGS.estimatedCreateCostUsd
+    ),
+    dailyReadRequestLimit: Math.floor(
+      clampNumber(
+        source.dailyReadRequestLimit,
+        1,
+        1000,
+        DEFAULT_X_API_COST_SETTINGS.dailyReadRequestLimit
+      )
+    ),
+    dailyCreateRequestLimit: Math.floor(
+      clampNumber(
+        source.dailyCreateRequestLimit,
+        1,
+        1000,
+        DEFAULT_X_API_COST_SETTINGS.dailyCreateRequestLimit
+      )
+    ),
+    mentionReadMinIntervalMinutes: Math.floor(
+      clampNumber(
+        source.mentionReadMinIntervalMinutes,
+        0,
+        1440,
+        DEFAULT_X_API_COST_SETTINGS.mentionReadMinIntervalMinutes
+      )
+    ),
+    trendReadMinIntervalMinutes: Math.floor(
+      clampNumber(
+        source.trendReadMinIntervalMinutes,
+        0,
+        1440,
+        DEFAULT_X_API_COST_SETTINGS.trendReadMinIntervalMinutes
+      )
+    ),
+    createMinIntervalMinutes: Math.floor(
+      clampNumber(
+        source.createMinIntervalMinutes,
+        0,
+        1440,
+        DEFAULT_X_API_COST_SETTINGS.createMinIntervalMinutes
+      )
+    ),
+  };
+}
+
+function formatCreateBlockReason(reason: XCreateGuardBlockReason | undefined, waitSeconds?: number): string {
+  if (reason === "min-interval") {
+    const seconds = Math.max(1, Math.floor(waitSeconds || 0));
+    return `최소 간격 제한 (${seconds}초 후 재시도)`;
+  }
+  if (reason === "daily-request-limit") {
+    return "일일 요청 한도 도달";
+  }
+  if (reason === "daily-usd-limit") {
+    return "일일 예상 비용 한도 도달";
+  }
+  return "비용 가드 정책";
+}
+
 // 트윗 발행 (Twitter API v2 only)
-export async function postTweet(twitter: TwitterApi | null, content: string, type: "briefing" | "reply" | "quote" = "briefing"): Promise<string | null> {
+export async function postTweet(
+  twitter: TwitterApi | null,
+  content: string,
+  type: "briefing" | "reply" | "quote" = "briefing",
+  options: PostTweetOptions = {}
+): Promise<string | null> {
   if (TEST_MODE || !twitter) {
     console.log("🧪 [테스트 모드] 트윗 발행 시뮬레이션:");
     console.log("─".repeat(40));
@@ -449,6 +586,32 @@ export async function postTweet(twitter: TwitterApi | null, content: string, typ
 
   let lastError: unknown;
   const maxAttempts = 3;
+  const timezone = normalizeTimezone(options.timezone);
+  const xApiCostSettings = resolveXApiCostSettings(options.xApiCostSettings);
+  const createKind = options.createKind || `post:${type}`;
+
+  const createGuard = xApiBudget.checkCreateAllowance({
+    enabled: xApiCostSettings.enabled,
+    timezone,
+    dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+    estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+    dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
+    kind: createKind,
+    minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
+  });
+  if (!createGuard.allowed) {
+    console.log(`[BUDGET] 글 발행 스킵: ${formatCreateBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
+    return null;
+  }
+
+  const createUsage = xApiBudget.recordCreate({
+    timezone,
+    estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+    kind: createKind,
+  });
+  console.log(
+    `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (${createKind})`
+  );
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {

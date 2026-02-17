@@ -1,5 +1,9 @@
 import { MarketData } from "../blockchain-news.js";
-import { EngagementRuntimeSettings, ObservabilityRuntimeSettings } from "../../types/runtime.js";
+import {
+  EngagementRuntimeSettings,
+  ObservabilityRuntimeSettings,
+  XApiCostRuntimeSettings,
+} from "../../types/runtime.js";
 
 export interface DailyQuotaOptions {
   dailyTarget?: number;
@@ -8,6 +12,7 @@ export interface DailyQuotaOptions {
   minLoopMinutes?: number;
   maxLoopMinutes?: number;
   engagement?: Partial<EngagementRuntimeSettings>;
+  xApiCost?: Partial<XApiCostRuntimeSettings>;
   observability?: Partial<ObservabilityRuntimeSettings>;
 }
 

@@ -3,6 +3,7 @@ import {
   EngagementRuntimeSettings,
   ObservabilityRuntimeSettings,
   ReplyLanguageMode,
+  XApiCostRuntimeSettings,
 } from "../types/runtime.js";
 
 export interface RuntimeConfig {
@@ -13,6 +14,7 @@ export interface RuntimeConfig {
   minLoopMinutes: number;
   maxLoopMinutes: number;
   engagement: EngagementRuntimeSettings;
+  xApiCost: XApiCostRuntimeSettings;
   observability: ObservabilityRuntimeSettings;
 }
 
@@ -22,6 +24,17 @@ const DEFAULT_MAX_ACTIONS_PER_CYCLE = 4;
 const DEFAULT_MIN_LOOP_MINUTES = 25;
 const DEFAULT_MAX_LOOP_MINUTES = 70;
 const DEFAULT_OBSERVABILITY_EVENT_LOG_PATH = "data/metrics-events.ndjson";
+const DEFAULT_X_API_DAILY_MAX_USD = 0.1;
+const DEFAULT_X_API_ESTIMATED_READ_COST_USD = 0.012;
+const DEFAULT_X_API_ESTIMATED_CREATE_COST_USD = 0.01;
+const DEFAULT_X_API_MENTION_MIN_INTERVAL_MINUTES = 120;
+const DEFAULT_X_API_TREND_MIN_INTERVAL_MINUTES = 180;
+const DEFAULT_X_API_CREATE_MIN_INTERVAL_MINUTES = 20;
+
+const getDefaultDailyReadRequestLimit = (): number =>
+  Math.max(1, Math.floor(DEFAULT_X_API_DAILY_MAX_USD / DEFAULT_X_API_ESTIMATED_READ_COST_USD));
+const getDefaultDailyCreateRequestLimit = (): number =>
+  Math.max(1, Math.floor(DEFAULT_X_API_DAILY_MAX_USD / DEFAULT_X_API_ESTIMATED_CREATE_COST_USD));
 
 export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postGenerationMaxAttempts: 2,
@@ -43,6 +56,18 @@ export const DEFAULT_OBSERVABILITY_SETTINGS: ObservabilityRuntimeSettings = {
   eventLogPath: DEFAULT_OBSERVABILITY_EVENT_LOG_PATH,
 };
 
+export const DEFAULT_X_API_COST_SETTINGS: XApiCostRuntimeSettings = {
+  enabled: true,
+  dailyMaxUsd: DEFAULT_X_API_DAILY_MAX_USD,
+  estimatedReadCostUsd: DEFAULT_X_API_ESTIMATED_READ_COST_USD,
+  estimatedCreateCostUsd: DEFAULT_X_API_ESTIMATED_CREATE_COST_USD,
+  dailyReadRequestLimit: getDefaultDailyReadRequestLimit(),
+  dailyCreateRequestLimit: getDefaultDailyCreateRequestLimit(),
+  mentionReadMinIntervalMinutes: DEFAULT_X_API_MENTION_MIN_INTERVAL_MINUTES,
+  trendReadMinIntervalMinutes: DEFAULT_X_API_TREND_MIN_INTERVAL_MINUTES,
+  createMinIntervalMinutes: DEFAULT_X_API_CREATE_MIN_INTERVAL_MINUTES,
+};
+
 function parseIntInRange(
   raw: string | undefined,
   fallback: number,
@@ -52,6 +77,12 @@ function parseIntInRange(
   const parsed = Number.parseInt(raw || "", 10);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
+}
+
+function parseOptionalInt(raw: string | undefined): number | undefined {
+  const parsed = Number.parseInt(raw || "", 10);
+  if (!Number.isFinite(parsed)) return undefined;
+  return parsed;
 }
 
 function parseFloatInRange(
@@ -128,6 +159,35 @@ export function loadRuntimeConfig(): RuntimeConfig {
     minLoopMinutes,
     240
   );
+  const xApiDailyMaxUsd = parseFloatInRange(
+    process.env.X_API_DAILY_MAX_USD,
+    DEFAULT_X_API_COST_SETTINGS.dailyMaxUsd,
+    0.01,
+    100
+  );
+  const xApiEstimatedReadCostUsd = parseFloatInRange(
+    process.env.X_API_ESTIMATED_READ_COST_USD,
+    DEFAULT_X_API_COST_SETTINGS.estimatedReadCostUsd,
+    0.001,
+    10
+  );
+  const xApiEstimatedCreateCostUsd = parseFloatInRange(
+    process.env.X_API_ESTIMATED_CREATE_COST_USD,
+    DEFAULT_X_API_COST_SETTINGS.estimatedCreateCostUsd,
+    0.001,
+    10
+  );
+  const derivedDailyReadLimit = Math.max(1, Math.floor(xApiDailyMaxUsd / xApiEstimatedReadCostUsd));
+  const derivedDailyCreateLimit = Math.max(1, Math.floor(xApiDailyMaxUsd / xApiEstimatedCreateCostUsd));
+  const explicitReadLimit = parseOptionalInt(process.env.X_API_DAILY_READ_REQUEST_LIMIT);
+  const explicitCreateLimit = parseOptionalInt(process.env.X_API_DAILY_CREATE_REQUEST_LIMIT);
+  const xApiDailyReadRequestLimit = typeof explicitReadLimit === "number"
+    ? Math.min(1000, Math.max(1, explicitReadLimit))
+    : derivedDailyReadLimit;
+  const xApiDailyCreateRequestLimit = typeof explicitCreateLimit === "number"
+    ? Math.min(1000, Math.max(1, explicitCreateLimit))
+    : derivedDailyCreateLimit;
+
   const engagement: EngagementRuntimeSettings = {
     postGenerationMaxAttempts: parseIntInRange(
       process.env.POST_GENERATION_MAX_ATTEMPTS,
@@ -190,6 +250,35 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.topicBlockConsecutiveTag
     ),
   };
+  const xApiCost: XApiCostRuntimeSettings = {
+    enabled: parseBoolean(
+      process.env.X_API_COST_GUARD_ENABLED,
+      DEFAULT_X_API_COST_SETTINGS.enabled
+    ),
+    dailyMaxUsd: xApiDailyMaxUsd,
+    estimatedReadCostUsd: xApiEstimatedReadCostUsd,
+    estimatedCreateCostUsd: xApiEstimatedCreateCostUsd,
+    dailyReadRequestLimit: xApiDailyReadRequestLimit,
+    dailyCreateRequestLimit: xApiDailyCreateRequestLimit,
+    mentionReadMinIntervalMinutes: parseIntInRange(
+      process.env.X_MENTION_READ_MIN_INTERVAL_MINUTES,
+      DEFAULT_X_API_COST_SETTINGS.mentionReadMinIntervalMinutes,
+      0,
+      1440
+    ),
+    trendReadMinIntervalMinutes: parseIntInRange(
+      process.env.X_TREND_READ_MIN_INTERVAL_MINUTES,
+      DEFAULT_X_API_COST_SETTINGS.trendReadMinIntervalMinutes,
+      0,
+      1440
+    ),
+    createMinIntervalMinutes: parseIntInRange(
+      process.env.X_CREATE_MIN_INTERVAL_MINUTES,
+      DEFAULT_X_API_COST_SETTINGS.createMinIntervalMinutes,
+      0,
+      1440
+    ),
+  };
   const observability: ObservabilityRuntimeSettings = {
     enabled: parseBoolean(
       process.env.OBSERVABILITY_ENABLED,
@@ -214,6 +303,7 @@ export function loadRuntimeConfig(): RuntimeConfig {
     minLoopMinutes,
     maxLoopMinutes,
     engagement,
+    xApiCost,
     observability,
   };
 }

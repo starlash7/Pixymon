@@ -15,6 +15,18 @@ export interface EngagementRuntimeSettings {
   topicBlockConsecutiveTag: boolean;
 }
 
+export interface XApiCostRuntimeSettings {
+  enabled: boolean;
+  dailyMaxUsd: number;
+  estimatedReadCostUsd: number;
+  estimatedCreateCostUsd: number;
+  dailyReadRequestLimit: number;
+  dailyCreateRequestLimit: number;
+  mentionReadMinIntervalMinutes: number;
+  trendReadMinIntervalMinutes: number;
+  createMinIntervalMinutes: number;
+}
+
 export interface ObservabilityRuntimeSettings {
   enabled: boolean;
   stdoutJson: boolean;

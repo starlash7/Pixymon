@@ -4,6 +4,7 @@ import { RuntimeConfig } from "../config/runtime.js";
 import { memory } from "./memory.js";
 import { runDailyQuotaCycle, runDailyQuotaLoop } from "./engagement.js";
 import { TEST_MODE, getMentions } from "./twitter.js";
+import { xApiBudget } from "./x-api-budget.js";
 
 export function printStartupBanner(config: RuntimeConfig): void {
   console.log("▶ Pixymon 온라인.");
@@ -18,7 +19,10 @@ export function printStartupBanner(config: RuntimeConfig): void {
   console.log("=====================================\n");
 }
 
-export async function initializeMentionCursor(twitter: TwitterApi | null): Promise<void> {
+export async function initializeMentionCursor(
+  twitter: TwitterApi | null,
+  config: RuntimeConfig
+): Promise<void> {
   if (!twitter || TEST_MODE) return;
 
   const savedMentionId = memory.getLastProcessedMentionId();
@@ -29,6 +33,25 @@ export async function initializeMentionCursor(twitter: TwitterApi | null): Promi
   }
 
   console.log("[INIT] 첫 실행 - 기존 멘션 ID 확인 중...");
+  const mentionReadGuard = xApiBudget.checkReadAllowance({
+    enabled: config.xApiCost.enabled,
+    timezone: config.dailyTimezone,
+    dailyMaxUsd: config.xApiCost.dailyMaxUsd,
+    estimatedReadCostUsd: config.xApiCost.estimatedReadCostUsd,
+    dailyReadRequestLimit: config.xApiCost.dailyReadRequestLimit,
+    kind: "mentions-init",
+    minIntervalMinutes: config.xApiCost.mentionReadMinIntervalMinutes,
+  });
+  if (!mentionReadGuard.allowed) {
+    console.log("[INIT] 멘션 커서 초기화 스킵 (X read budget guard)");
+    return;
+  }
+
+  xApiBudget.recordRead({
+    timezone: config.dailyTimezone,
+    estimatedReadCostUsd: config.xApiCost.estimatedReadCostUsd,
+    kind: "mentions-init",
+  });
   const existingMentions = await getMentions(twitter);
   if (existingMentions.length > 0) {
     memory.setLastProcessedMentionId(existingMentions[0].id);
@@ -48,7 +71,7 @@ export async function runSchedulerMode(
   console.log("  └─ 고정 시간 크론 미사용 (자율 간격 루프)");
   console.log("=====================================\n");
 
-  await initializeMentionCursor(twitter);
+  await initializeMentionCursor(twitter, config);
 
   if (!twitter) {
     console.log("[WARN] Twitter 클라이언트 없음. 루프 시작 불가");
@@ -67,6 +90,7 @@ export async function runSchedulerMode(
     minLoopMinutes: config.minLoopMinutes,
     maxLoopMinutes: config.maxLoopMinutes,
     engagement: config.engagement,
+    xApiCost: config.xApiCost,
     observability: config.observability,
   });
 }
@@ -89,6 +113,7 @@ export async function runOneShotMode(
       timezone: config.dailyTimezone,
       maxActionsPerCycle: config.maxActionsPerCycle,
       engagement: config.engagement,
+      xApiCost: config.xApiCost,
       observability: config.observability,
     });
   } else {
