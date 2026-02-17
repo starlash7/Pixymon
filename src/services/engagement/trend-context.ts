@@ -1,7 +1,30 @@
 import { BlockchainNewsService, MarketData } from "../blockchain-news.js";
 import { memory } from "../memory.js";
 import { inferTopicTag, sanitizeTweetText } from "./quality.js";
-import { RecentPostRecord, TrendContext, TrendContextOptions } from "./types.js";
+import { RecentPostRecord, TrendContext, TrendContextOptions, TrendFocus } from "./types.js";
+
+const FOCUS_TOKEN_STOP_WORDS = new Set([
+  "today",
+  "crypto",
+  "market",
+  "markets",
+  "news",
+  "update",
+  "analysis",
+  "price",
+  "prices",
+  "token",
+  "blockchain",
+  "coin",
+  "coins",
+  "트렌딩",
+  "시장",
+  "뉴스",
+  "업데이트",
+  "분석",
+  "코인",
+  "토큰",
+]);
 
 export async function collectTrendContext(options: Partial<TrendContextOptions> = {}): Promise<TrendContext> {
   const newsService = new BlockchainNewsService();
@@ -72,6 +95,46 @@ export function pickPostAngle(timezone: string, recentPosts: RecentPostRecord[])
   return candidates[todayPosts % candidates.length];
 }
 
+export function pickTrendFocus(headlines: string[], recentPosts: RecentPostRecord[]): TrendFocus {
+  const normalizedRecent = recentPosts
+    .slice(-16)
+    .map((post) => sanitizeTweetText(post.content).toLowerCase())
+    .filter(Boolean);
+  const candidateHeadlines = headlines
+    .map((headline) => sanitizeTweetText(headline))
+    .filter((headline) => headline.length >= 8)
+    .slice(0, 8);
+
+  let best: { headline: string; tokens: string[]; score: number } | null = null;
+  for (const headline of candidateHeadlines) {
+    const tokens = extractHeadlineFocusTokens(headline);
+    if (tokens.length === 0) continue;
+    const overlapCount = tokens.filter((token) => normalizedRecent.some((post) => post.includes(token))).length;
+    const exactMentions = normalizedRecent.filter((post) => post.includes(headline.toLowerCase())).length;
+    const noveltyScore = tokens.length * 1.2 - overlapCount * 2.0 - exactMentions * 2.5;
+    if (!best || noveltyScore > best.score) {
+      best = { headline, tokens, score: noveltyScore };
+    }
+  }
+
+  if (best) {
+    return {
+      headline: best.headline,
+      requiredTokens: best.tokens.slice(0, 4),
+      reason: "novelty",
+    };
+  }
+
+  const fallbackHeadline =
+    candidateHeadlines[0] || "오늘은 온체인 유동성과 심리 지표 사이의 비대칭을 추적";
+  const fallbackTokens = extractHeadlineFocusTokens(fallbackHeadline);
+  return {
+    headline: fallbackHeadline,
+    requiredTokens: fallbackTokens.slice(0, 3),
+    reason: "fallback",
+  };
+}
+
 export function formatMarketAnchors(marketData: MarketData[]): string {
   if (marketData.length === 0) {
     return "- 실시간 마켓 앵커 없음 (구체 가격 숫자 언급 금지)";
@@ -86,14 +149,22 @@ export function formatMarketAnchors(marketData: MarketData[]): string {
     .join("\n");
 }
 
-export function buildFallbackPost(trend: TrendContext, postAngle: string, maxChars: number = 220): string | null {
+export function buildFallbackPost(
+  trend: TrendContext,
+  postAngle: string,
+  maxChars: number = 220,
+  focus?: TrendFocus | null
+): string | null {
   const angle = postAngle.replace(/\s+/g, " ").trim();
-  const headline = trend.headlines.find((item) => typeof item === "string" && item.trim().length > 0);
+  const headline =
+    focus?.headline || trend.headlines.find((item) => typeof item === "string" && item.trim().length > 0);
   const compactHeadline = headline ? headline.replace(/\s+/g, " ").trim().slice(0, 70) : "주요 시장 뉴스 업데이트";
   const marketLine = trend.marketData[0]
     ? `${trend.marketData[0].symbol} ${trend.marketData[0].change24h >= 0 ? "+" : ""}${trend.marketData[0].change24h.toFixed(1)}%`
     : "주요 코인 변동";
-  const keywordPool = trend.keywords.filter((item) => item && !item.startsWith("$"));
+  const keywordPool = focus?.requiredTokens?.length
+    ? focus.requiredTokens
+    : trend.keywords.filter((item) => item && !item.startsWith("$"));
   const keyword = keywordPool.length > 0 ? keywordPool[Math.floor(Math.random() * keywordPool.length)] : "온체인";
   const closingPool = [
     "지금은 심리보다 확인 신호를 더 보자.",
@@ -106,6 +177,21 @@ export function buildFallbackPost(trend: TrendContext, postAngle: string, maxCha
   const normalized = sanitizeTweetText(text);
   if (normalized.length < 40) return null;
   return normalized.slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
+}
+
+function extractHeadlineFocusTokens(headline: string): string[] {
+  const text = sanitizeTweetText(headline).toLowerCase();
+  const tickerTokens = text.match(/\$[a-z]{2,10}\b/g) || [];
+  const wordTokens = text.match(/[a-z][a-z0-9-]{2,}|[가-힣]{2,}/g) || [];
+
+  const merged = [...tickerTokens, ...wordTokens]
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+    .filter((token) => !FOCUS_TOKEN_STOP_WORDS.has(token))
+    .filter((token) => !/^\d+$/.test(token))
+    .slice(0, 10);
+
+  return [...new Set(merged)];
 }
 
 function extractKeywordsFromTitle(title: string): string[] {

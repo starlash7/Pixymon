@@ -23,7 +23,13 @@ import {
   ObservabilityRuntimeSettings,
   XApiCostRuntimeSettings,
 } from "../types/runtime.js";
-import { buildFallbackPost, collectTrendContext, formatMarketAnchors, pickPostAngle } from "./engagement/trend-context.js";
+import {
+  buildFallbackPost,
+  collectTrendContext,
+  formatMarketAnchors,
+  pickPostAngle,
+  pickTrendFocus,
+} from "./engagement/trend-context.js";
 import {
   buildAdaptivePolicy,
   clamp,
@@ -400,6 +406,13 @@ export async function postTrendUpdate(
     }
     const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
     const postAngle = pickPostAngle(timezone, recentBriefingPosts);
+    const trendFocus = pickTrendFocus(trend.headlines, recentBriefingPosts);
+    const focusTokensLine =
+      trendFocus.requiredTokens.length > 0 ? trendFocus.requiredTokens.join(", ") : "- 없음 (헤드라인 직접 반영)";
+    const localDateLabel = new Date().toLocaleDateString("ko-KR", { timeZone: timezone });
+    if (trendFocus.headline) {
+      console.log(`[POST] 포커스 헤드라인(${trendFocus.reason}): ${trendFocus.headline}`);
+    }
     const marketAnchors = formatMarketAnchors(trend.marketData);
     const qualityRules = resolveContentQualityRules({
       minPostLength: runtimeSettings.postMinLength,
@@ -440,8 +453,17 @@ ${packet.promptContext}
 트렌드 요약:
 ${trend.summary}
 
+오늘 날짜:
+${localDateLabel}
+
 우선 앵글:
 ${postAngle}
+
+오늘 포커스 헤드라인:
+${trendFocus.headline}
+
+포커스 키워드:
+${focusTokensLine}
 
 최근 작성 글 (반복 금지):
 ${recentContext}
@@ -460,6 +482,7 @@ ${rejectionFeedback || "없음"}
 - "시장 숫자 앵커"에 없는 가격 숫자는 쓰지 말 것
 - 앵커가 없으면 구체 가격 숫자 언급 금지
 - 최근 작성 글과 같은 전개/문장 구조 금지
+- "오늘 포커스 헤드라인"의 핵심어를 최소 1개 포함
 - 트윗 본문만 출력`
           : `Write one trend post for today with this context.
 
@@ -468,8 +491,17 @@ ${packet.promptContext}
 Trend summary:
 ${trend.summary}
 
+Local date:
+${localDateLabel}
+
 Preferred angle:
 ${postAngle}
+
+Today's focus headline:
+${trendFocus.headline}
+
+Focus tokens:
+${focusTokensLine}
 
 Recent posts (avoid repetition):
 ${recentContext}
@@ -488,6 +520,7 @@ Rules:
 - Do not cite price numbers outside "Market anchor numbers"
 - If anchors are empty, do not use specific price numbers
 - Avoid repeating recent narrative structure
+- Include at least one focus token or the focus headline wording
 - Output tweet text only`;
       const message = await claude.messages.create({
         model: CLAUDE_MODEL,
@@ -524,7 +557,14 @@ Rules:
         }
       }
 
-      const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingPosts, policy, qualityRules);
+      const quality = evaluatePostQuality(
+        candidate,
+        trend.marketData,
+        recentBriefingPosts,
+        policy,
+        qualityRules,
+        { requiredTrendTokens: trendFocus.requiredTokens }
+      );
       if (!quality.ok) {
         rejectionFeedback = quality.reason || "품질 게이트 미통과";
         latestFailReason = rejectionFeedback;
@@ -539,7 +579,7 @@ Rules:
     }
 
     if (!postText) {
-      let fallbackPost = buildFallbackPost(trend, postAngle, runtimeSettings.postMaxChars);
+      let fallbackPost = buildFallbackPost(trend, postAngle, runtimeSettings.postMaxChars, trendFocus);
       if (fallbackPost && detectLanguage(fallbackPost) !== runtimeSettings.postLanguage) {
         const rewrittenFallback = await rewriteByLanguage(
           claude,
@@ -557,7 +597,8 @@ Rules:
           trend.marketData,
           recentBriefingPosts,
           policy,
-          qualityRules
+          qualityRules,
+          { requiredTrendTokens: trendFocus.requiredTokens }
         );
         if (fallbackQuality.ok) {
           postText = fallbackPost;

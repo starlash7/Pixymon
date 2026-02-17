@@ -24,6 +24,12 @@ export interface TrendContext {
   newsSources: Array<{ key: string; trust: number }>;
 }
 
+export interface TrendFocus {
+  headline: string;
+  requiredTokens: string[];
+  reason: "novelty" | "fallback";
+}
+
 export interface ContentQualityCheck {
   ok: boolean;
   reason?: string;
@@ -33,6 +39,10 @@ export interface ContentQualityRules {
   minPostLength: number;
   topicMaxSameTag24h: number;
   topicBlockConsecutiveTag: boolean;
+}
+
+export interface PostQualityContext {
+  requiredTrendTokens?: string[];
 }
 
 export interface AdaptivePolicy {

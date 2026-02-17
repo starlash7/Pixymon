@@ -1,7 +1,13 @@
 import { MarketData } from "../blockchain-news.js";
 import { findNarrativeDuplicate, validateMarketConsistency } from "../content-guard.js";
 import { memory } from "../memory.js";
-import { AdaptivePolicy, ContentQualityCheck, ContentQualityRules, RecentPostRecord } from "./types.js";
+import {
+  AdaptivePolicy,
+  ContentQualityCheck,
+  ContentQualityRules,
+  PostQualityContext,
+  RecentPostRecord,
+} from "./types.js";
 
 const DEFAULT_CONTENT_QUALITY_RULES: ContentQualityRules = {
   minPostLength: 20,
@@ -56,7 +62,8 @@ export function evaluatePostQuality(
   marketData: MarketData[],
   recentPosts: RecentPostRecord[],
   policy: AdaptivePolicy,
-  rules: ContentQualityRules = DEFAULT_CONTENT_QUALITY_RULES
+  rules: ContentQualityRules = DEFAULT_CONTENT_QUALITY_RULES,
+  context: PostQualityContext = {}
 ): ContentQualityCheck {
   if (!text || text.length < rules.minPostLength) {
     return { ok: false, reason: "문장이 너무 짧음" };
@@ -119,6 +126,11 @@ export function evaluatePostQuality(
     if (sameTagCount >= rules.topicMaxSameTag24h) {
       return { ok: false, reason: `24h 내 동일 주제 과밀(${candidateTag})` };
     }
+  }
+
+  const requiredTrendTokens = normalizeRequiredTrendTokens(context.requiredTrendTokens);
+  if (requiredTrendTokens.length > 0 && !containsAnyTrendToken(text, requiredTrendTokens)) {
+    return { ok: false, reason: "트렌드 포커스 키워드 미반영" };
   }
 
   return { ok: true };
@@ -186,4 +198,22 @@ function motifSimilarity(a: Set<string>, b: Set<string>): number {
   const union = a.size + b.size - intersection;
   if (union <= 0) return 0;
   return intersection / union;
+}
+
+function normalizeRequiredTrendTokens(tokens: string[] | undefined): string[] {
+  if (!Array.isArray(tokens)) return [];
+  const normalized = tokens
+    .map((token) => String(token || "").trim().toLowerCase())
+    .filter((token) => token.length >= 2);
+  return [...new Set(normalized)].slice(0, 8);
+}
+
+function containsAnyTrendToken(text: string, requiredTrendTokens: string[]): boolean {
+  if (!requiredTrendTokens.length) return true;
+  const normalizedText = sanitizeTweetText(text).toLowerCase();
+  return requiredTrendTokens.some((token) => {
+    if (normalizedText.includes(token)) return true;
+    if (token.startsWith("$") && normalizedText.includes(token.slice(1))) return true;
+    return false;
+  });
 }

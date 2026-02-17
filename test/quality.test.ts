@@ -53,3 +53,42 @@ test("evaluatePostQuality rejects repeated structure patterns", () => {
   assert.equal(result.ok, false);
   assert.match(String(result.reason || ""), /(서두 구조 반복|마무리 패턴 반복|모티프 반복|중복)/);
 });
+
+test("evaluatePostQuality requires trend focus token when configured", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const recentPosts: Array<{ content: string; timestamp: string }> = [
+    {
+      content: "L2 수수료가 낮아지고 거래량이 늘어나는지 관찰 중.",
+      timestamp: new Date().toISOString(),
+    },
+  ];
+
+  const missingFocus = evaluatePostQuality(
+    "오늘 온체인 유동성은 증가했지만 가격 반응은 제한적이다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    }),
+    { requiredTrendTokens: ["rocket", "pool"] }
+  );
+
+  assert.equal(missingFocus.ok, false);
+  assert.equal(missingFocus.reason, "트렌드 포커스 키워드 미반영");
+
+  const withFocus = evaluatePostQuality(
+    "Rocket Pool 트렌딩이 다시 올라오면서 온체인 유동성 해석이 갈린다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    }),
+    { requiredTrendTokens: ["rocket", "pool"] }
+  );
+
+  assert.equal(withFocus.ok, true);
+});
