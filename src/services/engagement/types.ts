@@ -1,5 +1,5 @@
 import { MarketData } from "../blockchain-news.js";
-import { EngagementRuntimeSettings } from "../../types/runtime.js";
+import { EngagementRuntimeSettings, ObservabilityRuntimeSettings } from "../../types/runtime.js";
 
 export interface DailyQuotaOptions {
   dailyTarget?: number;
@@ -8,6 +8,7 @@ export interface DailyQuotaOptions {
   minLoopMinutes?: number;
   maxLoopMinutes?: number;
   engagement?: Partial<EngagementRuntimeSettings>;
+  observability?: Partial<ObservabilityRuntimeSettings>;
 }
 
 export interface TrendContext {
@@ -53,4 +54,15 @@ export interface TrendTweetSearchRules {
   minSourceTrust: number;
   minScore: number;
   minEngagement: number;
+}
+
+export interface CycleCacheMetrics {
+  cognitiveHits: number;
+  cognitiveMisses: number;
+  runContextHits: number;
+  runContextMisses: number;
+  trendContextHits: number;
+  trendContextMisses: number;
+  trendTweetsHits: number;
+  trendTweetsMisses: number;
 }

@@ -1,7 +1,6 @@
 import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
-import { INFLUENCER_ACCOUNTS } from "../config/influencers.js";
 import {
   CLAUDE_MODEL,
   CLAUDE_RESEARCH_MODEL,
@@ -62,65 +61,6 @@ export function initTwitterClient(): TwitterApi | null {
     accessToken: process.env.TWITTER_ACCESS_TOKEN!,
     accessSecret: process.env.TWITTER_ACCESS_SECRET!,
   });
-}
-
-// 특정 유저의 최근 트윗 가져오기
-export async function getUserTweets(twitter: TwitterApi, username: string, count: number = 5): Promise<any[]> {
-  try {
-    const user = await twitter.v2.userByUsername(username);
-    if (!user.data) {
-      console.log(`[WARN] @${username} 유저를 찾을 수 없음`);
-      return [];
-    }
-
-    // Twitter API v2는 max_results 최소 5 필요
-    const tweets = await twitter.v2.userTimeline(user.data.id, {
-      max_results: Math.max(5, count),
-      "tweet.fields": ["created_at", "text"],
-      exclude: ["retweets", "replies"],
-    });
-
-    // 요청한 수만큼만 반환
-    const data = tweets.data?.data || [];
-    return data.slice(0, count);
-  } catch (error: any) {
-    // 에러 상세 로그 (디버깅용)
-    if (error.code === 400) {
-      console.log(`  [SKIP] @${username} (API 제한)`);
-    } else {
-      console.log(`  [SKIP] @${username}`);
-    }
-    return [];
-  }
-}
-
-// 인플루언서들의 최근 트윗 수집 (랜덤 샘플링)
-export async function getInfluencerTweets(twitter: TwitterApi, sampleSize: number = 10): Promise<string> {
-  console.log(`[INTEL] 인플루언서 트윗 수집 중... (${sampleSize}개 샘플링)\n`);
-
-  // 랜덤 샘플링 (rate limit 방지)
-  const shuffled = [...INFLUENCER_ACCOUNTS];
-  shuffleInPlace(shuffled);
-  const sampled = shuffled.slice(0, sampleSize);
-
-  const allTweets: string[] = [];
-
-  for (const account of sampled) {
-    try {
-      const tweets = await getUserTweets(twitter, account, 1);
-      if (tweets.length > 0) {
-        const recentTweet = tweets[0];
-        allTweets.push(`@${account}: ${recentTweet.text.substring(0, 200)}`);
-        console.log(`  [OK] @${account}`);
-      }
-      // Rate limit 방지
-      await sleep(500);
-    } catch (error) {
-      console.log(`  [SKIP] @${account}`);
-    }
-  }
-
-  return allTweets.join("\n\n");
 }
 
 // 멘션 가져오기
@@ -490,13 +430,6 @@ function blendXSourceTrust(baseTrust: number, verified: boolean, followersCount:
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
-}
-
-function shuffleInPlace<T>(items: T[]): void {
-  for (let i = items.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [items[i], items[j]] = [items[j], items[i]];
-  }
 }
 
 // 트윗 발행 (Twitter API v2 only)

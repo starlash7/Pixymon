@@ -1,4 +1,9 @@
-import { ContentLanguage, EngagementRuntimeSettings, ReplyLanguageMode } from "../types/runtime.js";
+import {
+  ContentLanguage,
+  EngagementRuntimeSettings,
+  ObservabilityRuntimeSettings,
+  ReplyLanguageMode,
+} from "../types/runtime.js";
 
 export interface RuntimeConfig {
   schedulerMode: boolean;
@@ -8,6 +13,7 @@ export interface RuntimeConfig {
   minLoopMinutes: number;
   maxLoopMinutes: number;
   engagement: EngagementRuntimeSettings;
+  observability: ObservabilityRuntimeSettings;
 }
 
 const DEFAULT_DAILY_ACTIVITY_TARGET = 20;
@@ -15,6 +21,7 @@ const DEFAULT_DAILY_TIMEZONE = "Asia/Seoul";
 const DEFAULT_MAX_ACTIONS_PER_CYCLE = 4;
 const DEFAULT_MIN_LOOP_MINUTES = 25;
 const DEFAULT_MAX_LOOP_MINUTES = 70;
+const DEFAULT_OBSERVABILITY_EVENT_LOG_PATH = "data/metrics-events.ndjson";
 
 export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postGenerationMaxAttempts: 2,
@@ -28,6 +35,12 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   minTrendTweetEngagement: 6,
   topicMaxSameTag24h: 3,
   topicBlockConsecutiveTag: true,
+};
+
+export const DEFAULT_OBSERVABILITY_SETTINGS: ObservabilityRuntimeSettings = {
+  enabled: true,
+  stdoutJson: true,
+  eventLogPath: DEFAULT_OBSERVABILITY_EVENT_LOG_PATH,
 };
 
 function parseIntInRange(
@@ -79,6 +92,13 @@ function parseReplyLanguageMode(raw: string | undefined, fallback: ReplyLanguage
     return "match";
   }
   return fallback;
+}
+
+function parseNonEmptyString(raw: string | undefined, fallback: string, maxLength: number = 200): string {
+  if (typeof raw !== "string") return fallback;
+  const normalized = raw.trim();
+  if (!normalized) return fallback;
+  return normalized.slice(0, maxLength);
 }
 
 export function loadRuntimeConfig(): RuntimeConfig {
@@ -170,6 +190,21 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.topicBlockConsecutiveTag
     ),
   };
+  const observability: ObservabilityRuntimeSettings = {
+    enabled: parseBoolean(
+      process.env.OBSERVABILITY_ENABLED,
+      DEFAULT_OBSERVABILITY_SETTINGS.enabled
+    ),
+    stdoutJson: parseBoolean(
+      process.env.OBSERVABILITY_STDOUT_JSON,
+      DEFAULT_OBSERVABILITY_SETTINGS.stdoutJson
+    ),
+    eventLogPath: parseNonEmptyString(
+      process.env.OBSERVABILITY_EVENT_LOG_PATH,
+      DEFAULT_OBSERVABILITY_SETTINGS.eventLogPath,
+      400
+    ),
+  };
 
   return {
     schedulerMode,
@@ -179,5 +214,6 @@ export function loadRuntimeConfig(): RuntimeConfig {
     minLoopMinutes,
     maxLoopMinutes,
     engagement,
+    observability,
   };
 }

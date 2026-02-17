@@ -67,6 +67,7 @@ export async function runSchedulerMode(
     minLoopMinutes: config.minLoopMinutes,
     maxLoopMinutes: config.maxLoopMinutes,
     engagement: config.engagement,
+    observability: config.observability,
   });
 }
 
@@ -88,6 +89,7 @@ export async function runOneShotMode(
       timezone: config.dailyTimezone,
       maxActionsPerCycle: config.maxActionsPerCycle,
       engagement: config.engagement,
+      observability: config.observability,
     });
   } else {
     console.log("[WARN] Twitter 클라이언트 없음. 일회성 사이클 건너뜀");

@@ -14,3 +14,9 @@ export interface EngagementRuntimeSettings {
   topicMaxSameTag24h: number;
   topicBlockConsecutiveTag: boolean;
 }
+
+export interface ObservabilityRuntimeSettings {
+  enabled: boolean;
+  stdoutJson: boolean;
+  eventLogPath: string;
+}
