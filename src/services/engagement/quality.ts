@@ -15,6 +15,22 @@ const DEFAULT_CONTENT_QUALITY_RULES: ContentQualityRules = {
   topicBlockConsecutiveTag: true,
 };
 
+const SIGNAL_LANE_PRIORITY = [
+  "sentiment-fear",
+  "sentiment-greed",
+  "stable-flow",
+  "whale-flow",
+  "exchange-flow",
+  "onchain",
+  "btc",
+  "eth",
+  "sol",
+  "divergence",
+  "turning-point",
+  "question-ending",
+  "observation-ending",
+];
+
 export function resolveContentQualityRules(raw?: Partial<ContentQualityRules>): ContentQualityRules {
   return {
     minPostLength: clampInt(raw?.minPostLength, 10, 120, DEFAULT_CONTENT_QUALITY_RULES.minPostLength),
@@ -96,6 +112,17 @@ export function evaluatePostQuality(
       return { ok: false, reason: "핵심 서사 모티프 반복" };
     }
   }
+  const recentWithin24 = recentPosts.filter((post) => isWithinHours(post.timestamp, 24));
+  const candidateLane = buildSignalLane(text, candidateMotifs);
+  if (candidateLane && recentWithin24.length > 0) {
+    const sameLaneCount = recentWithin24.filter((post) => {
+      const lane = buildSignalLane(post.content);
+      return lane && lane === candidateLane;
+    }).length;
+    if (sameLaneCount >= 1) {
+      return { ok: false, reason: `동일 시그널 레인 반복(${candidateLane})` };
+    }
+  }
 
   const normalized = sanitizeTweetText(text).slice(0, 24);
   if (normalized && recentPostTexts.some((item) => sanitizeTweetText(item).slice(0, 24) === normalized)) {
@@ -114,7 +141,6 @@ export function evaluatePostQuality(
     }
   }
 
-  const recentWithin24 = recentPosts.filter((post) => isWithinHours(post.timestamp, 24));
   if (recentWithin24.length > 0) {
     const candidateTag = inferTopicTag(text);
     const recentTags = recentWithin24.map((post) => inferTopicTag(post.content));
@@ -177,14 +203,19 @@ function normalizeNarrativeStructure(text: string): string {
 function extractNarrativeMotifs(text: string): Set<string> {
   const lower = sanitizeTweetText(text).toLowerCase();
   const motifs: string[] = [];
-  if (/fear|greed|fgi|극공포|공포\s*지수/.test(lower)) motifs.push("sentiment-fear");
+  if (/fear|fgi|극공포|공포\s*지수/.test(lower)) motifs.push("sentiment-fear");
+  if (/greed|탐욕/.test(lower)) motifs.push("sentiment-greed");
   if (/stable|스테이블|유동성/.test(lower)) motifs.push("stable-flow");
   if (/고래|whale|대형\s*주소/.test(lower)) motifs.push("whale-flow");
+  if (/거래소|exchange\s*flow|netflow|순유입|순유출/.test(lower)) motifs.push("exchange-flow");
   if (/\$btc|bitcoin|비트코인/.test(lower)) motifs.push("btc");
+  if (/\$eth|ethereum|이더/.test(lower)) motifs.push("eth");
+  if (/\$sol|solana|솔라나/.test(lower)) motifs.push("sol");
   if (/onchain|온체인|멤풀|수수료/.test(lower)) motifs.push("onchain");
   if (/괴리|비동기|엇갈/.test(lower)) motifs.push("divergence");
   if (/바닥|반등|데드캣|함정|불트랩|베어트랩/.test(lower)) motifs.push("turning-point");
   if (/\?$|일까|어떻게\s*봐|어떻게\s*읽/.test(lower)) motifs.push("question-ending");
+  if (!/\?$|일까|어떻게\s*봐|어떻게\s*읽/.test(lower)) motifs.push("observation-ending");
 
   return new Set(motifs);
 }
@@ -198,6 +229,14 @@ function motifSimilarity(a: Set<string>, b: Set<string>): number {
   const union = a.size + b.size - intersection;
   if (union <= 0) return 0;
   return intersection / union;
+}
+
+function buildSignalLane(text: string, motifsInput?: Set<string>): string | null {
+  const motifs = motifsInput || extractNarrativeMotifs(text);
+  if (motifs.size === 0) return null;
+  const ordered = SIGNAL_LANE_PRIORITY.filter((key) => motifs.has(key)).slice(0, 4);
+  if (ordered.length === 0) return null;
+  return ordered.join("|");
 }
 
 function normalizeRequiredTrendTokens(tokens: string[] | undefined): string[] {

@@ -4,6 +4,7 @@ import { REPLY_TONE_MODE, initClaudeClient } from "./services/llm.js";
 import { validateEnvironment, initTwitterClient } from "./services/twitter.js";
 import { loadRuntimeConfig } from "./config/runtime.js";
 import { printStartupBanner, runOneShotMode, runSchedulerMode } from "./services/runtime.js";
+import { acquireRuntimeLock, registerRuntimeLockCleanup } from "./services/process-lock.js";
 
 /**
  * Pixymon AI Agent - 메인 진입점
@@ -16,6 +17,15 @@ const runtimeConfig = loadRuntimeConfig();
 
 // 메인 실행
 async function main() {
+  const lock = acquireRuntimeLock();
+  if (!lock.acquired) {
+    const pidText = lock.existingPid ? ` (pid=${lock.existingPid})` : "";
+    console.error(`[LOCK] 실행 중단: 다른 인스턴스가 이미 실행 중${pidText}`);
+    process.exit(1);
+  }
+  registerRuntimeLockCleanup(lock);
+  console.log(`[LOCK] 런타임 락 획득: ${lock.lockPath}`);
+
   printStartupBanner(runtimeConfig);
 
   validateEnvironment();

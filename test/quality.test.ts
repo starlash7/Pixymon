@@ -92,3 +92,27 @@ test("evaluatePostQuality requires trend focus token when configured", () => {
 
   assert.equal(withFocus.ok, true);
 });
+
+test("evaluatePostQuality rejects same signal lane even with short phrasing", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const recentPosts: Array<{ content: string; timestamp: string }> = [
+    {
+      content: "스테이블코인 유입이 꾸준히 늘고 있는 구간이다.",
+      timestamp: new Date().toISOString(),
+    },
+  ];
+
+  const result = evaluatePostQuality(
+    "스테이블 자금이 계속 들어오면서 단기 반응이 제한되는 모습이다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "동일 시그널 레인 반복(stable-flow|observation-ending)");
+});

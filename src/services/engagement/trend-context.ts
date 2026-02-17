@@ -24,6 +24,23 @@ const FOCUS_TOKEN_STOP_WORDS = new Set([
   "분석",
   "코인",
   "토큰",
+  "btc",
+  "bitcoin",
+  "eth",
+  "ethereum",
+  "sol",
+  "solana",
+  "fear",
+  "greed",
+  "fgi",
+  "공포",
+  "탐욕",
+  "지수",
+  "온체인",
+  "유동성",
+  "스테이블",
+  "고래",
+  "수수료",
 ]);
 
 export async function collectTrendContext(options: Partial<TrendContextOptions> = {}): Promise<TrendContext> {
@@ -118,9 +135,10 @@ export function pickTrendFocus(headlines: string[], recentPosts: RecentPostRecor
   }
 
   if (best) {
+    const novelTokens = selectNovelTokens(best.tokens, normalizedRecent);
     return {
       headline: best.headline,
-      requiredTokens: best.tokens.slice(0, 4),
+      requiredTokens: (novelTokens.length > 0 ? novelTokens : best.tokens).slice(0, 4),
       reason: "novelty",
     };
   }
@@ -128,9 +146,10 @@ export function pickTrendFocus(headlines: string[], recentPosts: RecentPostRecor
   const fallbackHeadline =
     candidateHeadlines[0] || "오늘은 온체인 유동성과 심리 지표 사이의 비대칭을 추적";
   const fallbackTokens = extractHeadlineFocusTokens(fallbackHeadline);
+  const fallbackNovelTokens = selectNovelTokens(fallbackTokens, normalizedRecent);
   return {
     headline: fallbackHeadline,
-    requiredTokens: fallbackTokens.slice(0, 3),
+    requiredTokens: (fallbackNovelTokens.length > 0 ? fallbackNovelTokens : fallbackTokens).slice(0, 3),
     reason: "fallback",
   };
 }
@@ -192,6 +211,12 @@ function extractHeadlineFocusTokens(headline: string): string[] {
     .slice(0, 10);
 
   return [...new Set(merged)];
+}
+
+function selectNovelTokens(tokens: string[], recentTexts: string[]): string[] {
+  if (tokens.length === 0) return [];
+  const novel = tokens.filter((token) => !recentTexts.some((text) => text.includes(token)));
+  return [...new Set(novel)];
 }
 
 function extractKeywordsFromTitle(title: string): string[] {
