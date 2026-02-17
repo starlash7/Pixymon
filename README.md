@@ -1,7 +1,7 @@
 # Pixymon
 
 온체인 데이터를 먹고 성장하는 캐릭터형 X(Twitter) 에이전트입니다.
-Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 인플루언서 인게이지먼트 + 메모리 기반 컨텍스트 유지**를 중심으로 동작합니다.
+Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 트렌드 인게이지먼트 + 메모리 기반 컨텍스트 유지**를 중심으로 동작합니다.
 
 [![Twitter](https://img.shields.io/badge/Twitter-@Pixy__mon-1DA1F2?style=flat&logo=twitter)](https://twitter.com/Pixy_mon)
 [![Claude](https://img.shields.io/badge/Claude-Sonnet_4.5-D97706?style=flat-square)](https://www.anthropic.com/)
@@ -33,9 +33,9 @@ Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 인플루�
 - 실패 시 커서를 앞당기지 않도록 설계되어 멘션 유실 위험 완화
 
 ### 2.2 프로액티브 인게이지먼트
-- 인플루언서 풀(`src/config/influencers.ts`)에서 샘플링
-- 계정별 1회 제한, 이미 답글 단 트윗 skip
-- 일일 한도(`TEST_MODE` 50 / 실운영 10) 적용
+- 트렌드 키워드 기반 X 검색 결과를 점수화해 후보 선정
+- 이미 답글 단 트윗/저신뢰 소스/저신호 텍스트 자동 제외
+- 일일 활동 목표와 적응형 정책을 함께 반영
 - 한국어/영어 감지 후 프롬프트 분기
 
 ### 2.3 메모리 시스템
@@ -43,17 +43,19 @@ Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 인플루�
 - 저장 항목: 트윗 로그, 코인 언급/예측, 팔로워 상호작용, 마지막 멘션 커서, 이미 댓글 단 트윗 목록
 - 최근 발화 유사도(Jaccard) 기반 중복 문장 방지
 
-### 2.4 브리핑 파이프라인 (모듈 존재)
-- `src/services/briefing.ts`에 구현되어 있으며, 현재 엔트리포인트에서는 스케줄 호출 비활성화
-- CoinGecko/CryptoCompare/Fear&Greed/인플루언서 컨텍스트를 합성해 요약 생성 가능
+### 2.4 운영 관측성
+- 사이클 단위 메트릭을 구조화 JSON으로 출력
+- `data/metrics-events.ndjson`에 이벤트 로그를 누적해 사후 분석 가능
+- 핵심 지표: `post_fail_reason`, `retry_count`, `fallback_rate`, `cache hit/miss`
 
 ## 3. 아키텍처
 
 ### 3.1 실행 계층
-- `src/index.ts`: 엔트리포인트, 모드 분기, 크론 스케줄
+- `src/index.ts`: 엔트리포인트, 모드 분기, 자율 루프 실행
 - `src/services/twitter.ts`: Twitter API 연동, 멘션/답글/게시, rate limit 재시도
 - `src/services/llm.ts`: 시스템 프롬프트 구성 및 Claude 호출
-- `src/services/engagement.ts`: 멘션 응답/인플루언서 댓글 오케스트레이션
+- `src/services/engagement.ts`: 멘션 응답/트렌드 댓글/트렌드 글 오케스트레이션
+- `src/services/observability.ts`: 사이클 메트릭 이벤트 출력/파일 기록
 - `src/services/memory.ts`: 로컬 상태 저장소
 
 ### 3.2 데이터/리서치 계층 (확장 모듈)
@@ -88,7 +90,7 @@ Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 인플루�
 - Language: TypeScript (`strict`, `NodeNext`)
 - LLM SDK: `@anthropic-ai/sdk`
 - Social API: `twitter-api-v2`
-- Scheduler: `node-cron`
+- Scheduler: 내부 루프 타이머 (`runDailyQuotaLoop`)
 - Config: `dotenv`
 
 ## 6. 데이터 소스
@@ -165,6 +167,11 @@ TREND_TWEET_MIN_SCORE=3.2
 TREND_TWEET_MIN_ENGAGEMENT=6
 TOPIC_MAX_SAME_TAG_24H=3
 TOPIC_BLOCK_CONSECUTIVE_TAG=true
+
+# Observability
+OBSERVABILITY_ENABLED=true
+OBSERVABILITY_STDOUT_JSON=true
+OBSERVABILITY_EVENT_LOG_PATH=data/metrics-events.ndjson
 NODE_ENV=development
 LOG_LEVEL=info
 ```
@@ -177,6 +184,10 @@ LOG_LEVEL=info
 npm run build
 ```
 
+```bash
+npm test
+```
+
 - 출력 경로: `dist/`
 - `tsconfig` 옵션: declaration/source map 포함
 
@@ -186,21 +197,20 @@ npm run build
 src/
 ├── index.ts
 ├── character.ts
-├── config/
-│   └── influencers.ts
 ├── services/
 │   ├── blockchain-news.ts
-│   ├── briefing.ts
 │   ├── engagement.ts
 │   ├── llm.ts
 │   ├── memory.ts
 │   ├── onchain-data.ts
+│   ├── observability.ts
 │   ├── reflection.ts
 │   ├── research-engine.ts
 │   └── twitter.ts
 ├── types/
 │   ├── agent.ts
-│   └── index.ts
+│   ├── index.ts
+│   └── runtime.ts
 └── utils/
     └── mood.ts
 ```

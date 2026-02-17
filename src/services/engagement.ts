@@ -12,8 +12,8 @@ import {
 import { getMentions, postTweet, replyToMention, searchRecentTrendTweets, TEST_MODE, sleep } from "./twitter.js";
 import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { detectLanguage } from "../utils/mood.js";
-import { DEFAULT_ENGAGEMENT_SETTINGS } from "../config/runtime.js";
-import { ContentLanguage, EngagementRuntimeSettings } from "../types/runtime.js";
+import { DEFAULT_ENGAGEMENT_SETTINGS, DEFAULT_OBSERVABILITY_SETTINGS } from "../config/runtime.js";
+import { ContentLanguage, EngagementRuntimeSettings, ObservabilityRuntimeSettings } from "../types/runtime.js";
 import { buildFallbackPost, collectTrendContext, formatMarketAnchors, pickPostAngle } from "./engagement/trend-context.js";
 import {
   buildAdaptivePolicy,
@@ -29,8 +29,9 @@ import {
   resolveContentQualityRules,
   sanitizeTweetText,
 } from "./engagement/quality.js";
-import { AdaptivePolicy, DailyQuotaOptions, TrendContext } from "./engagement/types.js";
+import { AdaptivePolicy, CycleCacheMetrics, DailyQuotaOptions, TrendContext } from "./engagement/types.js";
 import { CognitiveObjective, CognitiveRunContext } from "../types/agent.js";
+import { emitCycleObservability } from "./observability.js";
 
 const DEFAULT_TIMEZONE = "Asia/Seoul";
 const DEFAULT_MIN_LOOP_MINUTES = 25;
@@ -46,23 +47,12 @@ interface CachedTrendTweets {
   data: any[];
 }
 
-interface CacheMetrics {
-  cognitiveHits: number;
-  cognitiveMisses: number;
-  runContextHits: number;
-  runContextMisses: number;
-  trendContextHits: number;
-  trendContextMisses: number;
-  trendTweetsHits: number;
-  trendTweetsMisses: number;
-}
-
 interface EngagementCycleCache {
   cognitive?: FiveLayerCognitiveEngine;
   runContexts: Partial<Record<CognitiveObjective, CognitiveRunContext>>;
   trendContext?: CachedTrendContext;
   trendTweets?: CachedTrendTweets;
-  cacheMetrics: CacheMetrics;
+  cacheMetrics: CycleCacheMetrics;
 }
 
 // 멘션 체크 및 응답
@@ -559,16 +549,41 @@ export async function runDailyQuotaCycle(
   const timezone = options.timezone || DEFAULT_TIMEZONE;
   const maxActions = clamp(options.maxActionsPerCycle ?? 3, 1, 10);
   const runtimeSettings = resolveEngagementSettings(options.engagement);
+  const observabilitySettings = resolveObservabilitySettings(options.observability);
   const cycleCache: EngagementCycleCache = {
     runContexts: {},
     cacheMetrics: createEmptyCacheMetrics(),
+  };
+  const finalize = (
+    executed: number,
+    remaining: number,
+    policy: AdaptivePolicy
+  ): { target: number; remaining: number; executed: number } => {
+    const normalizedRemaining = Math.max(0, remaining);
+    logCacheMetrics(cycleCache);
+    emitCycleObservability(
+      {
+        timezone,
+        target,
+        executed,
+        remaining: normalizedRemaining,
+        policy,
+        runtimeSettings,
+        cacheMetrics: cycleCache.cacheMetrics,
+      },
+      observabilitySettings
+    );
+    return {
+      target,
+      remaining: normalizedRemaining,
+      executed,
+    };
   };
 
   let remaining = target - memory.getTodayActivityCount(timezone);
   if (remaining <= 0) {
     console.log(`[QUOTA] 오늘 목표 ${target}개 달성 완료`);
-    logCacheMetrics(cycleCache);
-    return { target, remaining: 0, executed: 0 };
+    return finalize(0, 0, getDefaultAdaptivePolicy());
   }
 
   console.log(`[QUOTA] 오늘 활동 ${target - remaining}/${target}, 이번 사이클 최대 ${maxActions}개`);
@@ -587,8 +602,7 @@ export async function runDailyQuotaCycle(
 
   remaining = target - memory.getTodayActivityCount(timezone);
   if (remaining <= 0 || executed >= maxActions) {
-    logCacheMetrics(cycleCache);
-    return { target, remaining: Math.max(0, remaining), executed };
+    return finalize(executed, remaining, adaptivePolicy);
   }
 
   const postGoal = Math.max(3, Math.floor(target * 0.25));
@@ -640,8 +654,7 @@ export async function runDailyQuotaCycle(
     remaining = target - memory.getTodayActivityCount(timezone);
   }
 
-  logCacheMetrics(cycleCache);
-  return { target, remaining: Math.max(0, remaining), executed };
+  return finalize(executed, remaining, adaptivePolicy);
 }
 
 export async function runDailyQuotaLoop(
@@ -823,7 +836,7 @@ function isClose(a: number, b: number): boolean {
   return Math.abs(a - b) <= 0.0001;
 }
 
-function createEmptyCacheMetrics(): CacheMetrics {
+function createEmptyCacheMetrics(): CycleCacheMetrics {
   return {
     cognitiveHits: 0,
     cognitiveMisses: 0,
@@ -908,6 +921,25 @@ function resolveEngagementSettings(
       typeof settings.topicBlockConsecutiveTag === "boolean"
         ? settings.topicBlockConsecutiveTag
         : DEFAULT_ENGAGEMENT_SETTINGS.topicBlockConsecutiveTag,
+  };
+}
+
+function resolveObservabilitySettings(
+  settings: Partial<ObservabilityRuntimeSettings> = {}
+): ObservabilityRuntimeSettings {
+  return {
+    enabled:
+      typeof settings.enabled === "boolean"
+        ? settings.enabled
+        : DEFAULT_OBSERVABILITY_SETTINGS.enabled,
+    stdoutJson:
+      typeof settings.stdoutJson === "boolean"
+        ? settings.stdoutJson
+        : DEFAULT_OBSERVABILITY_SETTINGS.stdoutJson,
+    eventLogPath:
+      typeof settings.eventLogPath === "string" && settings.eventLogPath.trim().length > 0
+        ? settings.eventLogPath.trim()
+        : DEFAULT_OBSERVABILITY_SETTINGS.eventLogPath,
   };
 }
 
