@@ -38,11 +38,16 @@ export interface ContentQualityCheck {
 export interface ContentQualityRules {
   minPostLength: number;
   topicMaxSameTag24h: number;
+  sentimentMaxRatio24h: number;
   topicBlockConsecutiveTag: boolean;
 }
 
 export interface PostQualityContext {
   requiredTrendTokens?: string[];
+  fearGreedEvent?: {
+    required: boolean;
+    isEvent: boolean;
+  };
 }
 
 export interface AdaptivePolicy {

@@ -101,10 +101,17 @@ interface SignalFingerprintRecord {
   capturedAt: string;
 }
 
+interface FearGreedHistoryRecord {
+  value: number;
+  label?: string;
+  capturedAt: string;
+}
+
 interface QualityTelemetry {
   postGenerationByDate: Record<string, PostGenerationMetrics>;
   sourceTrust: Record<string, SourceTrustRecord>;
   signalFingerprints: SignalFingerprintRecord[];
+  fearGreedHistory: FearGreedHistoryRecord[];
 }
 
 interface MemoryData {
@@ -135,6 +142,7 @@ function createEmptyQualityTelemetry(): QualityTelemetry {
     postGenerationByDate: {},
     sourceTrust: {},
     signalFingerprints: [],
+    fearGreedHistory: [],
   };
 }
 
@@ -314,11 +322,13 @@ export class MemoryService {
     const postGenerationByDate = this.normalizePostGenerationByDate(telemetry.postGenerationByDate);
     const sourceTrust = this.normalizeSourceTrustMap(telemetry.sourceTrust);
     const signalFingerprints = this.normalizeSignalFingerprints(telemetry.signalFingerprints);
+    const fearGreedHistory = this.normalizeFearGreedHistory(telemetry.fearGreedHistory);
 
     return {
       postGenerationByDate,
       sourceTrust,
       signalFingerprints,
+      fearGreedHistory,
     };
   }
 
@@ -396,6 +406,25 @@ export class MemoryService {
         signature,
         context: typeof row.context === "string" && row.context.trim() ? row.context.trim().slice(0, 180) : undefined,
         capturedAt,
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime())
+      .slice(-500);
+  }
+
+  private normalizeFearGreedHistory(raw: unknown): FearGreedHistoryRecord[] {
+    if (!Array.isArray(raw)) return [];
+    const output: FearGreedHistoryRecord[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<FearGreedHistoryRecord>;
+      const value = this.clampInt(row.value, 0, 100, -1);
+      if (value < 0) continue;
+      output.push({
+        value,
+        label: typeof row.label === "string" && row.label.trim() ? row.label.trim().slice(0, 40) : undefined,
+        capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : new Date().toISOString(),
       });
     }
     return output
@@ -852,6 +881,34 @@ export class MemoryService {
     return this.data.qualityTelemetry.signalFingerprints.slice(-size);
   }
 
+  recordFearGreedPoint(value: number, label?: string): void {
+    const normalized = this.clampInt(value, 0, 100, -1);
+    if (normalized < 0) return;
+    this.data.qualityTelemetry.fearGreedHistory.push({
+      value: normalized,
+      label: typeof label === "string" && label.trim() ? label.trim().slice(0, 40) : undefined,
+      capturedAt: new Date().toISOString(),
+    });
+    this.compactFearGreedHistory(500, 21);
+    this.save();
+  }
+
+  getLatestFearGreedPoint(withinHours: number = 72): FearGreedHistoryRecord | null {
+    const hours = this.clamp(Number.isFinite(withinHours) ? withinHours : 72, 1, 720);
+    const threshold = Date.now() - hours * 60 * 60 * 1000;
+    const history = this.data.qualityTelemetry.fearGreedHistory;
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      const item = history[i];
+      const ts = new Date(item.capturedAt).getTime();
+      if (!Number.isFinite(ts)) continue;
+      if (ts >= threshold) {
+        return item;
+      }
+      break;
+    }
+    return null;
+  }
+
   getSourceTrustScore(sourceKey: string, fallback: number = 0.5): number {
     const key = this.normalizeSourceKey(sourceKey);
     if (!key) return this.clamp(fallback, 0.05, 0.95);
@@ -1061,6 +1118,19 @@ export class MemoryService {
       })
       .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
     this.data.qualityTelemetry.signalFingerprints = filtered.slice(-Math.max(1, keepItems));
+  }
+
+  private compactFearGreedHistory(keepItems: number, keepDays: number): void {
+    const now = Date.now();
+    const keepMs = Math.max(1, keepDays) * 24 * 60 * 60 * 1000;
+    const filtered = this.data.qualityTelemetry.fearGreedHistory
+      .filter((row) => {
+        const ts = new Date(row.capturedAt).getTime();
+        if (!Number.isFinite(ts)) return false;
+        return now - ts <= keepMs;
+      })
+      .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+    this.data.qualityTelemetry.fearGreedHistory = filtered.slice(-Math.max(1, keepItems));
   }
 
   private isTodayByTimezone(isoTimestamp: string, timezone: string): boolean {

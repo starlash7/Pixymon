@@ -43,6 +43,10 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postMinIntervalMinutes: 90,
   signalFingerprintCooldownHours: 8,
   maxPostsPerCycle: 1,
+  fearGreedEventMinDelta: 10,
+  fearGreedRequireRegimeChange: true,
+  requireFearGreedEventForSentiment: true,
+  sentimentMaxRatio24h: 0.25,
   postLanguage: "ko",
   replyLanguageMode: "match",
   minNewsSourceTrust: 0.28,
@@ -227,6 +231,26 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.maxPostsPerCycle,
       0,
       4
+    ),
+    fearGreedEventMinDelta: parseIntInRange(
+      process.env.FG_EVENT_MIN_DELTA,
+      DEFAULT_ENGAGEMENT_SETTINGS.fearGreedEventMinDelta,
+      1,
+      50
+    ),
+    fearGreedRequireRegimeChange: parseBoolean(
+      process.env.FG_REQUIRE_REGIME_CHANGE,
+      DEFAULT_ENGAGEMENT_SETTINGS.fearGreedRequireRegimeChange
+    ),
+    requireFearGreedEventForSentiment: parseBoolean(
+      process.env.REQUIRE_FG_EVENT_FOR_SENTIMENT,
+      DEFAULT_ENGAGEMENT_SETTINGS.requireFearGreedEventForSentiment
+    ),
+    sentimentMaxRatio24h: parseFloatInRange(
+      process.env.SENTIMENT_MAX_RATIO_24H,
+      DEFAULT_ENGAGEMENT_SETTINGS.sentimentMaxRatio24h,
+      0.05,
+      1
     ),
     postLanguage: parseContentLanguage(
       process.env.POST_LANGUAGE,

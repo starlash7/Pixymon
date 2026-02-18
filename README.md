@@ -18,7 +18,7 @@
 
 1. 고정 시간 크론 기반이 아닌 **자율 quota 루프**로 운영
 2. 트렌드 글/댓글/멘션 응답을 목표치 기반으로 균형 실행
-3. **품질 게이트 강화**: 숫자 앵커 정합성, 중복/내러티브 반복, 주제 다양성
+3. **품질 게이트 강화**: 숫자 앵커 정합성, 중복/내러티브 반복, 주제 다양성, FGI 이벤트 기반 sentiment 제한
 4. **적응형 정책 + 신뢰도 계층**: 실패율/폴백율/소스 신뢰도에 따라 임계값 자동 보정
 5. **관측성 추가**: 사이클 메트릭 JSON 출력 + `data/metrics-events.ndjson` 저장
 6. **자동 테스트 추가**: `npm test`로 핵심 설정/품질/관측성 유닛 테스트 실행
@@ -44,6 +44,9 @@
    - Content Create 요청 상한(`X_API_DAILY_CREATE_REQUEST_LIMIT`)
 6. 중복 억제 가드:
    - 글 최소 간격(`POST_MIN_INTERVAL_MINUTES`)
+   - 시그널 지문 쿨다운(`SIGNAL_FINGERPRINT_COOLDOWN_HOURS`)
+   - FGI 이벤트 기반 sentiment 서사 허용(`FG_*`, `REQUIRE_FG_EVENT_FOR_SENTIMENT`)
+   - 24h sentiment 비중 제한(`SENTIMENT_MAX_RATIO_24H`)
    - 사이클당 글 상한(`MAX_POSTS_PER_CYCLE`)
    - 문장 구조(서두/마무리) 반복 차단
 
@@ -143,6 +146,10 @@ MAX_LOOP_MINUTES=70
 POST_MIN_INTERVAL_MINUTES=90
 SIGNAL_FINGERPRINT_COOLDOWN_HOURS=8
 MAX_POSTS_PER_CYCLE=1
+FG_EVENT_MIN_DELTA=10
+FG_REQUIRE_REGIME_CHANGE=true
+REQUIRE_FG_EVENT_FOR_SENTIMENT=true
+SENTIMENT_MAX_RATIO_24H=0.25
 
 # X API read cost guard
 X_API_COST_GUARD_ENABLED=true
@@ -189,8 +196,10 @@ src/
 │   ├── cognitive-engine.ts
 │   ├── engagement.ts
 │   ├── engagement/
+│   │   ├── fear-greed-policy.ts
 │   │   ├── policy.ts
 │   │   ├── quality.ts
+│   │   ├── signal-fingerprint.ts
 │   │   ├── trend-context.ts
 │   │   └── types.ts
 │   ├── llm.ts

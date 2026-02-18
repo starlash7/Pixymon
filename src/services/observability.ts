@@ -67,6 +67,10 @@ export interface CycleObservabilityEvent {
     postMinIntervalMinutes: number;
     signalFingerprintCooldownHours: number;
     maxPostsPerCycle: number;
+    fearGreedEventMinDelta: number;
+    fearGreedRequireRegimeChange: boolean;
+    requireFearGreedEventForSentiment: boolean;
+    sentimentMaxRatio24h: number;
     minNewsSourceTrust: number;
     minTrendTweetSourceTrust: number;
     minTrendTweetScore: number;
@@ -138,6 +142,10 @@ export function buildCycleObservabilityEvent(
       postMinIntervalMinutes: input.runtimeSettings.postMinIntervalMinutes,
       signalFingerprintCooldownHours: input.runtimeSettings.signalFingerprintCooldownHours,
       maxPostsPerCycle: input.runtimeSettings.maxPostsPerCycle,
+      fearGreedEventMinDelta: input.runtimeSettings.fearGreedEventMinDelta,
+      fearGreedRequireRegimeChange: input.runtimeSettings.fearGreedRequireRegimeChange,
+      requireFearGreedEventForSentiment: input.runtimeSettings.requireFearGreedEventForSentiment,
+      sentimentMaxRatio24h: round(input.runtimeSettings.sentimentMaxRatio24h, 2),
       minNewsSourceTrust: round(input.runtimeSettings.minNewsSourceTrust, 2),
       minTrendTweetSourceTrust: round(input.runtimeSettings.minTrendTweetSourceTrust, 2),
       minTrendTweetScore: round(input.runtimeSettings.minTrendTweetScore, 2),

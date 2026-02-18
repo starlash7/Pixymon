@@ -12,6 +12,7 @@ import {
 const DEFAULT_CONTENT_QUALITY_RULES: ContentQualityRules = {
   minPostLength: 20,
   topicMaxSameTag24h: 2,
+  sentimentMaxRatio24h: 0.25,
   topicBlockConsecutiveTag: true,
 };
 
@@ -35,6 +36,12 @@ export function resolveContentQualityRules(raw?: Partial<ContentQualityRules>): 
   return {
     minPostLength: clampInt(raw?.minPostLength, 10, 120, DEFAULT_CONTENT_QUALITY_RULES.minPostLength),
     topicMaxSameTag24h: clampInt(raw?.topicMaxSameTag24h, 1, 8, DEFAULT_CONTENT_QUALITY_RULES.topicMaxSameTag24h),
+    sentimentMaxRatio24h: clampNumber(
+      raw?.sentimentMaxRatio24h,
+      0.05,
+      1,
+      DEFAULT_CONTENT_QUALITY_RULES.sentimentMaxRatio24h
+    ),
     topicBlockConsecutiveTag:
       typeof raw?.topicBlockConsecutiveTag === "boolean"
         ? raw.topicBlockConsecutiveTag
@@ -152,11 +159,23 @@ export function evaluatePostQuality(
     if (sameTagCount >= rules.topicMaxSameTag24h) {
       return { ok: false, reason: `24h 내 동일 주제 과밀(${candidateTag})` };
     }
+    if (candidateTag === "sentiment") {
+      const projectedRatio = (sameTagCount + 1) / Math.max(1, recentWithin24.length + 1);
+      if (projectedRatio > rules.sentimentMaxRatio24h) {
+        return { ok: false, reason: `sentiment 비중 초과(${Math.round(projectedRatio * 100)}%)` };
+      }
+    }
   }
 
   const requiredTrendTokens = normalizeRequiredTrendTokens(context.requiredTrendTokens);
   if (requiredTrendTokens.length > 0 && !containsAnyTrendToken(text, requiredTrendTokens)) {
     return { ok: false, reason: "트렌드 포커스 키워드 미반영" };
+  }
+  if (context.fearGreedEvent?.required) {
+    const candidateTag = inferTopicTag(text);
+    if (candidateTag === "sentiment" && !context.fearGreedEvent.isEvent) {
+      return { ok: false, reason: "FGI 이벤트 없음(sentiment 서사 제한)" };
+    }
   }
 
   return { ok: true };
@@ -187,6 +206,13 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   }
   const floored = Math.floor(value);
   return Math.max(min, Math.min(max, floored));
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, value));
 }
 
 function normalizeNarrativeStructure(text: string): string {
