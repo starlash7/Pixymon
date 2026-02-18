@@ -94,9 +94,17 @@ interface SourceTrustRecord {
   lastUpdated: string;
 }
 
+interface SignalFingerprintRecord {
+  key: string;
+  signature: string;
+  context?: string;
+  capturedAt: string;
+}
+
 interface QualityTelemetry {
   postGenerationByDate: Record<string, PostGenerationMetrics>;
   sourceTrust: Record<string, SourceTrustRecord>;
+  signalFingerprints: SignalFingerprintRecord[];
 }
 
 interface MemoryData {
@@ -126,6 +134,7 @@ function createEmptyQualityTelemetry(): QualityTelemetry {
   return {
     postGenerationByDate: {},
     sourceTrust: {},
+    signalFingerprints: [],
   };
 }
 
@@ -304,10 +313,12 @@ export class MemoryService {
     const telemetry = raw as Partial<QualityTelemetry>;
     const postGenerationByDate = this.normalizePostGenerationByDate(telemetry.postGenerationByDate);
     const sourceTrust = this.normalizeSourceTrustMap(telemetry.sourceTrust);
+    const signalFingerprints = this.normalizeSignalFingerprints(telemetry.signalFingerprints);
 
     return {
       postGenerationByDate,
       sourceTrust,
+      signalFingerprints,
     };
   }
 
@@ -366,6 +377,30 @@ export class MemoryService {
       output[key] = this.clampInt(value, 0, Number.MAX_SAFE_INTEGER, 0);
     }
     return output;
+  }
+
+  private normalizeSignalFingerprints(raw: unknown): SignalFingerprintRecord[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const output: SignalFingerprintRecord[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<SignalFingerprintRecord>;
+      const key = this.normalizeSignalFingerprintKey(row.key);
+      const signature = this.normalizeSignalFingerprintSignature(row.signature);
+      const capturedAt = typeof row.capturedAt === "string" ? row.capturedAt : new Date().toISOString();
+      if (!key || !signature) continue;
+      output.push({
+        key,
+        signature,
+        context: typeof row.context === "string" && row.context.trim() ? row.context.trim().slice(0, 180) : undefined,
+        capturedAt,
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime())
+      .slice(-500);
   }
 
   // ============================================
@@ -785,6 +820,38 @@ export class MemoryService {
     this.save();
   }
 
+  hasRecentSignalFingerprint(key: string, withinHours: number = 8): boolean {
+    const normalizedKey = this.normalizeSignalFingerprintKey(key);
+    if (!normalizedKey) return false;
+    const hours = this.clamp(Number.isFinite(withinHours) ? withinHours : 8, 1, 72);
+    const threshold = Date.now() - hours * 60 * 60 * 1000;
+    return this.data.qualityTelemetry.signalFingerprints.some((row) => {
+      if (row.key !== normalizedKey) return false;
+      const ts = new Date(row.capturedAt).getTime();
+      return Number.isFinite(ts) && ts >= threshold;
+    });
+  }
+
+  recordSignalFingerprint(input: { key: string; signature: string; context?: string }): void {
+    const key = this.normalizeSignalFingerprintKey(input.key);
+    const signature = this.normalizeSignalFingerprintSignature(input.signature);
+    if (!key || !signature) return;
+
+    this.data.qualityTelemetry.signalFingerprints.push({
+      key,
+      signature,
+      context: typeof input.context === "string" && input.context.trim() ? input.context.trim().slice(0, 180) : undefined,
+      capturedAt: new Date().toISOString(),
+    });
+    this.compactSignalFingerprints(500, 14);
+    this.save();
+  }
+
+  getRecentSignalFingerprints(count: number = 20): SignalFingerprintRecord[] {
+    const size = this.clampInt(count, 1, 200, 20);
+    return this.data.qualityTelemetry.signalFingerprints.slice(-size);
+  }
+
   getSourceTrustScore(sourceKey: string, fallback: number = 0.5): number {
     const key = this.normalizeSourceKey(sourceKey);
     if (!key) return this.clamp(fallback, 0.05, 0.95);
@@ -945,6 +1012,16 @@ export class MemoryService {
       .slice(0, 64) || "unknown";
   }
 
+  private normalizeSignalFingerprintKey(raw: unknown): string {
+    if (typeof raw !== "string") return "";
+    return raw.trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 64);
+  }
+
+  private normalizeSignalFingerprintSignature(raw: unknown): string {
+    if (typeof raw !== "string") return "";
+    return raw.trim().replace(/\s+/g, " ").slice(0, 600);
+  }
+
   private compactPostGenerationMetrics(keepDays: number): void {
     const entries = Object.entries(this.data.qualityTelemetry.postGenerationByDate);
     if (entries.length <= keepDays) return;
@@ -971,6 +1048,19 @@ export class MemoryService {
       .forEach(([key]) => {
         delete this.data.qualityTelemetry.sourceTrust[key];
       });
+  }
+
+  private compactSignalFingerprints(keepItems: number, keepDays: number): void {
+    const now = Date.now();
+    const keepMs = Math.max(1, keepDays) * 24 * 60 * 60 * 1000;
+    const filtered = this.data.qualityTelemetry.signalFingerprints
+      .filter((row) => {
+        const ts = new Date(row.capturedAt).getTime();
+        if (!Number.isFinite(ts)) return false;
+        return now - ts <= keepMs;
+      })
+      .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+    this.data.qualityTelemetry.signalFingerprints = filtered.slice(-Math.max(1, keepItems));
   }
 
   private isTodayByTimezone(isoTimestamp: string, timezone: string): boolean {

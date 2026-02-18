@@ -30,6 +30,7 @@ import {
   pickPostAngle,
   pickTrendFocus,
 } from "./engagement/trend-context.js";
+import { buildSignalFingerprint } from "./engagement/signal-fingerprint.js";
 import {
   buildAdaptivePolicy,
   clamp,
@@ -419,6 +420,21 @@ export async function postTrendUpdate(
       topicMaxSameTag24h: runtimeSettings.topicMaxSameTag24h,
       topicBlockConsecutiveTag: runtimeSettings.topicBlockConsecutiveTag,
     });
+    const signalFingerprint = buildSignalFingerprint({
+      marketContext: runContext.marketContext,
+      onchainContext: runContext.onchainContext,
+      trendSummary: trend.summary,
+      focusHeadline: trendFocus.headline,
+    });
+    if (
+      runtimeSettings.signalFingerprintCooldownHours > 0 &&
+      memory.hasRecentSignalFingerprint(signalFingerprint.key, runtimeSettings.signalFingerprintCooldownHours)
+    ) {
+      console.log(
+        `[POST] 스킵: 동일 시그널 재발행 방지(fp=${signalFingerprint.key}, cooldown=${runtimeSettings.signalFingerprintCooldownHours}h)`
+      );
+      return false;
+    }
 
     const packet = await cognitive.analyzeTarget({
       objective: "briefing",
@@ -631,6 +647,11 @@ Rules:
     if (!tweetId) return false;
 
     memory.recordCognitiveActivity("social", 2);
+    memory.recordSignalFingerprint({
+      key: signalFingerprint.key,
+      signature: signalFingerprint.signature,
+      context: trendFocus.headline,
+    });
     memory.recordPostGeneration({
       timezone,
       retryCount: Math.max(0, generationAttempts - 1),
@@ -714,7 +735,7 @@ export async function runDailyQuotaCycle(
     `[TUNING] postLang=${runtimeSettings.postLanguage}, replyLang=${runtimeSettings.replyLanguageMode}, trend(score>=${runtimeSettings.minTrendTweetScore.toFixed(1)}, engage>=${runtimeSettings.minTrendTweetEngagement})`
   );
   console.log(
-    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}`
+    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, fpCooldown=${runtimeSettings.signalFingerprintCooldownHours}h, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}`
   );
   console.log(
     `[COST] guard=${xApiCostSettings.enabled ? "on" : "off"} budget=$${xApiCostSettings.dailyMaxUsd.toFixed(2)} read_limit=${xApiCostSettings.dailyReadRequestLimit}/day create_limit=${xApiCostSettings.dailyCreateRequestLimit}/day mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m create>=${xApiCostSettings.createMinIntervalMinutes}m`
@@ -1071,6 +1092,12 @@ function resolveEngagementSettings(
       0,
       360,
       DEFAULT_ENGAGEMENT_SETTINGS.postMinIntervalMinutes
+    ),
+    signalFingerprintCooldownHours: clampInt(
+      settings.signalFingerprintCooldownHours,
+      0,
+      72,
+      DEFAULT_ENGAGEMENT_SETTINGS.signalFingerprintCooldownHours
     ),
     maxPostsPerCycle: clampInt(
       settings.maxPostsPerCycle,
