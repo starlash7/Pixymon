@@ -95,7 +95,11 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
   };
 }
 
-export function pickPostAngle(timezone: string, recentPosts: RecentPostRecord[]): string {
+export function pickPostAngle(
+  timezone: string,
+  recentPosts: RecentPostRecord[],
+  options: { avoidTags?: string[] } = {}
+): string {
   const angles = [
     "심리(FearGreed)와 온체인 시그널 괴리 해석",
     "오늘 나온 기술/업그레이드 이슈의 실사용 영향",
@@ -105,7 +109,13 @@ export function pickPostAngle(timezone: string, recentPosts: RecentPostRecord[])
   ];
   const todayPosts = memory.getTodayPostCount(timezone);
   const lastTag = recentPosts.length > 0 ? inferTopicTag(recentPosts[recentPosts.length - 1].content) : "";
-  const candidates = angles.filter((angle) => inferTopicTag(angle) !== lastTag);
+  const avoidTags = new Set((options.avoidTags || []).map((item) => String(item || "").trim().toLowerCase()));
+  const candidates = angles.filter((angle) => {
+    const tag = inferTopicTag(angle);
+    if (tag === lastTag) return false;
+    if (avoidTags.size > 0 && avoidTags.has(tag)) return false;
+    return true;
+  });
   if (candidates.length === 0) {
     return angles[todayPosts % angles.length];
   }

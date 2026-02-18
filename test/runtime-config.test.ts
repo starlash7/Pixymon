@@ -42,6 +42,10 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       POST_MIN_INTERVAL_MINUTES: "120",
       SIGNAL_FINGERPRINT_COOLDOWN_HOURS: "10",
       MAX_POSTS_PER_CYCLE: "1",
+      FG_EVENT_MIN_DELTA: "12",
+      FG_REQUIRE_REGIME_CHANGE: "false",
+      REQUIRE_FG_EVENT_FOR_SENTIMENT: "false",
+      SENTIMENT_MAX_RATIO_24H: "0.4",
       TREND_TWEET_MIN_SCORE: "4.4",
       X_API_COST_GUARD_ENABLED: "true",
       X_API_DAILY_MAX_USD: "0.10",
@@ -66,6 +70,10 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.engagement.postMinIntervalMinutes, 120);
       assert.equal(config.engagement.signalFingerprintCooldownHours, 10);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
+      assert.equal(config.engagement.fearGreedEventMinDelta, 12);
+      assert.equal(config.engagement.fearGreedRequireRegimeChange, false);
+      assert.equal(config.engagement.requireFearGreedEventForSentiment, false);
+      assert.equal(config.engagement.sentimentMaxRatio24h, 0.4);
       assert.equal(config.engagement.minTrendTweetScore, 4.4);
       assert.equal(config.xApiCost.enabled, true);
       assert.equal(config.xApiCost.dailyMaxUsd, 0.1);
@@ -92,6 +100,10 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       POST_MIN_INTERVAL_MINUTES: "invalid",
       SIGNAL_FINGERPRINT_COOLDOWN_HOURS: "invalid",
       MAX_POSTS_PER_CYCLE: "invalid",
+      FG_EVENT_MIN_DELTA: "invalid",
+      FG_REQUIRE_REGIME_CHANGE: "invalid",
+      REQUIRE_FG_EVENT_FOR_SENTIMENT: "invalid",
+      SENTIMENT_MAX_RATIO_24H: "invalid",
       X_API_COST_GUARD_ENABLED: "invalid",
       X_API_DAILY_MAX_USD: "invalid",
       X_API_ESTIMATED_READ_COST_USD: "invalid",
@@ -107,6 +119,10 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.engagement.postMinIntervalMinutes, 90);
       assert.equal(config.engagement.signalFingerprintCooldownHours, 8);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
+      assert.equal(config.engagement.fearGreedEventMinDelta, 10);
+      assert.equal(config.engagement.fearGreedRequireRegimeChange, true);
+      assert.equal(config.engagement.requireFearGreedEventForSentiment, true);
+      assert.equal(config.engagement.sentimentMaxRatio24h, 0.25);
       assert.equal(config.xApiCost.enabled, true);
       assert.equal(config.xApiCost.dailyMaxUsd, 0.1);
       assert.equal(config.xApiCost.estimatedReadCostUsd, 0.012);

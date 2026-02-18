@@ -32,6 +32,11 @@ import {
 } from "./engagement/trend-context.js";
 import { buildSignalFingerprint } from "./engagement/signal-fingerprint.js";
 import {
+  detectFearGreedEvent,
+  FearGreedPoint,
+  parseFearGreedPointFromMarketContext,
+} from "./engagement/fear-greed-policy.js";
+import {
   buildAdaptivePolicy,
   clamp,
   getDefaultAdaptivePolicy,
@@ -406,7 +411,26 @@ export async function postTrendUpdate(
       }
     }
     const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
-    const postAngle = pickPostAngle(timezone, recentBriefingPosts);
+    const currentFearGreed = parseFearGreedPointFromMarketContext(runContext.marketContext);
+    const previousFearGreedRaw = memory.getLatestFearGreedPoint(72);
+    const previousFearGreed: FearGreedPoint | null = previousFearGreedRaw
+      ? { value: previousFearGreedRaw.value, label: previousFearGreedRaw.label }
+      : null;
+    const fearGreedEvent = detectFearGreedEvent(currentFearGreed, previousFearGreed, {
+      minDelta: runtimeSettings.fearGreedEventMinDelta,
+      requireRegimeChange: runtimeSettings.fearGreedRequireRegimeChange,
+    });
+    if (runtimeSettings.requireFearGreedEventForSentiment) {
+      console.log(
+        `[FG] current=${fearGreedEvent.current?.value ?? "na"} prev=${fearGreedEvent.previous?.value ?? "na"} delta=${fearGreedEvent.delta ?? "na"} event=${fearGreedEvent.isEvent}(${fearGreedEvent.reason})`
+      );
+    }
+    if (fearGreedEvent.current) {
+      memory.recordFearGreedPoint(fearGreedEvent.current.value, fearGreedEvent.current.label);
+    }
+
+    const avoidTags = !fearGreedEvent.isEvent ? ["sentiment"] : [];
+    const postAngle = pickPostAngle(timezone, recentBriefingPosts, { avoidTags });
     const trendFocus = pickTrendFocus(trend.headlines, recentBriefingPosts);
     const focusTokensLine =
       trendFocus.requiredTokens.length > 0 ? trendFocus.requiredTokens.join(", ") : "- 없음 (헤드라인 직접 반영)";
@@ -418,6 +442,7 @@ export async function postTrendUpdate(
     const qualityRules = resolveContentQualityRules({
       minPostLength: runtimeSettings.postMinLength,
       topicMaxSameTag24h: runtimeSettings.topicMaxSameTag24h,
+      sentimentMaxRatio24h: runtimeSettings.sentimentMaxRatio24h,
       topicBlockConsecutiveTag: runtimeSettings.topicBlockConsecutiveTag,
     });
     const signalFingerprint = buildSignalFingerprint({
@@ -579,7 +604,13 @@ Rules:
         recentBriefingPosts,
         policy,
         qualityRules,
-        { requiredTrendTokens: trendFocus.requiredTokens }
+        {
+          requiredTrendTokens: trendFocus.requiredTokens,
+          fearGreedEvent: {
+            required: runtimeSettings.requireFearGreedEventForSentiment,
+            isEvent: fearGreedEvent.isEvent,
+          },
+        }
       );
       if (!quality.ok) {
         rejectionFeedback = quality.reason || "품질 게이트 미통과";
@@ -614,7 +645,13 @@ Rules:
           recentBriefingPosts,
           policy,
           qualityRules,
-          { requiredTrendTokens: trendFocus.requiredTokens }
+          {
+            requiredTrendTokens: trendFocus.requiredTokens,
+            fearGreedEvent: {
+              required: runtimeSettings.requireFearGreedEventForSentiment,
+              isEvent: fearGreedEvent.isEvent,
+            },
+          }
         );
         if (fallbackQuality.ok) {
           postText = fallbackPost;
@@ -735,7 +772,7 @@ export async function runDailyQuotaCycle(
     `[TUNING] postLang=${runtimeSettings.postLanguage}, replyLang=${runtimeSettings.replyLanguageMode}, trend(score>=${runtimeSettings.minTrendTweetScore.toFixed(1)}, engage>=${runtimeSettings.minTrendTweetEngagement})`
   );
   console.log(
-    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, fpCooldown=${runtimeSettings.signalFingerprintCooldownHours}h, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}`
+    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, fpCooldown=${runtimeSettings.signalFingerprintCooldownHours}h, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}, sentimentMax=${Math.round(runtimeSettings.sentimentMaxRatio24h * 100)}%`
   );
   console.log(
     `[COST] guard=${xApiCostSettings.enabled ? "on" : "off"} budget=$${xApiCostSettings.dailyMaxUsd.toFixed(2)} read_limit=${xApiCostSettings.dailyReadRequestLimit}/day create_limit=${xApiCostSettings.dailyCreateRequestLimit}/day mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m create>=${xApiCostSettings.createMinIntervalMinutes}m`
@@ -1104,6 +1141,26 @@ function resolveEngagementSettings(
       0,
       4,
       DEFAULT_ENGAGEMENT_SETTINGS.maxPostsPerCycle
+    ),
+    fearGreedEventMinDelta: clampInt(
+      settings.fearGreedEventMinDelta,
+      1,
+      50,
+      DEFAULT_ENGAGEMENT_SETTINGS.fearGreedEventMinDelta
+    ),
+    fearGreedRequireRegimeChange:
+      typeof settings.fearGreedRequireRegimeChange === "boolean"
+        ? settings.fearGreedRequireRegimeChange
+        : DEFAULT_ENGAGEMENT_SETTINGS.fearGreedRequireRegimeChange,
+    requireFearGreedEventForSentiment:
+      typeof settings.requireFearGreedEventForSentiment === "boolean"
+        ? settings.requireFearGreedEventForSentiment
+        : DEFAULT_ENGAGEMENT_SETTINGS.requireFearGreedEventForSentiment,
+    sentimentMaxRatio24h: clampNumber(
+      settings.sentimentMaxRatio24h,
+      0.05,
+      1,
+      DEFAULT_ENGAGEMENT_SETTINGS.sentimentMaxRatio24h
     ),
     postLanguage:
       settings.postLanguage === "en" || settings.postLanguage === "ko"

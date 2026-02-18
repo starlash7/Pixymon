@@ -24,11 +24,13 @@ test("resolveContentQualityRules clamps out-of-range values", () => {
   const rules = resolveContentQualityRules({
     minPostLength: 2,
     topicMaxSameTag24h: 99,
+    sentimentMaxRatio24h: 10,
     topicBlockConsecutiveTag: false,
   });
 
   assert.equal(rules.minPostLength, 10);
   assert.equal(rules.topicMaxSameTag24h, 8);
+  assert.equal(rules.sentimentMaxRatio24h, 1);
   assert.equal(rules.topicBlockConsecutiveTag, false);
 });
 
@@ -115,4 +117,62 @@ test("evaluatePostQuality rejects same signal lane even with short phrasing", ()
 
   assert.equal(result.ok, false);
   assert.equal(result.reason, "동일 시그널 레인 반복(stable-flow|observation-ending)");
+});
+
+test("evaluatePostQuality rejects sentiment when fear-greed event is required but missing", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const result = evaluatePostQuality(
+    "극공포 구간에서 심리와 온체인 괴리가 커지고 있는데, 이번엔 어떤 쪽이 맞을까?",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    [],
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+      sentimentMaxRatio24h: 1,
+    }),
+    {
+      fearGreedEvent: {
+        required: true,
+        isEvent: false,
+      },
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "FGI 이벤트 없음(sentiment 서사 제한)");
+});
+
+test("evaluatePostQuality enforces sentiment ratio budget", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const now = new Date().toISOString();
+  const recentPosts: Array<{ content: string; timestamp: string }> = [
+    {
+      content: "거래소 순유입은 줄고 네트워크 수수료는 안정권에 머무는 중.",
+      timestamp: now,
+    },
+    {
+      content: "탐욕 지수 신호가 확대되지만 거래량 확증은 아직 부족해 보인다.",
+      timestamp: now,
+    },
+    {
+      content: "FOMC 경계감으로 달러 인덱스가 흔들리며 위험자산이 눈치 보는 흐름.",
+      timestamp: now,
+    },
+  ];
+
+  const result = evaluatePostQuality(
+    "극공포 지표는 유지되는데 자금은 버티는 모습이라 이 괴리를 더 봐야 한다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+      sentimentMaxRatio24h: 0.25,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "sentiment 비중 초과(50%)");
 });
