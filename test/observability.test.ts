@@ -23,6 +23,7 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
       postMaxChars: 220,
       postMinLength: 20,
       postMinIntervalMinutes: 90,
+      signalFingerprintCooldownHours: 8,
       maxPostsPerCycle: 1,
       postLanguage: "ko",
       replyLanguageMode: "match",

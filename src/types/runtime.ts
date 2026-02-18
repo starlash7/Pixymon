@@ -6,6 +6,7 @@ export interface EngagementRuntimeSettings {
   postMaxChars: number;
   postMinLength: number;
   postMinIntervalMinutes: number;
+  signalFingerprintCooldownHours: number;
   maxPostsPerCycle: number;
   postLanguage: ContentLanguage;
   replyLanguageMode: ReplyLanguageMode;
