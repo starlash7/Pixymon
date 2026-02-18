@@ -41,6 +41,7 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postMaxChars: 220,
   postMinLength: 20,
   postMinIntervalMinutes: 90,
+  signalFingerprintCooldownHours: 8,
   maxPostsPerCycle: 1,
   postLanguage: "ko",
   replyLanguageMode: "match",
@@ -214,6 +215,12 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.postMinIntervalMinutes,
       0,
       360
+    ),
+    signalFingerprintCooldownHours: parseIntInRange(
+      process.env.SIGNAL_FINGERPRINT_COOLDOWN_HOURS,
+      DEFAULT_ENGAGEMENT_SETTINGS.signalFingerprintCooldownHours,
+      0,
+      72
     ),
     maxPostsPerCycle: parseIntInRange(
       process.env.MAX_POSTS_PER_CYCLE,

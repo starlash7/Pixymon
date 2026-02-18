@@ -65,6 +65,7 @@ export interface CycleObservabilityEvent {
     postLanguage: string;
     replyLanguageMode: string;
     postMinIntervalMinutes: number;
+    signalFingerprintCooldownHours: number;
     maxPostsPerCycle: number;
     minNewsSourceTrust: number;
     minTrendTweetSourceTrust: number;
@@ -135,6 +136,7 @@ export function buildCycleObservabilityEvent(
       postLanguage: input.runtimeSettings.postLanguage,
       replyLanguageMode: input.runtimeSettings.replyLanguageMode,
       postMinIntervalMinutes: input.runtimeSettings.postMinIntervalMinutes,
+      signalFingerprintCooldownHours: input.runtimeSettings.signalFingerprintCooldownHours,
       maxPostsPerCycle: input.runtimeSettings.maxPostsPerCycle,
       minNewsSourceTrust: round(input.runtimeSettings.minNewsSourceTrust, 2),
       minTrendTweetSourceTrust: round(input.runtimeSettings.minTrendTweetSourceTrust, 2),

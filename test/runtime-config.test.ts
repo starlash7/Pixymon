@@ -40,6 +40,7 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       REPLY_LANGUAGE_MODE: "match",
       POST_GENERATION_MAX_ATTEMPTS: "2",
       POST_MIN_INTERVAL_MINUTES: "120",
+      SIGNAL_FINGERPRINT_COOLDOWN_HOURS: "10",
       MAX_POSTS_PER_CYCLE: "1",
       TREND_TWEET_MIN_SCORE: "4.4",
       X_API_COST_GUARD_ENABLED: "true",
@@ -63,6 +64,7 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.engagement.postLanguage, "ko");
       assert.equal(config.engagement.replyLanguageMode, "match");
       assert.equal(config.engagement.postMinIntervalMinutes, 120);
+      assert.equal(config.engagement.signalFingerprintCooldownHours, 10);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
       assert.equal(config.engagement.minTrendTweetScore, 4.4);
       assert.equal(config.xApiCost.enabled, true);
@@ -88,6 +90,7 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       OBSERVABILITY_STDOUT_JSON: "invalid",
       OBSERVABILITY_EVENT_LOG_PATH: "   ",
       POST_MIN_INTERVAL_MINUTES: "invalid",
+      SIGNAL_FINGERPRINT_COOLDOWN_HOURS: "invalid",
       MAX_POSTS_PER_CYCLE: "invalid",
       X_API_COST_GUARD_ENABLED: "invalid",
       X_API_DAILY_MAX_USD: "invalid",
@@ -102,6 +105,7 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.observability.stdoutJson, true);
       assert.equal(config.observability.eventLogPath, "data/metrics-events.ndjson");
       assert.equal(config.engagement.postMinIntervalMinutes, 90);
+      assert.equal(config.engagement.signalFingerprintCooldownHours, 8);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
       assert.equal(config.xApiCost.enabled, true);
       assert.equal(config.xApiCost.dailyMaxUsd, 0.1);
