@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
@@ -36,6 +38,24 @@ interface PostTweetOptions {
   xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
   createKind?: string;
 }
+
+interface PostDispatchState {
+  lastBriefingAt?: string;
+  lastBriefingFingerprint?: string;
+}
+
+interface PostDispatchLock {
+  acquired: boolean;
+  release: () => void;
+}
+
+const DISPATCH_LOCK_STALE_MS = 5 * 60 * 1000;
+const DISPATCH_MIN_GAP_MS = 8 * 60 * 1000;
+const DISPATCH_DUPLICATE_WINDOW_MS = 2 * 60 * 60 * 1000;
+const DISPATCH_LOCK_PATH =
+  process.env.POST_DISPATCH_LOCK_PATH || path.join(process.cwd(), "data", "pixymon-post-dispatch.lock");
+const DISPATCH_STATE_PATH =
+  process.env.POST_DISPATCH_STATE_PATH || path.join(process.cwd(), "data", "pixymon-post-dispatch.json");
 
 // 환경 변수 검증
 export function validateEnvironment() {
@@ -564,6 +584,154 @@ function formatCreateBlockReason(reason: XCreateGuardBlockReason | undefined, wa
   return "비용 가드 정책";
 }
 
+function acquirePostDispatchLock(): PostDispatchLock {
+  try {
+    fs.mkdirSync(path.dirname(DISPATCH_LOCK_PATH), { recursive: true });
+  } catch {
+    return { acquired: false, release: () => {} };
+  }
+
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(DISPATCH_LOCK_PATH, "wx");
+    return {
+      acquired: true,
+      release: () => {
+        try {
+          if (fd !== null) {
+            fs.closeSync(fd);
+            fd = null;
+          }
+        } catch {
+          // no-op
+        }
+        try {
+          fs.unlinkSync(DISPATCH_LOCK_PATH);
+        } catch {
+          // no-op
+        }
+      },
+    };
+  } catch (error: any) {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // no-op
+      }
+    }
+    if (error?.code === "EEXIST") {
+      tryClearStaleDispatchLock();
+      try {
+        fd = fs.openSync(DISPATCH_LOCK_PATH, "wx");
+        return {
+          acquired: true,
+          release: () => {
+            try {
+              if (fd !== null) {
+                fs.closeSync(fd);
+                fd = null;
+              }
+            } catch {
+              // no-op
+            }
+            try {
+              fs.unlinkSync(DISPATCH_LOCK_PATH);
+            } catch {
+              // no-op
+            }
+          },
+        };
+      } catch {
+        return { acquired: false, release: () => {} };
+      }
+    }
+    return { acquired: false, release: () => {} };
+  }
+}
+
+function tryClearStaleDispatchLock(): void {
+  try {
+    const stat = fs.statSync(DISPATCH_LOCK_PATH);
+    if (Date.now() - stat.mtimeMs > DISPATCH_LOCK_STALE_MS) {
+      fs.unlinkSync(DISPATCH_LOCK_PATH);
+    }
+  } catch {
+    // no-op
+  }
+}
+
+function getPostDispatchBlockReason(content: string): string | null {
+  const state = readPostDispatchState();
+  const now = Date.now();
+  const lastMs = state.lastBriefingAt ? new Date(state.lastBriefingAt).getTime() : NaN;
+  if (Number.isFinite(lastMs)) {
+    const elapsed = now - (lastMs as number);
+    if (elapsed >= 0 && elapsed < DISPATCH_MIN_GAP_MS) {
+      return `최근 글 발행 직후(${Math.floor(elapsed / 1000)}초 경과)`;
+    }
+  }
+
+  const fingerprint = buildPostFingerprint(content);
+  if (
+    state.lastBriefingFingerprint &&
+    state.lastBriefingAt &&
+    Number.isFinite(lastMs) &&
+    now - (lastMs as number) < DISPATCH_DUPLICATE_WINDOW_MS &&
+    state.lastBriefingFingerprint === fingerprint
+  ) {
+    return "동일/유사 글 지문 중복";
+  }
+  return null;
+}
+
+function persistPostDispatchState(content: string): void {
+  const nextState: PostDispatchState = {
+    lastBriefingAt: new Date().toISOString(),
+    lastBriefingFingerprint: buildPostFingerprint(content),
+  };
+  try {
+    fs.mkdirSync(path.dirname(DISPATCH_STATE_PATH), { recursive: true });
+    fs.writeFileSync(DISPATCH_STATE_PATH, JSON.stringify(nextState, null, 2), "utf-8");
+  } catch {
+    // no-op
+  }
+}
+
+function readPostDispatchState(): PostDispatchState {
+  try {
+    const raw = fs.readFileSync(DISPATCH_STATE_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as PostDispatchState;
+    return {
+      lastBriefingAt: typeof parsed.lastBriefingAt === "string" ? parsed.lastBriefingAt : undefined,
+      lastBriefingFingerprint:
+        typeof parsed.lastBriefingFingerprint === "string" ? parsed.lastBriefingFingerprint : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function buildPostFingerprint(content: string): string {
+  return String(content || "")
+    .toLowerCase()
+    .replace(/\$[a-z]{2,10}/g, "$token")
+    .replace(/[+-]?\d+(?:[.,]\d+)?%/g, "%")
+    .replace(/\d[\d,]*(?:\.\d+)?/g, "#")
+    .replace(/[^\p{L}\p{N}\s$%#]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 220);
+}
+
+export const __postDispatchTest = {
+  acquirePostDispatchLock,
+  getPostDispatchBlockReason,
+  persistPostDispatchState,
+  readPostDispatchState,
+  buildPostFingerprint,
+};
+
 // 트윗 발행 (Twitter API v2 only)
 export async function postTweet(
   twitter: TwitterApi | null,
@@ -589,55 +757,75 @@ export async function postTweet(
   const timezone = normalizeTimezone(options.timezone);
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCostSettings);
   const createKind = options.createKind || `post:${type}`;
-
-  const createGuard = xApiBudget.checkCreateAllowance({
-    enabled: xApiCostSettings.enabled,
-    timezone,
-    dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
-    estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-    dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
-    kind: createKind,
-    minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
-  });
-  if (!createGuard.allowed) {
-    console.log(`[BUDGET] 글 발행 스킵: ${formatCreateBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
+  const dispatchLock = type === "briefing" ? acquirePostDispatchLock() : { acquired: true, release: () => {} };
+  if (!dispatchLock.acquired) {
+    console.log("[POST-GUARD] 다른 인스턴스가 글 발행 중이라 이번 발행을 스킵합니다.");
     return null;
   }
 
-  const createUsage = xApiBudget.recordCreate({
-    timezone,
-    estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-    kind: createKind,
-  });
-  console.log(
-    `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (${createKind})`
-  );
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const tweet = await twitter.v2.tweet(content);
-      console.log("✅ 트윗 발행 완료! (v2)");
-      console.log(`   ID: ${tweet.data.id}`);
-      console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.data.id}`);
-
-      memory.saveTweet(tweet.data.id, content, type);
-      return tweet.data.id;
-    } catch (error) {
-      lastError = error;
-      const rateLimited = isRateLimitError(error);
-      const delayMs = rateLimited ? 60000 * attempt : 2000 * attempt;
-
-      if (attempt === maxAttempts) {
-        break;
+  try {
+    if (type === "briefing") {
+      const dispatchBlock = getPostDispatchBlockReason(content);
+      if (dispatchBlock) {
+        console.log(`[POST-GUARD] 글 발행 스킵: ${dispatchBlock}`);
+        return null;
       }
-
-      console.error(
-        `⚠️ 트윗 발행 실패 (시도 ${attempt}/${maxAttempts})${rateLimited ? " [rate limit]" : ""}`
-      );
-      await sleep(delayMs);
     }
-  }
 
-  console.error("❌ 트윗 발행 실패:", lastError);
-  throw lastError;
+    const createGuard = xApiBudget.checkCreateAllowance({
+      enabled: xApiCostSettings.enabled,
+      timezone,
+      dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+      estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+      dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
+      kind: createKind,
+      minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
+    });
+    if (!createGuard.allowed) {
+      console.log(`[BUDGET] 글 발행 스킵: ${formatCreateBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
+      return null;
+    }
+
+    const createUsage = xApiBudget.recordCreate({
+      timezone,
+      estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+      kind: createKind,
+    });
+    console.log(
+      `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (${createKind})`
+    );
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const tweet = await twitter.v2.tweet(content);
+        console.log("✅ 트윗 발행 완료! (v2)");
+        console.log(`   ID: ${tweet.data.id}`);
+        console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.data.id}`);
+
+        memory.saveTweet(tweet.data.id, content, type);
+        if (type === "briefing") {
+          persistPostDispatchState(content);
+        }
+        return tweet.data.id;
+      } catch (error) {
+        lastError = error;
+        const rateLimited = isRateLimitError(error);
+        const delayMs = rateLimited ? 60000 * attempt : 2000 * attempt;
+
+        if (attempt === maxAttempts) {
+          break;
+        }
+
+        console.error(
+          `⚠️ 트윗 발행 실패 (시도 ${attempt}/${maxAttempts})${rateLimited ? " [rate limit]" : ""}`
+        );
+        await sleep(delayMs);
+      }
+    }
+
+    console.error("❌ 트윗 발행 실패:", lastError);
+    throw lastError;
+  } finally {
+    dispatchLock.release();
+  }
 }

@@ -135,6 +135,7 @@ export function pickTrendFocus(headlines: string[], recentPosts: RecentPostRecor
     .slice(-16)
     .map((post) => sanitizeTweetText(post.content).toLowerCase())
     .filter(Boolean);
+  const btcSaturation = getRecentBtcSaturation(normalizedRecent);
   const candidateHeadlines = headlines
     .map((headline) => sanitizeTweetText(headline))
     .filter((headline) => headline.length >= 8)
@@ -146,7 +147,13 @@ export function pickTrendFocus(headlines: string[], recentPosts: RecentPostRecor
     if (tokens.length === 0) continue;
     const overlapCount = tokens.filter((token) => normalizedRecent.some((post) => post.includes(token))).length;
     const exactMentions = normalizedRecent.filter((post) => post.includes(headline.toLowerCase())).length;
-    const noveltyScore = tokens.length * 1.2 - overlapCount * 2.0 - exactMentions * 2.5;
+    const btcPenalty =
+      btcSaturation >= 0.67 && isBtcCentricText(headline)
+        ? 3.2
+        : btcSaturation >= 0.5 && isBtcCentricText(headline)
+          ? 1.8
+          : 0;
+    const noveltyScore = tokens.length * 1.2 - overlapCount * 2.0 - exactMentions * 2.5 - btcPenalty;
     if (!best || noveltyScore > best.score) {
       best = { headline, tokens, score: noveltyScore };
     }
@@ -190,18 +197,30 @@ export function buildFallbackPost(
   trend: TrendContext,
   postAngle: string,
   maxChars: number = 220,
-  focus?: TrendFocus | null
+  focus?: TrendFocus | null,
+  options: { recentPosts?: RecentPostRecord[] } = {}
 ): string | null {
+  const recentPosts = Array.isArray(options.recentPosts) ? options.recentPosts : [];
+  const recentTexts = recentPosts
+    .slice(-8)
+    .map((post) => sanitizeTweetText(post.content).toLowerCase())
+    .filter(Boolean);
+  const btcSaturation = getRecentBtcSaturation(recentTexts);
   const angle = postAngle.replace(/\s+/g, " ").trim();
   const headline =
     focus?.headline || trend.headlines.find((item) => typeof item === "string" && item.trim().length > 0);
   const compactHeadline = headline ? headline.replace(/\s+/g, " ").trim().slice(0, 70) : "주요 시장 뉴스 업데이트";
-  const marketLine = trend.marketData[0]
-    ? `${trend.marketData[0].symbol} ${trend.marketData[0].change24h >= 0 ? "+" : ""}${trend.marketData[0].change24h.toFixed(1)}%`
+  const anchorCoin = pickDiversifiedAnchorCoin(trend.marketData, recentTexts);
+  const marketLine = anchorCoin
+    ? `${anchorCoin.symbol} ${anchorCoin.change24h >= 0 ? "+" : ""}${anchorCoin.change24h.toFixed(1)}%`
     : "주요 코인 변동";
-  const keywordPool = focus?.requiredTokens?.length
+  const keywordPoolRaw = focus?.requiredTokens?.length
     ? focus.requiredTokens
     : trend.keywords.filter((item) => item && !item.startsWith("$"));
+  const keywordPool =
+    btcSaturation >= 0.67
+      ? keywordPoolRaw.filter((token) => !isBtcCentricText(token))
+      : keywordPoolRaw;
   const keyword = keywordPool.length > 0 ? keywordPool[Math.floor(Math.random() * keywordPool.length)] : "온체인";
   const closingPool = [
     "지금은 심리보다 확인 신호를 더 보자.",
@@ -235,6 +254,37 @@ function selectNovelTokens(tokens: string[], recentTexts: string[]): string[] {
   if (tokens.length === 0) return [];
   const novel = tokens.filter((token) => !recentTexts.some((text) => text.includes(token)));
   return [...new Set(novel)];
+}
+
+function pickDiversifiedAnchorCoin(marketData: MarketData[], recentTexts: string[]): MarketData | null {
+  if (!Array.isArray(marketData) || marketData.length === 0) return null;
+  const btcSaturation = getRecentBtcSaturation(recentTexts);
+  if (btcSaturation < 0.67) {
+    return marketData[0] || null;
+  }
+
+  const nonBtc = marketData.filter((coin) => coin.symbol.toUpperCase() !== "BTC");
+  if (nonBtc.length === 0) {
+    return marketData[0] || null;
+  }
+
+  const fresh = nonBtc.find((coin) => {
+    const symbol = coin.symbol.toLowerCase();
+    return !recentTexts.some((text) => text.includes(`$${symbol}`) || text.includes(symbol));
+  });
+  return fresh || nonBtc[0] || marketData[0] || null;
+}
+
+function getRecentBtcSaturation(recentTexts: string[]): number {
+  if (!Array.isArray(recentTexts) || recentTexts.length === 0) return 0;
+  const sample = recentTexts.slice(-8);
+  const btcMentions = sample.filter((text) => isBtcCentricText(text)).length;
+  return btcMentions / Math.max(1, sample.length);
+}
+
+function isBtcCentricText(text: string): boolean {
+  const lower = sanitizeTweetText(text).toLowerCase();
+  return /(^|\s)(\$?btc|bitcoin|비트코인)(\s|$)|fear\s*greed|fgi|공포\s*지수|극공포/.test(lower);
 }
 
 function extractKeywordsFromTitle(title: string): string[] {
