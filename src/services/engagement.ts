@@ -447,9 +447,18 @@ export async function postTrendUpdate(
     const trendFocus = pickTrendFocus(trend.headlines, recentBriefingPosts);
     const focusTokensLine =
       trendFocus.requiredTokens.length > 0 ? trendFocus.requiredTokens.join(", ") : "- 없음 (헤드라인 직접 반영)";
+    const postDiversityGuard = buildPostDiversityGuard(
+      recentBriefingPosts,
+      trend.marketData,
+      trendFocus.requiredTokens,
+      trendFocus.headline
+    );
     const localDateLabel = new Date().toLocaleDateString("ko-KR", { timeZone: timezone });
     if (trendFocus.headline) {
       console.log(`[POST] 포커스 헤드라인(${trendFocus.reason}): ${trendFocus.headline}`);
+    }
+    if (postDiversityGuard.avoidBtcOnly) {
+      console.log(`[POST] BTC 편중 완화 모드: ${postDiversityGuard.btcRatioPercent}%`);
     }
     const marketAnchors = formatMarketAnchors(trend.marketData);
     const qualityRules = resolveContentQualityRules({
@@ -537,6 +546,7 @@ ${rejectionFeedback || "없음"}
 - 앵커가 없으면 구체 가격 숫자 언급 금지
 - 최근 작성 글과 같은 전개/문장 구조 금지
 - "오늘 포커스 헤드라인"의 핵심어를 최소 1개 포함
+- ${postDiversityGuard.ruleLineKo}
 - 트윗 본문만 출력`
           : `Write one trend post for today with this context.
 
@@ -575,6 +585,7 @@ Rules:
 - If anchors are empty, do not use specific price numbers
 - Avoid repeating recent narrative structure
 - Include at least one focus token or the focus headline wording
+- ${postDiversityGuard.ruleLineEn}
 - Output tweet text only`;
       const message = await claude.messages.create({
         model: CLAUDE_MODEL,
@@ -611,6 +622,15 @@ Rules:
         }
       }
 
+      if (postDiversityGuard.avoidBtcOnly && isBtcOnlyNarrative(candidate, postDiversityGuard.altTokens)) {
+        rejectionFeedback = "BTC 단일 서사 반복(다른 자산/이슈 근거 필요)";
+        latestFailReason = rejectionFeedback;
+        console.log(
+          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+        );
+        continue;
+      }
+
       const quality = evaluatePostQuality(
         candidate,
         trend.marketData,
@@ -639,7 +659,9 @@ Rules:
     }
 
     if (!postText) {
-      let fallbackPost = buildFallbackPost(trend, postAngle, runtimeSettings.postMaxChars, trendFocus);
+      let fallbackPost = buildFallbackPost(trend, postAngle, runtimeSettings.postMaxChars, trendFocus, {
+        recentPosts: recentBriefingPosts,
+      });
       if (fallbackPost && detectLanguage(fallbackPost) !== runtimeSettings.postLanguage) {
         const rewrittenFallback = await rewriteByLanguage(
           claude,
@@ -1232,6 +1254,84 @@ function logCacheMetrics(cache?: EngagementCycleCache): void {
   console.log(
     `[CACHE] cog ${metrics.cognitiveHits}/${metrics.cognitiveMisses} | runCtx ${metrics.runContextHits}/${metrics.runContextMisses} | trendCtx ${metrics.trendContextHits}/${metrics.trendContextMisses} | trendTweets ${metrics.trendTweetsHits}/${metrics.trendTweetsMisses}`
   );
+}
+
+interface PostDiversityGuard {
+  avoidBtcOnly: boolean;
+  btcRatioPercent: number;
+  altTokens: string[];
+  ruleLineKo: string;
+  ruleLineEn: string;
+}
+
+function buildPostDiversityGuard(
+  recentPosts: Array<{ content: string }>,
+  marketData: Array<{ symbol: string }>,
+  focusTokens: string[],
+  focusHeadline: string
+): PostDiversityGuard {
+  const recentTexts = recentPosts
+    .slice(-6)
+    .map((post) => sanitizeTweetText(post.content).toLowerCase())
+    .filter(Boolean);
+  const btcCount = recentTexts.filter((text) => isBtcCentricText(text)).length;
+  const btcRatio = recentTexts.length > 0 ? btcCount / recentTexts.length : 0;
+
+  const altSymbols = marketData
+    .map((coin) => String(coin.symbol || "").trim().toUpperCase())
+    .filter((symbol) => symbol.length >= 2 && symbol !== "BTC");
+  const focusNonBtcTokens = (focusTokens || [])
+    .map((token) => String(token || "").trim())
+    .filter((token) => token.length >= 2 && !isBtcCentricText(token));
+  const headlineToken = sanitizeTweetText(focusHeadline || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .find((token) => token.length >= 3 && !isBtcCentricText(token));
+  const altTokens = [
+    ...new Set([
+      ...altSymbols.map((symbol) => `$${symbol}`),
+      ...focusNonBtcTokens,
+      ...(headlineToken ? [headlineToken] : []),
+    ]),
+  ].slice(0, 8);
+
+  const avoidBtcOnly = recentTexts.length >= 3 && btcRatio >= 0.67 && altTokens.length > 0;
+  if (!avoidBtcOnly) {
+    return {
+      avoidBtcOnly: false,
+      btcRatioPercent: Math.round(btcRatio * 100),
+      altTokens,
+      ruleLineKo: "가능하면 BTC 외 시그널(알트/뉴스/매크로)도 함께 반영",
+      ruleLineEn: "Prefer including at least one non-BTC signal when possible",
+    };
+  }
+
+  const altHint = altTokens.slice(0, 4).join(", ");
+  return {
+    avoidBtcOnly: true,
+    btcRatioPercent: Math.round(btcRatio * 100),
+    altTokens,
+    ruleLineKo: `최근 BTC 편중이 높음. BTC 단독 서사를 피하고 ${altHint} 중 1개 이상 반영`,
+    ruleLineEn: `BTC-only framing is overused. Include at least one of: ${altHint}`,
+  };
+}
+
+function isBtcOnlyNarrative(text: string, altTokens: string[]): boolean {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  if (!isBtcCentricText(normalized)) return false;
+  const hasAlt = altTokens.some((token) => {
+    const t = String(token || "").trim().toLowerCase();
+    if (!t) return false;
+    if (normalized.includes(t)) return true;
+    if (t.startsWith("$") && normalized.includes(t.slice(1))) return true;
+    return false;
+  });
+  return !hasAlt;
+}
+
+function isBtcCentricText(text: string): boolean {
+  const lower = sanitizeTweetText(text).toLowerCase();
+  return /(^|\s)(\$?btc|bitcoin|비트코인)(\s|$)|fear\s*greed|fgi|공포\s*지수|극공포/.test(lower);
 }
 
 function resolveEngagementSettings(

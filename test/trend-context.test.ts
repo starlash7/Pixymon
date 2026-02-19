@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildTrendNutrients, pickTrendFocus } from "../src/services/engagement/trend-context.ts";
+import { buildFallbackPost, buildTrendNutrients, pickTrendFocus } from "../src/services/engagement/trend-context.ts";
 
 test("pickTrendFocus prefers headline with lower overlap against recent posts", () => {
   const focus = pickTrendFocus(
@@ -53,4 +53,50 @@ test("buildTrendNutrients normalizes market/news into nutrient packets", () => {
   assert.ok(nutrients.length >= 3);
   assert.ok(nutrients.some((item) => item.source === "market"));
   assert.ok(nutrients.some((item) => item.source === "news"));
+});
+
+test("pickTrendFocus downranks btc-centric headline when recent btc saturation is high", () => {
+  const recent = Array.from({ length: 6 }).map(() => ({
+    content: "극공포 구간에서 BTC 수수료와 멤풀, 스테이블 유입을 계속 추적 중.",
+    timestamp: new Date().toISOString(),
+  }));
+
+  const focus = pickTrendFocus(
+    [
+      "Bitcoin fear index rebounds as ETF flow uncertainty persists",
+      "Solana Firedancer client performance milestone update",
+    ],
+    recent
+  );
+
+  assert.equal(focus.headline, "Solana Firedancer client performance milestone update");
+});
+
+test("buildFallbackPost prefers non-btc market anchor when recent posts are btc-heavy", () => {
+  const text = buildFallbackPost(
+    {
+      keywords: ["onchain", "solana", "liquidity"],
+      summary: "market summary",
+      marketData: [
+        { symbol: "BTC", name: "Bitcoin", price: 66304, change24h: 2.5 },
+        { symbol: "ETH", name: "Ethereum", price: 3320, change24h: 1.1 },
+        { symbol: "SOL", name: "Solana", price: 210, change24h: 3.2 },
+      ],
+      headlines: ["L2 throughput upgrade sparks developer activity"],
+      newsSources: [],
+      nutrients: [],
+    },
+    "오늘 나온 기술/업그레이드 이슈의 실사용 영향",
+    220,
+    null,
+    {
+      recentPosts: Array.from({ length: 5 }).map(() => ({
+        content: "BTC 공포지수와 수수료, 고래 흐름을 계속 확인 중.",
+        timestamp: new Date().toISOString(),
+      })),
+    }
+  );
+
+  assert.ok(text);
+  assert.equal(/ETH|SOL/.test(text || ""), true);
 });
