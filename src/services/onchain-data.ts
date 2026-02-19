@@ -1,4 +1,10 @@
-import { OnchainSignal, OnchainSnapshot, SignalDirection, SignalImportance } from "../types/agent.js";
+import {
+  OnchainNutrient,
+  OnchainSignal,
+  OnchainSnapshot,
+  SignalDirection,
+  SignalImportance,
+} from "../types/agent.js";
 
 interface DefiLlamaChain {
   name?: string;
@@ -116,6 +122,46 @@ export class OnchainDataService {
     }
 
     return text.trim();
+  }
+
+  buildNutrients(snapshot: OnchainSnapshot): OnchainNutrient[] {
+    const createdAt = snapshot.createdAt || new Date().toISOString();
+    const nutrients: OnchainNutrient[] = snapshot.signals.map((signal, index): OnchainNutrient => {
+      const trust = this.estimateSourceTrust(signal.source);
+      const consistencyHint = signal.importance === "high" ? 0.78 : signal.importance === "medium" ? 0.68 : 0.58;
+
+      return {
+        id: `onchain:${signal.id}:${index}:${createdAt}`,
+        source: "onchain",
+        category: this.inferNutrientCategory(signal.id, signal.label),
+        label: signal.label,
+        value: signal.value,
+        evidence: `${signal.label}: ${signal.value} | ${signal.summary}`,
+        direction: signal.direction,
+        trust,
+        freshness: 0.94,
+        consistencyHint,
+        capturedAt: createdAt,
+        metadata: {
+          importance: signal.importance,
+          source: signal.source,
+        },
+      };
+    });
+
+    const dedup = new Map<string, OnchainNutrient>();
+    for (const nutrient of nutrients) {
+      const key = `${nutrient.category}|${nutrient.label}|${nutrient.value}`;
+      if (!dedup.has(key)) {
+        dedup.set(key, nutrient);
+      }
+    }
+    return Array.from(dedup.values());
+  }
+
+  async buildNutrientPackets(): Promise<OnchainNutrient[]> {
+    const snapshot = await this.buildSnapshot();
+    return this.buildNutrients(snapshot);
   }
 
   private async getBtcFeeSignal(): Promise<OnchainSignal | null> {
@@ -433,6 +479,26 @@ export class OnchainDataService {
 
   private clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
+  }
+
+  private estimateSourceTrust(source: string): number {
+    const lower = String(source || "").toLowerCase();
+    if (lower.includes("mempool.space")) return 0.84;
+    if (lower.includes("defillama")) return 0.76;
+    if (lower.includes("blockchain.com")) return 0.7;
+    if (lower.includes("system")) return 0.45;
+    return 0.62;
+  }
+
+  private inferNutrientCategory(signalId: string, label: string): string {
+    const source = `${signalId} ${label}`.toLowerCase();
+    if (source.includes("fee")) return "network-fee";
+    if (source.includes("mempool")) return "mempool";
+    if (source.includes("stable")) return "stablecoin-flow";
+    if (source.includes("exchange")) return "exchange-flow";
+    if (source.includes("whale") || source.includes("고래")) return "whale-flow";
+    if (source.includes("tvl")) return "tvl-momentum";
+    return "onchain-signal";
   }
 }
 

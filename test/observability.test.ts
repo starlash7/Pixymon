@@ -25,6 +25,8 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
       postMinIntervalMinutes: 90,
       signalFingerprintCooldownHours: 8,
       maxPostsPerCycle: 1,
+      nutrientMinDigestScore: 0.5,
+      nutrientMaxIntakePerCycle: 12,
       fearGreedEventMinDelta: 10,
       fearGreedRequireRegimeChange: true,
       requireFearGreedEventForSentiment: true,
@@ -66,6 +68,18 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
         "market-mismatch": 1,
       },
     },
+    nutrient: {
+      nutrientIntake: 9,
+      acceptedCount: 6,
+      avgDigestScore: 0.64,
+      xpGain: 27,
+      xpGainBySource: {
+        onchain: 15,
+        market: 8,
+        news: 4,
+      },
+      evolutionEvent: 1,
+    },
   });
 
   assert.equal(event.type, "quota_cycle");
@@ -78,4 +92,8 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
   assert.equal(event.runtime.postLanguage, "ko");
   assert.equal(event.runtime.requireFearGreedEventForSentiment, true);
   assert.equal(event.runtime.sentimentMaxRatio24h, 0.25);
+  assert.equal(event.runtime.nutrientMinDigestScore, 0.5);
+  assert.equal(event.nutrition.nutrient_intake, 9);
+  assert.equal(event.nutrition.xp_gain, 27);
+  assert.equal(event.nutrition.evolution_event, 1);
 });

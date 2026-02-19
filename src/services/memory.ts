@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { AbilityUnlock, DigestScore, EvolutionStage, NutrientLedgerEntry, OnchainNutrient } from "../types/agent.js";
 
 /**
  * Pixymon Memory Service
@@ -107,11 +108,32 @@ interface FearGreedHistoryRecord {
   capturedAt: string;
 }
 
+interface EvolutionHistoryRecord {
+  from: EvolutionStage;
+  to: EvolutionStage;
+  reason: string;
+  totalXp: number;
+  unlockedAbilities: AbilityUnlock[];
+  capturedAt: string;
+}
+
+interface XpGainBySourceRecord {
+  dateKey: string;
+  onchain: number;
+  market: number;
+  news: number;
+  total: number;
+  updatedAt: string;
+}
+
 interface QualityTelemetry {
   postGenerationByDate: Record<string, PostGenerationMetrics>;
   sourceTrust: Record<string, SourceTrustRecord>;
   signalFingerprints: SignalFingerprintRecord[];
   fearGreedHistory: FearGreedHistoryRecord[];
+  nutrientLedger: NutrientLedgerEntry[];
+  xpGainBySource: Record<string, XpGainBySourceRecord>;
+  evolutionHistory: EvolutionHistoryRecord[];
 }
 
 interface MemoryData {
@@ -143,6 +165,9 @@ function createEmptyQualityTelemetry(): QualityTelemetry {
     sourceTrust: {},
     signalFingerprints: [],
     fearGreedHistory: [],
+    nutrientLedger: [],
+    xpGainBySource: {},
+    evolutionHistory: [],
   };
 }
 
@@ -323,12 +348,18 @@ export class MemoryService {
     const sourceTrust = this.normalizeSourceTrustMap(telemetry.sourceTrust);
     const signalFingerprints = this.normalizeSignalFingerprints(telemetry.signalFingerprints);
     const fearGreedHistory = this.normalizeFearGreedHistory(telemetry.fearGreedHistory);
+    const nutrientLedger = this.normalizeNutrientLedger(telemetry.nutrientLedger);
+    const xpGainBySource = this.normalizeXpGainBySource(telemetry.xpGainBySource);
+    const evolutionHistory = this.normalizeEvolutionHistory(telemetry.evolutionHistory);
 
     return {
       postGenerationByDate,
       sourceTrust,
       signalFingerprints,
       fearGreedHistory,
+      nutrientLedger,
+      xpGainBySource,
+      evolutionHistory,
     };
   }
 
@@ -430,6 +461,108 @@ export class MemoryService {
     return output
       .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime())
       .slice(-500);
+  }
+
+  private normalizeNutrientLedger(raw: unknown): NutrientLedgerEntry[] {
+    if (!Array.isArray(raw)) return [];
+    const output: NutrientLedgerEntry[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<NutrientLedgerEntry>;
+      const digest = row.digestScore as Partial<DigestScore> | undefined;
+      const source = row.source === "onchain" || row.source === "market" || row.source === "news" ? row.source : null;
+      if (!source) continue;
+      const nutrientId = typeof row.nutrientId === "string" ? row.nutrientId.trim() : "";
+      if (!nutrientId) continue;
+      output.push({
+        id: typeof row.id === "string" && row.id.trim() ? row.id.trim() : `ledger_${Date.now()}`,
+        nutrientId,
+        source,
+        category: typeof row.category === "string" && row.category.trim() ? row.category.trim().slice(0, 64) : "unknown",
+        label: typeof row.label === "string" ? row.label.trim().slice(0, 160) : "",
+        digestScore: {
+          trust: this.clamp(typeof digest?.trust === "number" ? digest.trust : 0.5, 0, 1),
+          freshness: this.clamp(typeof digest?.freshness === "number" ? digest.freshness : 0.5, 0, 1),
+          consistency: this.clamp(typeof digest?.consistency === "number" ? digest.consistency : 0.5, 0, 1),
+          total: this.clamp(typeof digest?.total === "number" ? digest.total : 0.5, 0, 1),
+          reasonCodes: Array.isArray(digest?.reasonCodes)
+            ? digest!.reasonCodes
+                .map((code) => String(code || "").trim().slice(0, 40))
+                .filter((code) => code.length > 0)
+                .slice(0, 8)
+            : [],
+        },
+        xpGain: this.clampInt(row.xpGain, 0, 100, 0),
+        accepted: typeof row.accepted === "boolean" ? row.accepted : false,
+        capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : new Date().toISOString(),
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime())
+      .slice(-1200);
+  }
+
+  private normalizeXpGainBySource(raw: unknown): Record<string, XpGainBySourceRecord> {
+    if (!raw || typeof raw !== "object") return {};
+    const output: Record<string, XpGainBySourceRecord> = {};
+    const now = new Date().toISOString();
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (!value || typeof value !== "object") continue;
+      const row = value as Partial<XpGainBySourceRecord>;
+      output[key] = {
+        dateKey: typeof row.dateKey === "string" && row.dateKey ? row.dateKey : key,
+        onchain: this.clampInt(row.onchain, 0, Number.MAX_SAFE_INTEGER, 0),
+        market: this.clampInt(row.market, 0, Number.MAX_SAFE_INTEGER, 0),
+        news: this.clampInt(row.news, 0, Number.MAX_SAFE_INTEGER, 0),
+        total: this.clampInt(row.total, 0, Number.MAX_SAFE_INTEGER, 0),
+        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : now,
+      };
+    }
+    return output;
+  }
+
+  private normalizeEvolutionHistory(raw: unknown): EvolutionHistoryRecord[] {
+    if (!Array.isArray(raw)) return [];
+    const output: EvolutionHistoryRecord[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<EvolutionHistoryRecord>;
+      const from = this.normalizeEvolutionStage(row.from);
+      const to = this.normalizeEvolutionStage(row.to);
+      if (!from || !to) continue;
+      output.push({
+        from,
+        to,
+        reason: typeof row.reason === "string" && row.reason.trim() ? row.reason.trim().slice(0, 80) : "level-up",
+        totalXp: this.clampInt(row.totalXp, 0, Number.MAX_SAFE_INTEGER, 0),
+        unlockedAbilities: this.normalizeAbilityUnlocks(row.unlockedAbilities),
+        capturedAt: typeof row.capturedAt === "string" ? row.capturedAt : new Date().toISOString(),
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime())
+      .slice(-300);
+  }
+
+  private normalizeAbilityUnlocks(raw: unknown): AbilityUnlock[] {
+    if (!Array.isArray(raw)) return [];
+    const output: AbilityUnlock[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<AbilityUnlock>;
+      const stage = this.normalizeEvolutionStage(row.unlockedAt);
+      if (!stage) continue;
+      const id = typeof row.id === "string" ? row.id.trim().slice(0, 40) : "";
+      const name = typeof row.name === "string" ? row.name.trim().slice(0, 80) : "";
+      if (!id || !name) continue;
+      output.push({
+        id,
+        name,
+        description: typeof row.description === "string" ? row.description.trim().slice(0, 140) : name,
+        unlockedAt: stage,
+      });
+    }
+    return output.slice(0, 20);
   }
 
   // ============================================
@@ -756,6 +889,182 @@ export class MemoryService {
     return this.getAgentState();
   }
 
+  getCurrentEvolutionStage(): EvolutionStage {
+    return this.levelToEvolutionStage(this.data.agentState.level);
+  }
+
+  getTotalXp(): number {
+    const state = this.data.agentState;
+    return state.signalXp + state.socialXp + state.reasoningXp;
+  }
+
+  recordNutrientIntake(params: {
+    nutrient: OnchainNutrient;
+    digest: DigestScore;
+    xpGain: number;
+    accepted: boolean;
+    timezone?: string;
+  }): { evolved: boolean; from: EvolutionStage; to: EvolutionStage; xpGain: number } {
+    const outcomes = this.recordNutrientBatchIntake([params], params.timezone);
+    const fallbackStage = this.getCurrentEvolutionStage();
+    return (
+      outcomes[0] || {
+        evolved: false,
+        from: fallbackStage,
+        to: fallbackStage,
+        xpGain: this.clampInt(params.xpGain, 0, 20, 0),
+      }
+    );
+  }
+
+  recordNutrientBatchIntake(
+    rows: Array<{
+      nutrient: OnchainNutrient;
+      digest: DigestScore;
+      xpGain: number;
+      accepted: boolean;
+    }>,
+    timezone: string = "Asia/Seoul"
+  ): Array<{ evolved: boolean; from: EvolutionStage; to: EvolutionStage; xpGain: number }> {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return [];
+    }
+
+    const outcomes = rows.map((row) => this.applyNutrientIntake(row, timezone));
+    this.compactNutrientLedger(1200, 21);
+    this.compactXpGainBySource(31);
+    this.compactEvolutionHistory(300, 120);
+    this.save();
+    return outcomes;
+  }
+
+  private applyNutrientIntake(params: {
+    nutrient: OnchainNutrient;
+    digest: DigestScore;
+    xpGain: number;
+    accepted: boolean;
+  }, timezone: string): { evolved: boolean; from: EvolutionStage; to: EvolutionStage; xpGain: number } {
+    const before = this.getCurrentEvolutionStage();
+    const key = this.getDateKey(new Date(), timezone);
+    const boundedXp = this.clampInt(params.xpGain, 0, 20, 0);
+
+    this.data.qualityTelemetry.nutrientLedger.push({
+      id: `nutrient_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      nutrientId: params.nutrient.id,
+      source: params.nutrient.source,
+      category: params.nutrient.category || "unknown",
+      label: params.nutrient.label || params.nutrient.id,
+      digestScore: {
+        trust: this.clamp(params.digest.trust, 0, 1),
+        freshness: this.clamp(params.digest.freshness, 0, 1),
+        consistency: this.clamp(params.digest.consistency, 0, 1),
+        total: this.clamp(params.digest.total, 0, 1),
+        reasonCodes: Array.isArray(params.digest.reasonCodes) ? params.digest.reasonCodes.slice(0, 8) : [],
+      },
+      xpGain: boundedXp,
+      accepted: params.accepted,
+      capturedAt: params.nutrient.capturedAt || new Date().toISOString(),
+    });
+
+    if (!this.data.qualityTelemetry.xpGainBySource[key]) {
+      this.data.qualityTelemetry.xpGainBySource[key] = {
+        dateKey: key,
+        onchain: 0,
+        market: 0,
+        news: 0,
+        total: 0,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    const dailyXp = this.data.qualityTelemetry.xpGainBySource[key];
+    dailyXp[params.nutrient.source] += boundedXp;
+    dailyXp.total += boundedXp;
+    dailyXp.updatedAt = new Date().toISOString();
+
+    if (params.accepted && boundedXp > 0) {
+      const state = this.data.agentState;
+      if (params.nutrient.source === "onchain") {
+        state.signalXp += boundedXp;
+      } else if (params.nutrient.source === "market") {
+        state.reasoningXp += boundedXp;
+      } else {
+        state.socialXp += boundedXp;
+      }
+      state.readiness = this.calculateReadiness(state.signalXp, state.socialXp, state.reasoningXp);
+      state.lastUpdated = new Date().toISOString();
+
+      if (state.readiness >= 1 && state.level < 5) {
+        const previousAbilities = [...state.unlockedAbilities];
+        state.level += 1;
+        state.lastEvolutionAt = new Date().toISOString();
+        state.unlockedAbilities = this.getAbilitiesForLevel(state.level);
+        state.signalXp = Math.round(state.signalXp * 0.45);
+        state.socialXp = Math.round(state.socialXp * 0.45);
+        state.reasoningXp = Math.round(state.reasoningXp * 0.45);
+        state.readiness = this.calculateReadiness(state.signalXp, state.socialXp, state.reasoningXp);
+
+        const unlocked = this.buildUnlockedAbilities(previousAbilities, state.unlockedAbilities, state.level);
+        this.data.qualityTelemetry.evolutionHistory.push({
+          from: before,
+          to: this.levelToEvolutionStage(state.level),
+          reason: "nutrient-xp-threshold",
+          totalXp: this.getTotalXp(),
+          unlockedAbilities: unlocked,
+          capturedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    const after = this.getCurrentEvolutionStage();
+    return {
+      evolved: before !== after,
+      from: before,
+      to: after,
+      xpGain: boundedXp,
+    };
+  }
+
+  getRecentNutrientLedger(count: number = 120): NutrientLedgerEntry[] {
+    const size = this.clampInt(count, 1, 1200, 120);
+    return this.data.qualityTelemetry.nutrientLedger.slice(-size);
+  }
+
+  getTodayNutrientMetrics(timezone: string = "Asia/Seoul"): {
+    nutrientIntake: number;
+    acceptedCount: number;
+    avgDigestScore: number;
+    xpGain: number;
+    xpGainBySource: { onchain: number; market: number; news: number };
+    evolutionEvent: number;
+  } {
+    const todayKey = this.getDateKey(new Date(), timezone);
+    const todayRows = this.data.qualityTelemetry.nutrientLedger.filter((row) =>
+      this.isTodayByTimezone(row.capturedAt, timezone)
+    );
+    const acceptedCount = todayRows.filter((row) => row.accepted).length;
+    const avgDigestScore =
+      todayRows.length > 0
+        ? Math.round((todayRows.reduce((sum, row) => sum + row.digestScore.total, 0) / todayRows.length) * 100) / 100
+        : 0;
+    const xpBucket = this.data.qualityTelemetry.xpGainBySource[todayKey];
+    const evolutionEvent = this.data.qualityTelemetry.evolutionHistory.filter((row) =>
+      this.isTodayByTimezone(row.capturedAt, timezone)
+    ).length;
+
+    return {
+      nutrientIntake: todayRows.length,
+      acceptedCount,
+      avgDigestScore,
+      xpGain: xpBucket?.total || 0,
+      xpGainBySource: {
+        onchain: xpBucket?.onchain || 0,
+        market: xpBucket?.market || 0,
+        news: xpBucket?.news || 0,
+      },
+      evolutionEvent,
+    };
+  }
+
   // 오늘 댓글 단 개수
   getTodayReplyCount(timezone: string = "Asia/Seoul"): number {
     return this.data.tweets.filter((tweet) => this.isTodayByTimezone(tweet.timestamp, timezone) && tweet.type === "reply").length;
@@ -989,6 +1298,35 @@ export class MemoryService {
     return output;
   }
 
+  private buildUnlockedAbilities(previous: string[], current: string[], level: number): AbilityUnlock[] {
+    const previousSet = new Set(previous.map((item) => item.trim()).filter(Boolean));
+    const stage = this.levelToEvolutionStage(level);
+    const unlocked = current
+      .filter((item) => !previousSet.has(item))
+      .map((name, index) => ({
+        id: `ability_${stage}_${index + 1}`.toLowerCase(),
+        name,
+        description: `${name} 능력이 ${stage} 단계에서 해금됨`,
+        unlockedAt: stage,
+      }));
+    return unlocked.slice(0, 8);
+  }
+
+  private levelToEvolutionStage(level: number): EvolutionStage {
+    if (level >= 5) return "mythic";
+    if (level === 4) return "sentinel";
+    if (level === 3) return "crawler";
+    if (level === 2) return "sprout";
+    return "seed";
+  }
+
+  private normalizeEvolutionStage(raw: unknown): EvolutionStage | null {
+    if (raw === "seed" || raw === "sprout" || raw === "crawler" || raw === "sentinel" || raw === "mythic") {
+      return raw;
+    }
+    return null;
+  }
+
   private getAbilitiesForLevel(level: number): string[] {
     if (level >= 5) {
       return [
@@ -1131,6 +1469,43 @@ export class MemoryService {
       })
       .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
     this.data.qualityTelemetry.fearGreedHistory = filtered.slice(-Math.max(1, keepItems));
+  }
+
+  private compactNutrientLedger(keepItems: number, keepDays: number): void {
+    const now = Date.now();
+    const keepMs = Math.max(1, keepDays) * 24 * 60 * 60 * 1000;
+    const filtered = this.data.qualityTelemetry.nutrientLedger
+      .filter((row) => {
+        const ts = new Date(row.capturedAt).getTime();
+        if (!Number.isFinite(ts)) return false;
+        return now - ts <= keepMs;
+      })
+      .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+    this.data.qualityTelemetry.nutrientLedger = filtered.slice(-Math.max(1, keepItems));
+  }
+
+  private compactXpGainBySource(keepDays: number): void {
+    const entries = Object.entries(this.data.qualityTelemetry.xpGainBySource);
+    if (entries.length <= keepDays) return;
+    entries
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .slice(0, Math.max(0, entries.length - keepDays))
+      .forEach(([key]) => {
+        delete this.data.qualityTelemetry.xpGainBySource[key];
+      });
+  }
+
+  private compactEvolutionHistory(keepItems: number, keepDays: number): void {
+    const now = Date.now();
+    const keepMs = Math.max(1, keepDays) * 24 * 60 * 60 * 1000;
+    const filtered = this.data.qualityTelemetry.evolutionHistory
+      .filter((row) => {
+        const ts = new Date(row.capturedAt).getTime();
+        if (!Number.isFinite(ts)) return false;
+        return now - ts <= keepMs;
+      })
+      .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
+    this.data.qualityTelemetry.evolutionHistory = filtered.slice(-Math.max(1, keepItems));
   }
 
   private isTodayByTimezone(isoTimestamp: string, timezone: string): boolean {

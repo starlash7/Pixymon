@@ -8,6 +8,8 @@ export interface EngagementRuntimeSettings {
   postMinIntervalMinutes: number;
   signalFingerprintCooldownHours: number;
   maxPostsPerCycle: number;
+  nutrientMinDigestScore: number;
+  nutrientMaxIntakePerCycle: number;
   fearGreedEventMinDelta: number;
   fearGreedRequireRegimeChange: boolean;
   requireFearGreedEventForSentiment: boolean;

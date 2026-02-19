@@ -5,6 +5,8 @@ export type ActionStyle = "assertive" | "curious" | "cautious";
 export type CognitiveObjective = ResearchObjective;
 export type ClusterSentiment = "bullish" | "bearish" | "mixed" | "neutral";
 export type ActionIntent = "thesis" | "challenge" | "probe";
+export type NutrientSource = "onchain" | "market" | "news";
+export type EvolutionStage = "seed" | "sprout" | "crawler" | "sentinel" | "mythic";
 
 export interface OnchainSignal {
   id: string;
@@ -21,6 +23,48 @@ export interface OnchainSnapshot {
   signals: OnchainSignal[];
   highlights: string[];
   riskFlags: string[];
+}
+
+export interface OnchainNutrient {
+  id: string;
+  source: NutrientSource;
+  category: string;
+  label: string;
+  value: string;
+  evidence: string;
+  direction?: SignalDirection;
+  trust: number;
+  freshness: number;
+  consistencyHint?: number;
+  capturedAt: string;
+  metadata?: Record<string, string | number | boolean>;
+}
+
+export interface DigestScore {
+  trust: number;
+  freshness: number;
+  consistency: number;
+  total: number;
+  reasonCodes: string[];
+}
+
+export interface AbilityUnlock {
+  id: string;
+  name: string;
+  description: string;
+  unlockedAt: EvolutionStage;
+}
+
+export interface NutrientLedgerEntry {
+  id: string;
+  nutrientId: string;
+  source: NutrientSource;
+  category: string;
+  label: string;
+  digestScore: DigestScore;
+  xpGain: number;
+  accepted: boolean;
+  capturedAt: string;
 }
 
 export interface ResearchInput {
