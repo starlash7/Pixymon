@@ -1,6 +1,8 @@
 import { TwitterApi } from "twitter-api-v2";
 import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
+import { OnchainDataService } from "./onchain-data.js";
+import { digestNutrients } from "./digest-engine.js";
 import {
   CLAUDE_MODEL,
   CLAUDE_RESEARCH_MODEL,
@@ -76,6 +78,17 @@ interface EngagementCycleCache {
   trendTweets?: CachedTrendTweets;
   cacheMetrics: CycleCacheMetrics;
 }
+
+interface FeedDigestSummary {
+  intakeCount: number;
+  acceptedCount: number;
+  avgDigestScore: number;
+  xpGainTotal: number;
+  evolvedCount: number;
+  rejectReasonsTop: Array<{ reason: string; count: number }>;
+}
+
+const onchainDataService = new OnchainDataService();
 
 // 멘션 체크 및 응답
 export async function checkAndReplyMentions(
@@ -716,6 +729,87 @@ Rules:
   }
 }
 
+async function runFeedDigestEvolve(
+  cache: EngagementCycleCache,
+  runtimeSettings: EngagementRuntimeSettings,
+  timezone: string
+): Promise<FeedDigestSummary> {
+  try {
+    const trend = await getOrCreateTrendContext(cache, {
+      minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
+    });
+    const onchainNutrients = await onchainDataService.buildNutrientPackets();
+    const mergedNutrients = [...onchainNutrients, ...trend.nutrients]
+      .sort((a, b) => b.trust * b.freshness - a.trust * a.freshness)
+      .slice(0, runtimeSettings.nutrientMaxIntakePerCycle);
+
+    if (mergedNutrients.length === 0) {
+      return {
+        intakeCount: 0,
+        acceptedCount: 0,
+        avgDigestScore: 0,
+        xpGainTotal: 0,
+        evolvedCount: 0,
+        rejectReasonsTop: [],
+      };
+    }
+
+    const recentLedger = memory.getRecentNutrientLedger(260);
+    const digested = digestNutrients(mergedNutrients, recentLedger, {
+      minDigestScore: runtimeSettings.nutrientMinDigestScore,
+      maxItems: runtimeSettings.nutrientMaxIntakePerCycle,
+    });
+
+    const outcomes = memory.recordNutrientBatchIntake(
+      digested.records.map((row) => ({
+        nutrient: row.nutrient,
+        digest: row.digest,
+        xpGain: row.xpGain,
+        accepted: row.accepted,
+      })),
+      timezone
+    );
+
+    const rejectReasons: Record<string, number> = {};
+    let evolvedCount = 0;
+    digested.records.forEach((row, index) => {
+      const evolve = outcomes[index];
+      if (evolve?.evolved) {
+        evolvedCount += 1;
+        console.log(`[EVOLVE] stage ${evolve.from} -> ${evolve.to} | xp+${evolve.xpGain}`);
+      }
+      if (!row.accepted) {
+        const reason = row.rejectionReason || "low-quality";
+        rejectReasons[reason] = (rejectReasons[reason] || 0) + 1;
+      }
+    });
+
+    const rejectReasonsTop = Object.entries(rejectReasons)
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
+    return {
+      intakeCount: digested.intakeCount,
+      acceptedCount: digested.acceptedCount,
+      avgDigestScore: digested.avgDigestScore,
+      xpGainTotal: digested.xpGainTotal,
+      evolvedCount,
+      rejectReasonsTop,
+    };
+  } catch (error) {
+    console.log(`[FEED] nutrient loop 실패: ${(error as Error).message}`);
+    return {
+      intakeCount: 0,
+      acceptedCount: 0,
+      avgDigestScore: 0,
+      xpGainTotal: 0,
+      evolvedCount: 0,
+      rejectReasonsTop: [{ reason: "feed-error", count: 1 }],
+    };
+  }
+}
+
 export async function runDailyQuotaCycle(
   twitter: TwitterApi,
   claude: Anthropic,
@@ -731,6 +825,15 @@ export async function runDailyQuotaCycle(
     runContexts: {},
     cacheMetrics: createEmptyCacheMetrics(),
   };
+  let feedDigest: FeedDigestSummary = {
+    intakeCount: 0,
+    acceptedCount: 0,
+    avgDigestScore: 0,
+    xpGainTotal: 0,
+    evolvedCount: 0,
+    rejectReasonsTop: [],
+  };
+  let canActWithDigest = false;
   const finalize = (
     executed: number,
     remaining: number,
@@ -738,6 +841,7 @@ export async function runDailyQuotaCycle(
   ): { target: number; remaining: number; executed: number } => {
     const normalizedRemaining = Math.max(0, remaining);
     logCacheMetrics(cycleCache);
+    console.log("[REFLECT] 사이클 메트릭 기록 및 정책 상태 반영");
     emitCycleObservability(
       {
         timezone,
@@ -763,6 +867,20 @@ export async function runDailyQuotaCycle(
     return finalize(0, 0, getDefaultAdaptivePolicy());
   }
 
+  feedDigest = await runFeedDigestEvolve(cycleCache, runtimeSettings, timezone);
+  canActWithDigest = feedDigest.acceptedCount > 0;
+
+  console.log(
+    `[FEED] nutrient=${feedDigest.intakeCount} accepted=${feedDigest.acceptedCount} avgDigest=${feedDigest.avgDigestScore.toFixed(2)} xpGain=${feedDigest.xpGainTotal}`
+  );
+  if (feedDigest.rejectReasonsTop.length > 0) {
+    const topReject = feedDigest.rejectReasonsTop.map((item) => `${item.reason}:${item.count}`).join(", ");
+    console.log(`[DIGEST] rejectTop=${topReject}`);
+  }
+  if (!canActWithDigest) {
+    console.log("[ACT] 유효 nutrient가 없어 이번 사이클의 선제 글/댓글 실행을 제한합니다.");
+  }
+
   console.log(`[QUOTA] 오늘 활동 ${target - remaining}/${target}, 이번 사이클 최대 ${maxActions}개`);
   const adaptivePolicy = buildAdaptivePolicy(target, target - remaining, timezone);
   console.log(
@@ -772,7 +890,7 @@ export async function runDailyQuotaCycle(
     `[TUNING] postLang=${runtimeSettings.postLanguage}, replyLang=${runtimeSettings.replyLanguageMode}, trend(score>=${runtimeSettings.minTrendTweetScore.toFixed(1)}, engage>=${runtimeSettings.minTrendTweetEngagement})`
   );
   console.log(
-    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, fpCooldown=${runtimeSettings.signalFingerprintCooldownHours}h, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}, sentimentMax=${Math.round(runtimeSettings.sentimentMaxRatio24h * 100)}%`
+    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, fpCooldown=${runtimeSettings.signalFingerprintCooldownHours}h, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}, sentimentMax=${Math.round(runtimeSettings.sentimentMaxRatio24h * 100)}%, nutrient(minScore=${runtimeSettings.nutrientMinDigestScore.toFixed(2)}, max=${runtimeSettings.nutrientMaxIntakePerCycle})`
   );
   console.log(
     `[COST] guard=${xApiCostSettings.enabled ? "on" : "off"} budget=$${xApiCostSettings.dailyMaxUsd.toFixed(2)} read_limit=${xApiCostSettings.dailyReadRequestLimit}/day create_limit=${xApiCostSettings.dailyCreateRequestLimit}/day mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m create>=${xApiCostSettings.createMinIntervalMinutes}m`
@@ -799,6 +917,10 @@ export async function runDailyQuotaCycle(
   const postGoal = Math.max(3, Math.floor(target * 0.25));
 
   while (executed < maxActions && remaining > 0) {
+    if (!canActWithDigest) {
+      console.log("[QUOTA] feed/digest gate로 proactive action 생략");
+      break;
+    }
     const before = executed;
     const todayPosts = memory.getTodayPostCount(timezone);
     const canPostInCycle = postsCreatedThisCycle < runtimeSettings.maxPostsPerCycle;
@@ -1141,6 +1263,18 @@ function resolveEngagementSettings(
       0,
       4,
       DEFAULT_ENGAGEMENT_SETTINGS.maxPostsPerCycle
+    ),
+    nutrientMinDigestScore: clampNumber(
+      settings.nutrientMinDigestScore,
+      0.2,
+      0.95,
+      DEFAULT_ENGAGEMENT_SETTINGS.nutrientMinDigestScore
+    ),
+    nutrientMaxIntakePerCycle: clampInt(
+      settings.nutrientMaxIntakePerCycle,
+      3,
+      40,
+      DEFAULT_ENGAGEMENT_SETTINGS.nutrientMaxIntakePerCycle
     ),
     fearGreedEventMinDelta: clampInt(
       settings.fearGreedEventMinDelta,

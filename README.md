@@ -47,6 +47,7 @@
    - 시그널 지문 쿨다운(`SIGNAL_FINGERPRINT_COOLDOWN_HOURS`)
    - FGI 이벤트 기반 sentiment 서사 허용(`FG_*`, `REQUIRE_FG_EVENT_FOR_SENTIMENT`)
    - 24h sentiment 비중 제한(`SENTIMENT_MAX_RATIO_24H`)
+   - Feed/Digest 품질 게이트(`NUTRIENT_MIN_DIGEST_SCORE`, `NUTRIENT_MAX_INTAKE_PER_CYCLE`)
    - 사이클당 글 상한(`MAX_POSTS_PER_CYCLE`)
    - 문장 구조(서두/마무리) 반복 차단
 
@@ -57,6 +58,7 @@
 - `src/index.ts`: 엔트리포인트, 모드 분기
 - `src/services/runtime.ts`: one-shot / scheduler 실행 컨트롤
 - `src/services/engagement.ts`: quota 사이클 오케스트레이션
+- `src/services/digest-engine.ts`: nutrient digest score + XP 변환
 
 ### 3.2 Intelligence & Quality Layer
 
@@ -80,7 +82,8 @@
 2. `retry_count`
 3. `fallback_rate`
 4. `source_trust` 변화
-5. 캐시 히트/미스 (`cognitive`, `runContext`, `trendContext`, `trendTweets`)
+5. `nutrient_intake`, `xp_gain`, `evolution_event`
+6. 캐시 히트/미스 (`cognitive`, `runContext`, `trendContext`, `trendTweets`)
 
 메트릭 저장:
 
@@ -150,6 +153,8 @@ FG_EVENT_MIN_DELTA=10
 FG_REQUIRE_REGIME_CHANGE=true
 REQUIRE_FG_EVENT_FOR_SENTIMENT=true
 SENTIMENT_MAX_RATIO_24H=0.25
+NUTRIENT_MIN_DIGEST_SCORE=0.50
+NUTRIENT_MAX_INTAKE_PER_CYCLE=12
 
 # X API read cost guard
 X_API_COST_GUARD_ENABLED=true
@@ -194,6 +199,7 @@ src/
 ├── services/
 │   ├── blockchain-news.ts
 │   ├── cognitive-engine.ts
+│   ├── digest-engine.ts
 │   ├── engagement.ts
 │   ├── engagement/
 │   │   ├── fear-greed-policy.ts

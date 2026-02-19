@@ -1,4 +1,5 @@
 import { MarketData } from "../blockchain-news.js";
+import { OnchainNutrient } from "../../types/agent.js";
 import {
   EngagementRuntimeSettings,
   ObservabilityRuntimeSettings,
@@ -22,6 +23,7 @@ export interface TrendContext {
   marketData: MarketData[];
   headlines: string[];
   newsSources: Array<{ key: string; trust: number }>;
+  nutrients: OnchainNutrient[];
 }
 
 export interface TrendFocus {

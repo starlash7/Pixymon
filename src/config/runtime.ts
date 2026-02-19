@@ -43,6 +43,8 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postMinIntervalMinutes: 90,
   signalFingerprintCooldownHours: 8,
   maxPostsPerCycle: 1,
+  nutrientMinDigestScore: 0.5,
+  nutrientMaxIntakePerCycle: 12,
   fearGreedEventMinDelta: 10,
   fearGreedRequireRegimeChange: true,
   requireFearGreedEventForSentiment: true,
@@ -231,6 +233,18 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.maxPostsPerCycle,
       0,
       4
+    ),
+    nutrientMinDigestScore: parseFloatInRange(
+      process.env.NUTRIENT_MIN_DIGEST_SCORE,
+      DEFAULT_ENGAGEMENT_SETTINGS.nutrientMinDigestScore,
+      0.2,
+      0.95
+    ),
+    nutrientMaxIntakePerCycle: parseIntInRange(
+      process.env.NUTRIENT_MAX_INTAKE_PER_CYCLE,
+      DEFAULT_ENGAGEMENT_SETTINGS.nutrientMaxIntakePerCycle,
+      3,
+      40
     ),
     fearGreedEventMinDelta: parseIntInRange(
       process.env.FG_EVENT_MIN_DELTA,

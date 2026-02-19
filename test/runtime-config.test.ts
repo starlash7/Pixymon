@@ -42,6 +42,8 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       POST_MIN_INTERVAL_MINUTES: "120",
       SIGNAL_FINGERPRINT_COOLDOWN_HOURS: "10",
       MAX_POSTS_PER_CYCLE: "1",
+      NUTRIENT_MIN_DIGEST_SCORE: "0.62",
+      NUTRIENT_MAX_INTAKE_PER_CYCLE: "14",
       FG_EVENT_MIN_DELTA: "12",
       FG_REQUIRE_REGIME_CHANGE: "false",
       REQUIRE_FG_EVENT_FOR_SENTIMENT: "false",
@@ -70,6 +72,8 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.engagement.postMinIntervalMinutes, 120);
       assert.equal(config.engagement.signalFingerprintCooldownHours, 10);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
+      assert.equal(config.engagement.nutrientMinDigestScore, 0.62);
+      assert.equal(config.engagement.nutrientMaxIntakePerCycle, 14);
       assert.equal(config.engagement.fearGreedEventMinDelta, 12);
       assert.equal(config.engagement.fearGreedRequireRegimeChange, false);
       assert.equal(config.engagement.requireFearGreedEventForSentiment, false);
@@ -100,6 +104,8 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       POST_MIN_INTERVAL_MINUTES: "invalid",
       SIGNAL_FINGERPRINT_COOLDOWN_HOURS: "invalid",
       MAX_POSTS_PER_CYCLE: "invalid",
+      NUTRIENT_MIN_DIGEST_SCORE: "invalid",
+      NUTRIENT_MAX_INTAKE_PER_CYCLE: "invalid",
       FG_EVENT_MIN_DELTA: "invalid",
       FG_REQUIRE_REGIME_CHANGE: "invalid",
       REQUIRE_FG_EVENT_FOR_SENTIMENT: "invalid",
@@ -119,6 +125,8 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.engagement.postMinIntervalMinutes, 90);
       assert.equal(config.engagement.signalFingerprintCooldownHours, 8);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
+      assert.equal(config.engagement.nutrientMinDigestScore, 0.5);
+      assert.equal(config.engagement.nutrientMaxIntakePerCycle, 12);
       assert.equal(config.engagement.fearGreedEventMinDelta, 10);
       assert.equal(config.engagement.fearGreedRequireRegimeChange, true);
       assert.equal(config.engagement.requireFearGreedEventForSentiment, true);

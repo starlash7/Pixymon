@@ -19,6 +19,18 @@ interface ObservabilitySnapshot {
   postCount: number;
   replyCount: number;
   postGeneration: PostGenerationSnapshot;
+  nutrient: {
+    nutrientIntake: number;
+    acceptedCount: number;
+    avgDigestScore: number;
+    xpGain: number;
+    xpGainBySource: {
+      onchain: number;
+      market: number;
+      news: number;
+    };
+    evolutionEvent: number;
+  };
 }
 
 export interface CycleObservabilityInput {
@@ -67,6 +79,8 @@ export interface CycleObservabilityEvent {
     postMinIntervalMinutes: number;
     signalFingerprintCooldownHours: number;
     maxPostsPerCycle: number;
+    nutrientMinDigestScore: number;
+    nutrientMaxIntakePerCycle: number;
     fearGreedEventMinDelta: number;
     fearGreedRequireRegimeChange: boolean;
     requireFearGreedEventForSentiment: boolean;
@@ -77,6 +91,18 @@ export interface CycleObservabilityEvent {
     minTrendTweetEngagement: number;
     topicMaxSameTag24h: number;
     topicBlockConsecutiveTag: boolean;
+  };
+  nutrition: {
+    nutrient_intake: number;
+    accepted_nutrient_count: number;
+    avg_digest_score: number;
+    xp_gain: number;
+    xp_gain_by_source: {
+      onchain: number;
+      market: number;
+      news: number;
+    };
+    evolution_event: number;
   };
   cache?: CycleCacheMetrics;
 }
@@ -92,6 +118,7 @@ export function emitCycleObservability(
     postCount: memory.getTodayPostCount(input.timezone),
     replyCount: memory.getTodayReplyCount(input.timezone),
     postGeneration: memory.getTodayPostGenerationMetrics(input.timezone),
+    nutrient: memory.getTodayNutrientMetrics(input.timezone),
   };
 
   const event = buildCycleObservabilityEvent(input, snapshot);
@@ -142,6 +169,8 @@ export function buildCycleObservabilityEvent(
       postMinIntervalMinutes: input.runtimeSettings.postMinIntervalMinutes,
       signalFingerprintCooldownHours: input.runtimeSettings.signalFingerprintCooldownHours,
       maxPostsPerCycle: input.runtimeSettings.maxPostsPerCycle,
+      nutrientMinDigestScore: round(input.runtimeSettings.nutrientMinDigestScore, 2),
+      nutrientMaxIntakePerCycle: input.runtimeSettings.nutrientMaxIntakePerCycle,
       fearGreedEventMinDelta: input.runtimeSettings.fearGreedEventMinDelta,
       fearGreedRequireRegimeChange: input.runtimeSettings.fearGreedRequireRegimeChange,
       requireFearGreedEventForSentiment: input.runtimeSettings.requireFearGreedEventForSentiment,
@@ -152,6 +181,14 @@ export function buildCycleObservabilityEvent(
       minTrendTweetEngagement: input.runtimeSettings.minTrendTweetEngagement,
       topicMaxSameTag24h: input.runtimeSettings.topicMaxSameTag24h,
       topicBlockConsecutiveTag: input.runtimeSettings.topicBlockConsecutiveTag,
+    },
+    nutrition: {
+      nutrient_intake: snapshot.nutrient.nutrientIntake,
+      accepted_nutrient_count: snapshot.nutrient.acceptedCount,
+      avg_digest_score: snapshot.nutrient.avgDigestScore,
+      xp_gain: snapshot.nutrient.xpGain,
+      xp_gain_by_source: snapshot.nutrient.xpGainBySource,
+      evolution_event: snapshot.nutrient.evolutionEvent,
     },
     cache: input.cacheMetrics,
   };

@@ -1,5 +1,6 @@
-import { BlockchainNewsService, MarketData } from "../blockchain-news.js";
+import { BlockchainNewsService, MarketData, NewsItem } from "../blockchain-news.js";
 import { memory } from "../memory.js";
+import { OnchainNutrient } from "../../types/agent.js";
 import { inferTopicTag, sanitizeTweetText } from "./quality.js";
 import { RecentPostRecord, TrendContext, TrendContextOptions, TrendFocus } from "./types.js";
 
@@ -85,6 +86,12 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
     .map((coin) => `${coin.symbol} ${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(1)}%`)
     .join(" | ");
   const newsSummary = titlePool.slice(0, 4).map((title) => `- ${title}`).join("\n");
+  const createdAt = new Date().toISOString();
+  const nutrients = buildTrendNutrients({
+    marketData,
+    newsRows: filteredNews,
+    createdAt,
+  });
 
   return {
     keywords: keywords.length > 0 ? keywords : ["crypto", "blockchain", "layer2", "onchain", "ETF", "macro"],
@@ -92,6 +99,7 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
     marketData,
     headlines: titlePool.slice(0, 8),
     newsSources: filteredNews.slice(0, 8).map((row) => ({ key: row.sourceKey, trust: row.trust })),
+    nutrients,
   };
 }
 
@@ -237,6 +245,76 @@ function extractKeywordsFromTitle(title: string): string[] {
     .filter((token) => !/^(the|and|with|from|this|that|for|into|about|news)$/i.test(token))
     .filter((token) => !/^(join|community|private|group|airdrop|giveaway)$/i.test(token))
     .slice(0, 4);
+}
+
+export function buildTrendNutrients(params: {
+  marketData: MarketData[];
+  newsRows: Array<{ item: NewsItem; sourceKey: string; trust: number }>;
+  createdAt: string;
+}): OnchainNutrient[] {
+  const marketNutrients: OnchainNutrient[] = params.marketData.slice(0, 5).map((coin, index) => {
+    const absChange = Math.abs(coin.change24h);
+    const direction = coin.change24h > 0.1 ? "up" : coin.change24h < -0.1 ? "down" : "flat";
+    return {
+      id: `market:${coin.symbol}:${params.createdAt}:${index}`,
+      source: "market",
+      category: "price-action",
+      label: `${coin.symbol} 24h 변동`,
+      value: `${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(2)}%`,
+      evidence: `${coin.name} $${Math.round(coin.price).toLocaleString("en-US")} (${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(2)}%)`,
+      direction,
+      trust: clampNumber(0.74 + Math.min(0.12, absChange / 80), 0.3, 0.94, 0.76),
+      freshness: 0.95,
+      consistencyHint: clampNumber(0.62 + Math.min(0.2, absChange / 40), 0.25, 0.9, 0.66),
+      capturedAt: params.createdAt,
+      metadata: {
+        symbol: coin.symbol,
+        change24h: Number(coin.change24h.toFixed(2)),
+      },
+    };
+  });
+
+  const newsNutrients: OnchainNutrient[] = params.newsRows.slice(0, 8).map((row, index) => {
+    const category = inferNewsCategory(row.item.title, row.item.category);
+    return {
+      id: `news:${row.sourceKey}:${index}:${params.createdAt}`,
+      source: "news",
+      category,
+      label: row.item.title.slice(0, 120),
+      value: row.item.source || "unknown",
+      evidence: `${row.item.title} | ${row.item.summary || "summary-missing"}`,
+      trust: clampNumber(row.trust, 0.15, 0.96, 0.5),
+      freshness: clampNumber(0.92 - index * 0.05, 0.35, 0.92, 0.72),
+      consistencyHint: 0.62,
+      capturedAt: params.createdAt,
+      metadata: {
+        sourceKey: row.sourceKey,
+      },
+    };
+  });
+
+  const dedup = new Map<string, OnchainNutrient>();
+  for (const nutrient of [...marketNutrients, ...newsNutrients]) {
+    const key = `${nutrient.source}|${nutrient.category}|${sanitizeTweetText(nutrient.label).toLowerCase()}`;
+    if (!dedup.has(key)) {
+      dedup.set(key, nutrient);
+    }
+  }
+  return Array.from(dedup.values());
+}
+
+function inferNewsCategory(title: string, fallback: string): string {
+  const lower = sanitizeTweetText(title).toLowerCase();
+  if (/upgrade|mainnet|testnet|rollup|layer2|fork|firedancer|validator/.test(lower)) return "protocol-upgrade";
+  if (/etf|sec|ecb|fed|fomc|rates|macro|cpi|inflation|eur\/usd|usd/.test(lower)) return "macro-news";
+  if (/hack|exploit|breach|incident|outage/.test(lower)) return "risk-event";
+  if (/listing|exchange|volume|liquidity/.test(lower)) return "market-structure";
+  const normalized = String(fallback || "headline")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "");
+  return normalized || "headline";
 }
 
 function normalizeSourceLabel(source: string): string {
