@@ -1,7 +1,7 @@
 # Pixymon
 
 온체인 데이터를 먹고 성장하는 캐릭터형 X(Twitter) 에이전트입니다.  
-현재 Pixymon은 단순 자동포스팅 봇이 아니라, **멘션 응답 + 트렌드 인게이지먼트 + 메모리/관측성 기반 운영 루프**를 중심으로 동작합니다.
+현재 Pixymon은 **Feed -> Digest -> Evolve -> Plan -> Act -> Reflect** 루프를 중심으로 동작합니다.
 
 [![Twitter](https://img.shields.io/badge/Twitter-@Pixy__mon-1DA1F2?style=flat&logo=twitter)](https://twitter.com/Pixy_mon)
 [![Claude](https://img.shields.io/badge/Claude-Sonnet_4.5-D97706?style=flat-square)](https://www.anthropic.com/)
@@ -12,85 +12,137 @@
   <img src="./docs/assets/pixymon-sprite.jpg" alt="Pixymon sprite sheet" width="680" />
 </p>
 
-## 1. 현재 상태 요약
+## 1. 최신 변경 요약
 
-2026-02-17 기준 주요 업데이트:
+2026-02-20 기준:
 
-1. 고정 시간 크론 기반이 아닌 **자율 quota 루프**로 운영
-2. 트렌드 글/댓글/멘션 응답을 목표치 기반으로 균형 실행
-3. **품질 게이트 강화**: 숫자 앵커 정합성, 중복/내러티브 반복, 주제 다양성, FGI 이벤트 기반 sentiment 제한
-4. **적응형 정책 + 신뢰도 계층**: 실패율/폴백율/소스 신뢰도에 따라 임계값 자동 보정
-5. **관측성 추가**: 사이클 메트릭 JSON 출력 + `data/metrics-events.ndjson` 저장
-6. **자동 테스트 추가**: `npm test`로 핵심 설정/품질/관측성 유닛 테스트 실행
-7. 레거시 경로 정리: 구형 `briefing`/`influencer` 하드코딩 경로 제거
+1. `Feed`를 이벤트/근거 중심으로 강화
+   - `TrendEvent` + `OnchainEvidence` 모델 추가
+2. `Plan` 단계 추가
+   - lane 강제 선택: `protocol`, `ecosystem`, `regulation`, `macro`, `onchain`, `market-structure`
+   - 24h lane 편중 제한 (`onchain` 최대 30%)
+3. `Act` 계약 강제
+   - 트윗 생성 규칙: **event 1개 + evidence 2개**
+   - 미충족 시 생성 거절 + 재시도
+4. 메타 저장 확장
+   - 발행 트윗에 lane/event/evidence 메타 저장
+5. 관측성 확장
+   - `planning.lane_usage_24h`, `planning.dominant_lane_24h`, `planning.onchain_ratio_24h` 추가
+6. 구조 최적화
+   - 이벤트/근거 플래너를 `src/services/engagement/event-evidence.ts`로 분리
 
-## 2. 런타임 동작
+## 2. 핵심 컨셉 루프
 
-`src/index.ts` 기준 기본 동작:
+1. Feed: 온체인/시장/뉴스를 nutrient로 수집
+2. Digest: 신뢰도/신선도/일관성 점수화
+3. Evolve: XP 누적 및 진화 상태 갱신
+4. Plan: 오늘 lane + event/evidence 액션 플랜 선택
+5. Act: 계약(`event 1 + evidence 2`) 충족 글/댓글 실행
+6. Reflect: 품질/실패사유/메트릭을 다음 사이클 정책에 반영
 
-1. `SCHEDULER_MODE=true`면 24/7 자율 루프, `false`면 one-shot 사이클
-2. 하루 목표(`DAILY_ACTIVITY_TARGET`)를 댓글+글 합산으로 채움
-3. 기본 언어 정책:
-   - 글: `POST_LANGUAGE=ko`
-   - 댓글: `REPLY_LANGUAGE_MODE=match`
-4. 핵심 실행 경로:
+## 3. 구조도
+
+```mermaid
+flowchart TD
+    A[Onchain / Market / News Feed] --> B[Digest Engine]
+    B --> C[Memory XP & Evolution]
+    C --> D[Event-Evidence Planner]
+    D --> E[Act Contract<br/>event 1 + evidence 2]
+    E --> F[Twitter Post / Reply]
+    F --> G[Observability + Reflection]
+    G --> D
+```
+
+```mermaid
+flowchart LR
+    subgraph FeedLayer
+      N1[onchain-data.ts]
+      N2[blockchain-news.ts]
+      N3[trend-context.ts]
+    end
+    subgraph PlanningLayer
+      P1[event-evidence.ts]
+      P2[engagement.ts]
+    end
+    subgraph StateLayer
+      S1[memory.ts]
+      S2[digest-engine.ts]
+    end
+    subgraph OutputLayer
+      O1[twitter.ts]
+      O2[observability.ts]
+    end
+    FeedLayer --> PlanningLayer --> OutputLayer
+    PlanningLayer --> StateLayer --> PlanningLayer
+```
+
+## 4. 런타임 동작
+
+`src/index.ts` 기준:
+
+1. `SCHEDULER_MODE=true`: 24/7 자율 루프
+2. `SCHEDULER_MODE=false`: one-shot 사이클
+3. 루프 실행 순서:
    - 멘션 응답
-   - 트렌드 글 생성
-   - 트렌드 댓글
-5. X API read 비용 가드:
-   - 일일 예상비용 상한(`X_API_DAILY_MAX_USD`)
-   - 일일 read 요청 상한(`X_API_DAILY_READ_REQUEST_LIMIT`)
-   - 멘션/트렌드 검색 최소 간격(`X_MENTION_*`, `X_TREND_*`)
-   - Content Create 요청 상한(`X_API_DAILY_CREATE_REQUEST_LIMIT`)
-6. 중복 억제 가드:
-   - 글 최소 간격(`POST_MIN_INTERVAL_MINUTES`)
-   - 시그널 지문 쿨다운(`SIGNAL_FINGERPRINT_COOLDOWN_HOURS`)
-   - FGI 이벤트 기반 sentiment 서사 허용(`FG_*`, `REQUIRE_FG_EVENT_FOR_SENTIMENT`)
-   - 24h sentiment 비중 제한(`SENTIMENT_MAX_RATIO_24H`)
-   - Feed/Digest 품질 게이트(`NUTRIENT_MIN_DIGEST_SCORE`, `NUTRIENT_MAX_INTAKE_PER_CYCLE`)
-   - 사이클당 글 상한(`MAX_POSTS_PER_CYCLE`)
-   - 문장 구조(서두/마무리) 반복 차단
+   - feed/digest/evolve
+   - event-evidence plan
+   - 트렌드 글/댓글 act
+   - reflect/observability
+4. 비용 가드:
+   - 일일 USD 상한
+   - read/create 요청 상한
+   - read/create 최소 간격
+5. 중복 가드:
+   - post dispatch lock/fingerprint
+   - signal fingerprint cooldown
+   - 품질 게이트 + 계약 검증
 
-## 3. 핵심 아키텍처
+## 5. 주요 파일 맵
 
-### 3.1 Orchestration Layer
+### Orchestration
 
-- `src/index.ts`: 엔트리포인트, 모드 분기
-- `src/services/runtime.ts`: one-shot / scheduler 실행 컨트롤
-- `src/services/engagement.ts`: quota 사이클 오케스트레이션
-- `src/services/digest-engine.ts`: nutrient digest score + XP 변환
+- `src/index.ts`
+- `src/services/runtime.ts`
+- `src/services/engagement.ts`
 
-### 3.2 Intelligence & Quality Layer
+### Planning & Quality
 
-- `src/services/llm.ts`: Claude 호출 및 톤 정책
-- `src/services/cognitive-engine.ts`: 5-layer 인지 루프
-- `src/services/engagement/quality.ts`: 품질 게이트
-- `src/services/engagement/policy.ts`: 적응형 정책
+- `src/services/engagement/event-evidence.ts`
+- `src/services/engagement/trend-context.ts`
+- `src/services/engagement/quality.ts`
+- `src/services/engagement/policy.ts`
 
-### 3.3 Data & Memory Layer
+### Feed / Evolution / Memory
 
-- `src/services/blockchain-news.ts`: 뉴스/마켓/F&G 수집
-- `src/services/onchain-data.ts`: 온체인 시그널 스냅샷
-- `src/services/memory.ts`: 영구 메모리 및 텔레메트리 저장
-- `src/services/observability.ts`: 구조화 메트릭 출력/기록
+- `src/services/onchain-data.ts`
+- `src/services/blockchain-news.ts`
+- `src/services/digest-engine.ts`
+- `src/services/memory.ts`
 
-## 4. 운영 품질/관측 지표
+### Output / Metrics
 
-현재 기록되는 핵심 지표:
+- `src/services/twitter.ts`
+- `src/services/observability.ts`
 
-1. `post_fail_reason`
-2. `retry_count`
-3. `fallback_rate`
-4. `source_trust` 변화
-5. `nutrient_intake`, `xp_gain`, `evolution_event`
-6. 캐시 히트/미스 (`cognitive`, `runContext`, `trendContext`, `trendTweets`)
+## 6. 관측 지표
 
-메트릭 저장:
+기록 지표 예시:
+
+1. `postGeneration.retryCountTotal`
+2. `postGeneration.fallbackRate`
+3. `nutrition.nutrient_intake`
+4. `nutrition.xp_gain`
+5. `nutrition.evolution_event`
+6. `planning.lane_usage_24h`
+7. `planning.dominant_lane_24h`
+8. `planning.onchain_ratio_24h`
+
+출력:
 
 - stdout JSON (`OBSERVABILITY_STDOUT_JSON=true`)
-- `data/metrics-events.ndjson`
+- 파일 로그 (`data/metrics-events.ndjson`)
 
-## 5. 실행 방법
+## 7. 실행 방법
 
 설치:
 
@@ -104,16 +156,10 @@ npm ci
 npm run dev
 ```
 
-스케줄러 실행 (권장):
+스케줄러 실행:
 
 ```bash
 SCHEDULER_MODE=true DAILY_ACTIVITY_TARGET=20 DAILY_TARGET_TIMEZONE=Asia/Seoul npm run dev
-```
-
-테스트 모드:
-
-```bash
-TEST_MODE=true npm run dev
 ```
 
 빌드/테스트:
@@ -123,7 +169,7 @@ npm run build
 npm test
 ```
 
-## 6. 환경 변수 (핵심)
+## 8. 환경 변수 (핵심)
 
 ```env
 # Claude
@@ -145,18 +191,33 @@ MAX_ACTIONS_PER_CYCLE=4
 MIN_LOOP_MINUTES=25
 MAX_LOOP_MINUTES=70
 
-# Post anti-duplication guard
+# Generation / Quality
+POST_GENERATION_MAX_ATTEMPTS=2
+POST_MAX_CHARS=220
+POST_MIN_LENGTH=20
+POST_LANGUAGE=ko
+REPLY_LANGUAGE_MODE=match
 POST_MIN_INTERVAL_MINUTES=90
 SIGNAL_FINGERPRINT_COOLDOWN_HOURS=8
 MAX_POSTS_PER_CYCLE=1
+NUTRIENT_MIN_DIGEST_SCORE=0.50
+NUTRIENT_MAX_INTAKE_PER_CYCLE=12
+
+# Fear & Sentiment
 FG_EVENT_MIN_DELTA=10
 FG_REQUIRE_REGIME_CHANGE=true
 REQUIRE_FG_EVENT_FOR_SENTIMENT=true
 SENTIMENT_MAX_RATIO_24H=0.25
-NUTRIENT_MIN_DIGEST_SCORE=0.50
-NUTRIENT_MAX_INTAKE_PER_CYCLE=12
 
-# X API read cost guard
+# Trend filter
+TREND_NEWS_MIN_SOURCE_TRUST=0.28
+TREND_TWEET_MIN_SOURCE_TRUST=0.24
+TREND_TWEET_MIN_SCORE=3.2
+TREND_TWEET_MIN_ENGAGEMENT=6
+TOPIC_MAX_SAME_TAG_24H=2
+TOPIC_BLOCK_CONSECUTIVE_TAG=true
+
+# X API cost guard
 X_API_COST_GUARD_ENABLED=true
 X_API_DAILY_MAX_USD=0.10
 X_API_ESTIMATED_READ_COST_USD=0.012
@@ -167,30 +228,13 @@ X_MENTION_READ_MIN_INTERVAL_MINUTES=120
 X_TREND_READ_MIN_INTERVAL_MINUTES=180
 X_CREATE_MIN_INTERVAL_MINUTES=20
 
-# Engagement tuning
-POST_GENERATION_MAX_ATTEMPTS=2
-POST_MAX_CHARS=220
-POST_MIN_LENGTH=20
-POST_LANGUAGE=ko
-REPLY_LANGUAGE_MODE=match
-TREND_NEWS_MIN_SOURCE_TRUST=0.28
-TREND_TWEET_MIN_SOURCE_TRUST=0.24
-TREND_TWEET_MIN_SCORE=3.2
-TREND_TWEET_MIN_ENGAGEMENT=6
-TOPIC_MAX_SAME_TAG_24H=2
-TOPIC_BLOCK_CONSECUTIVE_TAG=true
-
 # Observability
 OBSERVABILITY_ENABLED=true
 OBSERVABILITY_STDOUT_JSON=true
 OBSERVABILITY_EVENT_LOG_PATH=data/metrics-events.ndjson
 ```
 
-참고:
-
-- `TEST_MODE=false`일 때 Twitter 키가 없으면 프로세스가 종료됩니다.
-
-## 7. 프로젝트 구조
+## 9. 프로젝트 구조
 
 ```text
 src/
@@ -202,6 +246,7 @@ src/
 │   ├── digest-engine.ts
 │   ├── engagement.ts
 │   ├── engagement/
+│   │   ├── event-evidence.ts
 │   │   ├── fear-greed-policy.ts
 │   │   ├── policy.ts
 │   │   ├── quality.ts
@@ -225,19 +270,14 @@ src/
     └── mood.ts
 ```
 
-## 8. 로드맵 문서
-
-다음 진화 방향(Feed -> Digest -> Evolve -> Act -> Reflect, Phase Gate 포함):
+## 10. 참고 문서
 
 - `docs/plan.md`
-
-멀티 워크스페이스 운영 규칙:
-
 - `docs/agent-workflow.md`
 - `AGENTS.md`
 
-## 9. 주의사항
+## 11. 주의사항
 
-1. 투자 자문 목적이 아닙니다 (NFA).
-2. 외부 API 응답/지연/제한에 따라 결과가 달라질 수 있습니다.
-3. 자동 생성 텍스트는 게시 전 검토가 필요합니다.
+1. 투자 자문 목적이 아닙니다.
+2. 외부 API 상태/요금제/레이트리밋에 따라 동작 빈도가 달라질 수 있습니다.
+3. 자동 생성 텍스트는 운영 전 모니터링이 필요합니다.
