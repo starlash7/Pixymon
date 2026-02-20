@@ -56,6 +56,10 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
     activityCount: 8,
     postCount: 3,
     replyCount: 5,
+    laneUsage24h: [
+      { lane: "onchain", count: 1 },
+      { lane: "macro", count: 2 },
+    ],
     postGeneration: {
       postRuns: 3,
       postSuccesses: 2,
@@ -96,4 +100,6 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
   assert.equal(event.nutrition.nutrient_intake, 9);
   assert.equal(event.nutrition.xp_gain, 27);
   assert.equal(event.nutrition.evolution_event, 1);
+  assert.equal(event.planning.dominant_lane_24h, "macro");
+  assert.equal(event.planning.onchain_ratio_24h, 0.333);
 });

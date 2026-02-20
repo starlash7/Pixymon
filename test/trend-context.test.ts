@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFallbackPost, buildTrendNutrients, pickTrendFocus } from "../src/services/engagement/trend-context.ts";
+import {
+  buildOnchainEvidence,
+  buildTrendEvents,
+  planEventEvidenceAct,
+  validateEventEvidenceContract,
+} from "../src/services/engagement/event-evidence.ts";
+import {
+  buildFallbackPost,
+  buildTrendNutrients,
+  pickTrendFocus,
+} from "../src/services/engagement/trend-context.ts";
 
 test("pickTrendFocus prefers headline with lower overlap against recent posts", () => {
   const focus = pickTrendFocus(
@@ -85,6 +95,7 @@ test("buildFallbackPost prefers non-btc market anchor when recent posts are btc-
       headlines: ["L2 throughput upgrade sparks developer activity"],
       newsSources: [],
       nutrients: [],
+      events: [],
     },
     "오늘 나온 기술/업그레이드 이슈의 실사용 영향",
     220,
@@ -99,4 +110,172 @@ test("buildFallbackPost prefers non-btc market anchor when recent posts are btc-
 
   assert.ok(text);
   assert.equal(/ETH|SOL/.test(text || ""), true);
+});
+
+test("planEventEvidenceAct avoids onchain lane over-concentration when alternatives exist", () => {
+  const createdAt = new Date().toISOString();
+  const recentPosts = Array.from({ length: 7 }).map(() => ({
+    content: "온체인 고래/스테이블 흐름과 BTC 멤풀 수수료를 추적 중.",
+    timestamp: createdAt,
+  }));
+
+  const events = [
+    {
+      id: "event-onchain",
+      lane: "onchain" as const,
+      headline: "Whale transaction activity spikes on Bitcoin mempool",
+      summary: "Large wallet movement rose with mempool backlog.",
+      source: "news:chainwire",
+      trust: 0.82,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["whale", "mempool"],
+    },
+    {
+      id: "event-macro",
+      lane: "macro" as const,
+      headline: "ECB signals delayed rate cuts amid sticky inflation",
+      summary: "Macro rate expectations shifted after ECB remarks.",
+      source: "news:reuters",
+      trust: 0.8,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      keywords: ["ecb", "inflation"],
+    },
+  ];
+
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "mempool",
+      label: "BTC 멤풀 대기열",
+      value: "42,000 tx",
+      evidence: "BTC mempool backlog at 42k transactions",
+      trust: 0.82,
+      freshness: 0.93,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.72 },
+    },
+    {
+      id: "n2",
+      source: "news",
+      category: "macro-news",
+      label: "ECB rate path",
+      value: "컷 기대 지연",
+      evidence: "ECB officials reiterated inflation persistence.",
+      trust: 0.78,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.71 },
+    },
+    {
+      id: "n3",
+      source: "market",
+      category: "price-action",
+      label: "EUR/USD",
+      value: "-0.7%",
+      evidence: "EUR/USD fell after ECB comments",
+      trust: 0.76,
+      freshness: 0.87,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.69 },
+    },
+  ]);
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts,
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.lane, "macro");
+});
+
+test("validateEventEvidenceContract enforces event + two evidence anchors", () => {
+  const createdAt = new Date().toISOString();
+  const plan = {
+    lane: "protocol" as const,
+    event: {
+      id: "event-protocol",
+      lane: "protocol" as const,
+      headline: "Solana Firedancer client passes major testnet milestone",
+      summary: "Validator performance improved in latest test cycle.",
+      source: "news:coindesk",
+      trust: 0.79,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      keywords: ["solana", "firedancer"],
+    },
+    evidence: [
+      {
+        id: "ev1",
+        lane: "protocol" as const,
+        nutrientId: "n1",
+        source: "news" as const,
+        label: "Firedancer TPS benchmark",
+        value: "+18%",
+        summary: "Benchmark throughput improved by 18%",
+        trust: 0.78,
+        freshness: 0.9,
+        capturedAt: createdAt,
+      },
+      {
+        id: "ev2",
+        lane: "onchain" as const,
+        nutrientId: "n2",
+        source: "onchain" as const,
+        label: "Validator queue",
+        value: "정상화",
+        summary: "Validator queue congestion normalized",
+        trust: 0.74,
+        freshness: 0.88,
+        capturedAt: createdAt,
+      },
+    ],
+    laneUsage: {
+      totalPosts: 4,
+      byLane: {
+        protocol: 1,
+        ecosystem: 1,
+        regulation: 0,
+        macro: 1,
+        onchain: 1,
+        "market-structure": 0,
+      },
+    },
+    laneProjectedRatio: 0.4,
+    laneQuotaLimited: false,
+  };
+
+  const ok = validateEventEvidenceContract(
+    "Solana Firedancer 이슈가 핵심. 근거로 Firedancer TPS benchmark +18%와 Validator queue 정상화를 같이 본다.",
+    plan
+  );
+  assert.equal(ok.ok, true);
+
+  const bad = validateEventEvidenceContract("Solana 이벤트만 보고 있다.", plan);
+  assert.equal(bad.ok, false);
+  assert.equal(typeof bad.reason, "string");
+});
+
+test("buildTrendEvents maps news rows into lane-tagged events", () => {
+  const events = buildTrendEvents({
+    createdAt: new Date().toISOString(),
+    newsRows: [
+      {
+        item: {
+          title: "SEC opens new review process for spot crypto ETF filings",
+          summary: "Regulatory review timeline shifted this week.",
+          source: "Reuters",
+          category: "regulatory",
+        },
+        sourceKey: "news:reuters",
+        trust: 0.76,
+      },
+    ],
+  });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].lane, "regulation");
 });

@@ -26,12 +26,18 @@ import {
   XApiCostRuntimeSettings,
 } from "../types/runtime.js";
 import {
-  buildFallbackPost,
   collectTrendContext,
   formatMarketAnchors,
   pickPostAngle,
   pickTrendFocus,
 } from "./engagement/trend-context.js";
+import {
+  buildEventEvidenceFallbackPost,
+  buildOnchainEvidence,
+  computeLaneUsageWindow,
+  planEventEvidenceAct,
+  validateEventEvidenceContract,
+} from "./engagement/event-evidence.js";
 import { buildSignalFingerprint } from "./engagement/signal-fingerprint.js";
 import {
   detectFearGreedEvent,
@@ -52,8 +58,14 @@ import {
   resolveContentQualityRules,
   sanitizeTweetText,
 } from "./engagement/quality.js";
-import { AdaptivePolicy, CycleCacheMetrics, DailyQuotaOptions, TrendContext } from "./engagement/types.js";
-import { CognitiveObjective, CognitiveRunContext } from "../types/agent.js";
+import {
+  AdaptivePolicy,
+  CycleCacheMetrics,
+  DailyQuotaOptions,
+  LaneUsageWindow,
+  TrendContext,
+} from "./engagement/types.js";
+import { CognitiveObjective, CognitiveRunContext, OnchainNutrient, TrendLane } from "../types/agent.js";
 import { emitCycleObservability } from "./observability.js";
 import { XReadGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 
@@ -86,6 +98,7 @@ interface FeedDigestSummary {
   xpGainTotal: number;
   evolvedCount: number;
   rejectReasonsTop: Array<{ reason: string; count: number }>;
+  acceptedNutrients: OnchainNutrient[];
 }
 
 const onchainDataService = new OnchainDataService();
@@ -394,7 +407,8 @@ export async function postTrendUpdate(
   timezone: string = DEFAULT_TIMEZONE,
   settings: Partial<EngagementRuntimeSettings> = {},
   xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
-  cache?: EngagementCycleCache
+  cache?: EngagementCycleCache,
+  feedNutrients: OnchainNutrient[] = []
 ): Promise<boolean> {
   console.log("\n[POST] 트렌드 요약 글 작성 시작...");
   const runtimeSettings = resolveEngagementSettings(settings);
@@ -412,6 +426,7 @@ export async function postTrendUpdate(
     const recentBriefingPosts = memory
       .getRecentTweets(120)
       .filter((tweet) => tweet.type === "briefing")
+      .filter((tweet) => isWithinHours(tweet.timestamp, 24))
       .map((tweet) => ({ content: tweet.content, timestamp: tweet.timestamp }));
     const lastBriefingPost = recentBriefingPosts.length > 0 ? recentBriefingPosts[recentBriefingPosts.length - 1] : null;
     if (runtimeSettings.postMinIntervalMinutes > 0 && lastBriefingPost) {
@@ -444,18 +459,36 @@ export async function postTrendUpdate(
 
     const avoidTags = !fearGreedEvent.isEvent ? ["sentiment"] : [];
     const postAngle = pickPostAngle(timezone, recentBriefingPosts, { avoidTags });
-    const trendFocus = pickTrendFocus(trend.headlines, recentBriefingPosts);
+    const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
+    const eventPlan = planEventEvidenceAct({
+      events: trend.events,
+      evidence: buildOnchainEvidence([...feedNutrients, ...trend.nutrients], 16),
+      recentPosts: recentBriefingPosts,
+      laneUsage: laneUsageWindow,
+    });
+    if (!eventPlan) {
+      console.log("[PLAN] 이벤트/근거 플랜 생성 실패 (event 또는 evidence 부족)");
+      return false;
+    }
+    const trendFocus = pickTrendFocus([eventPlan.event.headline, ...trend.headlines], recentBriefingPosts);
+    const requiredTrendTokens = [
+      ...new Set([...trendFocus.requiredTokens, ...eventPlan.event.keywords]),
+    ].slice(0, 6);
     const focusTokensLine =
-      trendFocus.requiredTokens.length > 0 ? trendFocus.requiredTokens.join(", ") : "- 없음 (헤드라인 직접 반영)";
+      requiredTrendTokens.length > 0 ? requiredTrendTokens.join(", ") : "- 없음 (이벤트 헤드라인 직접 반영)";
     const postDiversityGuard = buildPostDiversityGuard(
       recentBriefingPosts,
       trend.marketData,
-      trendFocus.requiredTokens,
-      trendFocus.headline
+      requiredTrendTokens,
+      eventPlan.event.headline
     );
     const localDateLabel = new Date().toLocaleDateString("ko-KR", { timeZone: timezone });
-    if (trendFocus.headline) {
-      console.log(`[POST] 포커스 헤드라인(${trendFocus.reason}): ${trendFocus.headline}`);
+    if (eventPlan.event.headline) {
+      console.log(`[PLAN] lane=${eventPlan.lane} | event=${eventPlan.event.headline}`);
+      console.log(`[PLAN] evidence=${eventPlan.evidence.map((item) => `${item.label} ${item.value}`).join(" | ")}`);
+      console.log(
+        `[PLAN] laneRatio=${Math.round(eventPlan.laneProjectedRatio * 100)}% quotaLimited=${eventPlan.laneQuotaLimited ? "yes" : "no"}`
+      );
     }
     if (postDiversityGuard.avoidBtcOnly) {
       console.log(`[POST] BTC 편중 완화 모드: ${postDiversityGuard.btcRatioPercent}%`);
@@ -471,7 +504,7 @@ export async function postTrendUpdate(
       marketContext: runContext.marketContext,
       onchainContext: runContext.onchainContext,
       trendSummary: trend.summary,
-      focusHeadline: trendFocus.headline,
+      focusHeadline: eventPlan.event.headline,
     });
     if (
       runtimeSettings.signalFingerprintCooldownHours > 0 &&
@@ -522,10 +555,14 @@ ${localDateLabel}
 우선 앵글:
 ${postAngle}
 
-오늘 포커스 헤드라인:
-${trendFocus.headline}
+오늘 이벤트(1개 고정):
+${eventPlan.event.headline}
 
-포커스 키워드:
+근거 2개(반드시 둘 다 반영):
+1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
+2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
+
+이벤트 키워드:
 ${focusTokensLine}
 
 최근 작성 글 (반복 금지):
@@ -545,7 +582,8 @@ ${rejectionFeedback || "없음"}
 - "시장 숫자 앵커"에 없는 가격 숫자는 쓰지 말 것
 - 앵커가 없으면 구체 가격 숫자 언급 금지
 - 최근 작성 글과 같은 전개/문장 구조 금지
-- "오늘 포커스 헤드라인"의 핵심어를 최소 1개 포함
+- 반드시 "이벤트 1개 + 근거 2개" 포맷 유지
+- 이벤트 헤드라인 핵심어를 최소 1개 포함
 - ${postDiversityGuard.ruleLineKo}
 - 트윗 본문만 출력`
           : `Write one trend post for today with this context.
@@ -561,10 +599,14 @@ ${localDateLabel}
 Preferred angle:
 ${postAngle}
 
-Today's focus headline:
-${trendFocus.headline}
+Primary event (exactly one):
+${eventPlan.event.headline}
 
-Focus tokens:
+Required evidence (must include both):
+1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
+2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
+
+Event tokens:
 ${focusTokensLine}
 
 Recent posts (avoid repetition):
@@ -584,7 +626,8 @@ Rules:
 - Do not cite price numbers outside "Market anchor numbers"
 - If anchors are empty, do not use specific price numbers
 - Avoid repeating recent narrative structure
-- Include at least one focus token or the focus headline wording
+- Keep strict format: exactly one event + exactly two evidence anchors
+- Include at least one event token or the event headline wording
 - ${postDiversityGuard.ruleLineEn}
 - Output tweet text only`;
       const message = await claude.messages.create({
@@ -622,6 +665,16 @@ Rules:
         }
       }
 
+      const contract = validateEventEvidenceContract(candidate, eventPlan);
+      if (!contract.ok) {
+        rejectionFeedback = `event/evidence 계약 미충족(${contract.reason})`;
+        latestFailReason = rejectionFeedback;
+        console.log(
+          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+        );
+        continue;
+      }
+
       if (postDiversityGuard.avoidBtcOnly && isBtcOnlyNarrative(candidate, postDiversityGuard.altTokens)) {
         rejectionFeedback = "BTC 단일 서사 반복(다른 자산/이슈 근거 필요)";
         latestFailReason = rejectionFeedback;
@@ -638,7 +691,7 @@ Rules:
         policy,
         qualityRules,
         {
-          requiredTrendTokens: trendFocus.requiredTokens,
+          requiredTrendTokens,
           fearGreedEvent: {
             required: runtimeSettings.requireFearGreedEventForSentiment,
             isEvent: fearGreedEvent.isEvent,
@@ -659,9 +712,12 @@ Rules:
     }
 
     if (!postText) {
-      let fallbackPost = buildFallbackPost(trend, postAngle, runtimeSettings.postMaxChars, trendFocus, {
-        recentPosts: recentBriefingPosts,
-      });
+      let fallbackPost: string | null = buildEventEvidenceFallbackPost(
+        eventPlan,
+        postAngle,
+        runtimeSettings.postLanguage,
+        runtimeSettings.postMaxChars
+      );
       if (fallbackPost && detectLanguage(fallbackPost) !== runtimeSettings.postLanguage) {
         const rewrittenFallback = await rewriteByLanguage(
           claude,
@@ -674,6 +730,14 @@ Rules:
         }
       }
       if (fallbackPost) {
+        const fallbackContract = validateEventEvidenceContract(fallbackPost, eventPlan);
+        if (!fallbackContract.ok) {
+          console.log(`[POST] fallback 실패: ${fallbackContract.reason}`);
+          latestFailReason = fallbackContract.reason || latestFailReason;
+          fallbackPost = null;
+        }
+      }
+      if (fallbackPost) {
         const fallbackQuality = evaluatePostQuality(
           fallbackPost,
           trend.marketData,
@@ -681,7 +745,7 @@ Rules:
           policy,
           qualityRules,
           {
-            requiredTrendTokens: trendFocus.requiredTokens,
+            requiredTrendTokens,
             fearGreedEvent: {
               required: runtimeSettings.requireFearGreedEventForSentiment,
               isEvent: fearGreedEvent.isEvent,
@@ -715,6 +779,12 @@ Rules:
       timezone,
       xApiCostSettings,
       createKind: "post:briefing",
+      metadata: {
+        lane: eventPlan.lane,
+        eventId: eventPlan.event.id,
+        eventHeadline: eventPlan.event.headline,
+        evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
+      },
     });
     if (!tweetId) return false;
 
@@ -722,7 +792,7 @@ Rules:
     memory.recordSignalFingerprint({
       key: signalFingerprint.key,
       signature: signalFingerprint.signature,
-      context: trendFocus.headline,
+      context: eventPlan.event.headline,
     });
     memory.recordPostGeneration({
       timezone,
@@ -773,6 +843,7 @@ async function runFeedDigestEvolve(
         xpGainTotal: 0,
         evolvedCount: 0,
         rejectReasonsTop: [],
+        acceptedNutrients: [],
       };
     }
 
@@ -818,6 +889,15 @@ async function runFeedDigestEvolve(
       xpGainTotal: digested.xpGainTotal,
       evolvedCount,
       rejectReasonsTop,
+      acceptedNutrients: digested.records
+        .filter((row) => row.accepted)
+        .map((row) => ({
+          ...row.nutrient,
+          metadata: {
+            ...(row.nutrient.metadata || {}),
+            digestScore: row.digest.total,
+          },
+        })),
     };
   } catch (error) {
     console.log(`[FEED] nutrient loop 실패: ${(error as Error).message}`);
@@ -828,6 +908,7 @@ async function runFeedDigestEvolve(
       xpGainTotal: 0,
       evolvedCount: 0,
       rejectReasonsTop: [{ reason: "feed-error", count: 1 }],
+      acceptedNutrients: [],
     };
   }
 }
@@ -854,6 +935,7 @@ export async function runDailyQuotaCycle(
     xpGainTotal: 0,
     evolvedCount: 0,
     rejectReasonsTop: [],
+    acceptedNutrients: [],
   };
   let canActWithDigest = false;
   const finalize = (
@@ -956,7 +1038,8 @@ export async function runDailyQuotaCycle(
         timezone,
         runtimeSettings,
         xApiCostSettings,
-        cycleCache
+        cycleCache,
+        feedDigest.acceptedNutrients
       );
       if (posted) {
         executed += 1;
@@ -997,7 +1080,8 @@ export async function runDailyQuotaCycle(
           timezone,
           runtimeSettings,
           xApiCostSettings,
-          cycleCache
+          cycleCache,
+          feedDigest.acceptedNutrients
         );
         if (fallbackPosted) {
           executed += 1;
@@ -1543,6 +1627,30 @@ function resolveReplyLanguage(
   return detected;
 }
 
+function resolveRecentLaneUsageWindow(
+  recentBriefingPosts: Array<{ content: string; timestamp: string }>
+): LaneUsageWindow {
+  const fromText = computeLaneUsageWindow(recentBriefingPosts);
+  const fromMetaRows = memory.getRecentBriefingLaneUsage(24);
+  const byLane: Record<TrendLane, number> = {
+    protocol: fromText.byLane.protocol,
+    ecosystem: fromText.byLane.ecosystem,
+    regulation: fromText.byLane.regulation,
+    macro: fromText.byLane.macro,
+    onchain: fromText.byLane.onchain,
+    "market-structure": fromText.byLane["market-structure"],
+  };
+  fromMetaRows.forEach((row) => {
+    if (typeof row.count === "number" && Number.isFinite(row.count) && row.count >= 0) {
+      byLane[row.lane] = Math.max(byLane[row.lane], row.count);
+    }
+  });
+  return {
+    totalPosts: recentBriefingPosts.length,
+    byLane,
+  };
+}
+
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
@@ -1561,4 +1669,11 @@ function getMinutesSince(isoTimestamp: string): number {
   const ts = new Date(isoTimestamp).getTime();
   if (!Number.isFinite(ts)) return -1;
   return Math.floor((Date.now() - ts) / (1000 * 60));
+}
+
+function isWithinHours(isoTimestamp: string, hours: number): boolean {
+  const ts = new Date(isoTimestamp).getTime();
+  if (!Number.isFinite(ts)) return false;
+  const windowMs = Math.max(1, Math.floor(hours)) * 60 * 60 * 1000;
+  return Date.now() - ts <= windowMs;
 }

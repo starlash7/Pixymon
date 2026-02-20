@@ -7,6 +7,13 @@ export type ClusterSentiment = "bullish" | "bearish" | "mixed" | "neutral";
 export type ActionIntent = "thesis" | "challenge" | "probe";
 export type NutrientSource = "onchain" | "market" | "news";
 export type EvolutionStage = "seed" | "sprout" | "crawler" | "sentinel" | "mythic";
+export type TrendLane =
+  | "protocol"
+  | "ecosystem"
+  | "regulation"
+  | "macro"
+  | "onchain"
+  | "market-structure";
 
 export interface OnchainSignal {
   id: string;
@@ -38,6 +45,32 @@ export interface OnchainNutrient {
   consistencyHint?: number;
   capturedAt: string;
   metadata?: Record<string, string | number | boolean>;
+}
+
+export interface TrendEvent {
+  id: string;
+  lane: TrendLane;
+  headline: string;
+  summary: string;
+  source: string;
+  trust: number;
+  freshness: number;
+  capturedAt: string;
+  keywords: string[];
+}
+
+export interface OnchainEvidence {
+  id: string;
+  lane: TrendLane;
+  nutrientId: string;
+  source: NutrientSource;
+  label: string;
+  value: string;
+  summary: string;
+  trust: number;
+  freshness: number;
+  digestScore?: number;
+  capturedAt: string;
 }
 
 export interface DigestScore {

@@ -1,6 +1,13 @@
 import fs from "fs";
 import path from "path";
-import { AbilityUnlock, DigestScore, EvolutionStage, NutrientLedgerEntry, OnchainNutrient } from "../types/agent.js";
+import {
+  AbilityUnlock,
+  DigestScore,
+  EvolutionStage,
+  NutrientLedgerEntry,
+  OnchainNutrient,
+  TrendLane,
+} from "../types/agent.js";
 
 /**
  * Pixymon Memory Service
@@ -39,7 +46,15 @@ interface Tweet {
   content: string;
   timestamp: string;
   type: "briefing" | "reply" | "quote";
+  meta?: TweetMeta;
   coins?: string[];  // 언급된 코인들
+}
+
+interface TweetMeta {
+  lane?: TrendLane;
+  eventId?: string;
+  eventHeadline?: string;
+  evidenceIds?: string[];
 }
 
 interface Prediction {
@@ -264,7 +279,7 @@ export class MemoryService {
     const agentState = this.normalizeAgentState(raw.agentState);
     const qualityTelemetry = this.normalizeQualityTelemetry(raw.qualityTelemetry);
     return {
-      tweets: Array.isArray(raw.tweets) ? raw.tweets : [],
+      tweets: this.normalizeTweets(raw.tweets),
       predictions: Array.isArray(raw.predictions) ? raw.predictions : [],
       followers: this.normalizeFollowers(raw.followers),
       lastProcessedMentionId: typeof raw.lastProcessedMentionId === "string" ? raw.lastProcessedMentionId : undefined,
@@ -272,6 +287,56 @@ export class MemoryService {
       agentState,
       qualityTelemetry,
       lastUpdated: typeof raw.lastUpdated === "string" ? raw.lastUpdated : new Date().toISOString(),
+    };
+  }
+
+  private normalizeTweets(raw: unknown): Tweet[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const output: Tweet[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<Tweet>;
+      const id = typeof row.id === "string" ? row.id.trim() : "";
+      const content = typeof row.content === "string" ? row.content.trim() : "";
+      if (!id || !content) continue;
+      output.push({
+        id,
+        content,
+        timestamp: typeof row.timestamp === "string" ? row.timestamp : new Date().toISOString(),
+        type: row.type === "reply" || row.type === "quote" || row.type === "briefing" ? row.type : "briefing",
+        meta: this.normalizeTweetMeta(row.meta),
+        coins: Array.isArray(row.coins)
+          ? [...new Set(row.coins.map((coin) => String(coin || "").toUpperCase()).filter(Boolean))]
+          : this.extractCoins(content),
+      });
+    }
+    return output.slice(-300);
+  }
+
+  private normalizeTweetMeta(raw: unknown): TweetMeta | undefined {
+    if (!raw || typeof raw !== "object") {
+      return undefined;
+    }
+    const row = raw as Partial<TweetMeta>;
+    const lane = this.normalizeTrendLane(row.lane);
+    const eventId = typeof row.eventId === "string" && row.eventId.trim() ? row.eventId.trim().slice(0, 80) : undefined;
+    const eventHeadline =
+      typeof row.eventHeadline === "string" && row.eventHeadline.trim()
+        ? row.eventHeadline.trim().slice(0, 160)
+        : undefined;
+    const evidenceIds = Array.isArray(row.evidenceIds)
+      ? [...new Set(row.evidenceIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))].slice(0, 6)
+      : undefined;
+    if (!lane && !eventId && !eventHeadline && (!evidenceIds || evidenceIds.length === 0)) {
+      return undefined;
+    }
+    return {
+      lane,
+      eventId,
+      eventHeadline,
+      evidenceIds: evidenceIds && evidenceIds.length > 0 ? evidenceIds : undefined,
     };
   }
 
@@ -570,7 +635,12 @@ export class MemoryService {
   // ============================================
 
   // 트윗 저장
-  saveTweet(id: string, content: string, type: Tweet["type"] = "briefing"): void {
+  saveTweet(
+    id: string,
+    content: string,
+    type: Tweet["type"] = "briefing",
+    meta?: TweetMeta
+  ): void {
     // 코인 티커 추출 ($BTC, $ETH 등)
     const coins = this.extractCoins(content);
 
@@ -579,6 +649,7 @@ export class MemoryService {
       content,
       timestamp: new Date().toISOString(),
       type,
+      meta: this.normalizeTweetMeta(meta),
       coins,
     };
 
@@ -1075,6 +1146,32 @@ export class MemoryService {
     return this.data.tweets.filter((tweet) => this.isTodayByTimezone(tweet.timestamp, timezone) && tweet.type === "briefing").length;
   }
 
+  getRecentBriefingLaneUsage(hours: number = 24): Array<{ lane: TrendLane; count: number }> {
+    const safeHours = this.clampInt(hours, 1, 240, 24);
+    const threshold = Date.now() - safeHours * 60 * 60 * 1000;
+    const counter: Record<TrendLane, number> = {
+      protocol: 0,
+      ecosystem: 0,
+      regulation: 0,
+      macro: 0,
+      onchain: 0,
+      "market-structure": 0,
+    };
+
+    for (const tweet of this.data.tweets) {
+      if (tweet.type !== "briefing") continue;
+      const ts = new Date(tweet.timestamp).getTime();
+      if (!Number.isFinite(ts) || ts < threshold) continue;
+      const lane = this.normalizeTrendLane(tweet.meta?.lane);
+      if (!lane) continue;
+      counter[lane] += 1;
+    }
+
+    return Object.entries(counter)
+      .map(([lane, count]) => ({ lane: lane as TrendLane, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
   // 오늘 총 활동 개수 (댓글 + 글 + quote)
   getTodayActivityCount(timezone: string = "Asia/Seoul"): number {
     return this.data.tweets.filter((tweet) => this.isTodayByTimezone(tweet.timestamp, timezone)).length;
@@ -1325,6 +1422,20 @@ export class MemoryService {
       return raw;
     }
     return null;
+  }
+
+  private normalizeTrendLane(raw: unknown): TrendLane | undefined {
+    if (
+      raw === "protocol" ||
+      raw === "ecosystem" ||
+      raw === "regulation" ||
+      raw === "macro" ||
+      raw === "onchain" ||
+      raw === "market-structure"
+    ) {
+      return raw;
+    }
+    return undefined;
   }
 
   private getAbilitiesForLevel(level: number): string[] {

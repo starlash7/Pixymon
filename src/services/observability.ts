@@ -3,6 +3,7 @@ import path from "path";
 import { memory } from "./memory.js";
 import { AdaptivePolicy, CycleCacheMetrics } from "./engagement/types.js";
 import { EngagementRuntimeSettings, ObservabilityRuntimeSettings } from "../types/runtime.js";
+import { TrendLane } from "../types/agent.js";
 
 interface PostGenerationSnapshot {
   postRuns: number;
@@ -19,6 +20,7 @@ interface ObservabilitySnapshot {
   postCount: number;
   replyCount: number;
   postGeneration: PostGenerationSnapshot;
+  laneUsage24h: Array<{ lane: TrendLane; count: number }>;
   nutrient: {
     nutrientIntake: number;
     acceptedCount: number;
@@ -104,6 +106,11 @@ export interface CycleObservabilityEvent {
     };
     evolution_event: number;
   };
+  planning: {
+    lane_usage_24h: Record<TrendLane, number>;
+    dominant_lane_24h: TrendLane | "none";
+    onchain_ratio_24h: number;
+  };
   cache?: CycleCacheMetrics;
 }
 
@@ -118,6 +125,7 @@ export function emitCycleObservability(
     postCount: memory.getTodayPostCount(input.timezone),
     replyCount: memory.getTodayReplyCount(input.timezone),
     postGeneration: memory.getTodayPostGenerationMetrics(input.timezone),
+    laneUsage24h: memory.getRecentBriefingLaneUsage(24),
     nutrient: memory.getTodayNutrientMetrics(input.timezone),
   };
 
@@ -133,6 +141,12 @@ export function buildCycleObservabilityEvent(
   snapshot: ObservabilitySnapshot
 ): CycleObservabilityEvent {
   const progressRaw = input.target > 0 ? (input.target - input.remaining) / input.target : 1;
+  const laneUsageRecord = toLaneUsageRecord(snapshot.laneUsage24h || []);
+  const laneEntries = Object.entries(laneUsageRecord) as Array<[TrendLane, number]>;
+  const dominantLaneEntry = laneEntries.sort((a, b) => b[1] - a[1])[0];
+  const dominantLane = dominantLaneEntry && dominantLaneEntry[1] > 0 ? dominantLaneEntry[0] : "none";
+  const laneTotal = laneEntries.reduce((sum, [, count]) => sum + count, 0);
+  const onchainRatio = laneTotal > 0 ? laneUsageRecord.onchain / laneTotal : 0;
   return {
     type: "quota_cycle",
     timestamp: new Date().toISOString(),
@@ -190,6 +204,11 @@ export function buildCycleObservabilityEvent(
       xp_gain_by_source: snapshot.nutrient.xpGainBySource,
       evolution_event: snapshot.nutrient.evolutionEvent,
     },
+    planning: {
+      lane_usage_24h: laneUsageRecord,
+      dominant_lane_24h: dominantLane,
+      onchain_ratio_24h: round(onchainRatio, 3),
+    },
     cache: input.cacheMetrics,
   };
 }
@@ -218,6 +237,25 @@ function pickTopFailReasons(
     .map(([reason, count]) => ({ reason, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, Math.max(1, maxItems));
+}
+
+function toLaneUsageRecord(rows: Array<{ lane: TrendLane; count: number }>): Record<TrendLane, number> {
+  const record: Record<TrendLane, number> = {
+    protocol: 0,
+    ecosystem: 0,
+    regulation: 0,
+    macro: 0,
+    onchain: 0,
+    "market-structure": 0,
+  };
+  if (!Array.isArray(rows)) {
+    return record;
+  }
+  rows.forEach((row) => {
+    if (!row) return;
+    record[row.lane] = Number.isFinite(row.count) ? Math.max(0, Math.floor(row.count)) : 0;
+  });
+  return record;
 }
 
 function round(value: number, precision: number): number {

@@ -3,6 +3,7 @@ import { memory } from "../memory.js";
 import { OnchainNutrient } from "../../types/agent.js";
 import { inferTopicTag, sanitizeTweetText } from "./quality.js";
 import { RecentPostRecord, TrendContext, TrendContextOptions, TrendFocus } from "./types.js";
+import { buildTrendEvents, inferTrendLane } from "./event-evidence.js";
 
 const FOCUS_TOKEN_STOP_WORDS = new Set([
   "today",
@@ -43,6 +44,7 @@ const FOCUS_TOKEN_STOP_WORDS = new Set([
   "고래",
   "수수료",
 ]);
+
 
 export async function collectTrendContext(options: Partial<TrendContextOptions> = {}): Promise<TrendContext> {
   const newsService = new BlockchainNewsService();
@@ -92,6 +94,10 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
     newsRows: filteredNews,
     createdAt,
   });
+  const events = buildTrendEvents({
+    newsRows: filteredNews,
+    createdAt,
+  });
 
   return {
     keywords: keywords.length > 0 ? keywords : ["crypto", "blockchain", "layer2", "onchain", "ETF", "macro"],
@@ -100,6 +106,7 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
     headlines: titlePool.slice(0, 8),
     newsSources: filteredNews.slice(0, 8).map((row) => ({ key: row.sourceKey, trust: row.trust })),
     nutrients,
+    events,
   };
 }
 
@@ -305,6 +312,7 @@ export function buildTrendNutrients(params: {
   const marketNutrients: OnchainNutrient[] = params.marketData.slice(0, 5).map((coin, index) => {
     const absChange = Math.abs(coin.change24h);
     const direction = coin.change24h > 0.1 ? "up" : coin.change24h < -0.1 ? "down" : "flat";
+    const lane = inferTrendLane(`${coin.symbol} price ${coin.change24h}% liquidity market`);
     return {
       id: `market:${coin.symbol}:${params.createdAt}:${index}`,
       source: "market",
@@ -320,12 +328,14 @@ export function buildTrendNutrients(params: {
       metadata: {
         symbol: coin.symbol,
         change24h: Number(coin.change24h.toFixed(2)),
+        lane,
       },
     };
   });
 
   const newsNutrients: OnchainNutrient[] = params.newsRows.slice(0, 8).map((row, index) => {
     const category = inferNewsCategory(row.item.title, row.item.category);
+    const lane = inferTrendLane(`${row.item.title} ${row.item.summary} ${category}`);
     return {
       id: `news:${row.sourceKey}:${index}:${params.createdAt}`,
       source: "news",
@@ -339,6 +349,7 @@ export function buildTrendNutrients(params: {
       capturedAt: params.createdAt,
       metadata: {
         sourceKey: row.sourceKey,
+        lane,
       },
     };
   });
@@ -386,3 +397,13 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
 }
+
+export {
+  buildEventEvidenceFallbackPost,
+  buildOnchainEvidence,
+  buildTrendEvents,
+  computeLaneUsageWindow,
+  inferTrendLane,
+  planEventEvidenceAct,
+  validateEventEvidenceContract,
+} from "./event-evidence.js";

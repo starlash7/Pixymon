@@ -11,7 +11,7 @@ import {
   getReplyToneGuide,
 } from "./llm.js";
 import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
-import { CognitiveRunContext } from "../types/agent.js";
+import { CognitiveRunContext, TrendLane } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
 import { evaluateTrendCandidate } from "./content-guard.js";
 import { TrendTweetSearchRules } from "./engagement/types.js";
@@ -37,6 +37,14 @@ interface PostTweetOptions {
   timezone?: string;
   xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
   createKind?: string;
+  metadata?: PostTweetMetadata;
+}
+
+interface PostTweetMetadata {
+  lane?: TrendLane;
+  eventId?: string;
+  eventHeadline?: string;
+  evidenceIds?: string[];
 }
 
 interface PostDispatchState {
@@ -748,7 +756,7 @@ export async function postTweet(
 
     // 테스트 모드에서도 메모리에 저장
     const testId = `test_${Date.now()}`;
-    memory.saveTweet(testId, content, type);
+    memory.saveTweet(testId, content, type, options.metadata);
     return testId;
   }
 
@@ -802,7 +810,7 @@ export async function postTweet(
         console.log(`   ID: ${tweet.data.id}`);
         console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.data.id}`);
 
-        memory.saveTweet(tweet.data.id, content, type);
+        memory.saveTweet(tweet.data.id, content, type, options.metadata);
         if (type === "briefing") {
           persistPostDispatchState(content);
         }

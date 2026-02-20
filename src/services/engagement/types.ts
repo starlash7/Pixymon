@@ -1,5 +1,5 @@
 import { MarketData } from "../blockchain-news.js";
-import { OnchainNutrient } from "../../types/agent.js";
+import { OnchainEvidence, OnchainNutrient, TrendEvent, TrendLane } from "../../types/agent.js";
 import {
   EngagementRuntimeSettings,
   ObservabilityRuntimeSettings,
@@ -24,12 +24,27 @@ export interface TrendContext {
   headlines: string[];
   newsSources: Array<{ key: string; trust: number }>;
   nutrients: OnchainNutrient[];
+  events: TrendEvent[];
 }
 
 export interface TrendFocus {
   headline: string;
   requiredTokens: string[];
   reason: "novelty" | "fallback";
+}
+
+export interface LaneUsageWindow {
+  totalPosts: number;
+  byLane: Record<TrendLane, number>;
+}
+
+export interface EventEvidencePlan {
+  lane: TrendLane;
+  event: TrendEvent;
+  evidence: OnchainEvidence[];
+  laneUsage: LaneUsageWindow;
+  laneProjectedRatio: number;
+  laneQuotaLimited: boolean;
 }
 
 export interface ContentQualityCheck {
