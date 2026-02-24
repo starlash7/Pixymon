@@ -5,13 +5,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { memory } from "./memory.js";
 import {
   CLAUDE_MODEL,
-  CLAUDE_RESEARCH_MODEL,
   PIXYMON_SYSTEM_PROMPT,
   extractTextFromClaude,
   getReplyToneGuide,
 } from "./llm.js";
-import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
-import { CognitiveRunContext, TrendLane } from "../types/agent.js";
+import { TrendLane } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
 import { evaluateTrendCandidate } from "./content-guard.js";
 import { TrendTweetSearchRules } from "./engagement/types.js";
@@ -27,8 +25,6 @@ const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
 };
 
 interface MentionReplyOptions {
-  cognitiveEngine?: FiveLayerCognitiveEngine;
-  runContext?: CognitiveRunContext;
   timezone?: string;
   xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
 }
@@ -45,6 +41,7 @@ interface PostTweetMetadata {
   eventId?: string;
   eventHeadline?: string;
   evidenceIds?: string[];
+  narrativeMode?: string;
 }
 
 interface PostDispatchState {
@@ -260,17 +257,8 @@ export async function replyToMention(
       : "";
     const toneGuide = getReplyToneGuide(lang);
 
-    const cognitive =
-      options?.cognitiveEngine ||
-      new FiveLayerCognitiveEngine(claude, CLAUDE_MODEL, PIXYMON_SYSTEM_PROMPT, CLAUDE_RESEARCH_MODEL);
-    const runContext = options?.runContext || (await cognitive.prepareRunContext("reply"));
-    const packet = await cognitive.analyzeTarget({
-      objective: "reply",
-      text: cleanedMentionText || String(mention.text || ""),
-      author: follower?.username,
-      language: lang,
-      runContext,
-    });
+    const maxChars = 160;
+    const shouldEndWithQuestion = /\?$|질문|어떻게|왜|is it|what|how|why/i.test(cleanedMentionText);
 
     const message = await claude.messages.create({
       model: CLAUDE_MODEL,
@@ -281,17 +269,14 @@ export async function replyToMention(
           role: "user",
           content: `멘션에 답글 작성.
 
-- ${packet.action.maxChars}자 이내
+- ${maxChars}자 이내
 - ${isEnglish ? '영어로 답변' : '한국어로 답변'}
 - 질문이면 답변, 아니면 짧은 리액션
 - 톤 가이드:
 ${toneGuide}
-- 단정은 confidence가 높을 때만
-- 마지막 문장 ${packet.action.shouldEndWithQuestion ? "질문형" : "관찰형"}
+- 단정적 투자 표현 금지
+- 마지막 문장 ${shouldEndWithQuestion ? "질문형" : "관찰형"}
 - 해시태그 X, 이모지 X${followerContext}
-
-Layer Context:
-${packet.promptContext}
 
 멘션 내용:
 ${mention.text}`,
@@ -304,11 +289,12 @@ ${mention.text}`,
     if (!replyText) return false;
 
     if (detectLanguage(replyText) !== lang) {
-      const rewritten = await rewriteReplyByLanguage(claude, replyText, lang, packet.action.maxChars);
+      const rewritten = await rewriteReplyByLanguage(claude, replyText, lang, maxChars);
       if (rewritten) {
         replyText = rewritten;
       }
     }
+    replyText = replyText.slice(0, maxChars);
 
     if (TEST_MODE) {
       console.log(`🧪 [테스트] 멘션 답글 시뮬레이션: ${replyText}`);

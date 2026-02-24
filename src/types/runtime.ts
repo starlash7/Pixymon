@@ -6,13 +6,9 @@ export interface EngagementRuntimeSettings {
   postMaxChars: number;
   postMinLength: number;
   postMinIntervalMinutes: number;
-  signalFingerprintCooldownHours: number;
   maxPostsPerCycle: number;
   nutrientMinDigestScore: number;
   nutrientMaxIntakePerCycle: number;
-  fearGreedEventMinDelta: number;
-  fearGreedRequireRegimeChange: boolean;
-  requireFearGreedEventForSentiment: boolean;
   sentimentMaxRatio24h: number;
   postLanguage: ContentLanguage;
   replyLanguageMode: ReplyLanguageMode;

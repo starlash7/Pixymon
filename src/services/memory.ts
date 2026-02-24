@@ -55,6 +55,7 @@ interface TweetMeta {
   eventId?: string;
   eventHeadline?: string;
   evidenceIds?: string[];
+  narrativeMode?: string;
 }
 
 interface Prediction {
@@ -329,7 +330,11 @@ export class MemoryService {
     const evidenceIds = Array.isArray(row.evidenceIds)
       ? [...new Set(row.evidenceIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))].slice(0, 6)
       : undefined;
-    if (!lane && !eventId && !eventHeadline && (!evidenceIds || evidenceIds.length === 0)) {
+    const narrativeMode =
+      typeof row.narrativeMode === "string" && row.narrativeMode.trim()
+        ? row.narrativeMode.trim().slice(0, 40)
+        : undefined;
+    if (!lane && !eventId && !eventHeadline && (!evidenceIds || evidenceIds.length === 0) && !narrativeMode) {
       return undefined;
     }
     return {
@@ -337,6 +342,7 @@ export class MemoryService {
       eventId,
       eventHeadline,
       evidenceIds: evidenceIds && evidenceIds.length > 0 ? evidenceIds : undefined,
+      narrativeMode,
     };
   }
 

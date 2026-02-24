@@ -3,6 +3,15 @@
 Last updated: 2026-02-17  
 Owner branch: `feat/pixymon-next-iteration`
 
+## Revision Note (2026-02-24)
+
+기존 5-layer cognitive/research/reflection 경로는 운영 복잡도와 반복 문장 문제로 제거했다.  
+현재 기준 구현 우선순위는 아래 3가지다.
+
+1. `event 1 + evidence 2` 계약 유지
+2. Narrative OS(`lane + mode`)로 반복 억제 및 캐릭터 다양성 강화
+3. X API 비용 가드 유지(저비용 안정 운용)
+
 ## 1. 목적
 
 Pixymon을 단순 트윗 봇이 아니라, **온체인 데이터를 먹고 성장하는 캐릭터형 X(Twitter) 에이전트**로 고도화한다.
@@ -74,17 +83,17 @@ Gate:
 
 목표:
 
-- stage별 말투/행동/리스크 모드 강제
+- stage별 말투/행동 + narrative mode 강제
 
 수정 파일:
 
-- `src/services/cognitive-engine.ts`
+- `src/services/narrative-os.ts`
 - `src/services/llm.ts`
 - `src/services/engagement.ts`
 
 산출물:
 
-- stage별 prompt profile
+- stage별 prompt profile + mode 회전 정책
 - digest -> evolve 정책 적용
 
 Gate:
@@ -95,17 +104,17 @@ Gate:
 
 목표:
 
-- 단일 출력 대신 역할 분리 합의형 출력
+- 단일 출력 대신 light council(Scout/Analyst/Skeptic) 합의 레이어 추가
 
 수정 파일:
 
-- `src/services/cognitive-engine.ts` (role orchestration)
+- `src/services/narrative-os.ts` (role orchestration seed)
 - `src/services/engagement.ts`
 
 산출물:
 
-- Scout/Analyst/Skeptic/Voice/Executor 파이프라인
-- critic reject rate 계측
+- Scout/Analyst/Skeptic/Voice 파이프라인
+- skeptic reject rate 계측
 
 Gate:
 
@@ -155,7 +164,7 @@ Gate:
 2. `src/services/memory.ts`
 3. `src/services/onchain-data.ts`
 4. `src/services/engagement/trend-context.ts`
-5. `src/services/cognitive-engine.ts`
+5. `src/services/narrative-os.ts`
 6. `src/services/llm.ts`
 7. `src/services/engagement.ts`
 8. `src/services/observability.ts`
@@ -178,7 +187,7 @@ Gate:
 
 1. 숫자 앵커 불일치: 즉시 reject
 2. 신뢰도 임계치 미달 소스: 실행 후보 제외
-3. critic reject 발생: 발행 중단 + fail reason 기록
+3. narrative novelty/event-evidence 계약 미충족: 발행 중단 + fail reason 기록
 4. canary 전략: 새 정책은 소량 실행 후 확대
 
 ## 9. 변경 관리 규칙

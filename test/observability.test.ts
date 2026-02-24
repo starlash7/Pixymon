@@ -23,13 +23,9 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
       postMaxChars: 220,
       postMinLength: 20,
       postMinIntervalMinutes: 90,
-      signalFingerprintCooldownHours: 8,
       maxPostsPerCycle: 1,
       nutrientMinDigestScore: 0.5,
       nutrientMaxIntakePerCycle: 12,
-      fearGreedEventMinDelta: 10,
-      fearGreedRequireRegimeChange: true,
-      requireFearGreedEventForSentiment: true,
       sentimentMaxRatio24h: 0.25,
       postLanguage: "ko",
       replyLanguageMode: "match",
@@ -94,7 +90,6 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
   assert.equal(event.postGeneration.fallbackRate, 0.33);
   assert.deepEqual(event.postGeneration.failReasonsTop[0], { reason: "duplicate", count: 2 });
   assert.equal(event.runtime.postLanguage, "ko");
-  assert.equal(event.runtime.requireFearGreedEventForSentiment, true);
   assert.equal(event.runtime.sentimentMaxRatio24h, 0.25);
   assert.equal(event.runtime.nutrientMinDigestScore, 0.5);
   assert.equal(event.nutrition.nutrient_intake, 9);

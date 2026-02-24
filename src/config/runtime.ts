@@ -41,13 +41,9 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postMaxChars: 220,
   postMinLength: 20,
   postMinIntervalMinutes: 90,
-  signalFingerprintCooldownHours: 8,
   maxPostsPerCycle: 1,
   nutrientMinDigestScore: 0.5,
   nutrientMaxIntakePerCycle: 12,
-  fearGreedEventMinDelta: 10,
-  fearGreedRequireRegimeChange: true,
-  requireFearGreedEventForSentiment: true,
   sentimentMaxRatio24h: 0.25,
   postLanguage: "ko",
   replyLanguageMode: "match",
@@ -222,12 +218,6 @@ export function loadRuntimeConfig(): RuntimeConfig {
       0,
       360
     ),
-    signalFingerprintCooldownHours: parseIntInRange(
-      process.env.SIGNAL_FINGERPRINT_COOLDOWN_HOURS,
-      DEFAULT_ENGAGEMENT_SETTINGS.signalFingerprintCooldownHours,
-      0,
-      72
-    ),
     maxPostsPerCycle: parseIntInRange(
       process.env.MAX_POSTS_PER_CYCLE,
       DEFAULT_ENGAGEMENT_SETTINGS.maxPostsPerCycle,
@@ -245,20 +235,6 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.nutrientMaxIntakePerCycle,
       3,
       40
-    ),
-    fearGreedEventMinDelta: parseIntInRange(
-      process.env.FG_EVENT_MIN_DELTA,
-      DEFAULT_ENGAGEMENT_SETTINGS.fearGreedEventMinDelta,
-      1,
-      50
-    ),
-    fearGreedRequireRegimeChange: parseBoolean(
-      process.env.FG_REQUIRE_REGIME_CHANGE,
-      DEFAULT_ENGAGEMENT_SETTINGS.fearGreedRequireRegimeChange
-    ),
-    requireFearGreedEventForSentiment: parseBoolean(
-      process.env.REQUIRE_FG_EVENT_FOR_SENTIMENT,
-      DEFAULT_ENGAGEMENT_SETTINGS.requireFearGreedEventForSentiment
     ),
     sentimentMaxRatio24h: parseFloatInRange(
       process.env.SENTIMENT_MAX_RATIO_24H,

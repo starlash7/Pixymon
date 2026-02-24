@@ -14,30 +14,30 @@
 
 ## 1. 최신 변경 요약
 
-2026-02-20 기준:
+2026-02-24 기준:
 
-1. `Feed`를 이벤트/근거 중심으로 강화
-   - `TrendEvent` + `OnchainEvidence` 모델 추가
-2. `Plan` 단계 추가
-   - lane 강제 선택: `protocol`, `ecosystem`, `regulation`, `macro`, `onchain`, `market-structure`
-   - 24h lane 편중 제한 (`onchain` 최대 30%)
-3. `Act` 계약 강제
-   - 트윗 생성 규칙: **event 1개 + evidence 2개**
-   - 미충족 시 생성 거절 + 재시도
+1. Narrative OS 재구성
+   - `src/services/narrative-os.ts` 추가
+   - lane + mode 기반 생성 플랜(`signal-pulse`, `builder-note`, `contrarian-check`, `field-journal`, `mythic-analogy`) 도입
+2. 생성 루프 단순화
+   - 기존 5-layer cognitive/research/reflection 체인을 제거
+   - `feed -> digest -> evolve -> plan -> act -> reflect` 단일 루프에 집중
+3. 반복 억제 강화
+   - banned opener + narrative skeleton 중복 차단
+   - `event 1 + evidence 2` 계약 미충족 시 발행 금지
+   - `극공포/FGI` 오프너 템플릿 차단
 4. 메타 저장 확장
-   - 발행 트윗에 lane/event/evidence 메타 저장
-5. 관측성 확장
-   - `planning.lane_usage_24h`, `planning.dominant_lane_24h`, `planning.onchain_ratio_24h` 추가
-6. 구조 최적화
-   - 이벤트/근거 플래너를 `src/services/engagement/event-evidence.ts`로 분리
+   - 발행 트윗에 `narrativeMode` 저장
+5. 비용/안정성 유지
+   - X API 일일 비용 가드 및 발행 dispatch lock 유지
 
 ## 2. 핵심 컨셉 루프
 
 1. Feed: 온체인/시장/뉴스를 nutrient로 수집
 2. Digest: 신뢰도/신선도/일관성 점수화
 3. Evolve: XP 누적 및 진화 상태 갱신
-4. Plan: 오늘 lane + event/evidence 액션 플랜 선택
-5. Act: 계약(`event 1 + evidence 2`) 충족 글/댓글 실행
+4. Plan: 오늘 lane + event/evidence + narrative mode 선택
+5. Act: 계약(`event 1 + evidence 2`) + narrative novelty 충족 시 실행
 6. Reflect: 품질/실패사유/메트릭을 다음 사이클 정책에 반영
 
 ## 3. 구조도
@@ -46,10 +46,10 @@
 flowchart TD
     A[Onchain / Market / News Feed] --> B[Digest Engine]
     B --> C[Memory XP & Evolution]
-    C --> D[Event-Evidence Planner]
-    D --> E[Act Contract<br/>event 1 + evidence 2]
+    C --> D[Event-Evidence + Narrative Planner]
+    D --> E[Act Contract<br/>event 1 + evidence 2 + novelty]
     E --> F[Twitter Post / Reply]
-    F --> G[Observability + Reflection]
+    F --> G[Observability + Runtime Reflection]
     G --> D
 ```
 
@@ -62,7 +62,8 @@ flowchart LR
     end
     subgraph PlanningLayer
       P1[event-evidence.ts]
-      P2[engagement.ts]
+      P2[narrative-os.ts]
+      P3[engagement.ts]
     end
     subgraph StateLayer
       S1[memory.ts]
@@ -85,7 +86,7 @@ flowchart LR
 3. 루프 실행 순서:
    - 멘션 응답
    - feed/digest/evolve
-   - event-evidence plan
+   - event-evidence + narrative plan
    - 트렌드 글/댓글 act
    - reflect/observability
 4. 비용 가드:
@@ -94,8 +95,8 @@ flowchart LR
    - read/create 최소 간격
 5. 중복 가드:
    - post dispatch lock/fingerprint
-   - signal fingerprint cooldown
-   - 품질 게이트 + 계약 검증
+   - narrative novelty gate
+   - 품질 게이트 + event/evidence 계약 검증
 
 ## 5. 주요 파일 맵
 
@@ -108,6 +109,7 @@ flowchart LR
 ### Planning & Quality
 
 - `src/services/engagement/event-evidence.ts`
+- `src/services/narrative-os.ts`
 - `src/services/engagement/trend-context.ts`
 - `src/services/engagement/quality.ts`
 - `src/services/engagement/policy.ts`
@@ -198,15 +200,9 @@ POST_MIN_LENGTH=20
 POST_LANGUAGE=ko
 REPLY_LANGUAGE_MODE=match
 POST_MIN_INTERVAL_MINUTES=90
-SIGNAL_FINGERPRINT_COOLDOWN_HOURS=8
 MAX_POSTS_PER_CYCLE=1
 NUTRIENT_MIN_DIGEST_SCORE=0.50
 NUTRIENT_MAX_INTAKE_PER_CYCLE=12
-
-# Fear & Sentiment
-FG_EVENT_MIN_DELTA=10
-FG_REQUIRE_REGIME_CHANGE=true
-REQUIRE_FG_EVENT_FOR_SENTIMENT=true
 SENTIMENT_MAX_RATIO_24H=0.25
 
 # Trend filter
@@ -242,23 +238,19 @@ src/
 ├── character.ts
 ├── services/
 │   ├── blockchain-news.ts
-│   ├── cognitive-engine.ts
 │   ├── digest-engine.ts
 │   ├── engagement.ts
+│   ├── narrative-os.ts
 │   ├── engagement/
 │   │   ├── event-evidence.ts
-│   │   ├── fear-greed-policy.ts
 │   │   ├── policy.ts
 │   │   ├── quality.ts
-│   │   ├── signal-fingerprint.ts
 │   │   ├── trend-context.ts
 │   │   └── types.ts
 │   ├── llm.ts
 │   ├── memory.ts
 │   ├── observability.ts
 │   ├── onchain-data.ts
-│   ├── reflection.ts
-│   ├── research-engine.ts
 │   ├── runtime.ts
 │   ├── twitter.ts
 │   └── x-api-budget.ts

@@ -79,13 +79,9 @@ export interface CycleObservabilityEvent {
     postLanguage: string;
     replyLanguageMode: string;
     postMinIntervalMinutes: number;
-    signalFingerprintCooldownHours: number;
     maxPostsPerCycle: number;
     nutrientMinDigestScore: number;
     nutrientMaxIntakePerCycle: number;
-    fearGreedEventMinDelta: number;
-    fearGreedRequireRegimeChange: boolean;
-    requireFearGreedEventForSentiment: boolean;
     sentimentMaxRatio24h: number;
     minNewsSourceTrust: number;
     minTrendTweetSourceTrust: number;
@@ -181,13 +177,9 @@ export function buildCycleObservabilityEvent(
       postLanguage: input.runtimeSettings.postLanguage,
       replyLanguageMode: input.runtimeSettings.replyLanguageMode,
       postMinIntervalMinutes: input.runtimeSettings.postMinIntervalMinutes,
-      signalFingerprintCooldownHours: input.runtimeSettings.signalFingerprintCooldownHours,
       maxPostsPerCycle: input.runtimeSettings.maxPostsPerCycle,
       nutrientMinDigestScore: round(input.runtimeSettings.nutrientMinDigestScore, 2),
       nutrientMaxIntakePerCycle: input.runtimeSettings.nutrientMaxIntakePerCycle,
-      fearGreedEventMinDelta: input.runtimeSettings.fearGreedEventMinDelta,
-      fearGreedRequireRegimeChange: input.runtimeSettings.fearGreedRequireRegimeChange,
-      requireFearGreedEventForSentiment: input.runtimeSettings.requireFearGreedEventForSentiment,
       sentimentMaxRatio24h: round(input.runtimeSettings.sentimentMaxRatio24h, 2),
       minNewsSourceTrust: round(input.runtimeSettings.minNewsSourceTrust, 2),
       minTrendTweetSourceTrust: round(input.runtimeSettings.minTrendTweetSourceTrust, 2),

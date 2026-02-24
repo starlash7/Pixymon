@@ -29,7 +29,7 @@ async function main() {
   printStartupBanner(runtimeConfig);
 
   validateEnvironment();
-  console.log("[COGNITION] 5-layer 루프 활성화 (signal → cluster → belief → action → reflection)");
+  console.log("[COGNITION] Narrative OS 루프 활성화 (feed → digest → evolve → plan → act → reflect)");
   console.log(`[STYLE] 댓글 톤 모드: ${REPLY_TONE_MODE} (env: REPLY_TONE_MODE=signal|personal)`);
   console.log(memory.getAgentStateContext());
 

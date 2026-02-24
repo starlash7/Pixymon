@@ -5,14 +5,11 @@ import { OnchainDataService } from "./onchain-data.js";
 import { digestNutrients } from "./digest-engine.js";
 import {
   CLAUDE_MODEL,
-  CLAUDE_RESEARCH_MODEL,
   PIXYMON_SYSTEM_PROMPT,
-  REPLY_TONE_MODE,
   extractTextFromClaude,
   getReplyToneGuide,
 } from "./llm.js";
 import { getMentions, postTweet, replyToMention, searchRecentTrendTweets, TEST_MODE, sleep } from "./twitter.js";
-import { FiveLayerCognitiveEngine } from "./cognitive-engine.js";
 import { detectLanguage } from "../utils/mood.js";
 import {
   DEFAULT_ENGAGEMENT_SETTINGS,
@@ -38,12 +35,6 @@ import {
   planEventEvidenceAct,
   validateEventEvidenceContract,
 } from "./engagement/event-evidence.js";
-import { buildSignalFingerprint } from "./engagement/signal-fingerprint.js";
-import {
-  detectFearGreedEvent,
-  FearGreedPoint,
-  parseFearGreedPointFromMarketContext,
-} from "./engagement/fear-greed-policy.js";
 import {
   buildAdaptivePolicy,
   clamp,
@@ -65,9 +56,14 @@ import {
   LaneUsageWindow,
   TrendContext,
 } from "./engagement/types.js";
-import { CognitiveObjective, CognitiveRunContext, OnchainNutrient, TrendLane } from "../types/agent.js";
+import { OnchainNutrient, TrendLane } from "../types/agent.js";
 import { emitCycleObservability } from "./observability.js";
 import { XReadGuardBlockReason, xApiBudget } from "./x-api-budget.js";
+import {
+  buildNarrativePlan,
+  NarrativeRecentPost,
+  validateNarrativeNovelty,
+} from "./narrative-os.js";
 
 const DEFAULT_TIMEZONE = "Asia/Seoul";
 const DEFAULT_MIN_LOOP_MINUTES = 25;
@@ -84,8 +80,6 @@ interface CachedTrendTweets {
 }
 
 interface EngagementCycleCache {
-  cognitive?: FiveLayerCognitiveEngine;
-  runContexts: Partial<Record<CognitiveObjective, CognitiveRunContext>>;
   trendContext?: CachedTrendContext;
   trendTweets?: CachedTrendTweets;
   cacheMetrics: CycleCacheMetrics;
@@ -103,14 +97,12 @@ interface FeedDigestSummary {
 
 const onchainDataService = new OnchainDataService();
 
-// 멘션 체크 및 응답
 export async function checkAndReplyMentions(
   twitter: TwitterApi,
   claude: Anthropic,
   maxMentionsToProcess: number = 5,
   timezone: string = DEFAULT_TIMEZONE,
-  xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
-  cache?: EngagementCycleCache
+  xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS
 ): Promise<number> {
   const now = new Date().toLocaleString("ko-KR", { timeZone: timezone });
   console.log(`\n[${now}] 멘션 체크 중...`);
@@ -151,17 +143,13 @@ export async function checkAndReplyMentions(
 
     const mentionLimit = clamp(maxMentionsToProcess, 1, 20);
     console.log(`[INFO] ${mentions.length}개 새 멘션 발견 (최대 ${mentionLimit}개 처리)`);
-    const cognitive = getOrCreateCognitive(cache, claude);
-    const runContext = await getOrCreateRunContext(cognitive, "reply", cache);
 
     let repliedCount = 0;
     const mentionsToProcess = mentions.slice(0, mentionLimit).reverse();
 
     for (const mention of mentionsToProcess) {
-      console.log(`  └─ "${String(mention.text || "").substring(0, 45)}..."`);
+      console.log(`  └─ \"${String(mention.text || "").substring(0, 45)}...\"`);
       const replied = await replyToMention(twitter, claude, mention, {
-        cognitiveEngine: cognitive,
-        runContext,
         timezone,
         xApiCostSettings,
       });
@@ -183,7 +171,6 @@ export async function checkAndReplyMentions(
   }
 }
 
-// 트렌드 기반 프로액티브 인게이지먼트
 export async function proactiveEngagement(
   twitter: TwitterApi,
   claude: Anthropic,
@@ -203,17 +190,24 @@ export async function proactiveEngagement(
   const sourceTrustUpdates: Array<{ sourceKey: string; delta: number; reason: string; fallback?: number }> = [];
 
   try {
-    const cognitive = getOrCreateCognitive(cache, claude);
-    const runContext = await getOrCreateRunContext(cognitive, "engagement", cache);
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
 
-    const candidates = await getOrSearchTrendTweets(twitter, trend.keywords, Math.max(24, goal * 10), {
-      minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
-      minScore: runtimeSettings.minTrendTweetScore,
-      minEngagement: runtimeSettings.minTrendTweetEngagement,
-    }, timezone, xApiCostSettings, cache);
+    const candidates = await getOrSearchTrendTweets(
+      twitter,
+      trend.keywords,
+      Math.max(24, goal * 10),
+      {
+        minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
+        minScore: runtimeSettings.minTrendTweetScore,
+        minEngagement: runtimeSettings.minTrendTweetEngagement,
+      },
+      timezone,
+      xApiCostSettings,
+      cache
+    );
+
     if (candidates.length === 0) {
       console.log("[ENGAGE] 트렌드 후보 트윗 없음");
       return 0;
@@ -227,7 +221,7 @@ export async function proactiveEngagement(
 
     let repliedCount = 0;
     const recentReplyTexts = memory
-      .getRecentTweets(50)
+      .getRecentTweets(60)
       .filter((tweet) => tweet.type === "reply")
       .map((tweet) => tweet.content);
 
@@ -251,70 +245,50 @@ export async function proactiveEngagement(
 
       const detectedLang = detectLanguage(text);
       const lang = resolveReplyLanguage(runtimeSettings.replyLanguageMode, detectedLang);
-      const packet = await cognitive.analyzeTarget({
-        objective: "engagement",
-        text,
-        author: String(tweet.author_id || ""),
-        language: lang,
-        runContext,
-      });
-
-      if (!packet.action.shouldReply) continue;
-
       const toneGuide = getReplyToneGuide(lang);
       const systemPrompt = `${PIXYMON_SYSTEM_PROMPT}
 
 추가 운영 규칙:
-- 트렌드/기술 변화 중심으로만 말한다.
-- 공허한 칭찬/리액션은 금지한다.
-- 근거가 약하면 질문형으로 전개한다.`;
+- 상대 트윗 핵심 주장 1개만 잡고 반응한다.
+- 칭찬/감탄사보다 정보 밀도가 높은 답변 우선.
+- 확신이 낮으면 질문형으로 끝낸다.`;
 
       const userPrompt =
         lang === "ko"
-          ? `아래 컨텍스트로 답글 작성.
+          ? `아래 컨텍스트로 답글 1개 작성.
 
-트렌드 요약:
+오늘 트렌드 요약:
 ${trend.summary}
 
-${packet.promptContext}
-
 타겟 트윗:
-"${text}"
+\"${text}\"
 
 규칙:
-- ${packet.action.maxChars}자 이내
-- 톤: ${packet.action.style}
+- 180자 이내
 - 톤 가이드:
 ${toneGuide}
-- intent: ${packet.action.intent}
-- 리스크 모드: ${packet.action.riskMode}
-- 마지막 문장 ${packet.action.shouldEndWithQuestion ? "질문형" : "관찰형"}
 - 해시태그/이모지 금지
-- 1줄만 출력`
+- 숫자 왜곡 금지
+- 본문만 출력`
           : `Write one concise reply using this context.
 
 Trend summary:
 ${trend.summary}
 
-${packet.promptContext}
-
 Target tweet:
-"${text}"
+\"${text}\"
 
 Rules:
-- Max ${packet.action.maxChars} chars
-- Tone: ${packet.action.style}
+- Max 180 chars
 - Tone guide:
 ${toneGuide}
-- Intent: ${packet.action.intent}
-- Risk mode: ${packet.action.riskMode}
-- Ending: ${packet.action.shouldEndWithQuestion ? "open question" : "clear observation"}
 - No hashtags or emoji
-- Output only the reply text`;
+- Do not invent numbers
+- Output reply text only`;
 
       const message = await claude.messages.create({
         model: CLAUDE_MODEL,
-        max_tokens: 250,
+        max_tokens: 220,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       });
@@ -323,7 +297,7 @@ ${toneGuide}
       if (!replyText || replyText.length < 5) continue;
 
       if (detectLanguage(replyText) !== lang) {
-        const rewritten = await rewriteByLanguage(claude, replyText, lang, packet.action.maxChars);
+        const rewritten = await rewriteByLanguage(claude, replyText, lang, 180);
         if (rewritten) {
           replyText = rewritten;
         }
@@ -399,7 +373,6 @@ ${toneGuide}
   }
 }
 
-// 트렌드 요약 글 작성
 export async function postTrendUpdate(
   twitter: TwitterApi,
   claude: Anthropic,
@@ -414,20 +387,23 @@ export async function postTrendUpdate(
   const runtimeSettings = resolveEngagementSettings(settings);
 
   try {
-    const cognitive = getOrCreateCognitive(cache, claude);
-    const runContext = await getOrCreateRunContext(cognitive, "briefing", cache);
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
-    const sourceText =
-      runtimeSettings.postLanguage === "ko"
-        ? `${trend.summary}\n핵심 키워드: ${trend.keywords.join(", ")}`
-        : `${trend.summary}\nCore keywords: ${trend.keywords.join(", ")}`;
+
     const recentBriefingPosts = memory
-      .getRecentTweets(120)
+      .getRecentTweets(140)
       .filter((tweet) => tweet.type === "briefing")
       .filter((tweet) => isWithinHours(tweet.timestamp, 24))
-      .map((tweet) => ({ content: tweet.content, timestamp: tweet.timestamp }));
+      .map((tweet) => ({
+        content: tweet.content,
+        timestamp: tweet.timestamp,
+        meta: {
+          lane: tweet.meta?.lane,
+          narrativeMode: tweet.meta?.narrativeMode,
+        },
+      }));
+
     const lastBriefingPost = recentBriefingPosts.length > 0 ? recentBriefingPosts[recentBriefingPosts.length - 1] : null;
     if (runtimeSettings.postMinIntervalMinutes > 0 && lastBriefingPost) {
       const minutesSinceLast = getMinutesSince(lastBriefingPost.timestamp);
@@ -438,27 +414,9 @@ export async function postTrendUpdate(
         return false;
       }
     }
-    const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
-    const currentFearGreed = parseFearGreedPointFromMarketContext(runContext.marketContext);
-    const previousFearGreedRaw = memory.getLatestFearGreedPoint(72);
-    const previousFearGreed: FearGreedPoint | null = previousFearGreedRaw
-      ? { value: previousFearGreedRaw.value, label: previousFearGreedRaw.label }
-      : null;
-    const fearGreedEvent = detectFearGreedEvent(currentFearGreed, previousFearGreed, {
-      minDelta: runtimeSettings.fearGreedEventMinDelta,
-      requireRegimeChange: runtimeSettings.fearGreedRequireRegimeChange,
-    });
-    if (runtimeSettings.requireFearGreedEventForSentiment) {
-      console.log(
-        `[FG] current=${fearGreedEvent.current?.value ?? "na"} prev=${fearGreedEvent.previous?.value ?? "na"} delta=${fearGreedEvent.delta ?? "na"} event=${fearGreedEvent.isEvent}(${fearGreedEvent.reason})`
-      );
-    }
-    if (fearGreedEvent.current) {
-      memory.recordFearGreedPoint(fearGreedEvent.current.value, fearGreedEvent.current.label);
-    }
 
-    const avoidTags = !fearGreedEvent.isEvent ? ["sentiment"] : [];
-    const postAngle = pickPostAngle(timezone, recentBriefingPosts, { avoidTags });
+    const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
+    const postAngle = pickPostAngle(timezone, recentBriefingPosts);
     const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
     const eventPlan = planEventEvidenceAct({
       events: trend.events,
@@ -466,62 +424,42 @@ export async function postTrendUpdate(
       recentPosts: recentBriefingPosts,
       laneUsage: laneUsageWindow,
     });
+
     if (!eventPlan) {
       console.log("[PLAN] 이벤트/근거 플랜 생성 실패 (event 또는 evidence 부족)");
       return false;
     }
+
+    const narrativePlan = buildNarrativePlan({
+      eventPlan,
+      recentPosts: recentBriefingPosts as NarrativeRecentPost[],
+      language: runtimeSettings.postLanguage,
+    });
+
     const trendFocus = pickTrendFocus([eventPlan.event.headline, ...trend.headlines], recentBriefingPosts);
-    const requiredTrendTokens = [
-      ...new Set([...trendFocus.requiredTokens, ...eventPlan.event.keywords]),
-    ].slice(0, 6);
-    const focusTokensLine =
-      requiredTrendTokens.length > 0 ? requiredTrendTokens.join(", ") : "- 없음 (이벤트 헤드라인 직접 반영)";
-    const postDiversityGuard = buildPostDiversityGuard(
-      recentBriefingPosts,
-      trend.marketData,
-      requiredTrendTokens,
-      eventPlan.event.headline
-    );
-    const localDateLabel = new Date().toLocaleDateString("ko-KR", { timeZone: timezone });
+    const requiredTrendTokens = [...new Set([...trendFocus.requiredTokens, ...eventPlan.event.keywords])].slice(0, 6);
+    const focusTokensLine = requiredTrendTokens.length > 0 ? requiredTrendTokens.join(", ") : "- 없음";
+    const postDiversityGuard = buildPostDiversityGuard(recentBriefingPosts, trend.marketData, requiredTrendTokens, eventPlan.event.headline);
+
     if (eventPlan.event.headline) {
       console.log(`[PLAN] lane=${eventPlan.lane} | event=${eventPlan.event.headline}`);
+      console.log(`[PLAN] mode=${narrativePlan.mode} | opener=\"${narrativePlan.openingDirective}\"`);
       console.log(`[PLAN] evidence=${eventPlan.evidence.map((item) => `${item.label} ${item.value}`).join(" | ")}`);
       console.log(
         `[PLAN] laneRatio=${Math.round(eventPlan.laneProjectedRatio * 100)}% quotaLimited=${eventPlan.laneQuotaLimited ? "yes" : "no"}`
       );
     }
+
     if (postDiversityGuard.avoidBtcOnly) {
       console.log(`[POST] BTC 편중 완화 모드: ${postDiversityGuard.btcRatioPercent}%`);
     }
+
     const marketAnchors = formatMarketAnchors(trend.marketData);
     const qualityRules = resolveContentQualityRules({
       minPostLength: runtimeSettings.postMinLength,
       topicMaxSameTag24h: runtimeSettings.topicMaxSameTag24h,
       sentimentMaxRatio24h: runtimeSettings.sentimentMaxRatio24h,
       topicBlockConsecutiveTag: runtimeSettings.topicBlockConsecutiveTag,
-    });
-    const signalFingerprint = buildSignalFingerprint({
-      marketContext: runContext.marketContext,
-      onchainContext: runContext.onchainContext,
-      trendSummary: trend.summary,
-      focusHeadline: eventPlan.event.headline,
-    });
-    if (
-      runtimeSettings.signalFingerprintCooldownHours > 0 &&
-      memory.hasRecentSignalFingerprint(signalFingerprint.key, runtimeSettings.signalFingerprintCooldownHours)
-    ) {
-      console.log(
-        `[POST] 스킵: 동일 시그널 재발행 방지(fp=${signalFingerprint.key}, cooldown=${runtimeSettings.signalFingerprintCooldownHours}h)`
-      );
-      return false;
-    }
-
-    const packet = await cognitive.analyzeTarget({
-      objective: "briefing",
-      text: sourceText,
-      author: "trend-radar",
-      language: runtimeSettings.postLanguage,
-      runContext,
     });
 
     let rejectionFeedback = "";
@@ -533,7 +471,7 @@ export async function postTrendUpdate(
     const recentContext =
       recentBriefingTexts.length > 0
         ? recentBriefingTexts
-            .slice(-3)
+            .slice(-4)
             .map((text, index) => `${index + 1}. ${text}`)
             .join("\n")
         : "- 없음";
@@ -544,60 +482,47 @@ export async function postTrendUpdate(
         runtimeSettings.postLanguage === "ko"
           ? `아래 컨텍스트로 오늘의 트렌드 글 1개 작성.
 
-${packet.promptContext}
+핵심 이벤트(1개 고정):
+${eventPlan.event.headline}
+
+근거 2개(둘 다 필수):
+1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
+2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
+
+오늘 앵글: ${postAngle}
+Narrative lane: ${eventPlan.lane}
+Narrative mode: ${narrativePlan.mode}
+오프닝 가이드: ${narrativePlan.openingDirective}
+본문 가이드: ${narrativePlan.bodyDirective}
+엔딩 가이드: ${narrativePlan.endingDirective}
 
 트렌드 요약:
 ${trend.summary}
 
-오늘 날짜:
-${localDateLabel}
-
-우선 앵글:
-${postAngle}
-
-오늘 이벤트(1개 고정):
-${eventPlan.event.headline}
-
-근거 2개(반드시 둘 다 반영):
-1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
-2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
-
 이벤트 키워드:
 ${focusTokensLine}
 
-최근 작성 글 (반복 금지):
-${recentContext}
-
 시장 숫자 앵커:
 ${marketAnchors}
+
+최근 작성 글(반복 금지):
+${recentContext}
 
 직전 실패 원인:
 ${rejectionFeedback || "없음"}
 
 규칙:
 - ${runtimeSettings.postMaxChars}자 이내
-- 반드시 한국어로 작성 (고유명사 제외 영어 최소화)
+- 반드시 한국어
 - 해시태그/이모지 금지
-- 질문형 또는 관찰형 마무리
-- "시장 숫자 앵커"에 없는 가격 숫자는 쓰지 말 것
-- 앵커가 없으면 구체 가격 숫자 언급 금지
-- 최근 작성 글과 같은 전개/문장 구조 금지
-- 반드시 "이벤트 1개 + 근거 2개" 포맷 유지
-- 이벤트 헤드라인 핵심어를 최소 1개 포함
+- 과장/확정적 투자 조언 금지
+- 금기 없이 자유롭게 상상해도 되지만 숫자/사실 왜곡 금지
+- 반드시 \"이벤트 1개 + 근거 2개\" 구조 유지
+- 같은 시작 문장/템플릿 반복 금지
+- \"극공포/FGI\"로 문장 시작 금지
 - ${postDiversityGuard.ruleLineKo}
 - 트윗 본문만 출력`
-          : `Write one trend post for today with this context.
-
-${packet.promptContext}
-
-Trend summary:
-${trend.summary}
-
-Local date:
-${localDateLabel}
-
-Preferred angle:
-${postAngle}
+          : `Write one trend post for today.
 
 Primary event (exactly one):
 ${eventPlan.event.headline}
@@ -606,14 +531,24 @@ Required evidence (must include both):
 1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
 2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
 
+Angle: ${postAngle}
+Narrative lane: ${eventPlan.lane}
+Narrative mode: ${narrativePlan.mode}
+Opening directive: ${narrativePlan.openingDirective}
+Body directive: ${narrativePlan.bodyDirective}
+Ending directive: ${narrativePlan.endingDirective}
+
+Trend summary:
+${trend.summary}
+
 Event tokens:
 ${focusTokensLine}
 
+Market anchors:
+${marketAnchors}
+
 Recent posts (avoid repetition):
 ${recentContext}
-
-Market anchor numbers:
-${marketAnchors}
 
 Last rejection reason:
 ${rejectionFeedback || "none"}
@@ -622,29 +557,24 @@ Rules:
 - Max ${runtimeSettings.postMaxChars} chars
 - Write in English
 - No hashtags or emoji
-- End with a question or a clear observation
-- Do not cite price numbers outside "Market anchor numbers"
-- If anchors are empty, do not use specific price numbers
-- Avoid repeating recent narrative structure
-- Keep strict format: exactly one event + exactly two evidence anchors
-- Include at least one event token or the event headline wording
+- No financial certainty claims
+- You can be imaginative, but do not fabricate numbers/facts
+- Keep strict structure: one event + two evidence anchors
+- Avoid repeated opening templates
+- Do not start with fear/greed index phrasing
 - ${postDiversityGuard.ruleLineEn}
 - Output tweet text only`;
+
       const message = await claude.messages.create({
         model: CLAUDE_MODEL,
-        max_tokens: 320,
+        max_tokens: 340,
         system: `${PIXYMON_SYSTEM_PROMPT}
 
 추가 운영 규칙:
-- 오늘 트위터 기술/트렌드 변화 중심으로 한 문장 주장 + 한 문장 근거.
-- 과장 금지, 단정은 confidence 높을 때만.
-- 숫자는 제공된 시장 앵커 범위 안에서만 인용한다.`,
-        messages: [
-          {
-            role: "user",
-            content: userPrompt,
-          },
-        ],
+- 스토리텔링은 허용하지만 수치/사실은 입력 근거에서만 사용.
+- 문장 반복, 클리셰 오프너, 포맷 복붙을 피한다.
+- 오늘은 lane과 mode를 따라 글 톤을 바꾼다.`,
+        messages: [{ role: "user", content: userPrompt }],
       });
 
       let candidate = sanitizeTweetText(extractTextFromClaude(message.content));
@@ -665,9 +595,32 @@ Rules:
         }
       }
 
+      if (startsWithFearGreedTemplate(candidate)) {
+        rejectionFeedback = "금지된 오프너(FGI/극공포 시작)";
+        latestFailReason = rejectionFeedback;
+        console.log(
+          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+        );
+        continue;
+      }
+
       const contract = validateEventEvidenceContract(candidate, eventPlan);
       if (!contract.ok) {
         rejectionFeedback = `event/evidence 계약 미충족(${contract.reason})`;
+        latestFailReason = rejectionFeedback;
+        console.log(
+          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+        );
+        continue;
+      }
+
+      const narrativeNovelty = validateNarrativeNovelty(
+        candidate,
+        recentBriefingPosts as NarrativeRecentPost[],
+        narrativePlan
+      );
+      if (!narrativeNovelty.ok) {
+        rejectionFeedback = `narrative 중복(${narrativeNovelty.reason})`;
         latestFailReason = rejectionFeedback;
         console.log(
           `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
@@ -684,20 +637,9 @@ Rules:
         continue;
       }
 
-      const quality = evaluatePostQuality(
-        candidate,
-        trend.marketData,
-        recentBriefingPosts,
-        policy,
-        qualityRules,
-        {
-          requiredTrendTokens,
-          fearGreedEvent: {
-            required: runtimeSettings.requireFearGreedEventForSentiment,
-            isEvent: fearGreedEvent.isEvent,
-          },
-        }
-      );
+      const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingPosts, policy, qualityRules, {
+        requiredTrendTokens,
+      });
       if (!quality.ok) {
         rejectionFeedback = quality.reason || "품질 게이트 미통과";
         latestFailReason = rejectionFeedback;
@@ -729,11 +671,26 @@ Rules:
           fallbackPost = rewrittenFallback;
         }
       }
+      if (fallbackPost && startsWithFearGreedTemplate(fallbackPost)) {
+        fallbackPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${fallbackPost}`.slice(0, runtimeSettings.postMaxChars);
+      }
       if (fallbackPost) {
         const fallbackContract = validateEventEvidenceContract(fallbackPost, eventPlan);
         if (!fallbackContract.ok) {
           console.log(`[POST] fallback 실패: ${fallbackContract.reason}`);
           latestFailReason = fallbackContract.reason || latestFailReason;
+          fallbackPost = null;
+        }
+      }
+      if (fallbackPost) {
+        const fallbackNovelty = validateNarrativeNovelty(
+          fallbackPost,
+          recentBriefingPosts as NarrativeRecentPost[],
+          narrativePlan
+        );
+        if (!fallbackNovelty.ok) {
+          console.log(`[POST] fallback 실패: narrative-${fallbackNovelty.reason}`);
+          latestFailReason = fallbackNovelty.reason || latestFailReason;
           fallbackPost = null;
         }
       }
@@ -744,13 +701,7 @@ Rules:
           recentBriefingPosts,
           policy,
           qualityRules,
-          {
-            requiredTrendTokens,
-            fearGreedEvent: {
-              required: runtimeSettings.requireFearGreedEventForSentiment,
-              isEvent: fearGreedEvent.isEvent,
-            },
-          }
+          { requiredTrendTokens }
         );
         if (fallbackQuality.ok) {
           postText = fallbackPost;
@@ -784,16 +735,12 @@ Rules:
         eventId: eventPlan.event.id,
         eventHeadline: eventPlan.event.headline,
         evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
+        narrativeMode: narrativePlan.mode,
       },
     });
     if (!tweetId) return false;
 
     memory.recordCognitiveActivity("social", 2);
-    memory.recordSignalFingerprint({
-      key: signalFingerprint.key,
-      signature: signalFingerprint.signature,
-      context: eventPlan.event.headline,
-    });
     memory.recordPostGeneration({
       timezone,
       retryCount: Math.max(0, generationAttempts - 1),
@@ -925,9 +872,9 @@ export async function runDailyQuotaCycle(
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCost);
   const observabilitySettings = resolveObservabilitySettings(options.observability);
   const cycleCache: EngagementCycleCache = {
-    runContexts: {},
     cacheMetrics: createEmptyCacheMetrics(),
   };
+
   let feedDigest: FeedDigestSummary = {
     intakeCount: 0,
     acceptedCount: 0,
@@ -937,7 +884,7 @@ export async function runDailyQuotaCycle(
     rejectReasonsTop: [],
     acceptedNutrients: [],
   };
-  let canActWithDigest = false;
+
   const finalize = (
     executed: number,
     remaining: number,
@@ -972,7 +919,7 @@ export async function runDailyQuotaCycle(
   }
 
   feedDigest = await runFeedDigestEvolve(cycleCache, runtimeSettings, timezone);
-  canActWithDigest = feedDigest.acceptedCount > 0;
+  const canActWithDigest = feedDigest.acceptedCount > 0;
 
   console.log(
     `[FEED] nutrient=${feedDigest.intakeCount} accepted=${feedDigest.acceptedCount} avgDigest=${feedDigest.avgDigestScore.toFixed(2)} xpGain=${feedDigest.xpGainTotal}`
@@ -994,7 +941,7 @@ export async function runDailyQuotaCycle(
     `[TUNING] postLang=${runtimeSettings.postLanguage}, replyLang=${runtimeSettings.replyLanguageMode}, trend(score>=${runtimeSettings.minTrendTweetScore.toFixed(1)}, engage>=${runtimeSettings.minTrendTweetEngagement})`
   );
   console.log(
-    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, fpCooldown=${runtimeSettings.signalFingerprintCooldownHours}h, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}, sentimentMax=${Math.round(runtimeSettings.sentimentMaxRatio24h * 100)}%, nutrient(minScore=${runtimeSettings.nutrientMinDigestScore.toFixed(2)}, max=${runtimeSettings.nutrientMaxIntakePerCycle})`
+    `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}, nutrient(minScore=${runtimeSettings.nutrientMinDigestScore.toFixed(2)}, max=${runtimeSettings.nutrientMaxIntakePerCycle})`
   );
   console.log(
     `[COST] guard=${xApiCostSettings.enabled ? "on" : "off"} budget=$${xApiCostSettings.dailyMaxUsd.toFixed(2)} read_limit=${xApiCostSettings.dailyReadRequestLimit}/day create_limit=${xApiCostSettings.dailyCreateRequestLimit}/day mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m create>=${xApiCostSettings.createMinIntervalMinutes}m`
@@ -1008,8 +955,7 @@ export async function runDailyQuotaCycle(
     claude,
     mentionBudget,
     timezone,
-    xApiCostSettings,
-    cycleCache
+    xApiCostSettings
   );
   executed += mentionProcessed;
 
@@ -1025,6 +971,7 @@ export async function runDailyQuotaCycle(
       console.log("[QUOTA] feed/digest gate로 proactive action 생략");
       break;
     }
+
     const before = executed;
     const todayPosts = memory.getTodayPostCount(timezone);
     const canPostInCycle = postsCreatedThisCycle < runtimeSettings.maxPostsPerCycle;
@@ -1113,13 +1060,11 @@ export async function runDailyQuotaLoop(
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCost);
 
   console.log(`[LOOP] 고정 시간 스케줄 없이 자율 루프 실행 (${minLoop}~${maxLoop}분 간격)`);
-  console.log(`[LOOP] 댓글 톤 모드: ${REPLY_TONE_MODE}`);
-  console.log(
-    `[LOOP] 언어 설정: post=${runtimeSettings.postLanguage}, reply=${runtimeSettings.replyLanguageMode}`
-  );
+  console.log(`[LOOP] 언어 설정: post=${runtimeSettings.postLanguage}, reply=${runtimeSettings.replyLanguageMode}`);
   console.log(
     `[LOOP] X budget: $${xApiCostSettings.dailyMaxUsd.toFixed(2)}/day, read=${xApiCostSettings.dailyReadRequestLimit}, create=${xApiCostSettings.dailyCreateRequestLimit}, mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m, trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m, create>=${xApiCostSettings.createMinIntervalMinutes}m`
   );
+
   while (true) {
     const result = await runDailyQuotaCycle(twitter, claude, options);
     const now = new Date().toLocaleString("ko-KR", { timeZone: timezone });
@@ -1142,8 +1087,7 @@ async function rewriteByLanguage(
       lang === "ko"
         ? `아래 문장을 자연스러운 한국어 한 줄로 다시 써줘.
 
-원문:
-${text}
+원문:\n${text}
 
 규칙:
 - ${maxChars}자 이내
@@ -1152,8 +1096,7 @@ ${text}
 - 최종 문장만 출력`
         : `Rewrite the text in natural English, one line.
 
-Original:
-${text}
+Original:\n${text}
 
 Rules:
 - Max ${maxChars} chars
@@ -1174,43 +1117,6 @@ Rules:
   } catch {
     return null;
   }
-}
-
-function getOrCreateCognitive(cache: EngagementCycleCache | undefined, claude: Anthropic): FiveLayerCognitiveEngine {
-  if (cache?.cognitive) {
-    cache.cacheMetrics.cognitiveHits += 1;
-    return cache.cognitive;
-  }
-  if (cache) {
-    cache.cacheMetrics.cognitiveMisses += 1;
-  }
-  const created = new FiveLayerCognitiveEngine(claude, CLAUDE_MODEL, PIXYMON_SYSTEM_PROMPT, CLAUDE_RESEARCH_MODEL);
-  if (cache) {
-    cache.cognitive = created;
-  }
-  return created;
-}
-
-async function getOrCreateRunContext(
-  cognitive: FiveLayerCognitiveEngine,
-  objective: CognitiveObjective,
-  cache?: EngagementCycleCache
-): Promise<CognitiveRunContext> {
-  const cached = cache?.runContexts[objective];
-  if (cached) {
-    if (cache) {
-      cache.cacheMetrics.runContextHits += 1;
-    }
-    return cached;
-  }
-  if (cache) {
-    cache.cacheMetrics.runContextMisses += 1;
-  }
-  const created = await cognitive.prepareRunContext(objective);
-  if (cache) {
-    cache.runContexts[objective] = created;
-  }
-  return created;
 }
 
 async function getOrCreateTrendContext(
@@ -1267,6 +1173,7 @@ async function getOrSearchTrendTweets(
     console.log(`[BUDGET] 트렌드 검색 스킵: ${formatReadBlockReason(trendReadGuard.reason, trendReadGuard.waitSeconds)}`);
     return [];
   }
+
   const trendUsage = xApiBudget.recordRead({
     timezone,
     estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
@@ -1326,17 +1233,13 @@ function logCacheMetrics(cache?: EngagementCycleCache): void {
   if (!cache) return;
   const metrics = cache.cacheMetrics;
   const total =
-    metrics.cognitiveHits +
-    metrics.cognitiveMisses +
-    metrics.runContextHits +
-    metrics.runContextMisses +
     metrics.trendContextHits +
     metrics.trendContextMisses +
     metrics.trendTweetsHits +
     metrics.trendTweetsMisses;
   if (total === 0) return;
   console.log(
-    `[CACHE] cog ${metrics.cognitiveHits}/${metrics.cognitiveMisses} | runCtx ${metrics.runContextHits}/${metrics.runContextMisses} | trendCtx ${metrics.trendContextHits}/${metrics.trendContextMisses} | trendTweets ${metrics.trendTweetsHits}/${metrics.trendTweetsMisses}`
+    `[CACHE] trendCtx ${metrics.trendContextHits}/${metrics.trendContextMisses} | trendTweets ${metrics.trendTweetsHits}/${metrics.trendTweetsMisses}`
   );
 }
 
@@ -1371,6 +1274,7 @@ function buildPostDiversityGuard(
     .toLowerCase()
     .split(/\s+/)
     .find((token) => token.length >= 3 && !isBtcCentricText(token));
+
   const altTokens = [
     ...new Set([
       ...altSymbols.map((symbol) => `$${symbol}`),
@@ -1418,6 +1322,11 @@ function isBtcCentricText(text: string): boolean {
   return /(^|\s)(\$?btc|bitcoin|비트코인)(\s|$)|fear\s*greed|fgi|공포\s*지수|극공포/.test(lower);
 }
 
+function startsWithFearGreedTemplate(text: string): boolean {
+  const lower = sanitizeTweetText(text).toLowerCase();
+  return /^(극공포|공포\s*지수|fear\s*greed|fgi)/.test(lower);
+}
+
 function resolveEngagementSettings(
   settings: Partial<EngagementRuntimeSettings> = {}
 ): EngagementRuntimeSettings {
@@ -1435,12 +1344,6 @@ function resolveEngagementSettings(
       0,
       360,
       DEFAULT_ENGAGEMENT_SETTINGS.postMinIntervalMinutes
-    ),
-    signalFingerprintCooldownHours: clampInt(
-      settings.signalFingerprintCooldownHours,
-      0,
-      72,
-      DEFAULT_ENGAGEMENT_SETTINGS.signalFingerprintCooldownHours
     ),
     maxPostsPerCycle: clampInt(
       settings.maxPostsPerCycle,
@@ -1460,20 +1363,6 @@ function resolveEngagementSettings(
       40,
       DEFAULT_ENGAGEMENT_SETTINGS.nutrientMaxIntakePerCycle
     ),
-    fearGreedEventMinDelta: clampInt(
-      settings.fearGreedEventMinDelta,
-      1,
-      50,
-      DEFAULT_ENGAGEMENT_SETTINGS.fearGreedEventMinDelta
-    ),
-    fearGreedRequireRegimeChange:
-      typeof settings.fearGreedRequireRegimeChange === "boolean"
-        ? settings.fearGreedRequireRegimeChange
-        : DEFAULT_ENGAGEMENT_SETTINGS.fearGreedRequireRegimeChange,
-    requireFearGreedEventForSentiment:
-      typeof settings.requireFearGreedEventForSentiment === "boolean"
-        ? settings.requireFearGreedEventForSentiment
-        : DEFAULT_ENGAGEMENT_SETTINGS.requireFearGreedEventForSentiment,
     sentimentMaxRatio24h: clampNumber(
       settings.sentimentMaxRatio24h,
       0.05,
@@ -1651,6 +1540,18 @@ function resolveRecentLaneUsageWindow(
   };
 }
 
+function getMinutesSince(isoTimestamp: string): number {
+  const ts = new Date(isoTimestamp).getTime();
+  if (!Number.isFinite(ts)) return -1;
+  return Math.floor((Date.now() - ts) / (1000 * 60));
+}
+
+function isWithinHours(isoTimestamp: string, hours: number): boolean {
+  const ts = new Date(isoTimestamp).getTime();
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts <= hours * 60 * 60 * 1000;
+}
+
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
@@ -1663,17 +1564,4 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
     return fallback;
   }
   return Math.max(min, Math.min(max, value));
-}
-
-function getMinutesSince(isoTimestamp: string): number {
-  const ts = new Date(isoTimestamp).getTime();
-  if (!Number.isFinite(ts)) return -1;
-  return Math.floor((Date.now() - ts) / (1000 * 60));
-}
-
-function isWithinHours(isoTimestamp: string, hours: number): boolean {
-  const ts = new Date(isoTimestamp).getTime();
-  if (!Number.isFinite(ts)) return false;
-  const windowMs = Math.max(1, Math.floor(hours)) * 60 * 60 * 1000;
-  return Date.now() - ts <= windowMs;
 }
