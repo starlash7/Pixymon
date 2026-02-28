@@ -1,11 +1,18 @@
 import fs from "fs";
 import path from "path";
 import {
+  AutonomyContext,
   AbilityUnlock,
+  ClaimResolution,
   DigestScore,
   EvolutionStage,
+  HypothesisStatus,
+  NarrativeMode,
+  NarrativeThread,
   NutrientLedgerEntry,
+  OpenHypothesis,
   OnchainNutrient,
+  ResolvedClaim,
   TrendLane,
 } from "../types/agent.js";
 
@@ -160,7 +167,17 @@ interface MemoryData {
   repliedTweets: string[];  // 댓글 단 트윗 ID들 (중복 방지)
   agentState: AgentState;
   qualityTelemetry: QualityTelemetry;
+  autonomyContext: AutonomyContext;
   lastUpdated: string;
+}
+
+interface RecordNarrativeOutcomeInput {
+  lane: TrendLane;
+  eventId: string;
+  eventHeadline: string;
+  evidenceIds: string[];
+  mode?: NarrativeMode;
+  postText: string;
 }
 
 function createEmptyAgentState(): AgentState {
@@ -187,6 +204,15 @@ function createEmptyQualityTelemetry(): QualityTelemetry {
   };
 }
 
+function createEmptyAutonomyContext(): AutonomyContext {
+  return {
+    openHypotheses: [],
+    narrativeThreads: [],
+    resolvedClaims: [],
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
 function createEmptyMemoryData(): MemoryData {
   return {
     tweets: [],
@@ -195,6 +221,7 @@ function createEmptyMemoryData(): MemoryData {
     repliedTweets: [],
     agentState: createEmptyAgentState(),
     qualityTelemetry: createEmptyQualityTelemetry(),
+    autonomyContext: createEmptyAutonomyContext(),
     lastUpdated: new Date().toISOString(),
   };
 }
@@ -279,6 +306,7 @@ export class MemoryService {
   private normalizeMemoryData(raw: Partial<MemoryData>): MemoryData {
     const agentState = this.normalizeAgentState(raw.agentState);
     const qualityTelemetry = this.normalizeQualityTelemetry(raw.qualityTelemetry);
+    const autonomyContext = this.normalizeAutonomyContext(raw.autonomyContext);
     return {
       tweets: this.normalizeTweets(raw.tweets),
       predictions: Array.isArray(raw.predictions) ? raw.predictions : [],
@@ -287,8 +315,108 @@ export class MemoryService {
       repliedTweets: this.normalizeRepliedTweets(raw.repliedTweets),
       agentState,
       qualityTelemetry,
+      autonomyContext,
       lastUpdated: typeof raw.lastUpdated === "string" ? raw.lastUpdated : new Date().toISOString(),
     };
+  }
+
+  private normalizeAutonomyContext(raw: unknown): AutonomyContext {
+    if (!raw || typeof raw !== "object") {
+      return createEmptyAutonomyContext();
+    }
+    const row = raw as Partial<AutonomyContext>;
+    return {
+      openHypotheses: this.normalizeOpenHypotheses(row.openHypotheses),
+      narrativeThreads: this.normalizeNarrativeThreads(row.narrativeThreads),
+      resolvedClaims: this.normalizeResolvedClaims(row.resolvedClaims),
+      lastUpdated: typeof row.lastUpdated === "string" ? row.lastUpdated : new Date().toISOString(),
+    };
+  }
+
+  private normalizeOpenHypotheses(raw: unknown): OpenHypothesis[] {
+    if (!Array.isArray(raw)) return [];
+    const output: OpenHypothesis[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<OpenHypothesis>;
+      const id = typeof row.id === "string" ? row.id.trim().slice(0, 64) : "";
+      const lane = this.normalizeTrendLane(row.lane);
+      const statement = typeof row.statement === "string" ? row.statement.trim().slice(0, 180) : "";
+      const status = this.normalizeHypothesisStatus(row.status);
+      if (!id || !lane || !statement || !status) continue;
+      output.push({
+        id,
+        lane,
+        statement,
+        confidence: this.clamp(typeof row.confidence === "number" ? row.confidence : 0.5, 0, 1),
+        status,
+        evidenceIds: this.normalizeEvidenceIds(row.evidenceIds),
+        createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
+        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+      .slice(-90);
+  }
+
+  private normalizeNarrativeThreads(raw: unknown): NarrativeThread[] {
+    if (!Array.isArray(raw)) return [];
+    const output: NarrativeThread[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<NarrativeThread>;
+      const id = typeof row.id === "string" ? row.id.trim().slice(0, 64) : "";
+      const lane = this.normalizeTrendLane(row.lane);
+      const eventId = typeof row.eventId === "string" ? row.eventId.trim().slice(0, 80) : "";
+      const headline = typeof row.headline === "string" ? row.headline.trim().slice(0, 180) : "";
+      if (!id || !lane || !eventId || !headline) continue;
+      output.push({
+        id,
+        lane,
+        eventId,
+        headline,
+        mode: this.normalizeNarrativeMode(row.mode),
+        activityCount: this.clampInt(row.activityCount, 1, 1000, 1),
+        evidenceIds: this.normalizeEvidenceIds(row.evidenceIds),
+        openedAt: typeof row.openedAt === "string" ? row.openedAt : new Date().toISOString(),
+        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+      .slice(-140);
+  }
+
+  private normalizeResolvedClaims(raw: unknown): ResolvedClaim[] {
+    if (!Array.isArray(raw)) return [];
+    const output: ResolvedClaim[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<ResolvedClaim>;
+      const id = typeof row.id === "string" ? row.id.trim().slice(0, 64) : "";
+      const lane = this.normalizeTrendLane(row.lane);
+      const claim = typeof row.claim === "string" ? row.claim.trim().slice(0, 180) : "";
+      const resolution = this.normalizeClaimResolution(row.resolution);
+      if (!id || !lane || !claim || !resolution) continue;
+      output.push({
+        id,
+        lane,
+        claim,
+        resolution,
+        confidence: this.clamp(typeof row.confidence === "number" ? row.confidence : 0.5, 0, 1),
+        evidenceIds: this.normalizeEvidenceIds(row.evidenceIds),
+        resolvedAt: typeof row.resolvedAt === "string" ? row.resolvedAt : new Date().toISOString(),
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.resolvedAt).getTime() - new Date(b.resolvedAt).getTime())
+      .slice(-220);
+  }
+
+  private normalizeEvidenceIds(raw: unknown): string[] {
+    if (!Array.isArray(raw)) return [];
+    return [...new Set(raw.map((item) => String(item || "").trim()).filter((item) => item.length > 0))].slice(0, 8);
   }
 
   private normalizeTweets(raw: unknown): Tweet[] {
@@ -826,9 +954,11 @@ export class MemoryService {
   getContext(): string {
     const recentTweets = this.getRecentTweets(5);
     const recentPredictions = this.data.predictions.slice(-5);
+    const autonomySummary = this.getAutonomyPromptContext("ko");
 
     let context = "## 내 기억 (참고용, 강제로 언급할 필요 없음)\n\n";
     context += `${this.getAgentStateContext()}\n\n`;
+    context += `${autonomySummary}\n\n`;
 
     // 최근 트윗 (중복 방지)
     if (recentTweets.length > 0) {
@@ -851,6 +981,106 @@ export class MemoryService {
     }
 
     return context;
+  }
+
+  getAutonomyContext(): AutonomyContext {
+    const row = this.data.autonomyContext;
+    return {
+      openHypotheses: row.openHypotheses.map((item) => ({ ...item, evidenceIds: [...item.evidenceIds] })),
+      narrativeThreads: row.narrativeThreads.map((item) => ({ ...item, evidenceIds: [...item.evidenceIds] })),
+      resolvedClaims: row.resolvedClaims.map((item) => ({ ...item, evidenceIds: [...item.evidenceIds] })),
+      lastUpdated: row.lastUpdated,
+    };
+  }
+
+  getAutonomyPromptContext(language: "ko" | "en" = "ko"): string {
+    const autonomy = this.data.autonomyContext;
+    const openHypotheses = autonomy.openHypotheses
+      .filter((item) => item.status === "open" || item.status === "watching")
+      .slice(-4)
+      .reverse();
+    const activeThreads = autonomy.narrativeThreads.slice(-4).reverse();
+    const recentResolved = autonomy.resolvedClaims.slice(-3).reverse();
+
+    if (language === "en") {
+      const lines: string[] = ["### Autonomy Memory"];
+      lines.push(`- Active threads: ${activeThreads.length}`);
+      for (const thread of activeThreads) {
+        lines.push(`  - [${thread.lane}] ${thread.headline}`);
+      }
+      if (openHypotheses.length > 0) {
+        lines.push("- Open hypotheses:");
+        for (const hypo of openHypotheses) {
+          lines.push(`  - (${hypo.status}) ${hypo.statement}`);
+        }
+      }
+      if (recentResolved.length > 0) {
+        lines.push("- Recently resolved:");
+        for (const claim of recentResolved) {
+          lines.push(`  - ${claim.claim} (${claim.resolution})`);
+        }
+      }
+      return lines.join("\n");
+    }
+
+    const lines: string[] = ["### 자율성 메모리"];
+    lines.push(`- 활성 스레드: ${activeThreads.length}개`);
+    for (const thread of activeThreads) {
+      lines.push(`  - [${thread.lane}] ${thread.headline}`);
+    }
+    if (openHypotheses.length > 0) {
+      lines.push("- 열린 가설:");
+      for (const hypo of openHypotheses) {
+        lines.push(`  - (${hypo.status}) ${hypo.statement}`);
+      }
+    }
+    if (recentResolved.length > 0) {
+      lines.push("- 최근 정리된 주장:");
+      for (const claim of recentResolved) {
+        lines.push(`  - ${claim.claim} (${claim.resolution})`);
+      }
+    }
+    return lines.join("\n");
+  }
+
+  recordNarrativeOutcome(input: RecordNarrativeOutcomeInput): void {
+    const lane = this.normalizeTrendLane(input.lane);
+    if (!lane) return;
+    const eventId = String(input.eventId || "").trim().slice(0, 80);
+    const eventHeadline = String(input.eventHeadline || "").trim().slice(0, 180);
+    const postText = String(input.postText || "").trim().slice(0, 500);
+    if (!eventId || !eventHeadline || !postText) return;
+
+    this.upsertNarrativeThread({
+      lane,
+      eventId,
+      headline: eventHeadline,
+      evidenceIds: this.normalizeEvidenceIds(input.evidenceIds),
+      mode: this.normalizeNarrativeMode(input.mode),
+    });
+
+    const normalizedText = postText.replace(/\s+/g, " ").trim();
+    const hypothesisStatement = this.extractHypothesisStatement(normalizedText);
+    const isHypothesis = this.looksLikeHypothesis(normalizedText);
+
+    if (isHypothesis && hypothesisStatement) {
+      this.upsertOpenHypothesis({
+        lane,
+        statement: hypothesisStatement,
+        evidenceIds: this.normalizeEvidenceIds(input.evidenceIds),
+      });
+    } else if (hypothesisStatement) {
+      this.appendResolvedClaim({
+        lane,
+        claim: hypothesisStatement,
+        evidenceIds: this.normalizeEvidenceIds(input.evidenceIds),
+        resolution: "supported",
+      });
+    }
+
+    this.compactAutonomyContext();
+    this.data.autonomyContext.lastUpdated = new Date().toISOString();
+    this.save();
   }
 
   // 통계
@@ -1401,6 +1631,140 @@ export class MemoryService {
     return output;
   }
 
+  private upsertNarrativeThread(input: {
+    lane: TrendLane;
+    eventId: string;
+    headline: string;
+    evidenceIds: string[];
+    mode?: NarrativeMode;
+  }): void {
+    const now = new Date().toISOString();
+    const existing = this.data.autonomyContext.narrativeThreads.find((item) => item.eventId === input.eventId);
+    if (existing) {
+      existing.lane = input.lane;
+      existing.headline = input.headline;
+      existing.mode = input.mode || existing.mode;
+      existing.activityCount += 1;
+      existing.updatedAt = now;
+      existing.evidenceIds = [...new Set([...existing.evidenceIds, ...input.evidenceIds])].slice(0, 8);
+      return;
+    }
+
+    this.data.autonomyContext.narrativeThreads.push({
+      id: `thread_${this.normalizeSignalFingerprintKey(input.eventId)}_${Date.now()}`,
+      lane: input.lane,
+      eventId: input.eventId,
+      headline: input.headline,
+      mode: input.mode,
+      activityCount: 1,
+      evidenceIds: input.evidenceIds.slice(0, 8),
+      openedAt: now,
+      updatedAt: now,
+    });
+  }
+
+  private upsertOpenHypothesis(input: { lane: TrendLane; statement: string; evidenceIds: string[] }): void {
+    const now = new Date().toISOString();
+    const key = this.normalizeStatementKey(input.statement);
+    const existing = this.data.autonomyContext.openHypotheses.find(
+      (item) => this.normalizeStatementKey(item.statement) === key && (item.status === "open" || item.status === "watching")
+    );
+    if (existing) {
+      existing.status = "watching";
+      existing.confidence = this.clamp(existing.confidence + 0.06, 0.2, 0.95);
+      existing.updatedAt = now;
+      existing.evidenceIds = [...new Set([...existing.evidenceIds, ...input.evidenceIds])].slice(0, 8);
+      return;
+    }
+
+    this.data.autonomyContext.openHypotheses.push({
+      id: `hyp_${key.slice(0, 28)}_${Date.now()}`,
+      lane: input.lane,
+      statement: input.statement,
+      confidence: 0.55,
+      status: "open",
+      evidenceIds: input.evidenceIds.slice(0, 8),
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  private appendResolvedClaim(input: {
+    lane: TrendLane;
+    claim: string;
+    evidenceIds: string[];
+    resolution: ClaimResolution;
+  }): void {
+    const now = new Date().toISOString();
+    const key = this.normalizeStatementKey(input.claim);
+    const hasRecentDuplicate = this.data.autonomyContext.resolvedClaims
+      .slice(-20)
+      .some((item) => this.normalizeStatementKey(item.claim) === key);
+    if (hasRecentDuplicate) return;
+
+    this.data.autonomyContext.openHypotheses = this.data.autonomyContext.openHypotheses.map((item) => {
+      if (this.normalizeStatementKey(item.statement) === key && (item.status === "open" || item.status === "watching")) {
+        return {
+          ...item,
+          status: "resolved",
+          updatedAt: now,
+        };
+      }
+      return item;
+    });
+
+    this.data.autonomyContext.resolvedClaims.push({
+      id: `claim_${key.slice(0, 28)}_${Date.now()}`,
+      lane: input.lane,
+      claim: input.claim,
+      resolution: input.resolution,
+      confidence: 0.63,
+      evidenceIds: input.evidenceIds.slice(0, 8),
+      resolvedAt: now,
+    });
+  }
+
+  private compactAutonomyContext(): void {
+    this.data.autonomyContext.openHypotheses = this.data.autonomyContext.openHypotheses
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+      .slice(-90);
+    this.data.autonomyContext.narrativeThreads = this.data.autonomyContext.narrativeThreads
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+      .slice(-140);
+    this.data.autonomyContext.resolvedClaims = this.data.autonomyContext.resolvedClaims
+      .sort((a, b) => new Date(a.resolvedAt).getTime() - new Date(b.resolvedAt).getTime())
+      .slice(-220);
+  }
+
+  private extractHypothesisStatement(text: string): string {
+    return text
+      .replace(/\s+/g, " ")
+      .split(/(?<=[.!?])\s+/)
+      .map((line) => line.trim())
+      .filter((line) => line.length >= 24)
+      .map((line) => line.replace(/[?!.]+$/g, ""))
+      .map((line) => line.replace(/^[-*]\s*/, ""))
+      .find((line) => line.length >= 24) || "";
+  }
+
+  private looksLikeHypothesis(text: string): boolean {
+    const lower = text.toLowerCase();
+    if (lower.includes("?")) return true;
+    return /(일까|인가|가능성|확인 필요|could|might|whether|if)/.test(lower);
+  }
+
+  private normalizeStatementKey(raw: string): string {
+    return String(raw || "")
+      .toLowerCase()
+      .replace(/\$[a-z]{2,10}/g, "token")
+      .replace(/[+-]?\d+(?:[.,]\d+)?%/g, "pct")
+      .replace(/\d[\d,]*(?:\.\d+)?/g, "num")
+      .replace(/[^a-z0-9가-힣\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120);
+  }
+
   private buildUnlockedAbilities(previous: string[], current: string[], level: number): AbilityUnlock[] {
     const previousSet = new Set(previous.map((item) => item.trim()).filter(Boolean));
     const stage = this.levelToEvolutionStage(level);
@@ -1442,6 +1806,33 @@ export class MemoryService {
       return raw;
     }
     return undefined;
+  }
+
+  private normalizeNarrativeMode(raw: unknown): NarrativeMode | undefined {
+    if (
+      raw === "signal-pulse" ||
+      raw === "builder-note" ||
+      raw === "contrarian-check" ||
+      raw === "field-journal" ||
+      raw === "mythic-analogy"
+    ) {
+      return raw;
+    }
+    return undefined;
+  }
+
+  private normalizeHypothesisStatus(raw: unknown): HypothesisStatus | null {
+    if (raw === "open" || raw === "watching" || raw === "resolved" || raw === "dropped") {
+      return raw;
+    }
+    return null;
+  }
+
+  private normalizeClaimResolution(raw: unknown): ClaimResolution | null {
+    if (raw === "supported" || raw === "invalidated" || raw === "superseded") {
+      return raw;
+    }
+    return null;
   }
 
   private getAbilitiesForLevel(level: number): string[] {

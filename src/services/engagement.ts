@@ -475,6 +475,7 @@ export async function postTrendUpdate(
             .map((text, index) => `${index + 1}. ${text}`)
             .join("\n")
         : "- 없음";
+    const autonomyContext = memory.getAutonomyPromptContext(runtimeSettings.postLanguage);
 
     for (let attempt = 0; attempt < runtimeSettings.postGenerationMaxAttempts; attempt++) {
       generationAttempts = attempt + 1;
@@ -507,6 +508,9 @@ ${marketAnchors}
 
 최근 작성 글(반복 금지):
 ${recentContext}
+
+자율성 메모리(열린 스레드/가설):
+${autonomyContext}
 
 직전 실패 원인:
 ${rejectionFeedback || "없음"}
@@ -549,6 +553,9 @@ ${marketAnchors}
 
 Recent posts (avoid repetition):
 ${recentContext}
+
+Autonomy memory (active threads/hypotheses):
+${autonomyContext}
 
 Last rejection reason:
 ${rejectionFeedback || "none"}
@@ -620,10 +627,21 @@ Rules:
         narrativePlan
       );
       if (!narrativeNovelty.ok) {
-        rejectionFeedback = `narrative 중복(${narrativeNovelty.reason})`;
+        rejectionFeedback = `narrative novelty 부족(${narrativeNovelty.reason}, score=${narrativeNovelty.score})`;
         latestFailReason = rejectionFeedback;
         console.log(
           `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+        );
+        continue;
+      }
+      if (
+        narrativeNovelty.score < 0.72 &&
+        attempt + 1 < runtimeSettings.postGenerationMaxAttempts
+      ) {
+        rejectionFeedback = `narrative 신선도 개선 필요(score=${narrativeNovelty.score})`;
+        latestFailReason = rejectionFeedback;
+        console.log(
+          `[POST] 품질 게이트 보정: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
         );
         continue;
       }
@@ -688,7 +706,7 @@ Rules:
           recentBriefingPosts as NarrativeRecentPost[],
           narrativePlan
         );
-        if (!fallbackNovelty.ok) {
+        if (!fallbackNovelty.ok || fallbackNovelty.score < 0.55) {
           console.log(`[POST] fallback 실패: narrative-${fallbackNovelty.reason}`);
           latestFailReason = fallbackNovelty.reason || latestFailReason;
           fallbackPost = null;
@@ -741,6 +759,14 @@ Rules:
     if (!tweetId) return false;
 
     memory.recordCognitiveActivity("social", 2);
+    memory.recordNarrativeOutcome({
+      lane: eventPlan.lane,
+      eventId: eventPlan.event.id,
+      eventHeadline: eventPlan.event.headline,
+      evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
+      mode: narrativePlan.mode,
+      postText,
+    });
     memory.recordPostGeneration({
       timezone,
       retryCount: Math.max(0, generationAttempts - 1),

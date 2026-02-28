@@ -28,9 +28,16 @@ interface BuildNarrativePlanInput {
   language: "ko" | "en";
 }
 
-interface NarrativeNoveltyResult {
+interface NarrativeNoveltyPenalty {
+  code: string;
+  weight: number;
+}
+
+export interface NarrativeNoveltyResult {
   ok: boolean;
+  score: number;
   reason?: string;
+  penalties: NarrativeNoveltyPenalty[];
 }
 
 const MODE_ORDER: NarrativeMode[] = [
@@ -132,8 +139,15 @@ export function validateNarrativeNovelty(
   plan: NarrativePlan
 ): NarrativeNoveltyResult {
   const normalized = normalizeNarrativeText(text);
+  const penalties: NarrativeNoveltyPenalty[] = [];
+
   if (!normalized) {
-    return { ok: false, reason: "empty-text" };
+    return {
+      ok: false,
+      score: 0,
+      reason: "empty-text",
+      penalties: [{ code: "empty-text", weight: 1 }],
+    };
   }
 
   const samePrefix = recentPosts
@@ -141,11 +155,11 @@ export function validateNarrativeNovelty(
     .map((post) => normalizeNarrativeText(post.content))
     .find((row) => row.slice(0, 24) === normalized.slice(0, 24));
   if (samePrefix) {
-    return { ok: false, reason: "opening-pattern-repeat" };
+    penalties.push({ code: "opening-pattern-repeat", weight: 0.45 });
   }
 
   if (plan.bannedOpeners.some((opener) => normalized.startsWith(normalizeNarrativeText(opener)))) {
-    return { ok: false, reason: "banned-opener-used" };
+    penalties.push({ code: "banned-opener-used", weight: 0.35 });
   }
 
   const skeleton = buildNarrativeSkeleton(normalized);
@@ -154,10 +168,35 @@ export function validateNarrativeNovelty(
     .map((post) => buildNarrativeSkeleton(normalizeNarrativeText(post.content)))
     .some((candidate) => candidate === skeleton);
   if (similar) {
-    return { ok: false, reason: "narrative-skeleton-repeat" };
+    penalties.push({ code: "narrative-skeleton-repeat", weight: 0.4 });
   }
 
-  return { ok: true };
+  const recentModeRepeats = recentPosts
+    .slice(-2)
+    .filter((post) => post.meta?.narrativeMode === plan.mode).length;
+  if (recentModeRepeats >= 2) {
+    penalties.push({ code: "mode-overuse", weight: 0.18 });
+  }
+
+  const penaltyScore = penalties.reduce((sum, penalty) => sum + penalty.weight, 0);
+  const score = roundScore(1 - penaltyScore);
+  const ok = score >= 0.62;
+
+  if (!ok) {
+    const topPenalty = [...penalties].sort((a, b) => b.weight - a.weight)[0];
+    return {
+      ok,
+      score,
+      reason: topPenalty?.code || "novelty-low",
+      penalties,
+    };
+  }
+
+  return {
+    ok,
+    score,
+    penalties,
+  };
 }
 
 function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]): NarrativeMode {
@@ -252,4 +291,9 @@ function buildNarrativeSkeleton(text: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 160);
+}
+
+function roundScore(value: number): number {
+  const bounded = Math.min(1, Math.max(0, value));
+  return Math.round(bounded * 100) / 100;
 }

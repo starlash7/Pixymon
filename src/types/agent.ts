@@ -15,6 +15,8 @@ export type NarrativeMode =
   | "contrarian-check"
   | "field-journal"
   | "mythic-analogy";
+export type HypothesisStatus = "open" | "watching" | "resolved" | "dropped";
+export type ClaimResolution = "supported" | "invalidated" | "superseded";
 
 export interface OnchainSignal {
   id: string;
@@ -99,4 +101,44 @@ export interface NutrientLedgerEntry {
   xpGain: number;
   accepted: boolean;
   capturedAt: string;
+}
+
+export interface OpenHypothesis {
+  id: string;
+  lane: TrendLane;
+  statement: string;
+  confidence: number;
+  status: HypothesisStatus;
+  evidenceIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NarrativeThread {
+  id: string;
+  lane: TrendLane;
+  eventId: string;
+  headline: string;
+  mode?: NarrativeMode;
+  activityCount: number;
+  evidenceIds: string[];
+  openedAt: string;
+  updatedAt: string;
+}
+
+export interface ResolvedClaim {
+  id: string;
+  lane: TrendLane;
+  claim: string;
+  resolution: ClaimResolution;
+  confidence: number;
+  evidenceIds: string[];
+  resolvedAt: string;
+}
+
+export interface AutonomyContext {
+  openHypotheses: OpenHypothesis[];
+  narrativeThreads: NarrativeThread[];
+  resolvedClaims: ResolvedClaim[];
+  lastUpdated: string;
 }
