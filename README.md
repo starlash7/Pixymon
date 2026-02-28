@@ -98,7 +98,71 @@ flowchart LR
    - narrative novelty gate
    - 품질 게이트 + event/evidence 계약 검증
 
-## 5. 주요 파일 맵
+## 5. Lobster 스타일 기능 확장 상태
+
+Pixymon 컨셉(온체인 데이터 기반 캐릭터)을 유지한 상태에서, Lobster류 운영 방식으로 확장 가능한지에 대한 현재 상태입니다.
+
+| 기능 | 현재 Pixymon | X API 지원 | 구현 메모 |
+| --- | --- | --- | --- |
+| 게시글(Post) | 지원 | `POST /2/tweets` | 현재 운영 중 |
+| 댓글(Reply) | 지원 | `POST /2/tweets` + `reply.in_reply_to_tweet_id` | 현재 운영 중 |
+| 인용(Quote) | 미지원 (다음 단계) | `POST /2/tweets` + `quote_tweet_id` | `twitter.ts`에 quote dispatcher 추가 필요 |
+| 이미지(Image) | 미지원 (다음 단계) | `POST /2/media/upload` 후 `media.media_ids` 연결 | 미디어 업로드/파일 스토리지/캡션 정책 필요 |
+
+참고 문서:
+
+- X API v2 Manage Posts: https://docs.x.com/x-api/posts/manage
+- X API v2 Upload Media: https://docs.x.com/x-api/media/quickstart/media-upload-chunked
+
+## 6. 왜 Lobster류 계정은 글/댓글을 많이 쓰는가 (비용 구조)
+
+핵심은 “무한 호출”이 아니라, **읽기 호출을 최소화하고 쓰기 효율을 높인 운영 설계**입니다.
+
+1. 읽기 호출 최소화
+   - 트렌드/멘션 조회 간격을 길게 두고(`min interval`) 캐시를 적극 사용
+   - 동일 리소스 재조회 방지
+2. 쓰기 큐 분리
+   - `post / reply / quote`를 같은 루프에서 난사하지 않고 우선순위 큐로 분리
+   - 실패 재시도는 제한 횟수 내에서만 수행
+3. 명확한 일일 예산
+   - 프로젝트처럼 `read/create`를 별도 제한해 비용 상한을 강제
+4. 대량 운영은 인프라로 해결
+   - 계정/루프 하나가 아니라 다중 워커 + 큐 + 캐시로 분산
+
+Pixymon 비용 계산식(현재 구조):
+
+```text
+estimated_daily_cost_usd =
+  read_requests * X_API_ESTIMATED_READ_COST_USD
+  + create_requests * X_API_ESTIMATED_CREATE_COST_USD
+```
+
+X 공식 비용 정책 참고:
+
+- Endpoint별 과금, pay-per-use, deduplicated post reads(24h), post read 월 캡 안내  
+  https://developer.x.com/en/support/x-api/v2
+
+주의:
+
+- 실제 단가/제한은 플랜과 시점에 따라 바뀝니다. 최종값은 X Developer 결제/Usage 대시보드 기준으로 확인해야 합니다.
+
+## 7. Pixymon 운영 프로파일 (Lobster 느낌 + 비용 통제)
+
+아래는 이 레포 변수로 바로 적용 가능한 운영 템플릿입니다.
+
+| 프로파일 | 목표 | 권장 설정 |
+| --- | --- | --- |
+| Lean (저비용) | 품질 유지 + 실험 | `X_API_DAILY_MAX_USD=0.10`, `X_API_DAILY_READ_REQUEST_LIMIT=8`, `X_API_DAILY_CREATE_REQUEST_LIMIT=10`, `MAX_ACTIONS_PER_CYCLE=3` |
+| Balanced (권장) | 게시글/댓글 균형 | `X_API_DAILY_MAX_USD=0.30`, `X_API_DAILY_READ_REQUEST_LIMIT=20`, `X_API_DAILY_CREATE_REQUEST_LIMIT=24`, `MAX_ACTIONS_PER_CYCLE=4` |
+| Aggressive (고활동) | Lobster 느낌 강화 | `X_API_DAILY_MAX_USD=1.00`, `X_API_DAILY_READ_REQUEST_LIMIT=80`, `X_API_DAILY_CREATE_REQUEST_LIMIT=90`, `MAX_ACTIONS_PER_CYCLE=6` |
+
+운영 원칙:
+
+1. 먼저 `Balanced`로 3일 운영
+2. 중복률/실패율 안정 후 `Aggressive`로 상향
+3. 중복률 상승 시 read를 늘리지 말고 planner/novelty 규칙 먼저 조정
+
+## 8. 주요 파일 맵
 
 ### Orchestration
 
@@ -126,7 +190,7 @@ flowchart LR
 - `src/services/twitter.ts`
 - `src/services/observability.ts`
 
-## 6. 관측 지표
+## 9. 관측 지표
 
 기록 지표 예시:
 
@@ -144,7 +208,7 @@ flowchart LR
 - stdout JSON (`OBSERVABILITY_STDOUT_JSON=true`)
 - 파일 로그 (`data/metrics-events.ndjson`)
 
-## 7. 실행 방법
+## 10. 실행 방법
 
 설치:
 
@@ -171,7 +235,7 @@ npm run build
 npm test
 ```
 
-## 8. 환경 변수 (핵심)
+## 11. 환경 변수 (핵심)
 
 ```env
 # Claude
@@ -230,7 +294,7 @@ OBSERVABILITY_STDOUT_JSON=true
 OBSERVABILITY_EVENT_LOG_PATH=data/metrics-events.ndjson
 ```
 
-## 9. 프로젝트 구조
+## 12. 프로젝트 구조
 
 ```text
 src/
@@ -262,13 +326,16 @@ src/
     └── mood.ts
 ```
 
-## 10. 참고 문서
+## 13. 참고 문서
 
 - `docs/plan.md`
 - `docs/agent-workflow.md`
 - `AGENTS.md`
+- https://docs.x.com/x-api/posts/manage
+- https://docs.x.com/x-api/media/quickstart/media-upload-chunked
+- https://developer.x.com/en/support/x-api/v2
 
-## 11. 주의사항
+## 14. 주의사항
 
 1. 투자 자문 목적이 아닙니다.
 2. 외부 API 상태/요금제/레이트리밋에 따라 동작 빈도가 달라질 수 있습니다.
