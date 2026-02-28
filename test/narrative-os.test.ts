@@ -107,6 +107,8 @@ test("validateNarrativeNovelty rejects repeated opening pattern", () => {
 
   assert.equal(result.ok, false);
   assert.equal(typeof result.reason, "string");
+  assert.equal(typeof result.score, "number");
+  assert.ok(result.score < 0.62);
 });
 
 test("validateNarrativeNovelty passes distinct narrative structure", () => {
@@ -133,4 +135,36 @@ test("validateNarrativeNovelty passes distinct narrative structure", () => {
   );
 
   assert.equal(result.ok, true);
+  assert.ok(result.score >= 0.62);
+});
+
+test("validateNarrativeNovelty applies soft penalty for banned opener only", () => {
+  const plan = buildNarrativePlan({
+    eventPlan: baseEventPlan(),
+    language: "ko",
+    recentPosts: [
+      {
+        content: "지금 시장에서 제일 시끄러운 신호 하나만 집으면 솔라나 TPS 개선.",
+        timestamp: nowIso,
+      },
+      {
+        content: "오늘 관찰 일지에서 눈에 띈 건 수수료 압력 둔화.",
+        timestamp: nowIso,
+      },
+    ],
+  });
+
+  const result = validateNarrativeNovelty(
+    "지금 시장에서 제일 시끄러운 신호 하나만 집으면 검증 포인트는 체인별 유동성 전이.",
+    [
+      {
+        content: "빌더 관점에서 보면 오늘 포인트는 사용자 체감 지연 개선.",
+        timestamp: nowIso,
+      },
+    ],
+    plan
+  );
+
+  assert.equal(result.ok, true);
+  assert.ok(result.score >= 0.62);
 });

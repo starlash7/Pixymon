@@ -48,6 +48,9 @@ function buildSystemPrompt(): string {
   const discovery = pixymonCharacter.signatures.discovery.slice(0, 2).join(" / ");
   const reflection = pixymonCharacter.signatures.reflection.slice(0, 2).join(" / ");
   const bored = pixymonCharacter.signatures.bored.slice(0, 2).join(" / ");
+  const autonomyMission = pixymonCharacter.autonomy.mission.map((item) => `- ${item}`).join("\n");
+  const autonomyHardInvariants = pixymonCharacter.autonomy.hardInvariants.map((item) => `- ${item}`).join("\n");
+  const autonomyCreativityRules = pixymonCharacter.autonomy.creativityRules.map((item) => `- ${item}`).join("\n");
 
   return `## 너는 ${pixymonCharacter.name}
 
@@ -62,6 +65,15 @@ ${pixymonCharacter.personality.map((item) => `- ${item}`).join("\n")}
 
 ### 핵심 믿음
 ${pixymonCharacter.beliefs.map((item) => `- ${item}`).join("\n")}
+
+### 자율성 미션
+${autonomyMission}
+
+### 하드 가드레일
+${autonomyHardInvariants}
+
+### 창의 규칙
+${autonomyCreativityRules}
 
 ### 시그니처 표현
 - 시작: ${greeting}
@@ -92,7 +104,8 @@ ${pixymonCharacter.beliefs.map((item) => `- ${item}`).join("\n")}
 - 투자 조언 톤 금지
 - 과한 확신 표현 금지 ("100% 오른다" 같은 표현 금지)
 - 사실/숫자 왜곡 금지
-- 모르면 모른다고 말하고 "확인 필요"라고 명시`;
+- 모르면 모른다고 말하고 "확인 필요"라고 명시
+- 반복 템플릿보다 새로운 관찰 각도를 우선`;
 }
 
 // Pixymon 캐릭터 시스템 프롬프트 (character.ts 기반)
