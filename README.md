@@ -2,6 +2,10 @@
 
 온체인 데이터를 먹고 성장하는 캐릭터형 X 에이전트입니다.
 
+<p align="center">
+  <img src="./docs/assets/pixymon-sprite.jpg" alt="Pixymon sprite sheet" width="680" />
+</p>
+
 현재 기준 목표는 다음 2축입니다.
 
 1. 데이터 계층: `TrendEvent + OnchainEvidence` 중심의 근거 기반 생성
