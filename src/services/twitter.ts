@@ -33,6 +33,7 @@ interface PostTweetOptions {
   timezone?: string;
   xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
   createKind?: string;
+  quoteTweetId?: string;
   metadata?: PostTweetMetadata;
 }
 
@@ -42,6 +43,7 @@ interface PostTweetMetadata {
   eventHeadline?: string;
   evidenceIds?: string[];
   narrativeMode?: string;
+  quoteTweetId?: string;
 }
 
 interface PostDispatchState {
@@ -705,6 +707,7 @@ export async function postTweet(
   const timezone = normalizeTimezone(options.timezone);
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCostSettings);
   const createKind = options.createKind || `post:${type}`;
+  const quoteTweetId = type === "quote" ? normalizeQuoteTweetId(options.quoteTweetId) : undefined;
   const dispatchLock = type === "briefing" ? acquirePostDispatchLock() : { acquired: true, release: () => {} };
   if (!dispatchLock.acquired) {
     console.log("[POST-GUARD] 다른 인스턴스가 글 발행 중이라 이번 발행을 스킵합니다.");
@@ -712,6 +715,11 @@ export async function postTweet(
   }
 
   try {
+    if (type === "quote" && !quoteTweetId) {
+      console.log("[POST-GUARD] quote 발행 스킵: quoteTweetId 누락");
+      return null;
+    }
+
     if (type === "briefing") {
       const dispatchBlock = getPostDispatchBlockReason(content);
       if (dispatchBlock) {
@@ -745,12 +753,17 @@ export async function postTweet(
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const tweet = await twitter.v2.tweet(content);
+        const tweet = quoteTweetId
+          ? await twitter.v2.tweet({ text: content, quote_tweet_id: quoteTweetId })
+          : await twitter.v2.tweet(content);
         console.log("✅ 트윗 발행 완료! (v2)");
         console.log(`   ID: ${tweet.data.id}`);
         console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.data.id}`);
 
-        memory.saveTweet(tweet.data.id, content, type, options.metadata);
+        memory.saveTweet(tweet.data.id, content, type, {
+          ...(options.metadata || {}),
+          ...(quoteTweetId ? { quoteTweetId } : {}),
+        });
         if (type === "briefing") {
           persistPostDispatchState(content);
         }
@@ -776,4 +789,10 @@ export async function postTweet(
   } finally {
     dispatchLock.release();
   }
+}
+
+function normalizeQuoteTweetId(raw: string | undefined): string | undefined {
+  const normalized = String(raw || "").trim();
+  if (!normalized) return undefined;
+  return /^[0-9]+$/.test(normalized) ? normalized : undefined;
 }
