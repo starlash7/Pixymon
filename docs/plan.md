@@ -1,197 +1,206 @@
-# Pixymon Evolution Plan
+# Pixymon vNext Plan
 
-Last updated: 2026-02-17  
-Owner branch: `feat/pixymon-next-iteration`
+Last updated: 2026-03-02  
+Owner branch (docs): `docs/soul-architecture`
 
-## Revision Note (2026-02-24)
+## 1. 문제 정의
 
-기존 5-layer cognitive/research/reflection 경로는 운영 복잡도와 반복 문장 문제로 제거했다.  
-현재 기준 구현 우선순위는 아래 3가지다.
+현재 Pixymon은 아래 강점이 있다.
 
-1. `event 1 + evidence 2` 계약 유지
-2. Narrative OS(`lane + mode`)로 반복 억제 및 캐릭터 다양성 강화
-3. X API 비용 가드 유지(저비용 안정 운용)
+1. 숫자/근거 검증
+2. 비용 가드
+3. 중복 억제
 
-## 1. 목적
+하지만 사용자 체감은 아직 “분석 자동화 봇”에 가깝다.  
+핵심 부족점은 `욕망`, `의도`, `서사 지속성`이다.
 
-Pixymon을 단순 트윗 봇이 아니라, **온체인 데이터를 먹고 성장하는 캐릭터형 X(Twitter) 에이전트**로 고도화한다.
+## 2. 목표 상태
 
-핵심 루프:
+Pixymon을 다음 상태로 전환한다.
 
-1. Feed: 온체인/시장/뉴스를 영양소로 수집
-2. Digest: 신뢰도/신선도/일관성 점수화 후 XP 변환
-3. Evolve: XP 누적에 따라 stage/ability/톤 변화
-4. Act: 합의된 결과만 글/댓글 실행
-5. Reflect: 반응/실패/비용 기반 정책 자동 보정
+1. 데이터 기반 정확성 유지
+2. 캐릭터의 욕망/기분/퀘스트 기반 행동
+3. post/reply/quote/image가 하나의 서사로 연결
+4. 운영 가드레일은 유지하되 창의성 차단은 최소화
 
-## 2. North Star & KPI
+## 3. 설계 원칙
 
-North Star:
+1. Safety rails와 Creativity rails를 분리한다.
+2. “무엇을 하지 말라”보다 “무엇을 갈망하는가”를 우선한다.
+3. 단일 발화 품질보다 연속 서사 품질을 최적화한다.
+4. 하드 블록은 비용/법적/고위험에만 한정한다.
+5. 나머지는 점수 기반 우선순위로 완화한다.
 
-- `온체인 이상 신호를 빠르고 정확하게 해석하는 진화형 캐릭터 에이전트`
+## 4. 핵심 루프 (vNext)
 
-운영 KPI:
+1. `Sense`: 온체인/시장/뉴스/소셜 수집
+2. `Digest`: 신뢰도/신선도/일관성 점수화
+3. `Desire`: hunger 상태 갱신
+4. `Quest`: 하루 목표 스레드 선택
+5. `Decide`: 행동 포트폴리오 선택
+6. `Act`: post/quote/reply/image 실행
+7. `Reflect`: 반응/중복/비용/정확도 기반 보정
 
-1. `market_mismatch_reject_count` 발행 대비 0 유지
-2. 중복률(`duplicate_rate`) < 5%
-3. 트렌드 적합도(`trend_relevance_score`) > 75%
-4. `fallback_rate`, `retry_count` 주차별 감소
-5. `evolution_event` 주 단위 관측 + stage별 행동 차이 확인
+## 5. 코드 태스크 (우선순위 순)
 
-## 3. 제품 원칙
+### T01. Soul 타입 추가
 
-1. 캐릭터 유지: 트렌드를 따라가도 Pixymon 세계관/톤을 잃지 않는다.
-2. 숫자 우선: 앵커 불일치 시 무조건 발행 금지.
-3. 안전 우선: 비평가(Skeptic) reject 시 실행 금지.
-4. 측정 우선: 신규 기능은 메트릭 없이 배포하지 않는다.
-5. 단계 우선: Phase gate 미통과 시 다음 Phase 진행 금지.
+- 파일: `src/types/agent.ts`
+- 작업:
+  - `DesireState`
+  - `MoodState`
+  - `QuestThread`
+  - `StyleProfile`
 
-## 4. 통합 아키텍처 방향
+### T02. 메모리 영속화 확장
 
-기반 컨셉은 Pixymon 루프를 중심으로 두고, 아래 요소를 결합한다.
+- 파일: `src/services/memory.ts`
+- 작업:
+  - desire/mood/quest/style 저장 구조 추가
+  - 조회/업데이트 API 추가
 
-1. AIXBT 방향: Signal Graph, momentum score, cluster memory
-2. GOAT 방향: 도구 라우팅(초기 read-only), 가드레일 기반 실행
-3. Swarms 방향: Scout/Analyst/Skeptic/Voice/Executor 역할 분리
+### T03. Desire 엔진 추가
 
-## 5. 5-Phase 로드맵
+- 파일: `src/services/desire-engine.ts` (new)
+- 작업:
+  - novelty/attention/conviction hunger 계산
+  - recent performance 기반 hunger decay/gain
 
-### Phase 1. Concept Core (2주)
+### T04. Mood 엔진 추가
 
-목표:
+- 파일: `src/services/mood-engine.ts` (new)
+- 작업:
+  - market condition + quest outcome 기반 mood 전이
 
-- 영양소 표준 타입/ledger/ingestion 완성
+### T05. Quest 플래너 추가
 
-수정 파일:
+- 파일: `src/services/quest-planner.ts` (new)
+- 작업:
+  - 하루 1~3개 퀘스트 선정
+  - 퀘스트 진행/완료/폐기 규칙
 
-- `src/types/agent.ts`
-- `src/services/memory.ts`
-- `src/services/onchain-data.ts`
-- `src/services/engagement/trend-context.ts`
+### T06. Action 정책기 추가
 
-산출물:
+- 파일: `src/services/action-policy.ts` (new)
+- 작업:
+  - post/quote/reply/image 비율 결정
+  - 쿼터 기반이 아닌 욕망/퀘스트 기반 선택
 
-- `OnchainNutrient`, `DigestScore`, `EvolutionStage`, `AbilityUnlock`
-- `nutrientLedger`, `xpGainBySource`, `evolutionHistory` 저장
+### T07. 루프 재배선
 
-Gate:
+- 파일: `src/services/engagement.ts`
+- 작업:
+  - `sense -> digest -> desire -> quest -> decide -> act -> reflect`
 
-- nutrient 누락률 0%
-- XP 계산 재현성 테스트 통과
+### T08. 프롬프트 재설계
 
-### Phase 2. Evolution Engine (2주)
+- 파일: `src/services/llm.ts`
+- 작업:
+  - 금지형 규칙 축소
+  - 캐릭터 목표/욕망/놀이 중심 instruction 강화
 
-목표:
+### T09. 품질 게이트 소프트화
 
-- stage별 말투/행동 + narrative mode 강제
+- 파일: `src/services/engagement/quality.ts`
+- 작업:
+  - 일부 hard reject -> score penalty 전환
+  - 다양성/신선도 점수 합산
 
-수정 파일:
+### T10. Governor 역할 축소
 
-- `src/services/narrative-os.ts`
-- `src/services/llm.ts`
-- `src/services/engagement.ts`
+- 파일: `src/services/autonomy-governor.ts`
+- 작업:
+  - 운영 리스크(비용/TOS/법적) 중심 block만 유지
+  - 창의성 관련 block 제거
 
-산출물:
+### T11. event-evidence 계약 차등화
 
-- stage별 prompt profile + mode 회전 정책
-- digest -> evolve 정책 적용
+- 파일: `src/services/engagement/event-evidence.ts`
+- 작업:
+  - 분석 lane 엄격
+  - 캐릭터/서사 lane 완화
 
-Gate:
+### T12. Reflection 엔진 추가
 
-- stage별 생성물 차이를 테스트로 판별 가능
+- 파일: `src/services/reflection-engine.ts` (new)
+- 작업:
+  - duplicate/fallback/engagement 지표 기반 정책 업데이트
 
-### Phase 3. Swarms Council (2~3주)
+### T13. 관측성 확장
 
-목표:
+- 파일: `src/services/observability.ts`
+- 작업:
+  - `quest_completion_rate`
+  - `style_entropy`
+  - `novelty_debt`
 
-- 단일 출력 대신 light council(Scout/Analyst/Skeptic) 합의 레이어 추가
+### T14. Runtime 플래그 추가
 
-수정 파일:
+- 파일:
+  - `src/types/runtime.ts`
+  - `src/config/runtime.ts`
+- 작업:
+  - `SOUL_MODE`
+  - `SOFT_GATE_MODE`
+  - `QUEST_MODE`
 
-- `src/services/narrative-os.ts` (role orchestration seed)
-- `src/services/engagement.ts`
+## 6. 실행 순서 (PR 단위)
 
-산출물:
+1. PR-A: T01, T02, T14
+2. PR-B: T03, T04, T05
+3. PR-C: T06, T07
+4. PR-D: T08, T09, T11
+5. PR-E: T10, T12, T13
 
-- Scout/Analyst/Skeptic/Voice 파이프라인
-- skeptic reject rate 계측
+## 7. 단계 게이트
 
-Gate:
+PR-A 통과 조건:
 
-- 오류성 발행 사전 차단율 개선 확인
+1. 빌드 통과
+2. 메모리 역직렬화 하위호환 유지
 
-### Phase 4. GOAT-lite Tool Layer (2주)
+PR-B 통과 조건:
 
-목표:
+1. desire/mood/quest 상태가 메모리에 기록
+2. 단위 테스트 추가
 
-- 온체인 툴 라우팅 도입 (read-only -> 시뮬레이션)
+PR-C 통과 조건:
 
-수정 파일:
+1. 루프가 새 단계 순서로 실행
+2. 행동 선택 로그에서 이유(reason) 출력
 
-- `src/services/*` (tool router, safety checks)
+PR-D 통과 조건:
 
-산출물:
+1. 반복 템플릿 감소 지표 개선
+2. 캐릭터 톤 다양성 증가
 
-- read-only tool calls
-- 시뮬레이션 결과 기반 보조 추론
+PR-E 통과 조건:
 
-Gate:
+1. 비용 가드 안정
+2. 퀘스트 완료율/신선도 지표 관측 가능
 
-- tool 실패시 안전 폴백 100%
+## 8. KPI
 
-### Phase 5. AIXBT-like Intelligence (3주)
+1. Duplicate rate < 8%
+2. BTC-only framing rate < 40%
+3. Quest completion rate > 60%
+4. Fallback rate 주차별 감소
+5. Read/Create 비용 상한 준수
 
-목표:
+## 9. 운영 정책
 
-- Signal Graph/momentum/cluster를 운영 루프에 통합
+유지:
 
-수정 파일:
+1. 비용 상한
+2. 법적/리스크 차단
+3. 숫자 왜곡 금지
 
-- `src/services/observability.ts`
-- 신규 graph/cluster 서비스 모듈
+완화:
 
-산출물:
+1. 표현 규칙 과다 차단
+2. 서사적 실험 차단
 
-- 내부 추론 API/터미널용 구조화 출력
+## 10. 이번 턴 범위
 
-Gate:
-
-- baseline 대비 relevance/engagement 개선
-
-## 6. 파일 기준 패치 순서
-
-1. `src/types/agent.ts`
-2. `src/services/memory.ts`
-3. `src/services/onchain-data.ts`
-4. `src/services/engagement/trend-context.ts`
-5. `src/services/narrative-os.ts`
-6. `src/services/llm.ts`
-7. `src/services/engagement.ts`
-8. `src/services/observability.ts`
-9. `test/*`
-
-## 7. 즉시 실행 스프린트 (이번 사이클)
-
-범위:
-
-1. Phase 1 전체
-2. Phase 2 중 stage prompt/profile 분기까지
-
-이번 스프린트 완료 기준:
-
-1. 루프에 `feed -> digest -> evolve` 데이터 경로가 실제로 기록된다.
-2. `nutrient_intake`, `xp_gain`, `evolution_event` 메트릭이 남는다.
-3. `npm run build`, `npm test` 통과.
-
-## 8. 운영 안전장치
-
-1. 숫자 앵커 불일치: 즉시 reject
-2. 신뢰도 임계치 미달 소스: 실행 후보 제외
-3. narrative novelty/event-evidence 계약 미충족: 발행 중단 + fail reason 기록
-4. canary 전략: 새 정책은 소량 실행 후 확대
-
-## 9. 변경 관리 규칙
-
-1. 각 Phase는 별도 브랜치/커밋 단위로 분리
-2. Phase Gate 통과 로그를 `docs/plan.md` 하단에 이력으로 추가
-3. KPI 임계치 악화 시 즉시 이전 정책으로 롤백
+문서 정리만 완료했다.  
+다음 턴부터 PR-A(T01/T02/T14) 코드 패치를 시작한다.
