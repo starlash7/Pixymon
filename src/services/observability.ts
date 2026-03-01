@@ -78,6 +78,11 @@ export interface CycleObservabilityEvent {
   runtime: {
     postLanguage: string;
     replyLanguageMode: string;
+    requireOnchainEvidence: boolean;
+    requireCrossSourceEvidence: boolean;
+    enforceKoreanPosts: boolean;
+    autonomyMaxBudgetUtilization: number;
+    autonomyRiskBlockScore: number;
     postMinIntervalMinutes: number;
     maxPostsPerCycle: number;
     nutrientMinDigestScore: number;
@@ -176,6 +181,11 @@ export function buildCycleObservabilityEvent(
     runtime: {
       postLanguage: input.runtimeSettings.postLanguage,
       replyLanguageMode: input.runtimeSettings.replyLanguageMode,
+      requireOnchainEvidence: input.runtimeSettings.requireOnchainEvidence,
+      requireCrossSourceEvidence: input.runtimeSettings.requireCrossSourceEvidence,
+      enforceKoreanPosts: input.runtimeSettings.enforceKoreanPosts,
+      autonomyMaxBudgetUtilization: round(input.runtimeSettings.autonomyMaxBudgetUtilization, 2),
+      autonomyRiskBlockScore: input.runtimeSettings.autonomyRiskBlockScore,
       postMinIntervalMinutes: input.runtimeSettings.postMinIntervalMinutes,
       maxPostsPerCycle: input.runtimeSettings.maxPostsPerCycle,
       nutrientMinDigestScore: round(input.runtimeSettings.nutrientMinDigestScore, 2),

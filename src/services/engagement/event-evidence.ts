@@ -158,6 +158,8 @@ export function planEventEvidenceAct(params: {
   evidence: OnchainEvidence[];
   recentPosts: RecentPostRecord[];
   laneUsage?: LaneUsageWindow;
+  requireOnchainEvidence?: boolean;
+  requireCrossSourceEvidence?: boolean;
 }): EventEvidencePlan | null {
   const events = Array.isArray(params.events) ? params.events : [];
   const evidence = Array.isArray(params.evidence) ? params.evidence : [];
@@ -165,22 +167,31 @@ export function planEventEvidenceAct(params: {
     return null;
   }
 
+  const requireOnchainEvidence = params.requireOnchainEvidence !== false;
+  const requireCrossSourceEvidence = params.requireCrossSourceEvidence !== false;
+
   const laneUsage = params.laneUsage || computeLaneUsageWindow(params.recentPosts);
   const scored = events
     .map((event) => {
-      const candidateEvidence = selectEvidenceForLane(event.lane, evidence).slice(0, 2);
-      if (candidateEvidence.length < 2) {
+      const pair = selectEvidencePairForLane(event.lane, evidence, {
+        requireOnchainEvidence,
+        requireCrossSourceEvidence,
+      });
+      if (!pair) {
         return null;
       }
       const projectedRatio = (laneUsage.byLane[event.lane] + 1) / Math.max(1, laneUsage.totalPosts + 1);
       const quotaLimited = projectedRatio > LANE_MAX_RATIO[event.lane];
       const novelty = calculateHeadlineNovelty(event.headline, params.recentPosts);
       const evidenceStrength =
-        candidateEvidence.reduce((sum, item) => sum + item.trust * item.freshness, 0) / candidateEvidence.length;
+        pair.evidence.reduce((sum, item) => sum + item.trust * item.freshness, 0) / pair.evidence.length;
       const score = event.trust * 0.42 + event.freshness * 0.2 + novelty * 0.22 + evidenceStrength * 0.16 - (quotaLimited ? 0.35 : 0);
       return {
         event,
-        evidence: candidateEvidence,
+        evidence: pair.evidence,
+        hasOnchainEvidence: pair.hasOnchainEvidence,
+        hasCrossSourceEvidence: pair.hasCrossSourceEvidence,
+        evidenceSourceDiversity: pair.evidenceSourceDiversity,
         score,
         projectedRatio,
         quotaLimited,
@@ -198,6 +209,9 @@ export function planEventEvidenceAct(params: {
     lane: preferred.event.lane,
     event: preferred.event,
     evidence: preferred.evidence,
+    hasOnchainEvidence: preferred.hasOnchainEvidence,
+    hasCrossSourceEvidence: preferred.hasCrossSourceEvidence,
+    evidenceSourceDiversity: preferred.evidenceSourceDiversity,
     laneUsage,
     laneProjectedRatio: Math.round(preferred.projectedRatio * 1000) / 1000,
     laneQuotaLimited: preferred.quotaLimited,
@@ -293,6 +307,85 @@ function selectEvidenceForLane(lane: TrendLane, evidence: OnchainEvidence[]): On
   const onchainMatched = evidence.filter((item) => item.lane === "onchain" && item.lane !== lane);
   const others = evidence.filter((item) => item.lane !== lane && item.lane !== "onchain");
   return dedupEvidence([...laneMatched, ...onchainMatched, ...others]);
+}
+
+function selectEvidencePairForLane(
+  lane: TrendLane,
+  evidence: OnchainEvidence[],
+  options: {
+    requireOnchainEvidence: boolean;
+    requireCrossSourceEvidence: boolean;
+  }
+):
+  | {
+      evidence: OnchainEvidence[];
+      hasOnchainEvidence: boolean;
+      hasCrossSourceEvidence: boolean;
+      evidenceSourceDiversity: number;
+    }
+  | null {
+  const ranked = selectEvidenceForLane(lane, evidence).slice(0, 10);
+  if (ranked.length < 2) return null;
+
+  let best:
+    | {
+        evidence: OnchainEvidence[];
+        hasOnchainEvidence: boolean;
+        hasCrossSourceEvidence: boolean;
+        evidenceSourceDiversity: number;
+        score: number;
+      }
+    | null = null;
+
+  for (let i = 0; i < ranked.length; i += 1) {
+    for (let j = i + 1; j < ranked.length; j += 1) {
+      const pair = [ranked[i], ranked[j]];
+      const hasOnchainEvidence = pair.some((item) => item.source === "onchain");
+      const sourceDiversity = new Set(pair.map((item) => item.source)).size;
+      const hasCrossSourceEvidence = sourceDiversity >= 2;
+      if (options.requireOnchainEvidence && !hasOnchainEvidence) continue;
+      if (options.requireCrossSourceEvidence && !hasCrossSourceEvidence) continue;
+      const laneMatchCount = pair.filter((item) => item.lane === lane).length;
+      const baseScore = pair.reduce(
+        (sum, item) => sum + (item.digestScore ?? 0.55) * item.trust * item.freshness,
+        0
+      );
+      const score =
+        baseScore +
+        laneMatchCount * 0.08 +
+        (hasOnchainEvidence ? 0.06 : 0) +
+        (hasCrossSourceEvidence ? 0.04 : 0);
+      if (!best || score > best.score) {
+        best = {
+          evidence: pair,
+          hasOnchainEvidence,
+          hasCrossSourceEvidence,
+          evidenceSourceDiversity: sourceDiversity,
+          score,
+        };
+      }
+    }
+  }
+
+  if (!best) {
+    if (options.requireOnchainEvidence || options.requireCrossSourceEvidence) {
+      return null;
+    }
+    const fallback = ranked.slice(0, 2);
+    return {
+      evidence: fallback,
+      hasOnchainEvidence: fallback.some((item) => item.source === "onchain"),
+      hasCrossSourceEvidence: new Set(fallback.map((item) => item.source)).size >= 2,
+      evidenceSourceDiversity: new Set(fallback.map((item) => item.source)).size,
+    };
+  }
+
+  return {
+    evidence: best.evidence,
+    hasOnchainEvidence: best.hasOnchainEvidence,
+    hasCrossSourceEvidence: best.hasCrossSourceEvidence,
+    evidenceSourceDiversity: best.evidenceSourceDiversity,
+  };
 }
 
 function dedupEvidence(items: OnchainEvidence[]): OnchainEvidence[] {

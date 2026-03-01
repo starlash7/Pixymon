@@ -12,6 +12,11 @@ export interface EngagementRuntimeSettings {
   sentimentMaxRatio24h: number;
   postLanguage: ContentLanguage;
   replyLanguageMode: ReplyLanguageMode;
+  requireOnchainEvidence: boolean;
+  requireCrossSourceEvidence: boolean;
+  enforceKoreanPosts: boolean;
+  autonomyMaxBudgetUtilization: number;
+  autonomyRiskBlockScore: number;
   minNewsSourceTrust: number;
   minTrendTweetSourceTrust: number;
   minTrendTweetScore: number;

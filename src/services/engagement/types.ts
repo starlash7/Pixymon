@@ -42,6 +42,9 @@ export interface EventEvidencePlan {
   lane: TrendLane;
   event: TrendEvent;
   evidence: OnchainEvidence[];
+  hasOnchainEvidence: boolean;
+  hasCrossSourceEvidence: boolean;
+  evidenceSourceDiversity: number;
   laneUsage: LaneUsageWindow;
   laneProjectedRatio: number;
   laneQuotaLimited: boolean;

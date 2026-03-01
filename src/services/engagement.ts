@@ -64,6 +64,7 @@ import {
   NarrativeRecentPost,
   validateNarrativeNovelty,
 } from "./narrative-os.js";
+import { evaluateAutonomyGovernor } from "./autonomy-governor.js";
 
 const DEFAULT_TIMEZONE = "Asia/Seoul";
 const DEFAULT_MIN_LOOP_MINUTES = 25;
@@ -423,6 +424,8 @@ export async function postTrendUpdate(
       evidence: buildOnchainEvidence([...feedNutrients, ...trend.nutrients], 16),
       recentPosts: recentBriefingPosts,
       laneUsage: laneUsageWindow,
+      requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
+      requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
     });
 
     if (!eventPlan) {
@@ -445,6 +448,9 @@ export async function postTrendUpdate(
       console.log(`[PLAN] lane=${eventPlan.lane} | event=${eventPlan.event.headline}`);
       console.log(`[PLAN] mode=${narrativePlan.mode} | opener=\"${narrativePlan.openingDirective}\"`);
       console.log(`[PLAN] evidence=${eventPlan.evidence.map((item) => `${item.label} ${item.value}`).join(" | ")}`);
+      console.log(
+        `[PLAN] evidence-guard onchain=${eventPlan.hasOnchainEvidence ? "yes" : "no"} cross=${eventPlan.hasCrossSourceEvidence ? "yes" : "no"} diversity=${eventPlan.evidenceSourceDiversity}`
+      );
       console.log(
         `[PLAN] laneRatio=${Math.round(eventPlan.laneProjectedRatio * 100)}% quotaLimited=${eventPlan.laneQuotaLimited ? "yes" : "no"}`
       );
@@ -744,6 +750,30 @@ Rules:
       return false;
     }
 
+    const autonomyDecision = evaluateAutonomyGovernor({
+      timezone,
+      postText,
+      trendSummary: trend.summary,
+      eventPlan,
+      runtimeSettings,
+      xApiCostSettings,
+    });
+    if (!autonomyDecision.allow) {
+      const reason = autonomyDecision.reasons.join("|") || "autonomy-blocked";
+      memory.recordPostGeneration({
+        timezone,
+        retryCount: Math.max(0, generationAttempts - 1),
+        usedFallback,
+        success: false,
+        failReason: toReasonCode(reason),
+      });
+      console.log(`[POST] autonomy governor 차단: ${reason}`);
+      return false;
+    }
+    if (autonomyDecision.level === "warn" && autonomyDecision.reasons.length > 0) {
+      console.log(`[POST] autonomy governor 경고: ${autonomyDecision.reasons.join("|")}`);
+    }
+
     const tweetId = await postTweet(twitter, postText, "briefing", {
       timezone,
       xApiCostSettings,
@@ -965,6 +995,9 @@ export async function runDailyQuotaCycle(
   );
   console.log(
     `[TUNING] postLang=${runtimeSettings.postLanguage}, replyLang=${runtimeSettings.replyLanguageMode}, trend(score>=${runtimeSettings.minTrendTweetScore.toFixed(1)}, engage>=${runtimeSettings.minTrendTweetEngagement})`
+  );
+  console.log(
+    `[TUNING] evidence(onchain=${runtimeSettings.requireOnchainEvidence ? "required" : "optional"}, cross=${runtimeSettings.requireCrossSourceEvidence ? "required" : "optional"}) autonomy(budget<=${Math.round(runtimeSettings.autonomyMaxBudgetUtilization * 100)}%, risk>=${runtimeSettings.autonomyRiskBlockScore}, ko=${runtimeSettings.enforceKoreanPosts ? "enforced" : "off"})`
   );
   console.log(
     `[POST-GUARD] minInterval=${runtimeSettings.postMinIntervalMinutes}m, maxPostsPerCycle=${runtimeSettings.maxPostsPerCycle}, nutrient(minScore=${runtimeSettings.nutrientMinDigestScore.toFixed(2)}, max=${runtimeSettings.nutrientMaxIntakePerCycle})`
@@ -1403,6 +1436,30 @@ function resolveEngagementSettings(
       settings.replyLanguageMode === "match" || settings.replyLanguageMode === "en" || settings.replyLanguageMode === "ko"
         ? settings.replyLanguageMode
         : DEFAULT_ENGAGEMENT_SETTINGS.replyLanguageMode,
+    requireOnchainEvidence:
+      typeof settings.requireOnchainEvidence === "boolean"
+        ? settings.requireOnchainEvidence
+        : DEFAULT_ENGAGEMENT_SETTINGS.requireOnchainEvidence,
+    requireCrossSourceEvidence:
+      typeof settings.requireCrossSourceEvidence === "boolean"
+        ? settings.requireCrossSourceEvidence
+        : DEFAULT_ENGAGEMENT_SETTINGS.requireCrossSourceEvidence,
+    enforceKoreanPosts:
+      typeof settings.enforceKoreanPosts === "boolean"
+        ? settings.enforceKoreanPosts
+        : DEFAULT_ENGAGEMENT_SETTINGS.enforceKoreanPosts,
+    autonomyMaxBudgetUtilization: clampNumber(
+      settings.autonomyMaxBudgetUtilization,
+      0.5,
+      0.99,
+      DEFAULT_ENGAGEMENT_SETTINGS.autonomyMaxBudgetUtilization
+    ),
+    autonomyRiskBlockScore: clampInt(
+      settings.autonomyRiskBlockScore,
+      4,
+      10,
+      DEFAULT_ENGAGEMENT_SETTINGS.autonomyRiskBlockScore
+    ),
     minNewsSourceTrust: clampNumber(
       settings.minNewsSourceTrust,
       0.05,

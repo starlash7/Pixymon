@@ -44,6 +44,9 @@ function baseEventPlan() {
         capturedAt: nowIso,
       },
     ],
+    hasOnchainEvidence: true,
+    hasCrossSourceEvidence: true,
+    evidenceSourceDiversity: 2,
     laneUsage: {
       totalPosts: 4,
       byLane: {
