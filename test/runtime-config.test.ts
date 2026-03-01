@@ -62,6 +62,9 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       OBSERVABILITY_ENABLED: "true",
       OBSERVABILITY_STDOUT_JSON: "false",
       OBSERVABILITY_EVENT_LOG_PATH: "data/custom-observability.ndjson",
+      SOUL_MODE: "false",
+      SOFT_GATE_MODE: "true",
+      QUEST_MODE: "false",
     },
     () => {
       const config = loadRuntimeConfig();
@@ -93,6 +96,9 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.observability.enabled, true);
       assert.equal(config.observability.stdoutJson, false);
       assert.equal(config.observability.eventLogPath, "data/custom-observability.ndjson");
+      assert.equal(config.soul.soulMode, false);
+      assert.equal(config.soul.softGateMode, true);
+      assert.equal(config.soul.questMode, false);
     }
   );
 });
@@ -114,6 +120,9 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       X_API_ESTIMATED_CREATE_COST_USD: "invalid",
       X_API_DAILY_READ_REQUEST_LIMIT: "invalid",
       X_API_DAILY_CREATE_REQUEST_LIMIT: "invalid",
+      SOUL_MODE: "invalid",
+      SOFT_GATE_MODE: "invalid",
+      QUEST_MODE: "invalid",
     },
     () => {
       const config = loadRuntimeConfig();
@@ -137,6 +146,9 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.xApiCost.dailyReadRequestLimit, 8);
       assert.equal(config.xApiCost.dailyCreateRequestLimit, 10);
       assert.equal(config.xApiCost.createMinIntervalMinutes, 20);
+      assert.equal(config.soul.soulMode, true);
+      assert.equal(config.soul.softGateMode, false);
+      assert.equal(config.soul.questMode, true);
     }
   );
 });

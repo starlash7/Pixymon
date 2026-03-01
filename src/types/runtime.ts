@@ -42,3 +42,9 @@ export interface ObservabilityRuntimeSettings {
   stdoutJson: boolean;
   eventLogPath: string;
 }
+
+export interface SoulRuntimeSettings {
+  soulMode: boolean;
+  softGateMode: boolean;
+  questMode: boolean;
+}

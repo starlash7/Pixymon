@@ -17,6 +17,9 @@ export type NarrativeMode =
   | "mythic-analogy";
 export type HypothesisStatus = "open" | "watching" | "resolved" | "dropped";
 export type ClaimResolution = "supported" | "invalidated" | "superseded";
+export type MoodTone = "playful" | "focused" | "curious" | "contrarian" | "cautious";
+export type QuestStatus = "planned" | "active" | "completed" | "dropped";
+export type StyleVoice = "pixie-analyst" | "mythic-reporter" | "builder-guide";
 
 export interface OnchainSignal {
   id: string;
@@ -140,5 +143,49 @@ export interface AutonomyContext {
   openHypotheses: OpenHypothesis[];
   narrativeThreads: NarrativeThread[];
   resolvedClaims: ResolvedClaim[];
+  lastUpdated: string;
+}
+
+export interface DesireState {
+  noveltyHunger: number;
+  attentionHunger: number;
+  convictionHunger: number;
+  updatedAt: string;
+}
+
+export interface MoodState {
+  tone: MoodTone;
+  energy: number;
+  confidence: number;
+  updatedAt: string;
+}
+
+export interface QuestThread {
+  id: string;
+  lane: TrendLane;
+  title: string;
+  objective: string;
+  status: QuestStatus;
+  progress: number;
+  evidenceIds: string[];
+  startedAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface StyleProfile {
+  voice: StyleVoice;
+  assertiveness: number;
+  curiosity: number;
+  playfulness: number;
+  evidenceBias: number;
+  updatedAt: string;
+}
+
+export interface SoulState {
+  desire: DesireState;
+  mood: MoodState;
+  quests: QuestThread[];
+  style: StyleProfile;
   lastUpdated: string;
 }

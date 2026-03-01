@@ -16,6 +16,9 @@ export function printStartupBanner(config: RuntimeConfig): void {
   if (config.schedulerMode) {
     console.log("  [SCHEDULER] 24/7 자동 실행 모드");
   }
+  console.log(
+    `  [SOUL] soul=${config.soul.soulMode ? "on" : "off"} | quest=${config.soul.questMode ? "on" : "off"} | softGate=${config.soul.softGateMode ? "on" : "off"}`
+  );
   console.log("=====================================\n");
 }
 

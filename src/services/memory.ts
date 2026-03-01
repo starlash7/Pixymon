@@ -4,15 +4,23 @@ import {
   AutonomyContext,
   AbilityUnlock,
   ClaimResolution,
+  DesireState,
   DigestScore,
   EvolutionStage,
   HypothesisStatus,
+  MoodState,
+  MoodTone,
   NarrativeMode,
   NarrativeThread,
   NutrientLedgerEntry,
   OpenHypothesis,
   OnchainNutrient,
+  QuestStatus,
+  QuestThread,
   ResolvedClaim,
+  SoulState,
+  StyleProfile,
+  StyleVoice,
   TrendLane,
 } from "../types/agent.js";
 
@@ -29,6 +37,7 @@ import {
 const DATA_DIR = path.join(process.cwd(), "data");
 const MEMORY_SAVE_DEBOUNCE_MS = 250;
 const MAX_REPLIED_TWEETS = 500;
+const MAX_SOUL_QUESTS = 120;
 const DUPLICATE_STOP_WORDS = new Set([
   "the",
   "a",
@@ -167,6 +176,7 @@ interface MemoryData {
   lastProcessedMentionId?: string;  // 마지막 처리한 멘션 ID
   repliedTweets: string[];  // 댓글 단 트윗 ID들 (중복 방지)
   agentState: AgentState;
+  soulState: SoulState;
   qualityTelemetry: QualityTelemetry;
   autonomyContext: AutonomyContext;
   lastUpdated: string;
@@ -214,6 +224,45 @@ function createEmptyAutonomyContext(): AutonomyContext {
   };
 }
 
+function createEmptyDesireState(): DesireState {
+  return {
+    noveltyHunger: 0.62,
+    attentionHunger: 0.45,
+    convictionHunger: 0.5,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createEmptyMoodState(): MoodState {
+  return {
+    tone: "curious",
+    energy: 0.58,
+    confidence: 0.45,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createEmptyStyleProfile(): StyleProfile {
+  return {
+    voice: "pixie-analyst",
+    assertiveness: 0.52,
+    curiosity: 0.78,
+    playfulness: 0.62,
+    evidenceBias: 0.74,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createEmptySoulState(): SoulState {
+  return {
+    desire: createEmptyDesireState(),
+    mood: createEmptyMoodState(),
+    quests: [],
+    style: createEmptyStyleProfile(),
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
 function createEmptyMemoryData(): MemoryData {
   return {
     tweets: [],
@@ -221,6 +270,7 @@ function createEmptyMemoryData(): MemoryData {
     followers: {},
     repliedTweets: [],
     agentState: createEmptyAgentState(),
+    soulState: createEmptySoulState(),
     qualityTelemetry: createEmptyQualityTelemetry(),
     autonomyContext: createEmptyAutonomyContext(),
     lastUpdated: new Date().toISOString(),
@@ -306,6 +356,7 @@ export class MemoryService {
 
   private normalizeMemoryData(raw: Partial<MemoryData>): MemoryData {
     const agentState = this.normalizeAgentState(raw.agentState);
+    const soulState = this.normalizeSoulState(raw.soulState);
     const qualityTelemetry = this.normalizeQualityTelemetry(raw.qualityTelemetry);
     const autonomyContext = this.normalizeAutonomyContext(raw.autonomyContext);
     return {
@@ -315,6 +366,7 @@ export class MemoryService {
       lastProcessedMentionId: typeof raw.lastProcessedMentionId === "string" ? raw.lastProcessedMentionId : undefined,
       repliedTweets: this.normalizeRepliedTweets(raw.repliedTweets),
       agentState,
+      soulState,
       qualityTelemetry,
       autonomyContext,
       lastUpdated: typeof raw.lastUpdated === "string" ? raw.lastUpdated : new Date().toISOString(),
@@ -332,6 +384,96 @@ export class MemoryService {
       resolvedClaims: this.normalizeResolvedClaims(row.resolvedClaims),
       lastUpdated: typeof row.lastUpdated === "string" ? row.lastUpdated : new Date().toISOString(),
     };
+  }
+
+  private normalizeSoulState(raw: unknown): SoulState {
+    if (!raw || typeof raw !== "object") {
+      return createEmptySoulState();
+    }
+    const row = raw as Partial<SoulState>;
+    return {
+      desire: this.normalizeDesireState(row.desire),
+      mood: this.normalizeMoodState(row.mood),
+      quests: this.normalizeQuestThreads(row.quests),
+      style: this.normalizeStyleProfile(row.style),
+      lastUpdated: typeof row.lastUpdated === "string" ? row.lastUpdated : new Date().toISOString(),
+    };
+  }
+
+  private normalizeDesireState(raw: unknown): DesireState {
+    const fallback = createEmptyDesireState();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<DesireState>;
+    return {
+      noveltyHunger: this.clamp(typeof row.noveltyHunger === "number" ? row.noveltyHunger : fallback.noveltyHunger, 0, 1),
+      attentionHunger: this.clamp(typeof row.attentionHunger === "number" ? row.attentionHunger : fallback.attentionHunger, 0, 1),
+      convictionHunger: this.clamp(
+        typeof row.convictionHunger === "number" ? row.convictionHunger : fallback.convictionHunger,
+        0,
+        1
+      ),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeMoodState(raw: unknown): MoodState {
+    const fallback = createEmptyMoodState();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<MoodState>;
+    return {
+      tone: this.normalizeMoodTone(row.tone) || fallback.tone,
+      energy: this.clamp(typeof row.energy === "number" ? row.energy : fallback.energy, 0, 1),
+      confidence: this.clamp(typeof row.confidence === "number" ? row.confidence : fallback.confidence, 0, 1),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeStyleProfile(raw: unknown): StyleProfile {
+    const fallback = createEmptyStyleProfile();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<StyleProfile>;
+    return {
+      voice: this.normalizeStyleVoice(row.voice) || fallback.voice,
+      assertiveness: this.clamp(typeof row.assertiveness === "number" ? row.assertiveness : fallback.assertiveness, 0, 1),
+      curiosity: this.clamp(typeof row.curiosity === "number" ? row.curiosity : fallback.curiosity, 0, 1),
+      playfulness: this.clamp(typeof row.playfulness === "number" ? row.playfulness : fallback.playfulness, 0, 1),
+      evidenceBias: this.clamp(typeof row.evidenceBias === "number" ? row.evidenceBias : fallback.evidenceBias, 0, 1),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeQuestThreads(raw: unknown): QuestThread[] {
+    if (!Array.isArray(raw)) return [];
+    const output: QuestThread[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<QuestThread>;
+      const id = typeof row.id === "string" ? row.id.trim().slice(0, 64) : "";
+      const lane = this.normalizeTrendLane(row.lane);
+      const title = typeof row.title === "string" ? row.title.trim().slice(0, 120) : "";
+      if (!id || !lane || !title) continue;
+      output.push({
+        id,
+        lane,
+        title,
+        objective: typeof row.objective === "string" && row.objective.trim() ? row.objective.trim().slice(0, 220) : title,
+        status: this.normalizeQuestStatus(row.status) || "planned",
+        progress: this.clamp(typeof row.progress === "number" ? row.progress : 0, 0, 1),
+        evidenceIds: this.normalizeEvidenceIds(row.evidenceIds),
+        startedAt: typeof row.startedAt === "string" ? row.startedAt : new Date().toISOString(),
+        updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+        completedAt: typeof row.completedAt === "string" ? row.completedAt : undefined,
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+      .slice(-MAX_SOUL_QUESTS);
   }
 
   private normalizeOpenHypotheses(raw: unknown): OpenHypothesis[] {
@@ -967,10 +1109,12 @@ export class MemoryService {
   getContext(): string {
     const recentTweets = this.getRecentTweets(5);
     const recentPredictions = this.data.predictions.slice(-5);
+    const soulSummary = this.getSoulPromptContext("ko");
     const autonomySummary = this.getAutonomyPromptContext("ko");
 
     let context = "## 내 기억 (참고용, 강제로 언급할 필요 없음)\n\n";
     context += `${this.getAgentStateContext()}\n\n`;
+    context += `${soulSummary}\n\n`;
     context += `${autonomySummary}\n\n`;
 
     // 최근 트윗 (중복 방지)
@@ -1051,6 +1195,225 @@ export class MemoryService {
       lines.push("- 최근 정리된 주장:");
       for (const claim of recentResolved) {
         lines.push(`  - ${claim.claim} (${claim.resolution})`);
+      }
+    }
+    return lines.join("\n");
+  }
+
+  getSoulState(): SoulState {
+    const state = this.data.soulState;
+    return {
+      desire: { ...state.desire },
+      mood: { ...state.mood },
+      quests: state.quests.map((quest) => ({
+        ...quest,
+        evidenceIds: [...quest.evidenceIds],
+      })),
+      style: { ...state.style },
+      lastUpdated: state.lastUpdated,
+    };
+  }
+
+  getDesireState(): DesireState {
+    return { ...this.data.soulState.desire };
+  }
+
+  updateDesireState(patch: Partial<DesireState>): DesireState {
+    const row = this.data.soulState.desire;
+    if (typeof patch.noveltyHunger === "number") {
+      row.noveltyHunger = this.clamp(patch.noveltyHunger, 0, 1);
+    }
+    if (typeof patch.attentionHunger === "number") {
+      row.attentionHunger = this.clamp(patch.attentionHunger, 0, 1);
+    }
+    if (typeof patch.convictionHunger === "number") {
+      row.convictionHunger = this.clamp(patch.convictionHunger, 0, 1);
+    }
+    row.updatedAt = new Date().toISOString();
+    this.commitSoulState();
+    return { ...row };
+  }
+
+  getMoodState(): MoodState {
+    return { ...this.data.soulState.mood };
+  }
+
+  updateMoodState(patch: Partial<MoodState>): MoodState {
+    const row = this.data.soulState.mood;
+    const tone = this.normalizeMoodTone(patch.tone);
+    if (tone) {
+      row.tone = tone;
+    }
+    if (typeof patch.energy === "number") {
+      row.energy = this.clamp(patch.energy, 0, 1);
+    }
+    if (typeof patch.confidence === "number") {
+      row.confidence = this.clamp(patch.confidence, 0, 1);
+    }
+    row.updatedAt = new Date().toISOString();
+    this.commitSoulState();
+    return { ...row };
+  }
+
+  getQuestThreads(status?: QuestStatus): QuestThread[] {
+    const rows = typeof status === "string"
+      ? this.data.soulState.quests.filter((quest) => quest.status === status)
+      : this.data.soulState.quests;
+    return rows.map((quest) => ({
+      ...quest,
+      evidenceIds: [...quest.evidenceIds],
+    }));
+  }
+
+  upsertQuestThread(input: {
+    id: string;
+    lane: TrendLane;
+    title: string;
+    objective?: string;
+    status?: QuestStatus;
+    progress?: number;
+    evidenceIds?: string[];
+    startedAt?: string;
+    completedAt?: string;
+  }): QuestThread | null {
+    const id = String(input.id || "").trim().slice(0, 64);
+    const lane = this.normalizeTrendLane(input.lane);
+    const title = String(input.title || "").trim().slice(0, 120);
+    if (!id || !lane || !title) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const status = this.normalizeQuestStatus(input.status) || "planned";
+    const progress = this.clamp(typeof input.progress === "number" ? input.progress : 0, 0, 1);
+    const objective = String(input.objective || "").trim().slice(0, 220) || title;
+    const evidenceIds = this.normalizeEvidenceIds(input.evidenceIds || []);
+    const existing = this.data.soulState.quests.find((quest) => quest.id === id);
+
+    if (existing) {
+      existing.lane = lane;
+      existing.title = title;
+      existing.objective = objective;
+      existing.status = status;
+      existing.progress = progress;
+      existing.evidenceIds = [...new Set([...existing.evidenceIds, ...evidenceIds])].slice(0, 8);
+      existing.updatedAt = now;
+      if (status === "completed" && !existing.completedAt) {
+        existing.completedAt = typeof input.completedAt === "string" ? input.completedAt : now;
+      }
+      if (status !== "completed") {
+        existing.completedAt = undefined;
+      }
+      this.compactSoulQuests();
+      this.commitSoulState();
+      return { ...existing, evidenceIds: [...existing.evidenceIds] };
+    }
+
+    const quest: QuestThread = {
+      id,
+      lane,
+      title,
+      objective,
+      status,
+      progress,
+      evidenceIds,
+      startedAt: typeof input.startedAt === "string" ? input.startedAt : now,
+      updatedAt: now,
+      completedAt:
+        status === "completed"
+          ? (typeof input.completedAt === "string" ? input.completedAt : now)
+          : undefined,
+    };
+    this.data.soulState.quests.push(quest);
+    this.compactSoulQuests();
+    this.commitSoulState();
+    return { ...quest, evidenceIds: [...quest.evidenceIds] };
+  }
+
+  updateQuestStatus(questId: string, status: QuestStatus, progress?: number): QuestThread | null {
+    const id = String(questId || "").trim();
+    const normalizedStatus = this.normalizeQuestStatus(status);
+    if (!id || !normalizedStatus) return null;
+    const row = this.data.soulState.quests.find((quest) => quest.id === id);
+    if (!row) return null;
+
+    row.status = normalizedStatus;
+    if (typeof progress === "number") {
+      row.progress = this.clamp(progress, 0, 1);
+    } else if (normalizedStatus === "completed") {
+      row.progress = 1;
+    }
+    const now = new Date().toISOString();
+    row.updatedAt = now;
+    row.completedAt = normalizedStatus === "completed" ? now : undefined;
+    this.commitSoulState();
+    return { ...row, evidenceIds: [...row.evidenceIds] };
+  }
+
+  getStyleProfile(): StyleProfile {
+    return { ...this.data.soulState.style };
+  }
+
+  updateStyleProfile(patch: Partial<StyleProfile>): StyleProfile {
+    const row = this.data.soulState.style;
+    const voice = this.normalizeStyleVoice(patch.voice);
+    if (voice) {
+      row.voice = voice;
+    }
+    if (typeof patch.assertiveness === "number") {
+      row.assertiveness = this.clamp(patch.assertiveness, 0, 1);
+    }
+    if (typeof patch.curiosity === "number") {
+      row.curiosity = this.clamp(patch.curiosity, 0, 1);
+    }
+    if (typeof patch.playfulness === "number") {
+      row.playfulness = this.clamp(patch.playfulness, 0, 1);
+    }
+    if (typeof patch.evidenceBias === "number") {
+      row.evidenceBias = this.clamp(patch.evidenceBias, 0, 1);
+    }
+    row.updatedAt = new Date().toISOString();
+    this.commitSoulState();
+    return { ...row };
+  }
+
+  getSoulPromptContext(language: "ko" | "en" = "ko"): string {
+    const soul = this.data.soulState;
+    const activeQuests = soul.quests
+      .filter((quest) => quest.status === "planned" || quest.status === "active")
+      .slice(-3)
+      .reverse();
+
+    if (language === "en") {
+      const lines: string[] = ["### Soul State"];
+      lines.push(
+        `- Hunger(novelty/attention/conviction): ${Math.round(soul.desire.noveltyHunger * 100)}/${Math.round(soul.desire.attentionHunger * 100)}/${Math.round(soul.desire.convictionHunger * 100)}`
+      );
+      lines.push(
+        `- Mood: ${soul.mood.tone} | energy ${Math.round(soul.mood.energy * 100)} | confidence ${Math.round(soul.mood.confidence * 100)}`
+      );
+      lines.push(`- Style: ${soul.style.voice}`);
+      if (activeQuests.length > 0) {
+        lines.push("- Active quests:");
+        for (const quest of activeQuests) {
+          lines.push(`  - [${quest.lane}] ${quest.title} (${Math.round(quest.progress * 100)}%)`);
+        }
+      }
+      return lines.join("\n");
+    }
+
+    const lines: string[] = ["### Soul 상태"];
+    lines.push(
+      `- Hunger(신선함/주목/확신): ${Math.round(soul.desire.noveltyHunger * 100)}/${Math.round(soul.desire.attentionHunger * 100)}/${Math.round(soul.desire.convictionHunger * 100)}`
+    );
+    lines.push(
+      `- Mood: ${soul.mood.tone} | 에너지 ${Math.round(soul.mood.energy * 100)} | 확신 ${Math.round(soul.mood.confidence * 100)}`
+    );
+    lines.push(`- Style: ${soul.style.voice}`);
+    if (activeQuests.length > 0) {
+      lines.push("- 진행 중 퀘스트:");
+      for (const quest of activeQuests) {
+        lines.push(`  - [${quest.lane}] ${quest.title} (${Math.round(quest.progress * 100)}%)`);
       }
     }
     return lines.join("\n");
@@ -1848,6 +2211,33 @@ export class MemoryService {
     return null;
   }
 
+  private normalizeMoodTone(raw: unknown): MoodTone | null {
+    if (
+      raw === "playful" ||
+      raw === "focused" ||
+      raw === "curious" ||
+      raw === "contrarian" ||
+      raw === "cautious"
+    ) {
+      return raw;
+    }
+    return null;
+  }
+
+  private normalizeQuestStatus(raw: unknown): QuestStatus | null {
+    if (raw === "planned" || raw === "active" || raw === "completed" || raw === "dropped") {
+      return raw;
+    }
+    return null;
+  }
+
+  private normalizeStyleVoice(raw: unknown): StyleVoice | null {
+    if (raw === "pixie-analyst" || raw === "mythic-reporter" || raw === "builder-guide") {
+      return raw;
+    }
+    return null;
+  }
+
   private getAbilitiesForLevel(level: number): string[] {
     if (level >= 5) {
       return [
@@ -2027,6 +2417,17 @@ export class MemoryService {
       })
       .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
     this.data.qualityTelemetry.evolutionHistory = filtered.slice(-Math.max(1, keepItems));
+  }
+
+  private compactSoulQuests(): void {
+    this.data.soulState.quests = this.data.soulState.quests
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+      .slice(-MAX_SOUL_QUESTS);
+  }
+
+  private commitSoulState(): void {
+    this.data.soulState.lastUpdated = new Date().toISOString();
+    this.save();
   }
 
   private isTodayByTimezone(isoTimestamp: string, timezone: string): boolean {

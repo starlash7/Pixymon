@@ -3,6 +3,7 @@ import {
   EngagementRuntimeSettings,
   ObservabilityRuntimeSettings,
   ReplyLanguageMode,
+  SoulRuntimeSettings,
   XApiCostRuntimeSettings,
 } from "../types/runtime.js";
 
@@ -16,6 +17,7 @@ export interface RuntimeConfig {
   engagement: EngagementRuntimeSettings;
   xApiCost: XApiCostRuntimeSettings;
   observability: ObservabilityRuntimeSettings;
+  soul: SoulRuntimeSettings;
 }
 
 const DEFAULT_DAILY_ACTIVITY_TARGET = 20;
@@ -64,6 +66,12 @@ export const DEFAULT_OBSERVABILITY_SETTINGS: ObservabilityRuntimeSettings = {
   enabled: true,
   stdoutJson: true,
   eventLogPath: DEFAULT_OBSERVABILITY_EVENT_LOG_PATH,
+};
+
+export const DEFAULT_SOUL_SETTINGS: SoulRuntimeSettings = {
+  soulMode: true,
+  softGateMode: false,
+  questMode: true,
 };
 
 export const DEFAULT_X_API_COST_SETTINGS: XApiCostRuntimeSettings = {
@@ -358,6 +366,11 @@ export function loadRuntimeConfig(): RuntimeConfig {
       400
     ),
   };
+  const soul: SoulRuntimeSettings = {
+    soulMode: parseBoolean(process.env.SOUL_MODE, DEFAULT_SOUL_SETTINGS.soulMode),
+    softGateMode: parseBoolean(process.env.SOFT_GATE_MODE, DEFAULT_SOUL_SETTINGS.softGateMode),
+    questMode: parseBoolean(process.env.QUEST_MODE, DEFAULT_SOUL_SETTINGS.questMode),
+  };
 
   return {
     schedulerMode,
@@ -369,5 +382,6 @@ export function loadRuntimeConfig(): RuntimeConfig {
     engagement,
     xApiCost,
     observability,
+    soul,
   };
 }
