@@ -65,6 +65,7 @@ import {
   validateNarrativeNovelty,
 } from "./narrative-os.js";
 import { evaluateAutonomyGovernor } from "./autonomy-governor.js";
+import { buildQuoteReplySeed } from "./creative-studio.js";
 
 const DEFAULT_TIMEZONE = "Asia/Seoul";
 const DEFAULT_MIN_LOOP_MINUTES = 25;
@@ -824,6 +825,185 @@ Rules:
   }
 }
 
+export async function postTrendQuote(
+  twitter: TwitterApi,
+  claude: Anthropic,
+  policy: AdaptivePolicy = getDefaultAdaptivePolicy(),
+  settings: Partial<EngagementRuntimeSettings> = {},
+  timezone: string = DEFAULT_TIMEZONE,
+  xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
+  cache?: EngagementCycleCache
+): Promise<boolean> {
+  console.log("\n[QUOTE] 트렌드 인용 글 작성 시작...");
+  const runtimeSettings = resolveEngagementSettings(settings);
+  const quoteLanguage: ContentLanguage =
+    runtimeSettings.enforceKoreanPosts ? "ko" : runtimeSettings.postLanguage;
+
+  try {
+    const trend = await getOrCreateTrendContext(cache, {
+      minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
+    });
+    const candidates = await getOrSearchTrendTweets(
+      twitter,
+      trend.keywords,
+      24,
+      {
+        minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
+        minScore: runtimeSettings.minTrendTweetScore,
+        minEngagement: runtimeSettings.minTrendTweetEngagement,
+      },
+      timezone,
+      xApiCostSettings,
+      cache
+    );
+
+    if (candidates.length === 0) {
+      console.log("[QUOTE] 인용 대상 트윗 없음");
+      return false;
+    }
+
+    const recentPosts = memory
+      .getRecentTweets(100)
+      .filter((tweet) => tweet.type === "briefing" || tweet.type === "quote")
+      .filter((tweet) => isWithinHours(tweet.timestamp, 24))
+      .map((tweet) => ({ content: tweet.content, timestamp: tweet.timestamp }));
+
+    const qualityRules = resolveContentQualityRules({
+      minPostLength: runtimeSettings.postMinLength,
+      topicMaxSameTag24h: runtimeSettings.topicMaxSameTag24h,
+      sentimentMaxRatio24h: runtimeSettings.sentimentMaxRatio24h,
+      topicBlockConsecutiveTag: runtimeSettings.topicBlockConsecutiveTag,
+    });
+    const marketAnchors = formatMarketAnchors(trend.marketData)
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 2);
+
+    for (const target of candidates) {
+      const targetId = String(target.id || "").trim();
+      const targetText = sanitizeTweetText(String(target.text || ""));
+      if (!targetId || targetText.length < 25) continue;
+      if (memory.hasRepliedTo(targetId)) continue;
+
+      const lane = inferTrendLaneFromText(targetText);
+      const seed = buildQuoteReplySeed({
+        lane,
+        eventHeadline: targetText,
+        evidence: marketAnchors,
+        language: quoteLanguage,
+      });
+
+      const userPrompt =
+        quoteLanguage === "ko"
+          ? `아래 트윗을 인용해서 Pixymon 스타일 코멘트 1개 작성.
+
+원문:
+\"${targetText}\"
+
+시드:
+${seed}
+
+트렌드 요약:
+${trend.summary}
+
+규칙:
+- ${runtimeSettings.postMaxChars}자 이내
+- 한국어
+- 사실/숫자는 제공 근거 범위 내에서만 사용
+- 과장/투자확정 표현 금지
+- 해시태그/이모지 금지
+- 본문만 출력`
+          : `Write one concise quote-comment for this tweet.
+
+Target:
+\"${targetText}\"
+
+Seed:
+${seed}
+
+Trend summary:
+${trend.summary}
+
+Rules:
+- Max ${runtimeSettings.postMaxChars} chars
+- English only
+- Do not fabricate numbers/facts
+- No certainty investment claims
+- No hashtags or emoji
+- Output quote text only`;
+
+      const message = await claude.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 280,
+        system: PIXYMON_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
+      });
+
+      let quoteText = sanitizeTweetText(extractTextFromClaude(message.content));
+      if (!quoteText || quoteText.length < runtimeSettings.postMinLength) continue;
+
+      if (detectLanguage(quoteText) !== quoteLanguage) {
+        const rewritten = await rewriteByLanguage(
+          claude,
+          quoteText,
+          quoteLanguage,
+          runtimeSettings.postMaxChars
+        );
+        if (rewritten) {
+          quoteText = rewritten;
+        }
+      }
+
+      if (startsWithFearGreedTemplate(quoteText)) {
+        continue;
+      }
+
+      const quality = evaluatePostQuality(
+        quoteText,
+        trend.marketData,
+        recentPosts,
+        policy,
+        qualityRules,
+        {
+          requiredTrendTokens: extractFocusTokens(targetText),
+        }
+      );
+      if (!quality.ok) {
+        continue;
+      }
+
+      const tweetId = await postTweet(twitter, quoteText, "quote", {
+        timezone,
+        xApiCostSettings,
+        createKind: "post:quote",
+        quoteTweetId: targetId,
+        metadata: {
+          lane,
+          eventId: `quote:${targetId}`,
+          eventHeadline: targetText.slice(0, 180),
+          quoteTweetId: targetId,
+          narrativeMode: "quote",
+        },
+      });
+      if (!tweetId) {
+        continue;
+      }
+
+      memory.saveRepliedTweet(targetId);
+      memory.recordCognitiveActivity("social", 2);
+      console.log(`[QUOTE] 완료: ${quoteText.slice(0, 55)}...`);
+      return true;
+    }
+
+    console.log("[QUOTE] 품질 기준을 만족하는 인용 글 생성 실패");
+    return false;
+  } catch (error) {
+    console.error("[ERROR] 인용 글 작성 실패:", error);
+    return false;
+  }
+}
+
 async function runFeedDigestEvolve(
   cache: EngagementCycleCache,
   runtimeSettings: EngagementRuntimeSettings,
@@ -1008,6 +1188,7 @@ export async function runDailyQuotaCycle(
 
   let executed = 0;
   let postsCreatedThisCycle = 0;
+  let quotesCreatedThisCycle = 0;
   const mentionBudget = Math.min(remaining, Math.max(1, Math.floor(maxActions / 2)));
   const mentionProcessed = await checkAndReplyMentions(
     twitter,
@@ -1033,6 +1214,7 @@ export async function runDailyQuotaCycle(
 
     const before = executed;
     const todayPosts = memory.getTodayPostCount(timezone);
+    const canQuoteInCycle = quotesCreatedThisCycle < 1;
     const canPostInCycle = postsCreatedThisCycle < runtimeSettings.maxPostsPerCycle;
     const preferPost = canPostInCycle && todayPosts < postGoal && (executed === 0 || executed % 2 === 0);
 
@@ -1050,6 +1232,20 @@ export async function runDailyQuotaCycle(
       if (posted) {
         executed += 1;
         postsCreatedThisCycle += 1;
+      }
+    } else if (canQuoteInCycle) {
+      const quoted = await postTrendQuote(
+        twitter,
+        claude,
+        adaptivePolicy,
+        runtimeSettings,
+        timezone,
+        xApiCostSettings,
+        cycleCache
+      );
+      if (quoted) {
+        executed += 1;
+        quotesCreatedThisCycle += 1;
       }
     } else {
       const replied = await proactiveEngagement(
@@ -1092,6 +1288,20 @@ export async function runDailyQuotaCycle(
         if (fallbackPosted) {
           executed += 1;
           postsCreatedThisCycle += 1;
+        }
+      } else if (canQuoteInCycle) {
+        const fallbackQuote = await postTrendQuote(
+          twitter,
+          claude,
+          adaptivePolicy,
+          runtimeSettings,
+          timezone,
+          xApiCostSettings,
+          cycleCache
+        );
+        if (fallbackQuote) {
+          executed += 1;
+          quotesCreatedThisCycle += 1;
         }
       }
     }
@@ -1384,6 +1594,26 @@ function isBtcCentricText(text: string): boolean {
 function startsWithFearGreedTemplate(text: string): boolean {
   const lower = sanitizeTweetText(text).toLowerCase();
   return /^(극공포|공포\s*지수|fear\s*greed|fgi)/.test(lower);
+}
+
+function extractFocusTokens(text: string): string[] {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  const words = normalized
+    .split(/\s+/)
+    .map((item) => item.replace(/[^a-z0-9$가-힣]/g, ""))
+    .filter((item) => item.length >= 3)
+    .filter((item) => !["this", "that", "with", "from", "about", "그리고", "하지만", "오늘", "지금"].includes(item));
+  return [...new Set(words)].slice(0, 6);
+}
+
+function inferTrendLaneFromText(text: string): TrendLane {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  if (/sec|etf|법안|regulation|regulator|규제|정책/.test(normalized)) return "regulation";
+  if (/fomc|cpi|dxy|금리|달러|macro|거시/.test(normalized)) return "macro";
+  if (/mempool|whale|stable|onchain|수수료|네트워크|온체인/.test(normalized)) return "onchain";
+  if (/layer|upgrade|testnet|mainnet|rollup|protocol|업그레이드/.test(normalized)) return "protocol";
+  if (/dex|tvl|ecosystem|airdrop|staking|ecosystem|생태계/.test(normalized)) return "ecosystem";
+  return "market-structure";
 }
 
 function resolveEngagementSettings(
