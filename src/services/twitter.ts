@@ -44,6 +44,8 @@ interface PostTweetMetadata {
   evidenceIds?: string[];
   narrativeMode?: string;
   quoteTweetId?: string;
+  sourceAuthorId?: string;
+  targetTweetId?: string;
 }
 
 interface PostDispatchState {

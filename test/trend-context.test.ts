@@ -193,6 +193,168 @@ test("planEventEvidenceAct avoids onchain lane over-concentration when alternati
   assert.equal(plan?.lane, "macro");
 });
 
+test("planEventEvidenceAct applies lane cooldown against immediate same-lane streak", () => {
+  const createdAt = new Date().toISOString();
+  const recentPosts = [
+    { content: "FOMC 이후 달러와 금리 변동을 추적 중.", timestamp: createdAt },
+    { content: "ECB 발언 이후 매크로 변동성이 다시 커졌다.", timestamp: createdAt },
+  ];
+
+  const events = [
+    {
+      id: "event-macro",
+      lane: "macro" as const,
+      headline: "Fed minutes suggest prolonged higher-for-longer stance",
+      summary: "Rate expectations remain restrictive.",
+      source: "news:reuters",
+      trust: 0.82,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["fed", "rates"],
+    },
+    {
+      id: "event-protocol",
+      lane: "protocol" as const,
+      headline: "Layer2 upgrade improves settlement throughput",
+      summary: "Protocol release reduced confirmation latency.",
+      source: "news:coindesk",
+      trust: 0.79,
+      freshness: 0.89,
+      capturedAt: createdAt,
+      keywords: ["layer2", "upgrade"],
+    },
+  ];
+
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "fees",
+      label: "Layer2 fee",
+      value: "-11%",
+      evidence: "Layer2 transaction fee dropped after upgrade rollout.",
+      trust: 0.8,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.72 },
+    },
+    {
+      id: "n2",
+      source: "news",
+      category: "macro-news",
+      label: "Fed minutes",
+      value: "hawkish",
+      evidence: "Fed minutes indicate prolonged restrictive policy.",
+      trust: 0.8,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.7 },
+    },
+    {
+      id: "n3",
+      source: "market",
+      category: "protocol-activity",
+      label: "Rollup throughput",
+      value: "+14%",
+      evidence: "Rollup throughput increased after release.",
+      trust: 0.78,
+      freshness: 0.87,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.69 },
+    },
+  ]);
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts,
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.lane, "protocol");
+});
+
+test("planEventEvidenceAct penalizes btc-heavy onchain narrative when alternatives exist", () => {
+  const createdAt = new Date().toISOString();
+  const recentPosts = Array.from({ length: 6 }).map(() => ({
+    content: "BTC 공포지수와 스테이블, 고래 온체인 흐름만 반복 관찰 중.",
+    timestamp: createdAt,
+  }));
+
+  const events = [
+    {
+      id: "event-onchain-btc",
+      lane: "onchain" as const,
+      headline: "Bitcoin whale and mempool spike amid fear index drop",
+      summary: "BTC onchain activity climbed while sentiment stayed weak.",
+      source: "news:chainwire",
+      trust: 0.84,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["bitcoin", "whale", "mempool"],
+    },
+    {
+      id: "event-reg",
+      lane: "regulation" as const,
+      headline: "SEC opens new review round on crypto ETF disclosures",
+      summary: "Regulatory timeline shifted with new filing requirements.",
+      source: "news:reuters",
+      trust: 0.8,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      keywords: ["sec", "etf"],
+    },
+  ];
+
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "mempool",
+      label: "BTC mempool",
+      value: "+18%",
+      evidence: "Bitcoin mempool backlog rose materially.",
+      trust: 0.82,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.73 },
+    },
+    {
+      id: "n2",
+      source: "news",
+      category: "regulation-news",
+      label: "SEC filing review",
+      value: "재개",
+      evidence: "SEC reopened ETF disclosure review.",
+      trust: 0.79,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.7 },
+    },
+    {
+      id: "n3",
+      source: "market",
+      category: "market-structure",
+      label: "ETF implied flow",
+      value: "중립",
+      evidence: "ETF related flow expectations stayed mixed.",
+      trust: 0.77,
+      freshness: 0.86,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.68 },
+    },
+  ]);
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts,
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.lane, "regulation");
+});
+
 test("validateEventEvidenceContract enforces event + two evidence anchors", () => {
   const createdAt = new Date().toISOString();
   const plan = {

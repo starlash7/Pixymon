@@ -393,9 +393,9 @@ export async function postTrendUpdate(
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
 
-    const recentBriefingPosts = memory
+    const recentNarrativePosts = memory
       .getRecentTweets(140)
-      .filter((tweet) => tweet.type === "briefing")
+      .filter((tweet) => tweet.type === "briefing" || tweet.type === "quote")
       .filter((tweet) => isWithinHours(tweet.timestamp, 24))
       .map((tweet) => ({
         content: tweet.content,
@@ -404,6 +404,14 @@ export async function postTrendUpdate(
           lane: tweet.meta?.lane,
           narrativeMode: tweet.meta?.narrativeMode,
         },
+      }));
+    const recentBriefingPosts = memory
+      .getRecentTweets(140)
+      .filter((tweet) => tweet.type === "briefing")
+      .filter((tweet) => isWithinHours(tweet.timestamp, 24))
+      .map((tweet) => ({
+        content: tweet.content,
+        timestamp: tweet.timestamp,
       }));
 
     const lastBriefingPost = recentBriefingPosts.length > 0 ? recentBriefingPosts[recentBriefingPosts.length - 1] : null;
@@ -417,13 +425,13 @@ export async function postTrendUpdate(
       }
     }
 
-    const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
-    const postAngle = pickPostAngle(timezone, recentBriefingPosts);
-    const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
+    const recentBriefingTexts = recentNarrativePosts.map((tweet) => tweet.content);
+    const postAngle = pickPostAngle(timezone, recentNarrativePosts);
+    const laneUsageWindow = resolveRecentLaneUsageWindow(recentNarrativePosts);
     const eventPlan = planEventEvidenceAct({
       events: trend.events,
       evidence: buildOnchainEvidence([...feedNutrients, ...trend.nutrients], 16),
-      recentPosts: recentBriefingPosts,
+      recentPosts: recentNarrativePosts,
       laneUsage: laneUsageWindow,
       requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
       requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
@@ -436,14 +444,19 @@ export async function postTrendUpdate(
 
     const narrativePlan = buildNarrativePlan({
       eventPlan,
-      recentPosts: recentBriefingPosts as NarrativeRecentPost[],
+      recentPosts: recentNarrativePosts as NarrativeRecentPost[],
       language: runtimeSettings.postLanguage,
     });
 
-    const trendFocus = pickTrendFocus([eventPlan.event.headline, ...trend.headlines], recentBriefingPosts);
+    const trendFocus = pickTrendFocus([eventPlan.event.headline, ...trend.headlines], recentNarrativePosts);
     const requiredTrendTokens = [...new Set([...trendFocus.requiredTokens, ...eventPlan.event.keywords])].slice(0, 6);
     const focusTokensLine = requiredTrendTokens.length > 0 ? requiredTrendTokens.join(", ") : "- 없음";
-    const postDiversityGuard = buildPostDiversityGuard(recentBriefingPosts, trend.marketData, requiredTrendTokens, eventPlan.event.headline);
+    const postDiversityGuard = buildPostDiversityGuard(
+      recentNarrativePosts,
+      trend.marketData,
+      requiredTrendTokens,
+      eventPlan.event.headline
+    );
 
     if (eventPlan.event.headline) {
       console.log(`[PLAN] lane=${eventPlan.lane} | event=${eventPlan.event.headline}`);
@@ -630,7 +643,7 @@ Rules:
 
       const narrativeNovelty = validateNarrativeNovelty(
         candidate,
-        recentBriefingPosts as NarrativeRecentPost[],
+        recentNarrativePosts as NarrativeRecentPost[],
         narrativePlan
       );
       if (!narrativeNovelty.ok) {
@@ -662,7 +675,7 @@ Rules:
         continue;
       }
 
-      const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingPosts, policy, qualityRules, {
+      const quality = evaluatePostQuality(candidate, trend.marketData, recentNarrativePosts, policy, qualityRules, {
         requiredTrendTokens,
       });
       if (!quality.ok) {
@@ -710,7 +723,7 @@ Rules:
       if (fallbackPost) {
         const fallbackNovelty = validateNarrativeNovelty(
           fallbackPost,
-          recentBriefingPosts as NarrativeRecentPost[],
+          recentNarrativePosts as NarrativeRecentPost[],
           narrativePlan
         );
         if (!fallbackNovelty.ok || fallbackNovelty.score < 0.55) {
@@ -723,7 +736,7 @@ Rules:
         const fallbackQuality = evaluatePostQuality(
           fallbackPost,
           trend.marketData,
-          recentBriefingPosts,
+          recentNarrativePosts,
           policy,
           qualityRules,
           { requiredTrendTokens }
@@ -866,7 +879,26 @@ export async function postTrendQuote(
       .getRecentTweets(100)
       .filter((tweet) => tweet.type === "briefing" || tweet.type === "quote")
       .filter((tweet) => isWithinHours(tweet.timestamp, 24))
-      .map((tweet) => ({ content: tweet.content, timestamp: tweet.timestamp }));
+      .map((tweet) => ({
+        type: tweet.type,
+        content: tweet.content,
+        timestamp: tweet.timestamp,
+        meta: {
+          lane: tweet.meta?.lane,
+          sourceAuthorId: tweet.meta?.sourceAuthorId,
+        },
+      }));
+    const recentQuotePosts = recentPosts.filter((tweet) => tweet.type === "quote" && tweet.meta?.lane);
+    const quotedAuthorSet = new Set(
+      recentQuotePosts
+        .map((tweet) => String(tweet.meta?.sourceAuthorId || "").trim())
+        .filter((id) => /^[0-9]+$/.test(id))
+    );
+    const quoteLaneStreak = getTrailingLaneStreak(
+      recentQuotePosts
+        .map((tweet) => tweet.meta?.lane)
+        .filter((lane): lane is TrendLane => Boolean(lane))
+    );
 
     const qualityRules = resolveContentQualityRules({
       minPostLength: runtimeSettings.postMinLength,
@@ -883,10 +915,13 @@ export async function postTrendQuote(
     for (const target of candidates) {
       const targetId = String(target.id || "").trim();
       const targetText = sanitizeTweetText(String(target.text || ""));
+      const sourceAuthorId = String(target.author_id || "").trim();
       if (!targetId || targetText.length < 25) continue;
       if (memory.hasRepliedTo(targetId)) continue;
+      if (sourceAuthorId && quotedAuthorSet.has(sourceAuthorId)) continue;
 
       const lane = inferTrendLaneFromText(targetText);
+      if (quoteLaneStreak.lane === lane && quoteLaneStreak.count >= 2) continue;
       const seed = buildQuoteReplySeed({
         lane,
         eventHeadline: targetText,
@@ -983,6 +1018,8 @@ Rules:
           eventId: `quote:${targetId}`,
           eventHeadline: targetText.slice(0, 180),
           quoteTweetId: targetId,
+          sourceAuthorId: sourceAuthorId || undefined,
+          targetTweetId: targetId,
           narrativeMode: "quote",
         },
       });
@@ -1614,6 +1651,19 @@ function inferTrendLaneFromText(text: string): TrendLane {
   if (/layer|upgrade|testnet|mainnet|rollup|protocol|업그레이드/.test(normalized)) return "protocol";
   if (/dex|tvl|ecosystem|airdrop|staking|ecosystem|생태계/.test(normalized)) return "ecosystem";
   return "market-structure";
+}
+
+function getTrailingLaneStreak(lanes: TrendLane[]): { lane: TrendLane | null; count: number } {
+  if (!Array.isArray(lanes) || lanes.length === 0) {
+    return { lane: null, count: 0 };
+  }
+  const last = lanes[lanes.length - 1];
+  let count = 0;
+  for (let i = lanes.length - 1; i >= 0; i -= 1) {
+    if (lanes[i] !== last) break;
+    count += 1;
+  }
+  return { lane: last, count };
 }
 
 function resolveEngagementSettings(

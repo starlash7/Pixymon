@@ -171,6 +171,8 @@ export function planEventEvidenceAct(params: {
   const requireCrossSourceEvidence = params.requireCrossSourceEvidence !== false;
 
   const laneUsage = params.laneUsage || computeLaneUsageWindow(params.recentPosts);
+  const laneStreak = getRecentLaneStreak(params.recentPosts);
+  const recentBtcRatio = computeBtcCentricRatio(params.recentPosts.map((post) => post.content));
   const scored = events
     .map((event) => {
       const pair = selectEvidencePairForLane(event.lane, evidence, {
@@ -182,10 +184,24 @@ export function planEventEvidenceAct(params: {
       }
       const projectedRatio = (laneUsage.byLane[event.lane] + 1) / Math.max(1, laneUsage.totalPosts + 1);
       const quotaLimited = projectedRatio > LANE_MAX_RATIO[event.lane];
+      const laneCooldownPenalty = laneStreak.lane === event.lane
+        ? laneStreak.count >= 2
+          ? 0.2
+          : 0.1
+        : 0;
+      const btcConcentrationPenalty =
+        event.lane === "onchain" && recentBtcRatio >= 0.6 && isBtcCentricText(event.headline) ? 0.14 : 0;
       const novelty = calculateHeadlineNovelty(event.headline, params.recentPosts);
       const evidenceStrength =
         pair.evidence.reduce((sum, item) => sum + item.trust * item.freshness, 0) / pair.evidence.length;
-      const score = event.trust * 0.42 + event.freshness * 0.2 + novelty * 0.22 + evidenceStrength * 0.16 - (quotaLimited ? 0.35 : 0);
+      const score =
+        event.trust * 0.42 +
+        event.freshness * 0.2 +
+        novelty * 0.22 +
+        evidenceStrength * 0.16 -
+        (quotaLimited ? 0.35 : 0) -
+        laneCooldownPenalty -
+        btcConcentrationPenalty;
       return {
         event,
         evidence: pair.evidence,
@@ -464,4 +480,31 @@ function normalizeHeadlineKey(text: string): string {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
+}
+
+function getRecentLaneStreak(
+  recentPosts: RecentPostRecord[]
+): { lane: TrendLane | null; count: number } {
+  if (!Array.isArray(recentPosts) || recentPosts.length === 0) {
+    return { lane: null, count: 0 };
+  }
+  const last = inferTrendLane(recentPosts[recentPosts.length - 1].content);
+  let count = 0;
+  for (let i = recentPosts.length - 1; i >= 0; i -= 1) {
+    const lane = inferTrendLane(recentPosts[i].content);
+    if (lane !== last) break;
+    count += 1;
+  }
+  return { lane: last, count };
+}
+
+function isBtcCentricText(text: string): boolean {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  return /(^|\s)(\$?btc|bitcoin|비트코인)(\s|$)|fear\s*greed|fgi|공포\s*지수|극공포/.test(normalized);
+}
+
+function computeBtcCentricRatio(texts: string[]): number {
+  if (!Array.isArray(texts) || texts.length === 0) return 0;
+  const btcCount = texts.filter((item) => isBtcCentricText(item)).length;
+  return btcCount / texts.length;
 }

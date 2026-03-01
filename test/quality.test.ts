@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  evaluateReplyQuality,
   evaluatePostQuality,
   inferTopicTag,
   resolveContentQualityRules,
@@ -175,4 +176,75 @@ test("evaluatePostQuality enforces sentiment ratio budget", () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.reason, "sentiment 비중 초과(50%)");
+});
+
+test("evaluatePostQuality rejects repeated template even when numbers differ", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const recentPosts = [
+    {
+      content:
+        "온체인 유동성은 늘었는데 가격은 둔하다. 고래와 스테이블 흐름이 엇갈리는지 추가 확인이 필요하다.",
+      timestamp: new Date().toISOString(),
+    },
+  ];
+
+  const result = evaluatePostQuality(
+    "온체인 유동성은 증가했지만 가격 반응은 제한적이다. 고래와 스테이블 흐름이 엇갈리는지 더 확인한다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason), /템플릿 반복|모티프 반복|중복/);
+});
+
+test("evaluatePostQuality blocks btc-centric post when 24h btc saturation is high", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const now = new Date().toISOString();
+  const recentPosts = [
+    { content: "BTC 네트워크 수수료는 낮고 멤풀은 조용한 편이다.", timestamp: now },
+    { content: "비트코인 가격은 좁은 박스권에서 횡보 중이다.", timestamp: now },
+    { content: "BTC 관련 온체인 주소 활동은 늘었지만 속도는 완만하다.", timestamp: now },
+    { content: "비트코인 거래량은 유지되지만 변동성은 제한적이다.", timestamp: now },
+    { content: "BTC 네트워크 혼잡은 완화됐고 거래 체결은 안정적이다.", timestamp: now },
+    { content: "비트코인 시장 반응은 느리지만 방향성 힌트는 누적된다.", timestamp: now },
+  ];
+
+  const result = evaluatePostQuality(
+    "비트코인 중심 신호만으로 결론을 내리기엔 아직 이르고, 추가 확인이 필요할까?",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason), /^BTC 편중 완화 필요|동일 시그널 레인 반복/);
+});
+
+test("evaluateReplyQuality rejects repeated reply topic streak", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const recentReplies = [
+    "극공포 구간이라도 바로 확신하기보다 거래량 확인이 필요해요.",
+    "극공포일수록 반등 단정은 이르니 거래량 확증부터 보는 편입니다.",
+    "극공포 신호만으로 방향을 확정하기보다 온체인 확인이 우선입니다.",
+  ];
+
+  const result = evaluateReplyQuality(
+    "극공포라고 바로 결론내리기보다 거래량 확증을 먼저 보겠습니다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    recentReplies,
+    policy
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason), /댓글 주제 연속 반복|댓글 주제 편중|템플릿 반복/);
 });

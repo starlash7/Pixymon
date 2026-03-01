@@ -32,6 +32,39 @@ const SIGNAL_LANE_PRIORITY = [
   "observation-ending",
 ];
 
+const TEMPLATE_TOKEN_STOP_WORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "into",
+  "after",
+  "today",
+  "market",
+  "crypto",
+  "token",
+  "price",
+  "signal",
+  "context",
+  "data",
+  "flow",
+  "coin",
+  "coins",
+  "오늘",
+  "시장",
+  "데이터",
+  "흐름",
+  "신호",
+  "코인",
+  "그리고",
+  "하지만",
+  "지금",
+  "구간",
+]);
+
 export function resolveContentQualityRules(raw?: Partial<ContentQualityRules>): ContentQualityRules {
   return {
     minPostLength: clampInt(raw?.minPostLength, 10, 120, DEFAULT_CONTENT_QUALITY_RULES.minPostLength),
@@ -77,6 +110,25 @@ export function evaluateReplyQuality(
     };
   }
 
+  if (isTemplateDuplicate(text, recentReplyTexts, 0.74, 18)) {
+    return { ok: false, reason: "최근 댓글 템플릿 반복" };
+  }
+
+  const recentTags = recentReplyTexts.slice(-8).map((item) => inferTopicTag(item));
+  const candidateTag = inferTopicTag(text);
+  if (recentTags.length >= 2) {
+    const lastTag = recentTags[recentTags.length - 1];
+    const prevTag = recentTags[recentTags.length - 2];
+    if (lastTag === candidateTag && prevTag === candidateTag) {
+      return { ok: false, reason: `댓글 주제 연속 반복(${candidateTag})` };
+    }
+  }
+
+  const sameTagCount = recentTags.filter((tag) => tag === candidateTag).length;
+  if (sameTagCount >= 4) {
+    return { ok: false, reason: `댓글 주제 편중(${candidateTag})` };
+  }
+
   return { ok: true };
 }
 
@@ -110,6 +162,9 @@ export function evaluatePostQuality(
       reason: `최근 포스트와 내러티브 중복(sim=${narrativeDup.similarity})`,
     };
   }
+  if (isTemplateDuplicate(text, recentPostTexts, 0.7, 22)) {
+    return { ok: false, reason: "최근 포스트 템플릿 반복" };
+  }
   const candidateMotifs = extractNarrativeMotifs(text);
   if (candidateMotifs.size >= 3) {
     const motifDup = recentPostTexts
@@ -128,6 +183,16 @@ export function evaluatePostQuality(
     }).length;
     if (sameLaneCount >= 1) {
       return { ok: false, reason: `동일 시그널 레인 반복(${candidateLane})` };
+    }
+  }
+  const candidatePrimaryLane = buildPrimarySignalLane(text, candidateMotifs);
+  if (candidatePrimaryLane && recentWithin24.length > 0) {
+    const samePrimaryLaneCount = recentWithin24.filter((post) => {
+      const lane = buildPrimarySignalLane(post.content);
+      return lane && lane === candidatePrimaryLane;
+    }).length;
+    if (samePrimaryLaneCount >= 2) {
+      return { ok: false, reason: `동일 시그널 축 반복(${candidatePrimaryLane})` };
     }
   }
 
@@ -164,6 +229,13 @@ export function evaluatePostQuality(
       if (projectedRatio > rules.sentimentMaxRatio24h) {
         return { ok: false, reason: `sentiment 비중 초과(${Math.round(projectedRatio * 100)}%)` };
       }
+    }
+  }
+
+  if (recentWithin24.length >= 4) {
+    const btcRatio = computeBtcCentricRatio(recentWithin24.map((post) => post.content));
+    if (btcRatio >= 0.6 && isBtcCentricText(text) && !hasNonBtcSignal(text)) {
+      return { ok: false, reason: `BTC 편중 완화 필요(${Math.round(btcRatio * 100)}%)` };
     }
   }
 
@@ -265,6 +337,14 @@ function buildSignalLane(text: string, motifsInput?: Set<string>): string | null
   return ordered.join("|");
 }
 
+function buildPrimarySignalLane(text: string, motifsInput?: Set<string>): string | null {
+  const motifs = motifsInput || extractNarrativeMotifs(text);
+  if (motifs.size === 0) return null;
+  const ordered = SIGNAL_LANE_PRIORITY.filter((key) => motifs.has(key)).slice(0, 2);
+  if (ordered.length === 0) return null;
+  return ordered.join("|");
+}
+
 function normalizeRequiredTrendTokens(tokens: string[] | undefined): string[] {
   if (!Array.isArray(tokens)) return [];
   const normalized = tokens
@@ -281,4 +361,63 @@ function containsAnyTrendToken(text: string, requiredTrendTokens: string[]): boo
     if (token.startsWith("$") && normalizedText.includes(token.slice(1))) return true;
     return false;
   });
+}
+
+function isTemplateDuplicate(
+  text: string,
+  recentTexts: string[],
+  threshold: number,
+  windowSize: number
+): boolean {
+  const candidate = buildTemplateFingerprint(text);
+  if (candidate.length < 4) return false;
+
+  return recentTexts
+    .slice(-Math.max(4, windowSize))
+    .some((item) => templateSimilarity(candidate, buildTemplateFingerprint(item)) >= threshold);
+}
+
+function buildTemplateFingerprint(text: string): string[] {
+  const normalized = normalizeNarrativeStructure(text)
+    .replace(/\b(ticker|pct|num)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return [];
+  const tokens = normalized
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+    .filter((token) => !TEMPLATE_TOKEN_STOP_WORDS.has(token));
+  return [...new Set(tokens)].slice(0, 20);
+}
+
+function templateSimilarity(aTokens: string[], bTokens: string[]): number {
+  if (aTokens.length === 0 || bTokens.length === 0) return 0;
+  const a = new Set(aTokens);
+  const b = new Set(bTokens);
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection += 1;
+  }
+  const union = a.size + b.size - intersection;
+  if (union <= 0) return 0;
+  return intersection / union;
+}
+
+function isBtcCentricText(text: string): boolean {
+  const lower = sanitizeTweetText(text).toLowerCase();
+  return /(^|\s)(\$?btc|bitcoin|비트코인)(\s|$)|fear\s*greed|fgi|공포\s*지수|극공포/.test(lower);
+}
+
+function hasNonBtcSignal(text: string): boolean {
+  const lower = sanitizeTweetText(text).toLowerCase();
+  return /(\$?eth|ethereum|이더|solana|\$?sol|sec|etf|fomc|fed|layer2|rollup|defi|dex|regulation|규제|macro|매크로)/.test(
+    lower
+  );
+}
+
+function computeBtcCentricRatio(texts: string[]): number {
+  if (texts.length === 0) return 0;
+  const btcCount = texts.filter((item) => isBtcCentricText(item)).length;
+  return btcCount / texts.length;
 }
