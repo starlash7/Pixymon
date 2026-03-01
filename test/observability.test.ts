@@ -29,6 +29,11 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
       sentimentMaxRatio24h: 0.25,
       postLanguage: "ko",
       replyLanguageMode: "match",
+      requireOnchainEvidence: true,
+      requireCrossSourceEvidence: true,
+      enforceKoreanPosts: true,
+      autonomyMaxBudgetUtilization: 0.92,
+      autonomyRiskBlockScore: 7,
       minNewsSourceTrust: 0.28,
       minTrendTweetSourceTrust: 0.24,
       minTrendTweetScore: 3.2,
@@ -90,6 +95,8 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
   assert.equal(event.postGeneration.fallbackRate, 0.33);
   assert.deepEqual(event.postGeneration.failReasonsTop[0], { reason: "duplicate", count: 2 });
   assert.equal(event.runtime.postLanguage, "ko");
+  assert.equal(event.runtime.requireOnchainEvidence, true);
+  assert.equal(event.runtime.enforceKoreanPosts, true);
   assert.equal(event.runtime.sentimentMaxRatio24h, 0.25);
   assert.equal(event.runtime.nutrientMinDigestScore, 0.5);
   assert.equal(event.nutrition.nutrient_intake, 9);

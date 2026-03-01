@@ -338,52 +338,6 @@ ${mention.text}`,
   }
 }
 
-// 트윗에 답글 달기
-export async function replyToTweet(
-  twitter: TwitterApi,
-  claude: Anthropic,
-  tweetId: string,
-  tweetText: string
-): Promise<void> {
-  try {
-    // Claude로 답글 생성
-    const message = await claude.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 200,
-      system: PIXYMON_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `이 트윗에 답글.
-
-- 100자 이내
-- 좋은 콜이면 인정 ("ㄹㅇ", "이거 맞는듯")
-- 틀린 정보면 팩트로 정정
-- 별 내용 없으면 짧게 ("ㅇㅇ", "그치")
-- 해시태그 X, 이모지 X
-- 자연스러운 유머 ok (억지 X)
-
-트윗:
-${tweetText}`,
-        },
-      ],
-    });
-
-    const replyText = extractTextFromClaude(message.content);
-
-    if (!replyText) {
-      console.log("[SKIP] 답글 생성 실패");
-      return;
-    }
-
-    // 답글 발행
-    const reply = await twitter.v2.reply(replyText, tweetId);
-    console.log(`[OK] 답글 완료: ${reply.data.id}`);
-  } catch (error: any) {
-    console.error(`[ERROR] 답글 실패:`, error.message);
-  }
-}
-
 export function isRateLimitError(error: unknown): boolean {
   const err = error as { code?: number; status?: number; data?: { status?: number; title?: string } };
   const title = err?.data?.title?.toLowerCase() ?? "";

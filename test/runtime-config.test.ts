@@ -38,6 +38,11 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       MAX_ACTIONS_PER_CYCLE: "5",
       POST_LANGUAGE: "ko",
       REPLY_LANGUAGE_MODE: "match",
+      REQUIRE_ONCHAIN_EVIDENCE: "true",
+      REQUIRE_CROSS_SOURCE_EVIDENCE: "true",
+      ENFORCE_KOREAN_POSTS: "true",
+      AUTONOMY_MAX_BUDGET_UTILIZATION: "0.9",
+      AUTONOMY_RISK_BLOCK_SCORE: "8",
       POST_GENERATION_MAX_ATTEMPTS: "2",
       POST_MIN_INTERVAL_MINUTES: "120",
       MAX_POSTS_PER_CYCLE: "1",
@@ -65,6 +70,11 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.maxActionsPerCycle, 5);
       assert.equal(config.engagement.postLanguage, "ko");
       assert.equal(config.engagement.replyLanguageMode, "match");
+      assert.equal(config.engagement.requireOnchainEvidence, true);
+      assert.equal(config.engagement.requireCrossSourceEvidence, true);
+      assert.equal(config.engagement.enforceKoreanPosts, true);
+      assert.equal(config.engagement.autonomyMaxBudgetUtilization, 0.9);
+      assert.equal(config.engagement.autonomyRiskBlockScore, 8);
       assert.equal(config.engagement.postMinIntervalMinutes, 120);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
       assert.equal(config.engagement.nutrientMinDigestScore, 0.62);
@@ -115,6 +125,11 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.engagement.nutrientMinDigestScore, 0.5);
       assert.equal(config.engagement.nutrientMaxIntakePerCycle, 12);
       assert.equal(config.engagement.sentimentMaxRatio24h, 0.25);
+      assert.equal(config.engagement.requireOnchainEvidence, true);
+      assert.equal(config.engagement.requireCrossSourceEvidence, true);
+      assert.equal(config.engagement.enforceKoreanPosts, true);
+      assert.equal(config.engagement.autonomyMaxBudgetUtilization, 0.92);
+      assert.equal(config.engagement.autonomyRiskBlockScore, 7);
       assert.equal(config.xApiCost.enabled, true);
       assert.equal(config.xApiCost.dailyMaxUsd, 0.1);
       assert.equal(config.xApiCost.estimatedReadCostUsd, 0.012);

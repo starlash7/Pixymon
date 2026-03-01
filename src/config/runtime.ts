@@ -47,6 +47,11 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   sentimentMaxRatio24h: 0.25,
   postLanguage: "ko",
   replyLanguageMode: "match",
+  requireOnchainEvidence: true,
+  requireCrossSourceEvidence: true,
+  enforceKoreanPosts: true,
+  autonomyMaxBudgetUtilization: 0.92,
+  autonomyRiskBlockScore: 7,
   minNewsSourceTrust: 0.28,
   minTrendTweetSourceTrust: 0.24,
   minTrendTweetScore: 3.2,
@@ -249,6 +254,30 @@ export function loadRuntimeConfig(): RuntimeConfig {
     replyLanguageMode: parseReplyLanguageMode(
       process.env.REPLY_LANGUAGE_MODE,
       DEFAULT_ENGAGEMENT_SETTINGS.replyLanguageMode
+    ),
+    requireOnchainEvidence: parseBoolean(
+      process.env.REQUIRE_ONCHAIN_EVIDENCE,
+      DEFAULT_ENGAGEMENT_SETTINGS.requireOnchainEvidence
+    ),
+    requireCrossSourceEvidence: parseBoolean(
+      process.env.REQUIRE_CROSS_SOURCE_EVIDENCE,
+      DEFAULT_ENGAGEMENT_SETTINGS.requireCrossSourceEvidence
+    ),
+    enforceKoreanPosts: parseBoolean(
+      process.env.ENFORCE_KOREAN_POSTS,
+      DEFAULT_ENGAGEMENT_SETTINGS.enforceKoreanPosts
+    ),
+    autonomyMaxBudgetUtilization: parseFloatInRange(
+      process.env.AUTONOMY_MAX_BUDGET_UTILIZATION,
+      DEFAULT_ENGAGEMENT_SETTINGS.autonomyMaxBudgetUtilization,
+      0.5,
+      0.99
+    ),
+    autonomyRiskBlockScore: parseIntInRange(
+      process.env.AUTONOMY_RISK_BLOCK_SCORE,
+      DEFAULT_ENGAGEMENT_SETTINGS.autonomyRiskBlockScore,
+      4,
+      10
     ),
     minNewsSourceTrust: parseFloatInRange(
       process.env.TREND_NEWS_MIN_SOURCE_TRUST,

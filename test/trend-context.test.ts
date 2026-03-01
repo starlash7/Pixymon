@@ -234,6 +234,9 @@ test("validateEventEvidenceContract enforces event + two evidence anchors", () =
         capturedAt: createdAt,
       },
     ],
+    hasOnchainEvidence: true,
+    hasCrossSourceEvidence: true,
+    evidenceSourceDiversity: 2,
     laneUsage: {
       totalPosts: 4,
       byLane: {
@@ -258,6 +261,103 @@ test("validateEventEvidenceContract enforces event + two evidence anchors", () =
   const bad = validateEventEvidenceContract("Solana 이벤트만 보고 있다.", plan);
   assert.equal(bad.ok, false);
   assert.equal(typeof bad.reason, "string");
+});
+
+test("planEventEvidenceAct blocks when onchain evidence is required but unavailable", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event-macro",
+        lane: "macro",
+        headline: "ECB guidance shifts rate-cut expectations",
+        summary: "Macro policy signal changed this session.",
+        source: "news:reuters",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["ecb", "rate"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n-macro",
+        source: "news",
+        category: "macro-news",
+        label: "ECB signal",
+        value: "hawkish",
+        evidence: "ECB held a hawkish tone in recent remarks.",
+        trust: 0.78,
+        freshness: 0.88,
+        capturedAt: createdAt,
+      },
+      {
+        id: "n-market",
+        source: "market",
+        category: "fx",
+        label: "EUR/USD",
+        value: "-0.5%",
+        evidence: "EUR/USD dropped after the announcement.",
+        trust: 0.74,
+        freshness: 0.86,
+        capturedAt: createdAt,
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+  assert.equal(plan, null);
+});
+
+test("planEventEvidenceAct returns diversity metadata for selected evidence pair", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event-eco",
+        lane: "ecosystem",
+        headline: "TON ecosystem gaming activity expands",
+        summary: "User activity rose in consumer app clusters.",
+        source: "news:cointelegraph",
+        trust: 0.8,
+        freshness: 0.89,
+        capturedAt: createdAt,
+        keywords: ["ton", "ecosystem", "gaming"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n-onchain",
+        source: "onchain",
+        category: "active-addresses",
+        label: "TON active addresses",
+        value: "+12%",
+        evidence: "Active addresses increased 12% day over day.",
+        trust: 0.82,
+        freshness: 0.9,
+        capturedAt: createdAt,
+      },
+      {
+        id: "n-market",
+        source: "market",
+        category: "volume",
+        label: "TON spot volume",
+        value: "+18%",
+        evidence: "Spot volume expanded in tandem with user activity.",
+        trust: 0.76,
+        freshness: 0.87,
+        capturedAt: createdAt,
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+  assert.ok(plan);
+  assert.equal(plan?.hasOnchainEvidence, true);
+  assert.equal(plan?.hasCrossSourceEvidence, true);
+  assert.equal(plan?.evidenceSourceDiversity, 2);
 });
 
 test("buildTrendEvents maps news rows into lane-tagged events", () => {
