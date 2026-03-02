@@ -321,7 +321,7 @@ export function buildEventEvidenceFallbackPost(
   maxChars: number = 220,
   mode?: NarrativeMode
 ): string {
-  const eventHeadline = sanitizeTweetText(plan.event.headline).replace(/\.$/, "");
+  const eventHeadline = stripNarrativeLeadLabel(sanitizeTweetText(plan.event.headline).replace(/\.$/, ""), language);
   const evidenceA = formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = formatEvidenceAnchor(plan.evidence[1], language);
   const laneLabel = laneDisplayName(plan.lane, language);
@@ -377,6 +377,20 @@ export function buildEventEvidenceFallbackPost(
   const pool = language === "ko" ? koTemplates[narrativeMode] : enTemplates[narrativeMode];
   const base = pool[seed % pool.length] || pool[0];
   return sanitizeTweetText(base).slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
+}
+
+function stripNarrativeLeadLabel(text: string, language: "ko" | "en"): string {
+  if (!text) return text;
+  if (language === "ko") {
+    return text.replace(
+      /^(?:오늘의 자아 노트|오늘의 상호작용 실험|철학 메모|상호작용 실험|메타 회고|짧은 우화|에세이 한 문단으로 남기면)\s*:\s*/g,
+      ""
+    );
+  }
+  return text.replace(
+    /^(?:identity note|philosophy note|interaction experiment|meta reflection|short fable|one-paragraph essay)\s*:\s*/gi,
+    ""
+  );
 }
 
 function inferNarrativeModeFromHeadline(headline: string): NarrativeMode {
@@ -583,10 +597,22 @@ function formatEvidenceAnchor(evidence: OnchainEvidence | undefined, language: "
   if (!evidence) {
     return language === "ko" ? "데이터 확인 중" : "data pending";
   }
-  if (language === "ko") {
-    return `${evidence.label} ${evidence.value}`.replace(/\s+/g, " ").trim().slice(0, 70);
+  const normalizedLabel = sanitizeTweetText(String(evidence.label || ""));
+  const normalizedValue = sanitizeTweetText(String(evidence.value || ""));
+  const isLocalGenericLabel = /^(프로토콜|생태계|규제|매크로|온체인|시장구조)\s*근거\s*\d+/i.test(normalizedLabel);
+
+  // Local test nutrient labels are intentionally generic; prefer value to avoid robotic phrasing.
+  if (isLocalGenericLabel && normalizedValue.length >= 2) {
+    return normalizedValue.slice(0, 70);
   }
-  return `${evidence.label} ${evidence.value}`.replace(/\s+/g, " ").trim().slice(0, 70);
+
+  if (!normalizedLabel && normalizedValue) {
+    return normalizedValue.slice(0, 70);
+  }
+  if (!normalizedValue && normalizedLabel) {
+    return normalizedLabel.slice(0, 70);
+  }
+  return `${normalizedLabel} ${normalizedValue}`.replace(/\s+/g, " ").trim().slice(0, 70);
 }
 
 function laneDisplayName(lane: TrendLane, language: "ko" | "en"): string {

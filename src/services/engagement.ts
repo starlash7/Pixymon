@@ -483,15 +483,25 @@ export async function postTrendUpdate(
           topicBlockConsecutiveTag: false,
         });
         const selectedPreview = previewCandidates.find((candidate) => {
-          const duplicate = memory.checkDuplicate(candidate.text, 0.92);
+          const normalizedCandidate = humanizeNarrativeDraft(
+            candidate.text,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars
+          );
+          const duplicate = memory.checkDuplicate(normalizedCandidate, 0.92);
           if (duplicate.isDuplicate) return false;
-          return evaluatePostQuality(candidate.text, trend.marketData, [], previewPolicy, previewBaseQuality).ok;
+          return evaluatePostQuality(normalizedCandidate, trend.marketData, [], previewPolicy, previewBaseQuality).ok;
         });
         if (!selectedPreview) {
           console.log("[POST] TEST_MODE preview fallback 스킵: 품질 게이트 통과 후보 없음");
           return false;
         }
-        const previewId = await postTweet(twitter, selectedPreview.text, "briefing", {
+        const previewPostText = humanizeNarrativeDraft(
+          selectedPreview.text,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        const previewId = await postTweet(twitter, previewPostText, "briefing", {
           timezone,
           xApiCostSettings,
           createKind: "post:preview-fallback",
@@ -615,6 +625,7 @@ export async function postTrendUpdate(
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
+        localPost = humanizeNarrativeDraft(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         const blockedPhrase = findBlockedPhrase(localPost, clicheBlocklist);
         if (blockedPhrase) {
           latestFailReason = `quality:blocked-phrase(${blockedPhrase})`;
@@ -674,6 +685,7 @@ export async function postTrendUpdate(
           if (startsWithFearGreedTemplate(localPost)) {
             localPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${localPost}`.slice(0, runtimeSettings.postMaxChars);
           }
+          localPost = humanizeNarrativeDraft(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
           const localContract = validateEventEvidenceContract(localPost, eventPlan);
           const localNovelty = validateNarrativeNovelty(
             localPost,
@@ -873,6 +885,7 @@ Rules:
             candidate = rewritten;
           }
         }
+        candidate = humanizeNarrativeDraft(candidate, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
 
         if (startsWithFearGreedTemplate(candidate)) {
           rejectionFeedback = "금지된 오프너(FGI/극공포 시작)";
@@ -981,6 +994,11 @@ Rules:
         fallbackPost = ensureTrendTokens(
           fallbackPost,
           requiredTrendTokens,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        fallbackPost = humanizeNarrativeDraft(
+          fallbackPost,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
@@ -1853,6 +1871,115 @@ function buildNarrativeEvidenceText(
   return anchors.join(" | ");
 }
 
+function humanizeNarrativeDraft(text: string, language: "ko" | "en", maxChars: number): string {
+  let output = sanitizeTweetText(text || "");
+  if (!output) return "";
+
+  if (language === "ko") {
+    output = output
+      .replace(/(?:메타 회고:\s*){2,}/g, "메타 회고: ")
+      .replace(/(?:철학 메모:\s*){2,}/g, "철학 메모: ")
+      .replace(/(?:상호작용 실험:\s*){2,}/g, "상호작용 실험: ")
+      .replace(/상호작용 실험:\s*오늘의 상호작용 실험:\s*/g, "상호작용 실험: ")
+      .replace(/(?:오늘의 자아 노트:\s*){2,}/g, "오늘의 자아 노트: ");
+    output = output.replace(/(프로토콜|생태계|규제|매크로|온체인|시장구조)\s*근거\s*\d+\s*/g, "");
+    output = normalizeKoEvidenceClause(output);
+    output = normalizeKoPipeConnector(output);
+    output = normalizeKoAndParticle(output);
+    output = output.replace(/오늘\s*미션:\s*["']?\s*오늘\s*미션:\s*/g, '오늘 미션: "');
+  } else {
+    output = output
+      .replace(/(?:meta reflection:\s*){2,}/gi, "Meta reflection: ")
+      .replace(/(?:philosophy note:\s*){2,}/gi, "Philosophy note: ")
+      .replace(/(?:interaction experiment:\s*){2,}/gi, "Interaction experiment: ")
+      .replace(/(?:identity note:\s*){2,}/gi, "Identity note: ");
+  }
+
+  output = dedupeAdjacentSentences(output);
+  return sanitizeTweetText(output).slice(0, maxChars);
+}
+
+function normalizeKoEvidenceClause(text: string): string {
+  let output = text;
+  output = output.replace(
+    /근거:\s*([^|.?!]{2,80})\s*\|\s*([^|.?!]{2,80})(?:[.?!]|$)/g,
+    (_m, a, b) => `근거는 ${toKoEvidencePhrase(a)}와 ${toKoEvidencePhrase(b)}.`
+  );
+  output = output.replace(
+    /근거는\s*([^|.?!]{2,80})\s*\|\s*([^|.?!]{2,80})(?:[.?!]|$)/g,
+    (_m, a, b) => `근거는 ${toKoEvidencePhrase(a)}와 ${toKoEvidencePhrase(b)}.`
+  );
+  output = output.replace(
+    /단서:\s*([^|.?!]{2,80})\s*\|\s*([^|.?!]{2,80})(?:[.?!]|$)/g,
+    (_m, a, b) => `단서는 ${toKoEvidencePhrase(a)}와 ${toKoEvidencePhrase(b)}.`
+  );
+  output = output.replace(
+    /단서는\s*([^|.?!]{2,80})\s*\|\s*([^|.?!]{2,80})(?:[.?!]|$)/g,
+    (_m, a, b) => `단서는 ${toKoEvidencePhrase(a)}와 ${toKoEvidencePhrase(b)}.`
+  );
+  return output;
+}
+
+function normalizeKoPipeConnector(text: string): string {
+  let output = text;
+  output = output.replace(
+    /그래서\s*([^|.?!]{2,80})\s*\|\s*([^|.?!]{2,80})를 먼저 맞춰 본다/g,
+    (_m, a, b) => {
+      const left = toKoEvidencePhrase(a);
+      const right = toKoEvidencePhrase(b);
+      return `그래서 ${left}와 ${right}${chooseKoObjectParticle(right)} 먼저 맞춰 본다`;
+    }
+  );
+  output = output.replace(
+    /([^|.?!]{2,80})\s*\|\s*([^|.?!]{2,80})/g,
+    (_m, a, b) => `${toKoEvidencePhrase(a)}와 ${toKoEvidencePhrase(b)}`
+  );
+  return output;
+}
+
+function chooseKoObjectParticle(word: string): string {
+  const normalized = sanitizeTweetText(word || "");
+  const last = normalized[normalized.length - 1] || "";
+  return hasFinalConsonant(last) ? "을" : "를";
+}
+
+function toKoEvidencePhrase(raw: string): string {
+  const normalized = sanitizeTweetText(raw || "");
+  const stripped = normalized
+    .replace(/^(프로토콜|생태계|규제|매크로|온체인|시장구조)\s*근거\s*\d+\s*/i, "")
+    .replace(/^근거\s*\d+\s*/i, "")
+    .trim();
+  return stripped || normalized;
+}
+
+function normalizeKoAndParticle(text: string): string {
+  return text.replace(/([가-힣][^\s.,!?]{0,18})와\s+([가-힣][^\s.,!?]{0,18})/g, (_m, left, right) => {
+    const andToken = hasFinalConsonant(left[left.length - 1]) ? "과" : "와";
+    return `${left}${andToken} ${right}`;
+  });
+}
+
+function hasFinalConsonant(char: string): boolean {
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return false;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+function dedupeAdjacentSentences(text: string): string {
+  const parts = sanitizeTweetText(text)
+    .split(/(?<=[.?!])\s+/)
+    .map((part) => sanitizeTweetText(part))
+    .filter(Boolean);
+  const next: string[] = [];
+  for (const part of parts) {
+    const prev = next[next.length - 1];
+    if (prev && prev.toLowerCase() === part.toLowerCase()) continue;
+    next.push(part);
+  }
+  return next.join(" ");
+}
+
 const TREND_TOKEN_STOP_WORDS = new Set([
   "today",
   "book",
@@ -1885,7 +2012,7 @@ function ensureTrendTokens(
   maxChars: number
 ): string {
   const normalized = sanitizeTweetText(text);
-  const tokens = normalizeTrendRequirementTokens(requiredTokens).slice(0, 3);
+  const tokens = normalizeTrendRequirementTokens(requiredTokens, language).slice(0, 3);
   if (tokens.length === 0) {
     return normalized.slice(0, maxChars);
   }
@@ -1909,7 +2036,7 @@ function ensureTrendTokens(
   return sanitizeTweetText(`${normalized.slice(0, room)} ${clause}`).slice(0, maxChars);
 }
 
-function normalizeTrendRequirementTokens(tokens: string[]): string[] {
+function normalizeTrendRequirementTokens(tokens: string[], language?: "ko" | "en"): string[] {
   const mapped = (tokens || [])
     .map((item) => sanitizeTweetText(String(item || "").toLowerCase()))
     .map((item) => {
@@ -1920,9 +2047,11 @@ function normalizeTrendRequirementTokens(tokens: string[]): string[] {
     .filter((item) => item.length >= 2)
     .filter((item) => !TREND_TOKEN_STOP_WORDS.has(item))
     .filter((item) => /^[a-z0-9$-]{2,20}$|^[가-힣]{2,12}$/i.test(item))
+    .map((item) => (language === "ko" ? mapTokenForKoreanClause(item) : item))
+    .filter((item) => item.length >= 2)
     .filter((item) => {
       if (item.startsWith("$")) return true;
-      if (/^[a-z0-9-]+$/i.test(item)) {
+      if (/^[a-z0-9-]+$/i.test(item) && language !== "ko") {
         return /(protocol|rollup|layer|ecosystem|governance|validator|onchain|macro|regulation|compliance|policy|community|agent|wallet|liquidity|exchange|stable|whale|mempool|tvl|defi|narrative|mission|risk|btc|eth|sol)/.test(
           item
         );
@@ -1935,7 +2064,7 @@ function normalizeTrendRequirementTokens(tokens: string[]): string[] {
 }
 
 function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: string): string {
-  const normalized = normalizeTrendRequirementTokens(tokens).slice(0, 2);
+  const normalized = normalizeTrendRequirementTokens(tokens, language).slice(0, 2);
   if (normalized.length === 0) return "";
   const seed = stableSeedForPrelude(`${body}|${normalized.join("|")}|${language}`);
 
@@ -1953,7 +2082,7 @@ function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: st
     const templates = [
       `${a}와 ${b}의 연결성도 같이 본다.`,
       `관찰 축을 ${a}, ${b}까지 넓힌다.`,
-      `다음 확인 포인트는 ${a}와 ${b}다.`,
+      `다음 확인 포인트는 ${a}와 ${b} 쪽이다.`,
     ];
     return templates[seed % templates.length];
   }
@@ -1974,6 +2103,38 @@ function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: st
     `My next check is the ${a}-${b} link.`,
   ];
   return templates[seed % templates.length];
+}
+
+function mapTokenForKoreanClause(token: string): string {
+  if (!token) return "";
+  if (/^[가-힣]{2,12}$/.test(token)) return token;
+  if (token.startsWith("$")) return token;
+  const dict: Record<string, string> = {
+    "protocol-design": "프로토콜 설계",
+    governance: "거버넌스",
+    decentralization: "탈중앙성",
+    "compliance-by-design": "컴플라이언스 설계",
+    regulation: "규제",
+    policy: "정책",
+    "community-loop": "커뮤니티 루프",
+    "mission-design": "미션 설계",
+    "macro-narrative": "매크로 서사",
+    liquidity: "유동성",
+    "agent-wallet": "에이전트 지갑",
+    accountability: "책임 경로",
+    onchain: "온체인",
+    ecosystem: "생태계",
+    protocol: "프로토콜",
+    rollup: "롤업",
+    validator: "검증자",
+    exchange: "거래소",
+    stable: "스테이블",
+    whale: "고래",
+    mempool: "멤풀",
+    risk: "리스크",
+    tvl: "tvl",
+  };
+  return dict[token] || "";
 }
 
 function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): string[] {
@@ -2033,6 +2194,7 @@ interface BuildPreviewFallbackCandidatesInput {
 
 function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInput): PreviewFallbackCandidate[] {
   const headline = sanitizeTweetText(input.headline || "").replace(/\.$/, "") || "오늘은 구조적 원인을 먼저 추적";
+  const headlineCore = stripNarrativeLeadLabel(headline, input.language);
   const anchors = sanitizeTweetText(input.anchors || "");
   const intentLine = sanitizeTweetText(input.intentLine || "");
   const activeQuestion = sanitizeTweetText(input.activeQuestion || "");
@@ -2041,6 +2203,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const bookFragment = sanitizeTweetText(input.bookFragment || "");
   const selfNarrative = sanitizeTweetText(input.selfNarrative || "");
   const signatureBelief = sanitizeTweetText(input.signatureBelief || "");
+  const missionLine = sanitizeTweetText(interactionMission || activeQuestion || "너라면 어떤 근거를 더 확인하겠어?")
+    .replace(/^오늘\s*미션:\s*/i, "")
+    .replace(/^mission:\s*/i, "");
   const lane = inferTrendLaneFromText(headline);
   const recentOpeners = new Set(
     input.recentPosts
@@ -2055,54 +2220,54 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
           {
             mode: "identity-journal",
             lane,
-            text: `오늘의 자아 노트: ${selfNarrative || "나는 온체인 단서로 인간의 선택을 읽는다"}. ${intentLine}. ${headline}. 근거: ${anchors}.`,
+            text: `${selfNarrative || "나는 온체인 단서로 인간의 선택을 읽는다"}. ${headlineCore}. 근거는 ${anchors}.`,
           },
           {
             mode: "philosophy-note",
             lane,
-            text: `철학 메모: ${philosophyFrame || signatureBelief || "블록체인은 숫자보다 약속의 구조다"}. ${bookFragment}. ${headline}. 단서: ${anchors}.`,
+            text: `철학 메모: ${philosophyFrame || signatureBelief || "블록체인은 숫자보다 약속의 구조다"}. ${bookFragment}. ${headlineCore}. 단서는 ${anchors}.`,
           },
           {
             mode: "interaction-experiment",
             lane,
-            text: `상호작용 실험: ${headline}. 오늘 미션: "${interactionMission || activeQuestion || "너라면 어떤 근거를 더 확인하겠어?"}" 근거: ${anchors}.`,
+            text: `상호작용 실험: ${headlineCore}. 오늘 미션: "${missionLine}" 근거는 ${anchors}.`,
           },
           {
             mode: "meta-reflection",
             lane,
-            text: `메타 회고: ${headline}. 내가 자주 빠지는 오류는 성급한 결론이다. 그래서 ${anchors}를 먼저 맞춰 본다.`,
+            text: `메타 회고: ${headlineCore}. 내가 자주 빠지는 오류는 성급한 결론이다. 그래서 ${anchors}를 먼저 맞춰 본다.`,
           },
           {
             mode: "fable-essay",
             lane,
-            text: `짧은 우화: 모두가 가격을 외칠 때, 나는 이유를 줍는다. ${headline}. 단서는 ${anchors}. 결론은 아직 열어 둔다.`,
+            text: `짧은 우화: 모두가 가격을 외칠 때, 나는 이유를 줍는다. ${headlineCore}. 단서는 ${anchors}. 결론은 아직 열어 둔다.`,
           },
         ]
       : [
           {
             mode: "identity-journal",
             lane,
-            text: `Identity note: ${selfNarrative || "I read choices onchain before I read prices"}. ${intentLine}. ${headline}. Evidence: ${anchors}.`,
+            text: `Identity note: ${selfNarrative || "I read choices onchain before I read prices"}. ${intentLine}. ${headlineCore}. Evidence: ${anchors}.`,
           },
           {
             mode: "philosophy-note",
             lane,
-            text: `Philosophy note: ${philosophyFrame || signatureBelief || "crypto is a coordination machine before it is a market"}. ${bookFragment}. ${headline}. Evidence: ${anchors}.`,
+            text: `Philosophy note: ${philosophyFrame || signatureBelief || "crypto is a coordination machine before it is a market"}. ${bookFragment}. ${headlineCore}. Evidence: ${anchors}.`,
           },
           {
             mode: "interaction-experiment",
             lane,
-            text: `Interaction experiment: ${headline}. Mission: "${interactionMission || activeQuestion || "what evidence would change your mind?"}" Evidence: ${anchors}.`,
+            text: `Interaction experiment: ${headlineCore}. Mission: "${missionLine || "what evidence would change your mind?"}" Evidence: ${anchors}.`,
           },
           {
             mode: "meta-reflection",
             lane,
-            text: `Meta reflection: ${headline}. My recurring failure mode is rushing conviction. So I stay with evidence first: ${anchors}.`,
+            text: `Meta reflection: ${headlineCore}. My recurring failure mode is rushing conviction. So I stay with evidence first: ${anchors}.`,
           },
           {
             mode: "fable-essay",
             lane,
-            text: `A short fable: while everyone screams price, I collect motives. ${headline}. Clues: ${anchors}. Verdict stays open.`,
+            text: `A short fable: while everyone screams price, I collect motives. ${headlineCore}. Clues: ${anchors}. Verdict stays open.`,
           },
         ];
 
@@ -2126,6 +2291,21 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       const bSeen = recentOpeners.has(b.text.slice(0, 24).toLowerCase()) ? 1 : 0;
       return aSeen - bSeen;
     });
+}
+
+function stripNarrativeLeadLabel(text: string, language: "ko" | "en"): string {
+  const normalized = sanitizeTweetText(text || "").replace(/\.$/, "");
+  if (!normalized) return normalized;
+  if (language === "ko") {
+    return normalized.replace(
+      /^(?:오늘의 자아 노트|오늘의 상호작용 실험|철학 메모|상호작용 실험|메타 회고|짧은 우화|에세이 한 문단으로 남기면)\s*:\s*/g,
+      ""
+    );
+  }
+  return normalized.replace(
+    /^(?:identity note|philosophy note|interaction experiment|meta reflection|short fable|one-paragraph essay)\s*:\s*/gi,
+    ""
+  );
 }
 
 function applySoulPreludeToFallback(
