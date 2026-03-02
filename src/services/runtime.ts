@@ -54,11 +54,13 @@ export async function initializeMentionCursor(
     return;
   }
 
-  xApiBudget.recordRead({
-    timezone: config.dailyTimezone,
-    estimatedReadCostUsd: config.xApiCost.estimatedReadCostUsd,
-    kind: "mentions-init",
-  });
+  if (config.xApiCost.enabled) {
+    xApiBudget.recordRead({
+      timezone: config.dailyTimezone,
+      estimatedReadCostUsd: config.xApiCost.estimatedReadCostUsd,
+      kind: "mentions-init",
+    });
+  }
   const existingMentions = await getMentions(twitter);
   if (existingMentions.length > 0) {
     memory.setLastProcessedMentionId(existingMentions[0].id);
