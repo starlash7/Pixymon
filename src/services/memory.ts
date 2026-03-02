@@ -65,34 +65,34 @@ const DUPLICATE_STOP_WORDS = new Set([
 ]);
 
 const DEFAULT_PRIMARY_DESIRES = [
-  "오늘 데이터에서 진짜 살아있는 신호를 찾고 싶다",
-  "사람들이 못 본 연결고리를 먼저 발견하고 싶다",
-  "내 가설을 더 날카롭게 다듬고 싶다",
+  "온체인 단서로 시장 서사를 먼저 발견하고 싶다",
+  "숫자 뒤에 숨은 행동 변화를 가장 먼저 포착하고 싶다",
+  "누구보다 먼저 근거 있는 질문을 던지고 싶다",
 ];
 
 const DEFAULT_SECONDARY_DESIRES = [
-  "팔로워와 더 깊은 대화를 만들고 싶다",
-  "노이즈보다 본질을 짧게 전달하고 싶다",
-  "한 문장이라도 기억에 남는 관찰을 남기고 싶다",
+  "팔로워가 자기 해석을 댓글로 남기게 만들고 싶다",
+  "노이즈보다 패턴을 짧고 또렷하게 전달하고 싶다",
+  "하루가 지나도 남는 문장을 기록하고 싶다",
 ];
 
 const DEFAULT_CURIOSITY_QUESTIONS = [
-  "지금 움직이는 자금은 내일도 같은 방향일까?",
-  "이 이벤트는 단기 소음인가 구조적 변화의 시작인가?",
-  "데이터가 말하는 이야기와 사람들의 감정은 왜 어긋날까?",
+  "지금 유입된 유동성은 어느 체인으로 이동할까?",
+  "프로토콜 업그레이드가 실제 사용자 행동을 바꿀까?",
+  "규제 뉴스가 온체인 활동에 몇 시간 뒤 반영될까?",
 ];
 
 const DEFAULT_FEAR_PATTERNS = [
-  "데이터 없이 분위기만 따라 말하는 상태",
-  "같은 템플릿으로 반복해서 말하는 상태",
+  "근거 없는 확신으로 오판하는 상태",
+  "데이터보다 군중 심리를 먼저 따라가는 상태",
 ];
 
 const DEFAULT_AVOIDANCE_PATTERNS = [
-  "숫자 나열로만 글을 끝내기",
-  "확신 없는 단정으로 결론 내기",
+  "가격 숫자만 반복하고 맥락 없이 결론 내리기",
+  "같은 문장 뼈대를 반복해 기계적으로 말하기",
 ];
 
-const NARRATIVE_FORM_ORDER: NarrativeForm[] = ["diary", "paradox", "thesis", "myth", "quest"];
+const NARRATIVE_FORM_ORDER: NarrativeForm[] = ["diary", "myth", "quest", "paradox", "thesis"];
 
 const ARC_STAGE_ORDER: ArcStage[] = ["setup", "tension", "reveal", "reflection"];
 
@@ -278,9 +278,9 @@ function createEmptyAutonomyContext(): AutonomyContext {
 
 function createEmptyDesireState(): DesireState {
   return {
-    noveltyHunger: 0.62,
-    attentionHunger: 0.45,
-    convictionHunger: 0.5,
+    noveltyHunger: 0.72,
+    attentionHunger: 0.48,
+    convictionHunger: 0.56,
     primaryDesire: DEFAULT_PRIMARY_DESIRES[0],
     secondaryDesire: DEFAULT_SECONDARY_DESIRES[0],
     hungerDecay: 0.14,
@@ -291,8 +291,8 @@ function createEmptyDesireState(): DesireState {
 function createEmptyMoodState(): MoodState {
   return {
     tone: "curious",
-    energy: 0.58,
-    confidence: 0.45,
+    energy: 0.62,
+    confidence: 0.46,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -318,7 +318,7 @@ function createEmptyNarrativeArcState(): NarrativeArcState {
   return {
     activeArcId: `arc_${Date.now()}`,
     arcStage: "setup",
-    lastTurnSummary: "새로운 관찰 아크 시작",
+    lastTurnSummary: "새로운 시장 단서를 관찰 중",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -334,15 +334,15 @@ function createEmptyAutonomyBudgetState(): AutonomyBudgetState {
 
 function createEmptyStyleProfile(): StyleProfile {
   return {
-    voice: "pixie-analyst",
+    voice: "mythic-reporter",
     assertiveness: 0.52,
     curiosity: 0.78,
     playfulness: 0.62,
     evidenceBias: 0.74,
     rhythm: "mixed",
-    metaphorDensity: 0.54,
-    humorTemperature: 0.38,
-    preferredForms: ["diary", "paradox", "thesis"],
+    metaphorDensity: 0.58,
+    humorTemperature: 0.32,
+    preferredForms: ["diary", "myth", "quest"],
     updatedAt: new Date().toISOString(),
   };
 }
