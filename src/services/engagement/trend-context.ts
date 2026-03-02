@@ -5,6 +5,10 @@ import { sanitizeTweetText } from "./quality.js";
 import { RecentPostRecord, TrendContext, TrendContextOptions, TrendFocus } from "./types.js";
 import { buildTrendEvents, inferTrendLane } from "./event-evidence.js";
 
+const TEST_MODE = process.env.TEST_MODE === "true";
+const TEST_NO_EXTERNAL_CALLS =
+  TEST_MODE && String(process.env.TEST_NO_EXTERNAL_CALLS ?? "true").trim().toLowerCase() !== "false";
+
 const FOCUS_TOKEN_STOP_WORDS = new Set([
   "today",
   "crypto",
@@ -48,6 +52,54 @@ const FOCUS_TOKEN_STOP_WORDS = new Set([
 
 
 export async function collectTrendContext(options: Partial<TrendContextOptions> = {}): Promise<TrendContext> {
+  if (TEST_NO_EXTERNAL_CALLS) {
+    const createdAt = new Date().toISOString();
+    const marketData: MarketData[] = [
+      { symbol: "BTC", name: "Bitcoin", price: 0, change24h: 0 },
+      { symbol: "ETH", name: "Ethereum", price: 0, change24h: 0 },
+      { symbol: "SOL", name: "Solana", price: 0, change24h: 0 },
+    ];
+    const summary = "로컬 테스트 모드: 외부 API 없이 서사/품질 게이트만 검증 중";
+    const headlines = [
+      "로컬 테스트 이벤트: 온체인 근거 기반 서사 플로우 검증",
+      "로컬 테스트 이벤트: 이벤트 1개 + 근거 2개 계약 검증",
+    ];
+    const nutrients = buildTrendNutrients({
+      marketData,
+      newsRows: [],
+      createdAt,
+    });
+    const events = buildTrendEvents({
+      newsRows: [],
+      createdAt,
+    });
+
+    return {
+      keywords: ["local-test", "onchain", "narrative"],
+      summary,
+      marketData,
+      headlines,
+      newsSources: [],
+      nutrients,
+      events:
+        events.length > 0
+          ? events
+          : [
+              {
+                id: `event:local:${createdAt}`,
+                lane: "onchain",
+                headline: headlines[0],
+                summary,
+                source: "local",
+                trust: 0.5,
+                freshness: 1,
+                capturedAt: createdAt,
+                keywords: ["local-test", "onchain"],
+              },
+            ],
+    };
+  }
+
   const newsService = new BlockchainNewsService();
   const minNewsSourceTrust = clampNumber(options.minNewsSourceTrust, 0.05, 0.9, 0.28);
   const [hotNews, cryptoNews, marketData] = await Promise.all([

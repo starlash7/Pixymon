@@ -9,7 +9,15 @@ import {
   extractTextFromClaude,
   getReplyToneGuide,
 } from "./llm.js";
-import { getMentions, postTweet, replyToMention, searchRecentTrendTweets, TEST_MODE, sleep } from "./twitter.js";
+import {
+  getMentions,
+  postTweet,
+  replyToMention,
+  searchRecentTrendTweets,
+  TEST_MODE,
+  TEST_NO_EXTERNAL_CALLS,
+  sleep,
+} from "./twitter.js";
 import { detectLanguage } from "../utils/mood.js";
 import {
   DEFAULT_ENGAGEMENT_SETTINGS,
@@ -109,31 +117,35 @@ export async function checkAndReplyMentions(
   console.log(`\n[${now}] 멘션 체크 중...`);
 
   try {
-    const mentionReadGuard = xApiBudget.checkReadAllowance({
-      enabled: xApiCostSettings.enabled,
-      timezone,
-      dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
-      estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
-      dailyReadRequestLimit: xApiCostSettings.dailyReadRequestLimit,
-      kind: "mentions",
-      minIntervalMinutes: xApiCostSettings.mentionReadMinIntervalMinutes,
-    });
-    if (!mentionReadGuard.allowed) {
-      console.log(
-        `[BUDGET] 멘션 조회 스킵: ${formatReadBlockReason(mentionReadGuard.reason, mentionReadGuard.waitSeconds)}`
-      );
-      return 0;
-    }
-
-    if (xApiCostSettings.enabled) {
-      const mentionUsage = xApiBudget.recordRead({
+    if (!TEST_NO_EXTERNAL_CALLS) {
+      const mentionReadGuard = xApiBudget.checkReadAllowance({
+        enabled: xApiCostSettings.enabled,
         timezone,
+        dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
         estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+        dailyReadRequestLimit: xApiCostSettings.dailyReadRequestLimit,
         kind: "mentions",
+        minIntervalMinutes: xApiCostSettings.mentionReadMinIntervalMinutes,
       });
-      console.log(
-        `[BUDGET] read=${mentionUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${mentionUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mentions)`
-      );
+      if (!mentionReadGuard.allowed) {
+        console.log(
+          `[BUDGET] 멘션 조회 스킵: ${formatReadBlockReason(mentionReadGuard.reason, mentionReadGuard.waitSeconds)}`
+        );
+        return 0;
+      }
+
+      if (xApiCostSettings.enabled) {
+        const mentionUsage = xApiBudget.recordRead({
+          timezone,
+          estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+          kind: "mentions",
+        });
+        console.log(
+          `[BUDGET] read=${mentionUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${mentionUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mentions)`
+        );
+      }
+    } else {
+      console.log("[TEST-LOCAL] 멘션 read budget 체크/기록 스킵");
     }
 
     const lastMentionId = memory.getLastProcessedMentionId();
@@ -546,9 +558,61 @@ export async function postTrendUpdate(
     const soulContext = memory.getSoulPromptContext(runtimeSettings.postLanguage);
     const autonomyContext = memory.getAutonomyPromptContext(runtimeSettings.postLanguage);
 
-    for (let attempt = 0; attempt < runtimeSettings.postGenerationMaxAttempts; attempt++) {
-      generationAttempts = attempt + 1;
-      const userPrompt =
+    if (TEST_NO_EXTERNAL_CALLS) {
+      const localFallback = buildEventEvidenceFallbackPost(
+        eventPlan,
+        runtimeSettings.postLanguage,
+        runtimeSettings.postMaxChars
+      );
+      if (localFallback) {
+        let localPost = applySoulPreludeToFallback(
+          localFallback,
+          soulIntent.intentLine,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        if (startsWithFearGreedTemplate(localPost)) {
+          localPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${localPost}`.slice(0, runtimeSettings.postMaxChars);
+        }
+
+        const localContract = validateEventEvidenceContract(localPost, eventPlan);
+        const localNovelty = validateNarrativeNovelty(
+          localPost,
+          recentBriefingPosts as NarrativeRecentPost[],
+          narrativePlan
+        );
+        const localQuality = evaluatePostQuality(
+          localPost,
+          trend.marketData,
+          recentBriefingPosts,
+          policy,
+          qualityRules,
+          { requiredTrendTokens }
+        );
+
+        if (localContract.ok && localNovelty.ok && localQuality.ok) {
+          postText = localPost;
+          usedFallback = true;
+          generationAttempts = 1;
+          console.log("[POST] TEST-LOCAL deterministic 본문 사용 (LLM 외부 호출 없음)");
+        } else {
+          latestFailReason = [
+            localContract.ok ? "" : `contract:${localContract.reason}`,
+            localNovelty.ok ? "" : `novelty:${localNovelty.reason}`,
+            localQuality.ok ? "" : `quality:${localQuality.reason}`,
+          ]
+            .filter(Boolean)
+            .join("|");
+          console.log(`[POST] TEST-LOCAL fallback 실패: ${latestFailReason}`);
+        }
+      } else {
+        latestFailReason = "local-fallback-empty";
+        console.log("[POST] TEST-LOCAL fallback 실패: 텍스트 생성 불가");
+      }
+    } else {
+      for (let attempt = 0; attempt < runtimeSettings.postGenerationMaxAttempts; attempt++) {
+        generationAttempts = attempt + 1;
+        const userPrompt =
         runtimeSettings.postLanguage === "ko"
           ? `아래 컨텍스트로 오늘의 트렌드 글 1개 작성.
 
@@ -661,7 +725,7 @@ Rules:
 - ${postDiversityGuard.ruleLineEn}
 - Output tweet text only`;
 
-      const message = await claude.messages.create({
+        const message = await claude.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: 340,
         system: `${PIXYMON_SYSTEM_PROMPT}
@@ -673,91 +737,92 @@ Rules:
         messages: [{ role: "user", content: userPrompt }],
       });
 
-      let candidate = sanitizeTweetText(extractTextFromClaude(message.content));
-      if (!candidate || candidate.length < runtimeSettings.postMinLength) {
-        rejectionFeedback = "문장이 비어있거나 너무 짧음";
-        continue;
-      }
-
-      if (detectLanguage(candidate) !== runtimeSettings.postLanguage) {
-        const rewritten = await rewriteByLanguage(
-          claude,
-          candidate,
-          runtimeSettings.postLanguage,
-          runtimeSettings.postMaxChars
-        );
-        if (rewritten) {
-          candidate = rewritten;
+        let candidate = sanitizeTweetText(extractTextFromClaude(message.content));
+        if (!candidate || candidate.length < runtimeSettings.postMinLength) {
+          rejectionFeedback = "문장이 비어있거나 너무 짧음";
+          continue;
         }
-      }
 
-      if (startsWithFearGreedTemplate(candidate)) {
-        rejectionFeedback = "금지된 오프너(FGI/극공포 시작)";
-        latestFailReason = rejectionFeedback;
-        console.log(
-          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
-        );
-        continue;
-      }
+        if (detectLanguage(candidate) !== runtimeSettings.postLanguage) {
+          const rewritten = await rewriteByLanguage(
+            claude,
+            candidate,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars
+          );
+          if (rewritten) {
+            candidate = rewritten;
+          }
+        }
 
-      const contract = validateEventEvidenceContract(candidate, eventPlan);
-      if (!contract.ok) {
-        rejectionFeedback = `event/evidence 계약 미충족(${contract.reason})`;
-        latestFailReason = rejectionFeedback;
-        console.log(
-          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
-        );
-        continue;
-      }
+        if (startsWithFearGreedTemplate(candidate)) {
+          rejectionFeedback = "금지된 오프너(FGI/극공포 시작)";
+          latestFailReason = rejectionFeedback;
+          console.log(
+            `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+          );
+          continue;
+        }
 
-      const narrativeNovelty = validateNarrativeNovelty(
-        candidate,
-        recentBriefingPosts as NarrativeRecentPost[],
-        narrativePlan
-      );
-      if (!narrativeNovelty.ok) {
-        rejectionFeedback = `narrative novelty 부족(${narrativeNovelty.reason}, score=${narrativeNovelty.score})`;
-        latestFailReason = rejectionFeedback;
-        console.log(
-          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
-        );
-        continue;
-      }
-      if (
-        narrativeNovelty.score < 0.72 &&
-        attempt + 1 < runtimeSettings.postGenerationMaxAttempts
-      ) {
-        rejectionFeedback = `narrative 신선도 개선 필요(score=${narrativeNovelty.score})`;
-        latestFailReason = rejectionFeedback;
-        console.log(
-          `[POST] 품질 게이트 보정: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
-        );
-        continue;
-      }
+        const contract = validateEventEvidenceContract(candidate, eventPlan);
+        if (!contract.ok) {
+          rejectionFeedback = `event/evidence 계약 미충족(${contract.reason})`;
+          latestFailReason = rejectionFeedback;
+          console.log(
+            `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+          );
+          continue;
+        }
 
-      if (postDiversityGuard.avoidBtcOnly && isBtcOnlyNarrative(candidate, postDiversityGuard.altTokens)) {
-        rejectionFeedback = "BTC 단일 서사 반복(다른 자산/이슈 근거 필요)";
-        latestFailReason = rejectionFeedback;
-        console.log(
-          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+        const narrativeNovelty = validateNarrativeNovelty(
+          candidate,
+          recentBriefingPosts as NarrativeRecentPost[],
+          narrativePlan
         );
-        continue;
-      }
+        if (!narrativeNovelty.ok) {
+          rejectionFeedback = `narrative novelty 부족(${narrativeNovelty.reason}, score=${narrativeNovelty.score})`;
+          latestFailReason = rejectionFeedback;
+          console.log(
+            `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+          );
+          continue;
+        }
+        if (
+          narrativeNovelty.score < 0.72 &&
+          attempt + 1 < runtimeSettings.postGenerationMaxAttempts
+        ) {
+          rejectionFeedback = `narrative 신선도 개선 필요(score=${narrativeNovelty.score})`;
+          latestFailReason = rejectionFeedback;
+          console.log(
+            `[POST] 품질 게이트 보정: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+          );
+          continue;
+        }
 
-      const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingPosts, policy, qualityRules, {
-        requiredTrendTokens,
-      });
-      if (!quality.ok) {
-        rejectionFeedback = quality.reason || "품질 게이트 미통과";
-        latestFailReason = rejectionFeedback;
-        console.log(
-          `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
-        );
-        continue;
-      }
+        if (postDiversityGuard.avoidBtcOnly && isBtcOnlyNarrative(candidate, postDiversityGuard.altTokens)) {
+          rejectionFeedback = "BTC 단일 서사 반복(다른 자산/이슈 근거 필요)";
+          latestFailReason = rejectionFeedback;
+          console.log(
+            `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+          );
+          continue;
+        }
 
-      postText = candidate;
-      break;
+        const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingPosts, policy, qualityRules, {
+          requiredTrendTokens,
+        });
+        if (!quality.ok) {
+          rejectionFeedback = quality.reason || "품질 게이트 미통과";
+          latestFailReason = rejectionFeedback;
+          console.log(
+            `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+          );
+          continue;
+        }
+
+        postText = candidate;
+        break;
+      }
     }
 
     if (!postText) {
@@ -774,7 +839,7 @@ Rules:
           runtimeSettings.postMaxChars
         );
       }
-      if (fallbackPost && detectLanguage(fallbackPost) !== runtimeSettings.postLanguage) {
+      if (fallbackPost && !TEST_NO_EXTERNAL_CALLS && detectLanguage(fallbackPost) !== runtimeSettings.postLanguage) {
         const rewrittenFallback = await rewriteByLanguage(
           claude,
           fallbackPost,
@@ -1454,6 +1519,12 @@ async function rewriteByLanguage(
   lang: ContentLanguage,
   maxChars: number
 ): Promise<string | null> {
+  if (TEST_NO_EXTERNAL_CALLS) {
+    const normalized = sanitizeTweetText(text);
+    if (!normalized) return null;
+    return normalized.slice(0, maxChars);
+  }
+
   try {
     const prompt =
       lang === "ko"
@@ -1532,29 +1603,33 @@ async function getOrSearchTrendTweets(
     cache.cacheMetrics.trendTweetsMisses += 1;
   }
 
-  const trendReadGuard = xApiBudget.checkReadAllowance({
-    enabled: xApiCostSettings.enabled,
-    timezone,
-    dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
-    estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
-    dailyReadRequestLimit: xApiCostSettings.dailyReadRequestLimit,
-    kind: "trend-search",
-    minIntervalMinutes: xApiCostSettings.trendReadMinIntervalMinutes,
-  });
-  if (!trendReadGuard.allowed) {
-    console.log(`[BUDGET] 트렌드 검색 스킵: ${formatReadBlockReason(trendReadGuard.reason, trendReadGuard.waitSeconds)}`);
-    return [];
-  }
-
-  if (xApiCostSettings.enabled) {
-    const trendUsage = xApiBudget.recordRead({
+  if (!TEST_NO_EXTERNAL_CALLS) {
+    const trendReadGuard = xApiBudget.checkReadAllowance({
+      enabled: xApiCostSettings.enabled,
       timezone,
+      dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
       estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+      dailyReadRequestLimit: xApiCostSettings.dailyReadRequestLimit,
       kind: "trend-search",
+      minIntervalMinutes: xApiCostSettings.trendReadMinIntervalMinutes,
     });
-    console.log(
-      `[BUDGET] read=${trendUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${trendUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (trend-search)`
-    );
+    if (!trendReadGuard.allowed) {
+      console.log(`[BUDGET] 트렌드 검색 스킵: ${formatReadBlockReason(trendReadGuard.reason, trendReadGuard.waitSeconds)}`);
+      return [];
+    }
+
+    if (xApiCostSettings.enabled) {
+      const trendUsage = xApiBudget.recordRead({
+        timezone,
+        estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+        kind: "trend-search",
+      });
+      console.log(
+        `[BUDGET] read=${trendUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${trendUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (trend-search)`
+      );
+    }
+  } else {
+    console.log("[TEST-LOCAL] 트렌드 read budget 체크/기록 스킵");
   }
 
   const result = await searchRecentTrendTweets(twitter, keywords, count, rules);

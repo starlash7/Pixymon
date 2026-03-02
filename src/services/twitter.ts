@@ -18,6 +18,8 @@ import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
+export const TEST_NO_EXTERNAL_CALLS =
+  TEST_MODE && String(process.env.TEST_NO_EXTERNAL_CALLS ?? "true").trim().toLowerCase() !== "false";
 const ACTION_TWO_PHASE_COMMIT = String(process.env.ACTION_TWO_PHASE_COMMIT || "true").trim().toLowerCase() === "true";
 const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
   minSourceTrust: 0.24,
@@ -67,9 +69,13 @@ const DISPATCH_STATE_PATH =
 
 // 환경 변수 검증
 export function validateEnvironment() {
-  const required = ["ANTHROPIC_API_KEY"];
+  const required: string[] = [];
 
-  if (!TEST_MODE) {
+  if (!TEST_NO_EXTERNAL_CALLS) {
+    required.push("ANTHROPIC_API_KEY");
+  }
+
+  if (!TEST_MODE && !TEST_NO_EXTERNAL_CALLS) {
     required.push(
       "TWITTER_API_KEY",
       "TWITTER_API_SECRET",
@@ -104,6 +110,11 @@ export function initTwitterClient(): TwitterApi | null {
 
 // 멘션 가져오기
 export async function getMentions(twitter: TwitterApi, sinceId?: string): Promise<any[]> {
+  if (TEST_NO_EXTERNAL_CALLS) {
+    console.log("[TEST-LOCAL] 멘션 조회 외부 호출 스킵");
+    return [];
+  }
+
   try {
     const me = await twitter.v2.me();
     const mentions = await twitter.v2.userMentionTimeline(me.data.id, {
@@ -126,6 +137,11 @@ export async function searchRecentTrendTweets(
   count: number = 30,
   rules: Partial<TrendTweetSearchRules> = {}
 ): Promise<any[]> {
+  if (TEST_NO_EXTERNAL_CALLS) {
+    console.log("[TEST-LOCAL] 트렌드 검색 외부 호출 스킵");
+    return [];
+  }
+
   try {
     const minSourceTrust = clampNumber(
       rules.minSourceTrust,
@@ -231,6 +247,19 @@ export async function replyToMention(
   options?: MentionReplyOptions
 ): Promise<boolean> {
   try {
+    if (TEST_NO_EXTERNAL_CALLS) {
+      const mentionText = String(mention?.text || "").replace(/@\w+/g, "").trim();
+      const lang = detectLanguage(mentionText);
+      const localReply = (
+        lang === "en"
+          ? "I see your point. I will keep watching the onchain evidence before claiming direction."
+          : "좋은 포인트야. 방향성 단정은 보류하고 온체인 근거를 더 확인해볼게."
+      ).slice(0, 160);
+      console.log(`🧪 [테스트-로컬] 멘션 답글 시뮬레이션: ${localReply}`);
+      memory.saveTweet(`mention_test_${Date.now()}`, localReply, "reply");
+      return true;
+    }
+
     const timezone = normalizeTimezone(options?.timezone);
     const xApiCostSettings = resolveXApiCostSettings(options?.xApiCostSettings);
 

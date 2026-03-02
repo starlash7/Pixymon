@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { memory } from "./services/memory.js";
 import { REPLY_TONE_MODE, initClaudeClient } from "./services/llm.js";
-import { validateEnvironment, initTwitterClient } from "./services/twitter.js";
+import { validateEnvironment, initTwitterClient, TEST_NO_EXTERNAL_CALLS } from "./services/twitter.js";
 import { loadRuntimeConfig } from "./config/runtime.js";
 import { printStartupBanner, runOneShotMode, runSchedulerMode } from "./services/runtime.js";
 import { operationalState } from "./services/operational-state.js";
@@ -98,11 +98,15 @@ async function main() {
   if (twitter) {
     console.log("[OK] Twitter 연결됨");
 
-    try {
-      const me = await twitter.v2.me();
-      console.log(`[OK] @${me.data.username} 인증 완료`);
-    } catch (error: any) {
-      console.log("[WARN] Twitter API 인증 실패");
+    if (TEST_NO_EXTERNAL_CALLS) {
+      console.log("[TEST-LOCAL] Twitter 인증 조회 스킵 (외부 호출 없음)");
+    } else {
+      try {
+        const me = await twitter.v2.me();
+        console.log(`[OK] @${me.data.username} 인증 완료`);
+      } catch (error: any) {
+        console.log("[WARN] Twitter API 인증 실패");
+      }
     }
   }
 
