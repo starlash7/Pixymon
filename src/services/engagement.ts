@@ -32,7 +32,6 @@ import {
 } from "../types/runtime.js";
 import {
   collectTrendContext,
-  formatMarketAnchors,
   pickTrendFocus,
 } from "./engagement/trend-context.js";
 import {
@@ -450,7 +449,7 @@ export async function postTrendUpdate(
     if (!eventPlan) {
       if (TEST_MODE) {
         const previewHeadline = trend.headlines[0] || "오늘은 단일 이벤트 확정이 어려운 장세";
-        const previewAnchors = formatMarketAnchors(trend.marketData);
+        const previewAnchors = buildNarrativeEvidenceText(trend, runtimeSettings.postLanguage);
         const previewCandidates = buildPreviewFallbackCandidates({
           headline: previewHeadline,
           anchors: previewAnchors,
@@ -458,6 +457,11 @@ export async function postTrendUpdate(
           recentPosts: recentBriefingPosts,
           intentLine: soulIntent.intentLine,
           activeQuestion: soulIntent.activeQuestion,
+          interactionMission: soulIntent.interactionMission,
+          philosophyFrame: soulIntent.philosophyFrame,
+          bookFragment: soulIntent.bookFragment,
+          selfNarrative: soulIntent.selfNarrative,
+          signatureBelief: soulIntent.signatureBelief,
           preferredForm: soulIntent.narrativeForm,
           maxChars: runtimeSettings.postMaxChars,
         });
@@ -587,7 +591,7 @@ export async function postTrendUpdate(
           recentBriefingPosts,
           policy,
           qualityRules,
-          { requiredTrendTokens }
+          {}
         );
 
         if (localContract.ok && localNovelty.ok && localQuality.ok) {
@@ -617,11 +621,16 @@ export async function postTrendUpdate(
           ? `아래 컨텍스트로 오늘의 트렌드 글 1개 작성.
 
 캐릭터 인텐트(최우선):
+- 자아 선언: ${soulIntent.selfNarrative}
+- 시그니처 신념: ${soulIntent.signatureBelief}
 - 욕구: ${soulIntent.primaryDesire}
 - 보조 욕구: ${soulIntent.secondaryDesire}
 - 두려움: ${soulIntent.fear}
 - 회피 패턴: ${soulIntent.avoidancePattern}
 - 열린 질문: ${soulIntent.activeQuestion}
+- 상호작용 미션: ${soulIntent.interactionMission}
+- 철학 프레임: ${soulIntent.philosophyFrame}
+- 책/문장 파편: ${soulIntent.bookFragment}
 - 서사 폼: ${soulIntent.narrativeForm}
 - 아크 단계: ${soulIntent.arcStage}
 - 문체 지시: ${soulIntent.styleDirective}
@@ -661,6 +670,7 @@ ${rejectionFeedback || "없음"}
 - ${runtimeSettings.postMaxChars}자 이내
 - 반드시 한국어
 - 반드시 1인칭 캐릭터 시점
+- 주제는 블록체인/크립토 맥락 유지
 - 해시태그/이모지 금지
 - 과장/확정적 투자 조언 금지
 - 금기 없이 자유롭게 상상해도 되지만 숫자/사실 왜곡 금지
@@ -672,11 +682,16 @@ ${rejectionFeedback || "없음"}
           : `Write one trend post for today.
 
 Character intent (highest priority):
+- Self narrative: ${soulIntent.selfNarrative}
+- Signature belief: ${soulIntent.signatureBelief}
 - Primary desire: ${soulIntent.primaryDesire}
 - Secondary desire: ${soulIntent.secondaryDesire}
 - Fear: ${soulIntent.fear}
 - Avoidance pattern: ${soulIntent.avoidancePattern}
 - Open question: ${soulIntent.activeQuestion}
+- Interaction mission: ${soulIntent.interactionMission}
+- Philosophy frame: ${soulIntent.philosophyFrame}
+- Book fragment: ${soulIntent.bookFragment}
 - Narrative form: ${soulIntent.narrativeForm}
 - Arc stage: ${soulIntent.arcStage}
 - Voice directive: ${soulIntent.styleDirective}
@@ -716,6 +731,7 @@ Rules:
 - Max ${runtimeSettings.postMaxChars} chars
 - Write in English
 - Keep first-person character perspective
+- Keep topic grounded in blockchain/crypto context
 - No hashtags or emoji
 - No financial certainty claims
 - You can be imaginative, but do not fabricate numbers/facts
@@ -854,6 +870,12 @@ Rules:
         fallbackPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${fallbackPost}`.slice(0, runtimeSettings.postMaxChars);
       }
       if (fallbackPost) {
+        fallbackPost = ensureTrendTokens(
+          fallbackPost,
+          requiredTrendTokens,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
         const fallbackContract = validateEventEvidenceContract(fallbackPost, eventPlan);
         if (!fallbackContract.ok) {
           console.log(`[POST] fallback 실패: ${fallbackContract.reason}`);
@@ -1035,11 +1057,7 @@ export async function postTrendQuote(
       sentimentMaxRatio24h: runtimeSettings.sentimentMaxRatio24h,
       topicBlockConsecutiveTag: runtimeSettings.topicBlockConsecutiveTag,
     });
-    const marketAnchors = formatMarketAnchors(trend.marketData)
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .slice(0, 2);
+    const narrativeAnchors = collectNarrativeAnchors(trend, 2);
 
     for (const target of candidates) {
       const targetId = String(target.id || "").trim();
@@ -1051,7 +1069,7 @@ export async function postTrendQuote(
       const seed = buildQuoteReplySeed({
         lane,
         eventHeadline: targetText,
-        evidence: marketAnchors,
+        evidence: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
         language: quoteLanguage,
       });
 
@@ -1694,6 +1712,67 @@ function logCacheMetrics(cache?: EngagementCycleCache): void {
   );
 }
 
+function collectNarrativeAnchors(trend: TrendContext, maxItems: number = 2): string[] {
+  const limit = clampInt(maxItems, 1, 6, 2);
+  const fromEvidence = trend.nutrients
+    .slice(0, 10)
+    .map((item) => sanitizeTweetText(`${item.label} ${item.value}`).trim())
+    .filter((item) => item.length >= 8 && item.length <= 90);
+  const fromEvents = trend.events
+    .slice(0, 6)
+    .map((item) => sanitizeTweetText(item.headline))
+    .filter((item) => item.length >= 12 && item.length <= 90);
+  const merged = [...fromEvidence, ...fromEvents];
+  const dedup = [...new Set(merged)].filter((item) => !/^\$?\d+/.test(item));
+  return dedup.slice(0, limit);
+}
+
+function buildNarrativeEvidenceText(
+  trend: TrendContext,
+  language: "ko" | "en"
+): string {
+  const anchors = collectNarrativeAnchors(trend, 3);
+  if (anchors.length === 0) {
+    return language === "ko"
+      ? "근거가 부족해 결론 대신 질문을 남긴다"
+      : "Evidence is sparse, so I keep this as an open question";
+  }
+  return anchors.join(" | ");
+}
+
+function ensureTrendTokens(
+  text: string,
+  requiredTokens: string[],
+  language: "ko" | "en",
+  maxChars: number
+): string {
+  const normalized = sanitizeTweetText(text);
+  const tokens = (requiredTokens || [])
+    .map((item) => sanitizeTweetText(String(item || "").toLowerCase()))
+    .filter((item) => item.length >= 2)
+    .slice(0, 3);
+  if (tokens.length === 0) {
+    return normalized.slice(0, maxChars);
+  }
+
+  const lower = normalized.toLowerCase();
+  const missing = tokens.filter((token) => !lower.includes(token));
+  if (missing.length === 0) {
+    return normalized.slice(0, maxChars);
+  }
+
+  const prefix =
+    language === "ko"
+      ? `핵심어: ${missing.join(", ")}`
+      : `Focus: ${missing.join(", ")}`;
+  const prefixed = sanitizeTweetText(`${prefix} | ${normalized}`);
+  if (prefixed.length <= maxChars) {
+    return prefixed;
+  }
+  const room = Math.max(16, maxChars - prefix.length - 3);
+  return sanitizeTweetText(`${prefix} | ${normalized.slice(0, room)}`).slice(0, maxChars);
+}
+
 interface PreviewFallbackCandidate {
   text: string;
   lane: TrendLane;
@@ -1707,15 +1786,25 @@ interface BuildPreviewFallbackCandidatesInput {
   recentPosts: Array<{ content: string }>;
   intentLine?: string;
   activeQuestion?: string;
+  interactionMission?: string;
+  philosophyFrame?: string;
+  bookFragment?: string;
+  selfNarrative?: string;
+  signatureBelief?: string;
   preferredForm?: string;
   maxChars: number;
 }
 
 function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInput): PreviewFallbackCandidate[] {
-  const headline = sanitizeTweetText(input.headline || "").replace(/\.$/, "") || "단일 이벤트 확정이 어려운 장세";
+  const headline = sanitizeTweetText(input.headline || "").replace(/\.$/, "") || "오늘은 구조적 원인을 먼저 추적";
   const anchors = sanitizeTweetText(input.anchors || "");
   const intentLine = sanitizeTweetText(input.intentLine || "");
   const activeQuestion = sanitizeTweetText(input.activeQuestion || "");
+  const interactionMission = sanitizeTweetText(input.interactionMission || "");
+  const philosophyFrame = sanitizeTweetText(input.philosophyFrame || "");
+  const bookFragment = sanitizeTweetText(input.bookFragment || "");
+  const selfNarrative = sanitizeTweetText(input.selfNarrative || "");
+  const signatureBelief = sanitizeTweetText(input.signatureBelief || "");
   const lane = inferTrendLaneFromText(headline);
   const recentOpeners = new Set(
     input.recentPosts
@@ -1728,50 +1817,63 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     input.language === "ko"
       ? [
           {
-            mode: "field-journal",
+            mode: "identity-journal",
             lane,
-            text: `나는 지금 ${intentLine || "핵심 신호를 찾아내고 싶다"}. 관찰 노트: ${headline}. ${anchors} 기준으로 먼저 검증 포인트를 쌓는다.`,
+            text: `오늘의 자아 노트: ${selfNarrative || "나는 온체인 단서로 인간의 선택을 읽는다"}. ${intentLine}. ${headline}. 근거: ${anchors}.`,
           },
           {
-            mode: "hypothesis-lab",
+            mode: "philosophy-note",
             lane,
-            text: `가설 메모: ${headline}. ${anchors}에서 동시 확인되는 신호가 늘면 다음 사이클에 강한 주장으로 전환한다. 질문: ${activeQuestion || "지금 신호는 노이즈일까?"}`,
+            text: `철학 메모: ${philosophyFrame || signatureBelief || "블록체인은 숫자보다 약속의 구조다"}. ${bookFragment}. ${headline}. 단서: ${anchors}.`,
           },
           {
-            mode: "risk-radar",
+            mode: "interaction-experiment",
             lane,
-            text: `리스크 체크: ${headline}. ${anchors}. 아직 이벤트 하나로 수렴되지 않아 과도한 확신은 보류한다. ${activeQuestion || ""}`,
+            text: `상호작용 실험: ${headline}. 오늘 미션: "${interactionMission || activeQuestion || "너라면 어떤 근거를 더 확인하겠어?"}" 근거: ${anchors}.`,
           },
           {
-            mode: "quest-log",
+            mode: "meta-reflection",
             lane,
-            text: `퀘스트 로그: ${headline}. ${anchors}. 다음 업데이트에서는 근거 2개 이상 합치면 방향성을 확정하겠다.`,
+            text: `메타 회고: ${headline}. 내가 자주 빠지는 오류는 성급한 결론이다. 그래서 ${anchors}를 먼저 맞춰 본다.`,
+          },
+          {
+            mode: "fable-essay",
+            lane,
+            text: `짧은 우화: 모두가 가격을 외칠 때, 나는 이유를 줍는다. ${headline}. 단서는 ${anchors}. 결론은 아직 열어 둔다.`,
           },
         ]
       : [
           {
-            mode: "field-journal",
+            mode: "identity-journal",
             lane,
-            text: `I am tracking this on purpose: ${intentLine || "find the dominant signal before the crowd"}. Field note: ${headline}. ${anchors}.`,
+            text: `Identity note: ${selfNarrative || "I read choices onchain before I read prices"}. ${intentLine}. ${headline}. Evidence: ${anchors}.`,
           },
           {
-            mode: "hypothesis-lab",
+            mode: "philosophy-note",
             lane,
-            text: `Hypothesis lab: ${headline}. ${anchors}. I will escalate conviction only when two anchors align. Question: ${activeQuestion || "signal or noise?"}`,
+            text: `Philosophy note: ${philosophyFrame || signatureBelief || "crypto is a coordination machine before it is a market"}. ${bookFragment}. ${headline}. Evidence: ${anchors}.`,
           },
           {
-            mode: "risk-radar",
+            mode: "interaction-experiment",
             lane,
-            text: `Risk radar: ${headline}. ${anchors}. Signals are still fragmented, so confidence stays capped. ${activeQuestion || ""}`,
+            text: `Interaction experiment: ${headline}. Mission: "${interactionMission || activeQuestion || "what evidence would change your mind?"}" Evidence: ${anchors}.`,
           },
           {
-            mode: "quest-log",
+            mode: "meta-reflection",
             lane,
-            text: `Quest log: ${headline}. ${anchors}. Next cycle I will confirm whether this turns into a dominant event.`,
+            text: `Meta reflection: ${headline}. My recurring failure mode is rushing conviction. So I stay with evidence first: ${anchors}.`,
+          },
+          {
+            mode: "fable-essay",
+            lane,
+            text: `A short fable: while everyone screams price, I collect motives. ${headline}. Clues: ${anchors}. Verdict stays open.`,
           },
         ];
 
-  return rawCandidates
+  const rotation = Date.now() % Math.max(1, rawCandidates.length);
+  const rotated = rawCandidates.slice(rotation).concat(rawCandidates.slice(0, rotation));
+
+  return rotated
     .map((candidate) => ({
       ...candidate,
       text: sanitizeTweetText(candidate.text).slice(0, input.maxChars),
@@ -1801,7 +1903,15 @@ function applySoulPreludeToFallback(
   if (!intent) {
     return body.slice(0, maxChars);
   }
-  const prelude = language === "ko" ? `나는 ${intent}.` : `I am focused on this: ${intent}.`;
+  if (body.toLowerCase().includes(intent.toLowerCase())) {
+    return body.slice(0, maxChars);
+  }
+  const compact =
+    language === "ko"
+      ? intent.split(/하지만|\\.|!/)[0]
+      : intent.split(/but |\\.|!/i)[0];
+  const lead = sanitizeTweetText(compact || intent).slice(0, 96);
+  const prelude = lead.endsWith(".") ? lead : `${lead}.`;
   return sanitizeTweetText(`${prelude} ${body}`).slice(0, maxChars);
 }
 

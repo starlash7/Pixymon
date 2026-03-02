@@ -69,19 +69,19 @@ test("buildNarrativePlan rotates mode away from overused mode", () => {
     language: "ko",
     recentPosts: [
       {
-        content: "빌더 관점에서 보면 오늘 포인트는 latency 개선.",
+        content: "철학 노트로 번역하면 오늘 장면은 검증자 행동 변화.",
         timestamp: nowIso,
-        meta: { lane: "protocol", narrativeMode: "builder-note" },
+        meta: { lane: "protocol", narrativeMode: "philosophy-note" },
       },
       {
-        content: "프로덕트 관점으로 번역하면 핵심은 실행 속도.",
+        content: "읽던 문장을 체인 위로 옮기면 합의 지연은 신뢰 비용.",
         timestamp: nowIso,
-        meta: { lane: "protocol", narrativeMode: "builder-note" },
+        meta: { lane: "protocol", narrativeMode: "philosophy-note" },
       },
     ],
   });
 
-  assert.notEqual(plan.mode, "builder-note");
+  assert.notEqual(plan.mode, "philosophy-note");
   assert.equal(plan.lane, "protocol");
 });
 
@@ -91,17 +91,17 @@ test("validateNarrativeNovelty rejects repeated opening pattern", () => {
     language: "ko",
     recentPosts: [
       {
-        content: "오늘 타임라인에서 가장 크게 튄 건 Solana Firedancer 업데이트.",
+        content: "오늘 픽시몬 일지 첫 줄은 오늘도 Firedancer 속도 변화다.",
         timestamp: nowIso,
       },
     ],
   });
 
   const result = validateNarrativeNovelty(
-    "오늘 타임라인에서 가장 크게 튄 건 Solana validator 성능 회복 신호.",
+    "오늘 픽시몬 일지 첫 줄은 오늘도 Firedancer 속도 변화다.",
     [
       {
-        content: "오늘 타임라인에서 가장 크게 튄 건 Solana Firedancer 업데이트.",
+        content: "오늘 픽시몬 일지 첫 줄은 오늘도 Firedancer 속도 변화다.",
         timestamp: nowIso,
       },
     ],
@@ -120,17 +120,17 @@ test("validateNarrativeNovelty passes distinct narrative structure", () => {
     language: "en",
     recentPosts: [
       {
-        content: "Field note for today: one macro shock and one liquidity response.",
+        content: "Meta reflection first: one macro shock and one liquidity response.",
         timestamp: nowIso,
       },
     ],
   });
 
   const result = validateNarrativeNovelty(
-    "From a builder lens, Firedancer progress changes validator behavior before it changes price.",
+    "Philosophy note, translated onchain: Firedancer progress shifts validator behavior before headline consensus forms.",
     [
       {
-        content: "Field note for today: one macro shock and one liquidity response.",
+        content: "Meta reflection first: one macro shock and one liquidity response.",
         timestamp: nowIso,
       },
     ],
@@ -147,21 +147,21 @@ test("validateNarrativeNovelty applies soft penalty for banned opener only", () 
     language: "ko",
     recentPosts: [
       {
-        content: "지금 시장에서 제일 시끄러운 신호 하나만 집으면 솔라나 TPS 개선.",
+        content: "오늘 픽시몬 일지 첫 줄은 솔라나 TPS 개선이다.",
         timestamp: nowIso,
       },
       {
-        content: "오늘 관찰 일지에서 눈에 띈 건 수수료 압력 둔화.",
+        content: "짧은 우화로 남기면 수수료 압력 둔화는 조용한 선택이다.",
         timestamp: nowIso,
       },
     ],
   });
 
   const result = validateNarrativeNovelty(
-    "지금 시장에서 제일 시끄러운 신호 하나만 집으면 검증 포인트는 체인별 유동성 전이.",
+    "오늘 픽시몬 일지 첫 줄은 검증 포인트가 체인별 유동성 전이라는 사실이다.",
     [
       {
-        content: "빌더 관점에서 보면 오늘 포인트는 사용자 체감 지연 개선.",
+        content: "철학 노트로 번역하면 사용자 체감 지연은 신뢰 문제다.",
         timestamp: nowIso,
       },
     ],

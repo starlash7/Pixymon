@@ -278,8 +278,8 @@ export function buildEventEvidenceFallbackPost(
   const laneLabel = laneDisplayName(plan.lane, language);
   const base =
     language === "ko"
-      ? `${laneLabel} 이슈: ${eventHeadline}. 근거1 ${evidenceA}. 근거2 ${evidenceB}. 지금은 결론보다 흐름 검증을 이어간다.`
-      : `${laneLabel} event: ${eventHeadline}. Evidence 1: ${evidenceA}. Evidence 2: ${evidenceB}. Keeping conviction open and tracking follow-through.`;
+      ? `오늘 ${laneLabel}에서 내가 붙잡은 장면은 ${eventHeadline}. 단서 두 개는 ${evidenceA}, ${evidenceB}. 결론 대신 검증을 이어간다.`
+      : `Today in ${laneLabel}, I am tracking this scene: ${eventHeadline}. Two anchors: ${evidenceA}, ${evidenceB}. I keep the verdict open and test follow-through.`;
   return sanitizeTweetText(base).slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
 }
 
