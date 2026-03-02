@@ -125,14 +125,16 @@ export async function checkAndReplyMentions(
       return 0;
     }
 
-    const mentionUsage = xApiBudget.recordRead({
-      timezone,
-      estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
-      kind: "mentions",
-    });
-    console.log(
-      `[BUDGET] read=${mentionUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${mentionUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mentions)`
-    );
+    if (xApiCostSettings.enabled) {
+      const mentionUsage = xApiBudget.recordRead({
+        timezone,
+        estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+        kind: "mentions",
+      });
+      console.log(
+        `[BUDGET] read=${mentionUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${mentionUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mentions)`
+      );
+    }
 
     const lastMentionId = memory.getLastProcessedMentionId();
     const mentions = await getMentions(twitter, lastMentionId);
@@ -333,14 +335,16 @@ ${toneGuide}
           console.log(`  [BUDGET] 댓글 스킵: ${formatReadBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
           break;
         }
-        const createUsage = xApiBudget.recordCreate({
-          timezone,
-          estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-          kind: "reply:engagement",
-        });
-        console.log(
-          `  [BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)}`
-        );
+        if (xApiCostSettings.enabled) {
+          const createUsage = xApiBudget.recordCreate({
+            timezone,
+            estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+            kind: "reply:engagement",
+          });
+          console.log(
+            `  [BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)}`
+          );
+        }
         try {
           const reply = await twitter.v2.reply(replyText, tweet.id);
           console.log(`  ✅ 댓글 완료: ${replyText.substring(0, 45)}...`);
@@ -1542,14 +1546,16 @@ async function getOrSearchTrendTweets(
     return [];
   }
 
-  const trendUsage = xApiBudget.recordRead({
-    timezone,
-    estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
-    kind: "trend-search",
-  });
-  console.log(
-    `[BUDGET] read=${trendUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${trendUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (trend-search)`
-  );
+  if (xApiCostSettings.enabled) {
+    const trendUsage = xApiBudget.recordRead({
+      timezone,
+      estimatedReadCostUsd: xApiCostSettings.estimatedReadCostUsd,
+      kind: "trend-search",
+    });
+    console.log(
+      `[BUDGET] read=${trendUsage.readRequests}/${xApiCostSettings.dailyReadRequestLimit} total_est=$${trendUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (trend-search)`
+    );
+  }
 
   const result = await searchRecentTrendTweets(twitter, keywords, count, rules);
   if (cache) {

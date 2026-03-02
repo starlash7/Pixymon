@@ -319,14 +319,16 @@ ${mention.text}`,
       return false;
     }
 
-    const createUsage = xApiBudget.recordCreate({
-      timezone,
-      estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-      kind: "reply:mention",
-    });
-    console.log(
-      `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mention-reply)`
-    );
+    if (xApiCostSettings.enabled) {
+      const createUsage = xApiBudget.recordCreate({
+        timezone,
+        estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+        kind: "reply:mention",
+      });
+      console.log(
+        `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mention-reply)`
+      );
+    }
 
     const reply = await twitter.v2.reply(replyText, mention.id);
     console.log(`[OK] 멘션 답글: ${reply.data.id}`);
@@ -749,14 +751,16 @@ export async function postTweet(
       return null;
     }
 
-    const createUsage = xApiBudget.recordCreate({
-      timezone,
-      estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-      kind: createKind,
-    });
-    console.log(
-      `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (${createKind})`
-    );
+    if (xApiCostSettings.enabled) {
+      const createUsage = xApiBudget.recordCreate({
+        timezone,
+        estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+        kind: createKind,
+      });
+      console.log(
+        `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (${createKind})`
+      );
+    }
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
