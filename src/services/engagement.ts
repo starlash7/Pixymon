@@ -1181,7 +1181,9 @@ async function runFeedDigestEvolve(
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
-    const onchainNutrients = await onchainDataService.buildNutrientPackets();
+    const onchainNutrients = TEST_NO_EXTERNAL_CALLS
+      ? []
+      : await onchainDataService.buildNutrientPackets();
     const mergedNutrients = [...onchainNutrients, ...trend.nutrients]
       .sort((a, b) => b.trust * b.freshness - a.trust * a.freshness)
       .slice(0, runtimeSettings.nutrientMaxIntakePerCycle);
