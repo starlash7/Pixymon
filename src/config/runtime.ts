@@ -1,7 +1,9 @@
 import {
+  ActionMode,
   ContentLanguage,
   EngagementRuntimeSettings,
   ObservabilityRuntimeSettings,
+  OperationalRuntimeSettings,
   ReplyLanguageMode,
   SoulRuntimeSettings,
   XApiCostRuntimeSettings,
@@ -18,6 +20,7 @@ export interface RuntimeConfig {
   xApiCost: XApiCostRuntimeSettings;
   observability: ObservabilityRuntimeSettings;
   soul: SoulRuntimeSettings;
+  operational: OperationalRuntimeSettings;
 }
 
 const DEFAULT_DAILY_ACTIVITY_TARGET = 20;
@@ -72,6 +75,15 @@ export const DEFAULT_SOUL_SETTINGS: SoulRuntimeSettings = {
   soulMode: true,
   softGateMode: false,
   questMode: true,
+};
+
+export const DEFAULT_OPERATIONAL_SETTINGS: OperationalRuntimeSettings = {
+  actionMode: "observe",
+  stateReconcileOnBoot: true,
+  actionTwoPhaseCommit: true,
+  crashFlushOnException: true,
+  sessionQuarantineOnParseError: true,
+  toolCallStrictValidate: true,
 };
 
 export const DEFAULT_X_API_COST_SETTINGS: XApiCostRuntimeSettings = {
@@ -148,6 +160,15 @@ function parseNonEmptyString(raw: string | undefined, fallback: string, maxLengt
   const normalized = raw.trim();
   if (!normalized) return fallback;
   return normalized.slice(0, maxLength);
+}
+
+function parseActionMode(raw: string | undefined, fallback: ActionMode): ActionMode {
+  if (typeof raw !== "string") return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "observe" || normalized === "paper" || normalized === "live") {
+    return normalized;
+  }
+  return fallback;
 }
 
 export function loadRuntimeConfig(): RuntimeConfig {
@@ -371,6 +392,29 @@ export function loadRuntimeConfig(): RuntimeConfig {
     softGateMode: parseBoolean(process.env.SOFT_GATE_MODE, DEFAULT_SOUL_SETTINGS.softGateMode),
     questMode: parseBoolean(process.env.QUEST_MODE, DEFAULT_SOUL_SETTINGS.questMode),
   };
+  const operational: OperationalRuntimeSettings = {
+    actionMode: parseActionMode(process.env.ACTION_MODE, DEFAULT_OPERATIONAL_SETTINGS.actionMode),
+    stateReconcileOnBoot: parseBoolean(
+      process.env.STATE_RECONCILE_ON_BOOT,
+      DEFAULT_OPERATIONAL_SETTINGS.stateReconcileOnBoot
+    ),
+    actionTwoPhaseCommit: parseBoolean(
+      process.env.ACTION_TWO_PHASE_COMMIT,
+      DEFAULT_OPERATIONAL_SETTINGS.actionTwoPhaseCommit
+    ),
+    crashFlushOnException: parseBoolean(
+      process.env.CRASH_FLUSH_ON_EXCEPTION,
+      DEFAULT_OPERATIONAL_SETTINGS.crashFlushOnException
+    ),
+    sessionQuarantineOnParseError: parseBoolean(
+      process.env.SESSION_QUARANTINE_ON_PARSE_ERROR,
+      DEFAULT_OPERATIONAL_SETTINGS.sessionQuarantineOnParseError
+    ),
+    toolCallStrictValidate: parseBoolean(
+      process.env.TOOL_CALL_STRICT_VALIDATE,
+      DEFAULT_OPERATIONAL_SETTINGS.toolCallStrictValidate
+    ),
+  };
 
   return {
     schedulerMode,
@@ -383,5 +427,6 @@ export function loadRuntimeConfig(): RuntimeConfig {
     xApiCost,
     observability,
     soul,
+    operational,
   };
 }

@@ -1,5 +1,6 @@
 export type ContentLanguage = "ko" | "en";
 export type ReplyLanguageMode = "match" | ContentLanguage;
+export type ActionMode = "observe" | "paper" | "live";
 
 export interface EngagementRuntimeSettings {
   postGenerationMaxAttempts: number;
@@ -47,4 +48,13 @@ export interface SoulRuntimeSettings {
   soulMode: boolean;
   softGateMode: boolean;
   questMode: boolean;
+}
+
+export interface OperationalRuntimeSettings {
+  actionMode: ActionMode;
+  stateReconcileOnBoot: boolean;
+  actionTwoPhaseCommit: boolean;
+  crashFlushOnException: boolean;
+  sessionQuarantineOnParseError: boolean;
+  toolCallStrictValidate: boolean;
 }

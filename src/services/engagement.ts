@@ -25,7 +25,6 @@ import {
 import {
   collectTrendContext,
   formatMarketAnchors,
-  pickPostAngle,
   pickTrendFocus,
 } from "./engagement/trend-context.js";
 import {
@@ -376,7 +375,7 @@ ${toneGuide}
 }
 
 export async function postTrendUpdate(
-  twitter: TwitterApi,
+  twitter: TwitterApi | null,
   claude: Anthropic,
   policy: AdaptivePolicy = getDefaultAdaptivePolicy(),
   timezone: string = DEFAULT_TIMEZONE,
@@ -418,7 +417,7 @@ export async function postTrendUpdate(
     }
 
     const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
-    const postAngle = pickPostAngle(timezone, recentBriefingPosts);
+    let soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage);
     const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
     const eventPlan = planEventEvidenceAct({
       events: trend.events,
@@ -428,8 +427,67 @@ export async function postTrendUpdate(
       requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
       requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
     });
+    if (eventPlan) {
+      soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage, eventPlan.lane);
+    }
 
     if (!eventPlan) {
+      if (TEST_MODE) {
+        const previewHeadline = trend.headlines[0] || "오늘은 단일 이벤트 확정이 어려운 장세";
+        const previewAnchors = formatMarketAnchors(trend.marketData);
+        const previewCandidates = buildPreviewFallbackCandidates({
+          headline: previewHeadline,
+          anchors: previewAnchors,
+          language: runtimeSettings.postLanguage,
+          recentPosts: recentBriefingPosts,
+          intentLine: soulIntent.intentLine,
+          activeQuestion: soulIntent.activeQuestion,
+          preferredForm: soulIntent.narrativeForm,
+          maxChars: runtimeSettings.postMaxChars,
+        });
+        const previewQualityRules = resolveContentQualityRules({
+          minPostLength: runtimeSettings.postMinLength,
+          topicMaxSameTag24h: runtimeSettings.topicMaxSameTag24h,
+          sentimentMaxRatio24h: runtimeSettings.sentimentMaxRatio24h,
+          topicBlockConsecutiveTag: runtimeSettings.topicBlockConsecutiveTag,
+        });
+        const previewPolicy: AdaptivePolicy = {
+          ...policy,
+          postDuplicateThreshold: Math.min(0.98, policy.postDuplicateThreshold + 0.22),
+          postNarrativeThreshold: Math.min(0.99, policy.postNarrativeThreshold + 0.12),
+        };
+        const previewBaseQuality = resolveContentQualityRules({
+          minPostLength: previewQualityRules.minPostLength,
+          topicMaxSameTag24h: 8,
+          sentimentMaxRatio24h: 1,
+          topicBlockConsecutiveTag: false,
+        });
+        const selectedPreview = previewCandidates.find((candidate) => {
+          const duplicate = memory.checkDuplicate(candidate.text, 0.92);
+          if (duplicate.isDuplicate) return false;
+          return evaluatePostQuality(candidate.text, trend.marketData, [], previewPolicy, previewBaseQuality).ok;
+        });
+        if (!selectedPreview) {
+          console.log("[POST] TEST_MODE preview fallback 스킵: 품질 게이트 통과 후보 없음");
+          return false;
+        }
+        const previewId = await postTweet(twitter, selectedPreview.text, "briefing", {
+          timezone,
+          xApiCostSettings,
+          createKind: "post:preview-fallback",
+          metadata: {
+            lane: selectedPreview.lane,
+            eventId: `preview:fallback:${Date.now()}`,
+            eventHeadline: previewHeadline.slice(0, 180),
+            evidenceIds: [],
+            narrativeMode: selectedPreview.mode,
+          },
+        });
+        if (previewId) {
+          console.log(`[POST] TEST_MODE preview fallback 생성 완료 (${selectedPreview.mode})`);
+          return true;
+        }
+      }
       console.log("[PLAN] 이벤트/근거 플랜 생성 실패 (event 또는 evidence 부족)");
       return false;
     }
@@ -461,7 +519,6 @@ export async function postTrendUpdate(
       console.log(`[POST] BTC 편중 완화 모드: ${postDiversityGuard.btcRatioPercent}%`);
     }
 
-    const marketAnchors = formatMarketAnchors(trend.marketData);
     const qualityRules = resolveContentQualityRules({
       minPostLength: runtimeSettings.postMinLength,
       topicMaxSameTag24h: runtimeSettings.topicMaxSameTag24h,
@@ -482,6 +539,7 @@ export async function postTrendUpdate(
             .map((text, index) => `${index + 1}. ${text}`)
             .join("\n")
         : "- 없음";
+    const soulContext = memory.getSoulPromptContext(runtimeSettings.postLanguage);
     const autonomyContext = memory.getAutonomyPromptContext(runtimeSettings.postLanguage);
 
     for (let attempt = 0; attempt < runtimeSettings.postGenerationMaxAttempts; attempt++) {
@@ -490,6 +548,16 @@ export async function postTrendUpdate(
         runtimeSettings.postLanguage === "ko"
           ? `아래 컨텍스트로 오늘의 트렌드 글 1개 작성.
 
+캐릭터 인텐트(최우선):
+- 욕구: ${soulIntent.primaryDesire}
+- 보조 욕구: ${soulIntent.secondaryDesire}
+- 두려움: ${soulIntent.fear}
+- 회피 패턴: ${soulIntent.avoidancePattern}
+- 열린 질문: ${soulIntent.activeQuestion}
+- 서사 폼: ${soulIntent.narrativeForm}
+- 아크 단계: ${soulIntent.arcStage}
+- 문체 지시: ${soulIntent.styleDirective}
+
 핵심 이벤트(1개 고정):
 ${eventPlan.event.headline}
 
@@ -497,7 +565,6 @@ ${eventPlan.event.headline}
 1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
 2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
 
-오늘 앵글: ${postAngle}
 Narrative lane: ${eventPlan.lane}
 Narrative mode: ${narrativePlan.mode}
 오프닝 가이드: ${narrativePlan.openingDirective}
@@ -510,14 +577,14 @@ ${trend.summary}
 이벤트 키워드:
 ${focusTokensLine}
 
-시장 숫자 앵커:
-${marketAnchors}
-
 최근 작성 글(반복 금지):
 ${recentContext}
 
 자율성 메모리(열린 스레드/가설):
 ${autonomyContext}
+
+Soul 상태:
+${soulContext}
 
 직전 실패 원인:
 ${rejectionFeedback || "없음"}
@@ -525,6 +592,7 @@ ${rejectionFeedback || "없음"}
 규칙:
 - ${runtimeSettings.postMaxChars}자 이내
 - 반드시 한국어
+- 반드시 1인칭 캐릭터 시점
 - 해시태그/이모지 금지
 - 과장/확정적 투자 조언 금지
 - 금기 없이 자유롭게 상상해도 되지만 숫자/사실 왜곡 금지
@@ -535,6 +603,16 @@ ${rejectionFeedback || "없음"}
 - 트윗 본문만 출력`
           : `Write one trend post for today.
 
+Character intent (highest priority):
+- Primary desire: ${soulIntent.primaryDesire}
+- Secondary desire: ${soulIntent.secondaryDesire}
+- Fear: ${soulIntent.fear}
+- Avoidance pattern: ${soulIntent.avoidancePattern}
+- Open question: ${soulIntent.activeQuestion}
+- Narrative form: ${soulIntent.narrativeForm}
+- Arc stage: ${soulIntent.arcStage}
+- Voice directive: ${soulIntent.styleDirective}
+
 Primary event (exactly one):
 ${eventPlan.event.headline}
 
@@ -542,7 +620,6 @@ Required evidence (must include both):
 1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
 2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
 
-Angle: ${postAngle}
 Narrative lane: ${eventPlan.lane}
 Narrative mode: ${narrativePlan.mode}
 Opening directive: ${narrativePlan.openingDirective}
@@ -555,14 +632,14 @@ ${trend.summary}
 Event tokens:
 ${focusTokensLine}
 
-Market anchors:
-${marketAnchors}
-
 Recent posts (avoid repetition):
 ${recentContext}
 
 Autonomy memory (active threads/hypotheses):
 ${autonomyContext}
+
+Soul snapshot:
+${soulContext}
 
 Last rejection reason:
 ${rejectionFeedback || "none"}
@@ -570,6 +647,7 @@ ${rejectionFeedback || "none"}
 Rules:
 - Max ${runtimeSettings.postMaxChars} chars
 - Write in English
+- Keep first-person character perspective
 - No hashtags or emoji
 - No financial certainty claims
 - You can be imaginative, but do not fabricate numbers/facts
@@ -681,10 +759,17 @@ Rules:
     if (!postText) {
       let fallbackPost: string | null = buildEventEvidenceFallbackPost(
         eventPlan,
-        postAngle,
         runtimeSettings.postLanguage,
         runtimeSettings.postMaxChars
       );
+      if (fallbackPost) {
+        fallbackPost = applySoulPreludeToFallback(
+          fallbackPost,
+          soulIntent.intentLine,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+      }
       if (fallbackPost && detectLanguage(fallbackPost) !== runtimeSettings.postLanguage) {
         const rewrittenFallback = await rewriteByLanguage(
           claude,
@@ -797,6 +882,13 @@ Rules:
       evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
       mode: narrativePlan.mode,
       postText,
+    });
+    memory.progressSoulStateAfterPost({
+      postText,
+      lane: eventPlan.lane,
+      language: runtimeSettings.postLanguage,
+      usedFallback,
+      eventHeadline: eventPlan.event.headline,
     });
     memory.recordPostGeneration({
       timezone,
@@ -992,6 +1084,13 @@ Rules:
 
       memory.saveRepliedTweet(targetId);
       memory.recordCognitiveActivity("social", 2);
+      memory.progressSoulStateAfterPost({
+        postText: quoteText,
+        lane,
+        language: quoteLanguage,
+        usedFallback: false,
+        eventHeadline: targetText.slice(0, 180),
+      });
       console.log(`[QUOTE] 완료: ${quoteText.slice(0, 55)}...`);
       return true;
     }
@@ -1510,6 +1609,117 @@ function logCacheMetrics(cache?: EngagementCycleCache): void {
   console.log(
     `[CACHE] trendCtx ${metrics.trendContextHits}/${metrics.trendContextMisses} | trendTweets ${metrics.trendTweetsHits}/${metrics.trendTweetsMisses}`
   );
+}
+
+interface PreviewFallbackCandidate {
+  text: string;
+  lane: TrendLane;
+  mode: string;
+}
+
+interface BuildPreviewFallbackCandidatesInput {
+  headline: string;
+  anchors: string;
+  language: "ko" | "en";
+  recentPosts: Array<{ content: string }>;
+  intentLine?: string;
+  activeQuestion?: string;
+  preferredForm?: string;
+  maxChars: number;
+}
+
+function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInput): PreviewFallbackCandidate[] {
+  const headline = sanitizeTweetText(input.headline || "").replace(/\.$/, "") || "단일 이벤트 확정이 어려운 장세";
+  const anchors = sanitizeTweetText(input.anchors || "");
+  const intentLine = sanitizeTweetText(input.intentLine || "");
+  const activeQuestion = sanitizeTweetText(input.activeQuestion || "");
+  const lane = inferTrendLaneFromText(headline);
+  const recentOpeners = new Set(
+    input.recentPosts
+      .slice(-6)
+      .map((post) => sanitizeTweetText(post.content).slice(0, 24).toLowerCase())
+      .filter(Boolean)
+  );
+
+  const rawCandidates: PreviewFallbackCandidate[] =
+    input.language === "ko"
+      ? [
+          {
+            mode: "field-journal",
+            lane,
+            text: `나는 지금 ${intentLine || "핵심 신호를 찾아내고 싶다"}. 관찰 노트: ${headline}. ${anchors} 기준으로 먼저 검증 포인트를 쌓는다.`,
+          },
+          {
+            mode: "hypothesis-lab",
+            lane,
+            text: `가설 메모: ${headline}. ${anchors}에서 동시 확인되는 신호가 늘면 다음 사이클에 강한 주장으로 전환한다. 질문: ${activeQuestion || "지금 신호는 노이즈일까?"}`,
+          },
+          {
+            mode: "risk-radar",
+            lane,
+            text: `리스크 체크: ${headline}. ${anchors}. 아직 이벤트 하나로 수렴되지 않아 과도한 확신은 보류한다. ${activeQuestion || ""}`,
+          },
+          {
+            mode: "quest-log",
+            lane,
+            text: `퀘스트 로그: ${headline}. ${anchors}. 다음 업데이트에서는 근거 2개 이상 합치면 방향성을 확정하겠다.`,
+          },
+        ]
+      : [
+          {
+            mode: "field-journal",
+            lane,
+            text: `I am tracking this on purpose: ${intentLine || "find the dominant signal before the crowd"}. Field note: ${headline}. ${anchors}.`,
+          },
+          {
+            mode: "hypothesis-lab",
+            lane,
+            text: `Hypothesis lab: ${headline}. ${anchors}. I will escalate conviction only when two anchors align. Question: ${activeQuestion || "signal or noise?"}`,
+          },
+          {
+            mode: "risk-radar",
+            lane,
+            text: `Risk radar: ${headline}. ${anchors}. Signals are still fragmented, so confidence stays capped. ${activeQuestion || ""}`,
+          },
+          {
+            mode: "quest-log",
+            lane,
+            text: `Quest log: ${headline}. ${anchors}. Next cycle I will confirm whether this turns into a dominant event.`,
+          },
+        ];
+
+  return rawCandidates
+    .map((candidate) => ({
+      ...candidate,
+      text: sanitizeTweetText(candidate.text).slice(0, input.maxChars),
+    }))
+    .sort((a, b) => {
+      const preferred = String(input.preferredForm || "").toLowerCase();
+      const aPref = preferred && a.mode.toLowerCase().includes(preferred) ? -1 : 0;
+      const bPref = preferred && b.mode.toLowerCase().includes(preferred) ? -1 : 0;
+      if (aPref !== bPref) return aPref - bPref;
+      return 0;
+    })
+    .sort((a, b) => {
+      const aSeen = recentOpeners.has(a.text.slice(0, 24).toLowerCase()) ? 1 : 0;
+      const bSeen = recentOpeners.has(b.text.slice(0, 24).toLowerCase()) ? 1 : 0;
+      return aSeen - bSeen;
+    });
+}
+
+function applySoulPreludeToFallback(
+  text: string,
+  intentLine: string,
+  language: "ko" | "en",
+  maxChars: number
+): string {
+  const body = sanitizeTweetText(text);
+  const intent = sanitizeTweetText(intentLine || "");
+  if (!intent) {
+    return body.slice(0, maxChars);
+  }
+  const prelude = language === "ko" ? `나는 ${intent}.` : `I am focused on this: ${intent}.`;
+  return sanitizeTweetText(`${prelude} ${body}`).slice(0, maxChars);
 }
 
 interface PostDiversityGuard {

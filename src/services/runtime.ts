@@ -2,8 +2,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { TwitterApi } from "twitter-api-v2";
 import { RuntimeConfig } from "../config/runtime.js";
 import { memory } from "./memory.js";
-import { runDailyQuotaCycle, runDailyQuotaLoop } from "./engagement.js";
+import { postTrendUpdate, runDailyQuotaCycle, runDailyQuotaLoop } from "./engagement.js";
 import { TEST_MODE, getMentions } from "./twitter.js";
+import { operationalState } from "./operational-state.js";
 import { xApiBudget } from "./x-api-budget.js";
 
 export function printStartupBanner(config: RuntimeConfig): void {
@@ -18,6 +19,9 @@ export function printStartupBanner(config: RuntimeConfig): void {
   }
   console.log(
     `  [SOUL] soul=${config.soul.soulMode ? "on" : "off"} | quest=${config.soul.questMode ? "on" : "off"} | softGate=${config.soul.softGateMode ? "on" : "off"}`
+  );
+  console.log(
+    `  [SAFE] action=${config.operational.actionMode} | reconcile=${config.operational.stateReconcileOnBoot ? "on" : "off"} | 2pc=${config.operational.actionTwoPhaseCommit ? "on" : "off"}`
   );
   console.log("=====================================\n");
 }
@@ -75,16 +79,12 @@ export async function runSchedulerMode(
   console.log("=====================================\n");
 
   await initializeMentionCursor(twitter, config);
+  operationalState.recordCheckpoint(config, "scheduler-init");
 
   if (!twitter) {
     console.log("[WARN] Twitter 클라이언트 없음. 루프 시작 불가");
     return;
   }
-
-  process.on("SIGINT", () => {
-    console.log("\n▶ Pixymon 종료.");
-    process.exit(0);
-  });
 
   await runDailyQuotaLoop(twitter, claude, {
     dailyTarget: config.dailyActivityTarget,
@@ -119,8 +119,22 @@ export async function runOneShotMode(
       xApiCost: config.xApiCost,
       observability: config.observability,
     });
+    operationalState.recordCheckpoint(config, "one-shot-complete");
   } else {
-    console.log("[WARN] Twitter 클라이언트 없음. 일회성 사이클 건너뜀");
+    if (TEST_MODE) {
+      console.log("[PREVIEW] Twitter 클라이언트 없음 - TEST_MODE 로컬 글 리허설 1회 실행");
+      await postTrendUpdate(
+        null,
+        claude,
+        undefined,
+        config.dailyTimezone,
+        config.engagement,
+        config.xApiCost
+      );
+      operationalState.recordCheckpoint(config, "one-shot-preview-complete");
+    } else {
+      console.log("[WARN] Twitter 클라이언트 없음. 일회성 사이클 건너뜀");
+    }
   }
 
   console.log("=====================================");

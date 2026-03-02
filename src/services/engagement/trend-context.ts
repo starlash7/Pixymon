@@ -1,7 +1,7 @@
 import { BlockchainNewsService, MarketData, NewsItem } from "../blockchain-news.js";
 import { memory } from "../memory.js";
 import { OnchainNutrient } from "../../types/agent.js";
-import { inferTopicTag, sanitizeTweetText } from "./quality.js";
+import { sanitizeTweetText } from "./quality.js";
 import { RecentPostRecord, TrendContext, TrendContextOptions, TrendFocus } from "./types.js";
 import { buildTrendEvents, inferTrendLane } from "./event-evidence.js";
 
@@ -43,6 +43,7 @@ const FOCUS_TOKEN_STOP_WORDS = new Set([
   "스테이블",
   "고래",
   "수수료",
+  ...parseCsvEnv(process.env.FOCUS_TOKEN_STOP_WORDS_EXTRA),
 ]);
 
 
@@ -78,8 +79,10 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
     extractKeywordsFromTitle(title).forEach((keyword) => keywordSet.add(keyword));
   }
 
-  for (const seed of ["onchain", "layer2", "ETF", "liquidity", "macro", "AI agent"]) {
-    keywordSet.add(seed);
+  if (keywordSet.size < 10) {
+    for (const seed of resolveTrendKeywordSeeds()) {
+      keywordSet.add(seed);
+    }
   }
 
   const keywords = Array.from(keywordSet).filter(Boolean).slice(0, 18);
@@ -108,33 +111,6 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
     nutrients,
     events,
   };
-}
-
-export function pickPostAngle(
-  timezone: string,
-  recentPosts: RecentPostRecord[],
-  options: { avoidTags?: string[] } = {}
-): string {
-  const angles = [
-    "심리(FearGreed)와 온체인 시그널 괴리 해석",
-    "오늘 나온 기술/업그레이드 이슈의 실사용 영향",
-    "유동성(스테이블/거래량)과 가격 반응의 비동기",
-    "리스크 플래그(고래/멤풀/변동성) 관점에서 재해석",
-    "시장 참여자 행동 변화(관망 vs 추격) 프레이밍",
-  ];
-  const todayPosts = memory.getTodayPostCount(timezone);
-  const lastTag = recentPosts.length > 0 ? inferTopicTag(recentPosts[recentPosts.length - 1].content) : "";
-  const avoidTags = new Set((options.avoidTags || []).map((item) => String(item || "").trim().toLowerCase()));
-  const candidates = angles.filter((angle) => {
-    const tag = inferTopicTag(angle);
-    if (tag === lastTag) return false;
-    if (avoidTags.size > 0 && avoidTags.has(tag)) return false;
-    return true;
-  });
-  if (candidates.length === 0) {
-    return angles[todayPosts % angles.length];
-  }
-  return candidates[todayPosts % candidates.length];
 }
 
 export function pickTrendFocus(headlines: string[], recentPosts: RecentPostRecord[]): TrendFocus {
@@ -200,48 +176,6 @@ export function formatMarketAnchors(marketData: MarketData[]): string {
     .join("\n");
 }
 
-export function buildFallbackPost(
-  trend: TrendContext,
-  postAngle: string,
-  maxChars: number = 220,
-  focus?: TrendFocus | null,
-  options: { recentPosts?: RecentPostRecord[] } = {}
-): string | null {
-  const recentPosts = Array.isArray(options.recentPosts) ? options.recentPosts : [];
-  const recentTexts = recentPosts
-    .slice(-8)
-    .map((post) => sanitizeTweetText(post.content).toLowerCase())
-    .filter(Boolean);
-  const btcSaturation = getRecentBtcSaturation(recentTexts);
-  const angle = postAngle.replace(/\s+/g, " ").trim();
-  const headline =
-    focus?.headline || trend.headlines.find((item) => typeof item === "string" && item.trim().length > 0);
-  const compactHeadline = headline ? headline.replace(/\s+/g, " ").trim().slice(0, 70) : "주요 시장 뉴스 업데이트";
-  const anchorCoin = pickDiversifiedAnchorCoin(trend.marketData, recentTexts);
-  const marketLine = anchorCoin
-    ? `${anchorCoin.symbol} ${anchorCoin.change24h >= 0 ? "+" : ""}${anchorCoin.change24h.toFixed(1)}%`
-    : "주요 코인 변동";
-  const keywordPoolRaw = focus?.requiredTokens?.length
-    ? focus.requiredTokens
-    : trend.keywords.filter((item) => item && !item.startsWith("$"));
-  const keywordPool =
-    btcSaturation >= 0.67
-      ? keywordPoolRaw.filter((token) => !isBtcCentricText(token))
-      : keywordPoolRaw;
-  const keyword = keywordPool.length > 0 ? keywordPool[Math.floor(Math.random() * keywordPool.length)] : "온체인";
-  const closingPool = [
-    "지금은 심리보다 확인 신호를 더 보자.",
-    "단기 소음보다 데이터 방향성이 먼저다.",
-    "추세 전환 판단은 거래량 확인이 우선이다.",
-    "해석보다 검증이 먼저인 구간으로 본다.",
-  ];
-  const closing = closingPool[Math.floor(Math.random() * closingPool.length)];
-  const text = `${angle}. ${compactHeadline}. ${marketLine}와 ${keyword} 흐름의 동조를 점검 중, ${closing}`;
-  const normalized = sanitizeTweetText(text);
-  if (normalized.length < 40) return null;
-  return normalized.slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
-}
-
 function extractHeadlineFocusTokens(headline: string): string[] {
   const text = sanitizeTweetText(headline).toLowerCase();
   const tickerTokens = text.match(/\$[a-z]{2,10}\b/g) || [];
@@ -261,25 +195,6 @@ function selectNovelTokens(tokens: string[], recentTexts: string[]): string[] {
   if (tokens.length === 0) return [];
   const novel = tokens.filter((token) => !recentTexts.some((text) => text.includes(token)));
   return [...new Set(novel)];
-}
-
-function pickDiversifiedAnchorCoin(marketData: MarketData[], recentTexts: string[]): MarketData | null {
-  if (!Array.isArray(marketData) || marketData.length === 0) return null;
-  const btcSaturation = getRecentBtcSaturation(recentTexts);
-  if (btcSaturation < 0.67) {
-    return marketData[0] || null;
-  }
-
-  const nonBtc = marketData.filter((coin) => coin.symbol.toUpperCase() !== "BTC");
-  if (nonBtc.length === 0) {
-    return marketData[0] || null;
-  }
-
-  const fresh = nonBtc.find((coin) => {
-    const symbol = coin.symbol.toLowerCase();
-    return !recentTexts.some((text) => text.includes(`$${symbol}`) || text.includes(symbol));
-  });
-  return fresh || nonBtc[0] || marketData[0] || null;
 }
 
 function getRecentBtcSaturation(recentTexts: string[]): number {
@@ -302,6 +217,25 @@ function extractKeywordsFromTitle(title: string): string[] {
     .filter((token) => !/^(the|and|with|from|this|that|for|into|about|news)$/i.test(token))
     .filter((token) => !/^(join|community|private|group|airdrop|giveaway)$/i.test(token))
     .slice(0, 4);
+}
+
+function resolveTrendKeywordSeeds(): string[] {
+  const envSeeds = parseCsvEnv(process.env.TREND_KEYWORD_SEEDS);
+  if (envSeeds.length > 0) {
+    return envSeeds;
+  }
+  // fallback only when keyword pool is too sparse
+  return ["onchain", "macro", "ecosystem"];
+}
+
+function parseCsvEnv(raw: string | undefined): string[] {
+  if (typeof raw !== "string") return [];
+  return raw
+    .split(",")
+    .map((item) => sanitizeTweetText(item).toLowerCase())
+    .filter((item) => item.length >= 2)
+    .filter((item, index, arr) => arr.indexOf(item) === index)
+    .slice(0, 40);
 }
 
 export function buildTrendNutrients(params: {

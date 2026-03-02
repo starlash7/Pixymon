@@ -65,6 +65,12 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       SOUL_MODE: "false",
       SOFT_GATE_MODE: "true",
       QUEST_MODE: "false",
+      ACTION_MODE: "paper",
+      STATE_RECONCILE_ON_BOOT: "false",
+      ACTION_TWO_PHASE_COMMIT: "false",
+      CRASH_FLUSH_ON_EXCEPTION: "false",
+      SESSION_QUARANTINE_ON_PARSE_ERROR: "false",
+      TOOL_CALL_STRICT_VALIDATE: "false",
     },
     () => {
       const config = loadRuntimeConfig();
@@ -99,6 +105,12 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.soul.soulMode, false);
       assert.equal(config.soul.softGateMode, true);
       assert.equal(config.soul.questMode, false);
+      assert.equal(config.operational.actionMode, "paper");
+      assert.equal(config.operational.stateReconcileOnBoot, false);
+      assert.equal(config.operational.actionTwoPhaseCommit, false);
+      assert.equal(config.operational.crashFlushOnException, false);
+      assert.equal(config.operational.sessionQuarantineOnParseError, false);
+      assert.equal(config.operational.toolCallStrictValidate, false);
     }
   );
 });
@@ -123,6 +135,12 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       SOUL_MODE: "invalid",
       SOFT_GATE_MODE: "invalid",
       QUEST_MODE: "invalid",
+      ACTION_MODE: "invalid",
+      STATE_RECONCILE_ON_BOOT: "invalid",
+      ACTION_TWO_PHASE_COMMIT: "invalid",
+      CRASH_FLUSH_ON_EXCEPTION: "invalid",
+      SESSION_QUARANTINE_ON_PARSE_ERROR: "invalid",
+      TOOL_CALL_STRICT_VALIDATE: "invalid",
     },
     () => {
       const config = loadRuntimeConfig();
@@ -149,6 +167,12 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.soul.soulMode, true);
       assert.equal(config.soul.softGateMode, false);
       assert.equal(config.soul.questMode, true);
+      assert.equal(config.operational.actionMode, "observe");
+      assert.equal(config.operational.stateReconcileOnBoot, true);
+      assert.equal(config.operational.actionTwoPhaseCommit, true);
+      assert.equal(config.operational.crashFlushOnException, true);
+      assert.equal(config.operational.sessionQuarantineOnParseError, true);
+      assert.equal(config.operational.toolCallStrictValidate, true);
     }
   );
 });

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import pixymonCharacter from "../character.js";
+import { quarantineCorruptFile } from "./quarantine.js";
 
 export interface ClaudeTextLikeBlock {
   type: string;
@@ -10,6 +11,7 @@ export const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
 export const CLAUDE_RESEARCH_MODEL = process.env.ANTHROPIC_RESEARCH_MODEL || "claude-3-5-haiku-latest";
 export type ReplyToneMode = "signal" | "personal";
 export const REPLY_TONE_MODE = resolveReplyToneMode(process.env.REPLY_TONE_MODE);
+const TOOL_CALL_STRICT_VALIDATE = String(process.env.TOOL_CALL_STRICT_VALIDATE || "true").trim().toLowerCase() === "true";
 
 function resolveReplyToneMode(raw?: string): ReplyToneMode {
   if (typeof raw !== "string") return "signal";
@@ -116,7 +118,33 @@ export function extractTextFromClaude(content: ClaudeTextLikeBlock[]): string {
   if (!textBlock || typeof textBlock.text !== "string") {
     return "";
   }
-  return textBlock.text;
+  const text = textBlock.text.trim();
+  if (!TOOL_CALL_STRICT_VALIDATE) {
+    return text;
+  }
+
+  if (looksLikeToolPayload(text)) {
+    const quarantined = quarantineCorruptFile({
+      filePath: `${process.cwd()}/data/claude-tool-payload.txt`,
+      raw: text,
+      reason: "tool-payload-detected-in-text-response",
+    });
+    if (quarantined) {
+      console.error(`[LLM] 의심 응답 격리됨: ${quarantined}`);
+    }
+    return "";
+  }
+
+  return text;
+}
+
+function looksLikeToolPayload(text: string): boolean {
+  const lower = text.toLowerCase();
+  if (lower.includes("<tool_use") || lower.includes("</tool_use")) return true;
+  if (lower.includes("\"tool_use\"") || lower.includes("'tool_use'")) return true;
+  if (lower.includes("function_call") || lower.includes("tool_call")) return true;
+  if (lower.includes("\"name\":") && lower.includes("\"arguments\":")) return true;
+  return false;
 }
 
 // Claude 클라이언트 초기화
@@ -124,88 +152,4 @@ export function initClaudeClient(): Anthropic {
   return new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY!,
   });
-}
-
-// Claude를 사용해 뉴스 요약 생성 (자율 앵글 선택)
-export async function generateNewsSummary(
-  claude: Anthropic,
-  newsData: string,
-  timeSlot: "morning" | "evening" = "morning",
-  moodText: string = ""
-): Promise<string> {
-  const timeContext = timeSlot === "morning"
-    ? "모닝 브리핑 - 오늘도 블록 먹으러 왔음"
-    : "이브닝 리캡 - 하루 데이터 소화 완료";
-
-  const message = await claude.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 400,
-    system: PIXYMON_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `[${timeContext}]
-${moodText ? `\n${moodText}\n` : ""}
-아래 데이터 중에서 가장 흥미롭거나 의미있는 앵글 하나를 골라서 트윗 작성.
-
-가능한 앵글 (하나만 선택, 다양하게):
-1. 가격 움직임 - 의미있는 변화가 있을 때만 (매번 하지 말것)
-2. 공포탐욕 vs 가격 괴리 - 심리 분석
-3. 트렌딩 코인/밈 분석 - 생소한 코인이 왜 뜨는지, 밈 무브먼트
-4. 인플루언서 알파 - 유명인이 뭔가 흥미로운 말 했을 때
-5. 도미넌스/알트 시즌 판단
-6. 특이점/이상 징후 - 뭔가 이상하거나 웃긴 것 발견
-7. 나의 상태/성장 - 가끔 자기 얘기 (Lv.1, 진화, 데이터 소화 등)
-8. 밈/문화 코멘트 - 크립토 문화 관찰, 펭귄/밈코인 등
-
-규칙:
-- 200자 이내
-- BTC/ETH 가격 분석은 가끔만. 밈, 알파, 문화적 관찰도 자주
-- 인플루언서가 재밌는 말 했으면 그거 언급해도 됨
-- 생소한 트렌딩 코인이나 밈 있으면 그거 얘기
-- $BTC, $ETH 티커 형식
-- 해시태그 X, 이모지 X
-- 가끔 자연스럽게 자기 언급 ("데이터 소화해보니", "지켜보는 중" 등)
-- 전에 언급한 코인이 움직이면 자연스럽게 연결해도 됨 ("어 $SOL 또 움직이네", "그때 봤던 거")
-- 강제로 과거 언급 안 해도 됨. 자연스러울 때만
-- 트윗 본문만 출력
-- 맞춤법/오타 주의
-
-데이터:
-${newsData}`,
-      },
-    ],
-  });
-
-  const content = extractTextFromClaude(message.content) || "음... 데이터가 이상함";
-
-  return content;
-}
-
-// Claude를 사용해 질문에 답변
-export async function answerQuestion(
-  claude: Anthropic,
-  question: string
-): Promise<string> {
-  const message = await claude.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 300,
-    system: PIXYMON_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `질문 답변.
-
-- 200자 이내
-- 팩트 위주, 모르면 "확인 필요"
-- 투자 질문엔 "nfa"
-- 해시태그 X
-
-질문: ${question}`,
-      },
-    ],
-  });
-
-  const responseText = extractTextFromClaude(message.content);
-  return responseText || "음 잘 모르겠음";
 }

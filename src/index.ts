@@ -4,7 +4,9 @@ import { REPLY_TONE_MODE, initClaudeClient } from "./services/llm.js";
 import { validateEnvironment, initTwitterClient } from "./services/twitter.js";
 import { loadRuntimeConfig } from "./config/runtime.js";
 import { printStartupBanner, runOneShotMode, runSchedulerMode } from "./services/runtime.js";
+import { operationalState } from "./services/operational-state.js";
 import { acquireRuntimeLock, registerRuntimeLockCleanup } from "./services/process-lock.js";
+import { xApiBudget } from "./services/x-api-budget.js";
 
 /**
  * Pixymon AI Agent - 메인 진입점
@@ -14,9 +16,61 @@ import { acquireRuntimeLock, registerRuntimeLockCleanup } from "./services/proce
  */
 
 const runtimeConfig = loadRuntimeConfig();
+let shutdownCommitted = false;
+
+function commitShutdown(reason: string): void {
+  if (shutdownCommitted) {
+    return;
+  }
+  shutdownCommitted = true;
+  try {
+    memory.flushNow();
+  } catch {
+    // no-op
+  }
+  try {
+    xApiBudget.flushNow();
+  } catch {
+    // no-op
+  }
+  try {
+    operationalState.recordShutdown(runtimeConfig, reason);
+  } catch {
+    // no-op
+  }
+}
+
+function registerSafetyHooks(): void {
+  process.once("SIGINT", () => {
+    console.log("\n▶ Pixymon 종료(SIGINT).");
+    commitShutdown("signal:SIGINT");
+    process.exit(0);
+  });
+  process.once("SIGTERM", () => {
+    console.log("\n▶ Pixymon 종료(SIGTERM).");
+    commitShutdown("signal:SIGTERM");
+    process.exit(0);
+  });
+
+  if (!runtimeConfig.operational.crashFlushOnException) {
+    return;
+  }
+
+  process.on("uncaughtException", (error) => {
+    console.error("[FATAL] uncaughtException:", error);
+    commitShutdown("uncaughtException");
+    process.exit(1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("[FATAL] unhandledRejection:", reason);
+    commitShutdown("unhandledRejection");
+    process.exit(1);
+  });
+}
 
 // 메인 실행
 async function main() {
+  registerSafetyHooks();
   const lock = acquireRuntimeLock();
   if (!lock.acquired) {
     const pidText = lock.existingPid ? ` (pid=${lock.existingPid})` : "";
@@ -29,6 +83,8 @@ async function main() {
   printStartupBanner(runtimeConfig);
 
   validateEnvironment();
+  operationalState.reconcileOnBoot(runtimeConfig);
+  operationalState.recordBoot(runtimeConfig);
   console.log("[COGNITION] Narrative OS 루프 활성화 (feed → digest → evolve → plan → act → reflect)");
   console.log(`[STYLE] 댓글 톤 모드: ${REPLY_TONE_MODE} (env: REPLY_TONE_MODE=signal|personal)`);
   console.log(memory.getAgentStateContext());
@@ -55,7 +111,11 @@ async function main() {
     await runSchedulerMode(twitter, claude, runtimeConfig);
   } else {
     await runOneShotMode(twitter, claude, runtimeConfig);
+    commitShutdown("one-shot-finished");
   }
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  commitShutdown("main-catch");
+});
