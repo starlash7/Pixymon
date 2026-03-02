@@ -41,75 +41,75 @@ export interface NarrativeNoveltyResult {
 }
 
 const MODE_ORDER: NarrativeMode[] = [
-  "signal-pulse",
-  "builder-note",
-  "contrarian-check",
-  "field-journal",
-  "mythic-analogy",
+  "identity-journal",
+  "philosophy-note",
+  "interaction-experiment",
+  "meta-reflection",
+  "fable-essay",
 ];
 
 const MODE_BY_LANE: Record<TrendLane, NarrativeMode[]> = {
-  protocol: ["builder-note", "signal-pulse", "field-journal", "contrarian-check", "mythic-analogy"],
-  ecosystem: ["field-journal", "signal-pulse", "builder-note", "mythic-analogy", "contrarian-check"],
-  regulation: ["contrarian-check", "signal-pulse", "field-journal", "builder-note", "mythic-analogy"],
-  macro: ["contrarian-check", "signal-pulse", "field-journal", "mythic-analogy", "builder-note"],
-  onchain: ["signal-pulse", "field-journal", "contrarian-check", "builder-note", "mythic-analogy"],
-  "market-structure": ["signal-pulse", "contrarian-check", "builder-note", "field-journal", "mythic-analogy"],
+  protocol: ["philosophy-note", "identity-journal", "interaction-experiment", "meta-reflection", "fable-essay"],
+  ecosystem: ["interaction-experiment", "identity-journal", "fable-essay", "philosophy-note", "meta-reflection"],
+  regulation: ["philosophy-note", "meta-reflection", "identity-journal", "interaction-experiment", "fable-essay"],
+  macro: ["meta-reflection", "philosophy-note", "identity-journal", "fable-essay", "interaction-experiment"],
+  onchain: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
+  "market-structure": ["philosophy-note", "meta-reflection", "interaction-experiment", "identity-journal", "fable-essay"],
 };
 
 const OPENING_BY_MODE_KO: Record<NarrativeMode, string[]> = {
-  "signal-pulse": [
-    "지금 시장에서 제일 시끄러운 신호 하나만 집으면",
-    "오늘 타임라인에서 가장 크게 튄 건",
-    "방금 데이터 먹고 정리한 핵심 한 줄은",
+  "identity-journal": [
+    "오늘 픽시몬 일지 첫 줄은",
+    "내가 지금 집요하게 보는 건",
+    "오늘 내 정체성 메모는",
   ],
-  "builder-note": [
-    "빌더 관점에서 보면 오늘 포인트는",
-    "프로덕트 관점으로 번역하면 핵심은",
-    "사용자 체감으로 바꾸면 오늘 이슈는",
+  "philosophy-note": [
+    "철학 노트로 번역하면 오늘 장면은",
+    "읽던 문장을 체인 위로 옮기면",
+    "사상 메모 한 줄로 요약하면",
   ],
-  "contrarian-check": [
-    "모두 같은 얘길 할 때 반대로 체크할 건",
-    "합의가 빠를수록 되려 확인해야 할 건",
-    "컨센서스가 강할 때 내가 먼저 보는 건",
+  "interaction-experiment": [
+    "오늘 커뮤니티 실험을 하나 건다",
+    "이번엔 반응 실험 모드로 간다",
+    "오늘의 미션형 관찰은",
   ],
-  "field-journal": [
-    "현장 노트 느낌으로 짧게 남기면",
-    "오늘 로그 한 줄 요약은",
-    "오늘 관찰 일지에서 눈에 띈 건",
+  "meta-reflection": [
+    "먼저 내 실수부터 적는다",
+    "메타 회고부터 시작하면",
+    "오늘 내가 경계하는 실패 패턴은",
   ],
-  "mythic-analogy": [
-    "체인 위 파도 비유로 말하면",
-    "픽시몬 감각으로 번역하면",
-    "스토리 모드로 짚으면",
+  "fable-essay": [
+    "짧은 우화로 남기면",
+    "오늘은 에세이 한 문단으로 쓰면",
+    "은유 하나만 빌리면",
   ],
 };
 
 const OPENING_BY_MODE_EN: Record<NarrativeMode, string[]> = {
-  "signal-pulse": [
-    "If I keep only one signal from today, it's this:",
-    "The loudest pulse in today's tape is this:",
-    "After digesting today's feeds, one line matters:",
+  "identity-journal": [
+    "My identity log for today starts here:",
+    "The thing I keep chasing today is this:",
+    "If I write one line about who I am today:",
   ],
-  "builder-note": [
-    "From a builder lens, today's key point is:",
-    "Translated to product impact, the key is:",
-    "In user-facing terms, today's move is:",
+  "philosophy-note": [
+    "Philosophy note, translated onchain:",
+    "If I map a book fragment to today's tape:",
+    "One worldview line for this moment:",
   ],
-  "contrarian-check": [
-    "When everyone agrees too fast, I check this first:",
-    "Consensus is loud, so I stress-test this:",
-    "Before following the crowd, this is the counter-check:",
+  "interaction-experiment": [
+    "Running one interaction experiment today:",
+    "Mission mode for the community:",
+    "Today's response test starts with this:",
   ],
-  "field-journal": [
-    "Field note for today:",
-    "One short log from today's market tape:",
-    "Today's observation journal, compressed:",
+  "meta-reflection": [
+    "I start with my own failure mode:",
+    "Meta reflection first:",
+    "Before a claim, I log this mistake pattern:",
   ],
-  "mythic-analogy": [
-    "In chain-weather terms:",
-    "If I translate this as a creature story:",
-    "Narrative mode on, here's the frame:",
+  "fable-essay": [
+    "A short fable from today's chain weather:",
+    "If this were a one-paragraph essay:",
+    "One metaphor, then evidence:",
   ],
 };
 
@@ -221,11 +221,11 @@ function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]):
 
 function inferModeFromText(text: string): NarrativeMode {
   const lower = normalizeNarrativeText(text);
-  if (/빌더|builder|product|사용자\s*체감/.test(lower)) return "builder-note";
-  if (/반대로|counter|consensus|컨센서스/.test(lower)) return "contrarian-check";
-  if (/노트|log|journal|관찰\s*일지/.test(lower)) return "field-journal";
-  if (/비유|story|chain-weather|픽시몬/.test(lower)) return "mythic-analogy";
-  return "signal-pulse";
+  if (/철학|philosophy|책|book|사상|worldview/.test(lower)) return "philosophy-note";
+  if (/실험|experiment|미션|mission|댓글로/.test(lower)) return "interaction-experiment";
+  if (/회고|reflection|실수|failure|오판|mistake/.test(lower)) return "meta-reflection";
+  if (/우화|fable|에세이|essay|비유|metaphor/.test(lower)) return "fable-essay";
+  return "identity-journal";
 }
 
 function buildBannedOpeners(recentPosts: NarrativeRecentPost[]): string[] {
@@ -249,29 +249,30 @@ function pickFirstNonBanned(pool: string[], banned: string[]): string | null {
 
 function buildBodyDirective(mode: NarrativeMode, language: "ko" | "en"): string {
   if (language === "ko") {
-    if (mode === "builder-note") return "기술/제품 영향이 사용자 행동에 어떤 변화로 이어지는지 한 문장으로 번역";
-    if (mode === "contrarian-check") return "합의된 해석의 약점을 짚고 반대 가설을 짧게 제시";
-    if (mode === "field-journal") return "관찰 로그처럼 사실 순서대로 건조하게 정리";
-    if (mode === "mythic-analogy") return "세계관 비유를 1회만 쓰고 과장 없이 데이터 근거로 연결";
-    return "핵심 주장 1개와 근거 연결을 빠르게 제시";
+    if (mode === "identity-journal") return "1인칭 자아 문장 1개로 시작하고, 이벤트 1개와 근거 2개를 연결";
+    if (mode === "philosophy-note") return "철학/책에서 가져온 프레임 1개를 현재 크립토 맥락으로 번역";
+    if (mode === "interaction-experiment") return "팔로워가 즉시 참여할 수 있는 미션/질문 1개를 넣고 근거를 제시";
+    if (mode === "meta-reflection") return "내가 틀릴 수 있는 지점을 먼저 고백하고 검증 조건을 밝힘";
+    return "우화/에세이 톤을 쓰되, 은유는 1회만 사용하고 근거 2개로 고정";
   }
 
-  if (mode === "builder-note") return "Translate signal into user/product impact in one sentence";
-  if (mode === "contrarian-check") return "Stress-test consensus and present a compact counter-hypothesis";
-  if (mode === "field-journal") return "Format as an observation log with factual sequence";
-  if (mode === "mythic-analogy") return "Use one narrative analogy, then ground it with hard evidence";
-  return "State one clear claim and connect evidence fast";
+  if (mode === "identity-journal") return "Open in first person, then connect one event with two evidence points";
+  if (mode === "philosophy-note") return "Use one philosophy/book frame and translate it into current crypto context";
+  if (mode === "interaction-experiment") return "Include one concrete mission/question for followers and attach evidence";
+  if (mode === "meta-reflection") return "State your potential failure mode first, then define verification condition";
+  return "Keep fable/essay tone with one metaphor max, grounded by two evidence points";
 }
 
 function buildEndingDirective(mode: NarrativeMode, language: "ko" | "en"): string {
   if (language === "ko") {
-    if (mode === "contrarian-check") return "마지막 문장은 검증 조건을 붙인 질문형";
-    if (mode === "field-journal") return "마지막 문장은 관찰형(단정 금지)";
-    return "마지막 문장은 대화가 이어질 열린 질문 또는 조건부 관찰";
+    if (mode === "interaction-experiment") return "마지막 문장은 팔로워 행동을 유도하는 미션형 질문";
+    if (mode === "meta-reflection") return "마지막 문장은 내가 틀릴 조건을 명시한 열린 질문";
+    return "마지막 문장은 대화를 여는 질문형 또는 관찰형";
   }
-  if (mode === "contrarian-check") return "End with a testable question";
-  if (mode === "field-journal") return "End with a restrained observation";
-  return "End with an open but concrete follow-up";
+
+  if (mode === "interaction-experiment") return "End with an action-oriented mission question";
+  if (mode === "meta-reflection") return "End with a falsifiable open question";
+  return "End with an open dialogue invitation";
 }
 
 function normalizeNarrativeText(text: string): string {

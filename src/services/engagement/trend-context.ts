@@ -9,6 +9,59 @@ const TEST_MODE = process.env.TEST_MODE === "true";
 const TEST_NO_EXTERNAL_CALLS =
   TEST_MODE && String(process.env.TEST_NO_EXTERNAL_CALLS ?? "true").trim().toLowerCase() !== "false";
 
+interface LocalNarrativeTheme {
+  lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure";
+  headline: string;
+  summary: string;
+  keywords: string[];
+  evidence: string[];
+}
+
+const LOCAL_NARRATIVE_THEMES: LocalNarrativeTheme[] = [
+  {
+    lane: "onchain",
+    headline: "내 지갑이 스스로 움직인 날, 책임의 주어가 바뀌었다",
+    summary: "에이전트 지갑 시대에는 성과보다 책임 경로를 먼저 설계해야 한다.",
+    keywords: ["agent-wallet", "accountability", "onchain-intent", "crypto-ai", "identity"],
+    evidence: ["자동 실행 정책 문서", "트랜잭션 감사 로그", "실패 복구 규칙"],
+  },
+  {
+    lane: "protocol",
+    headline: "철학 메모: 자유는 느림이 아니라 설명 가능한 합의다",
+    summary: "프로토콜 철학을 UX로 번역하는 팀이 장기 신뢰를 얻는다.",
+    keywords: ["protocol-design", "decentralization", "ux-tradeoff", "governance", "philosophy"],
+    evidence: ["검증자 참여율 변화", "클라이언트 다양성", "업그레이드 합의 과정"],
+  },
+  {
+    lane: "ecosystem",
+    headline: "오늘의 상호작용 실험: 커뮤니티 미션은 토큰보다 오래 남는가",
+    summary: "보상 이벤트보다 반복 가능한 미션 설계가 생태계 체류 시간을 만든다.",
+    keywords: ["community-loop", "mission-design", "retention", "ecosystem", "interaction"],
+    evidence: ["기여자 재방문 패턴", "미션 완료율", "신규 온보딩 경로"],
+  },
+  {
+    lane: "regulation",
+    headline: "메타 회고: 규제를 핑계로 삼는 순간 제품은 멈춘다",
+    summary: "규제를 장벽이 아닌 인터페이스로 다루는 팀이 생존 확률을 높인다.",
+    keywords: ["regulation", "compliance-by-design", "policy", "crypto", "meta-reflection"],
+    evidence: ["관할별 요구사항 매핑", "투명성 보고 체계", "리스크 공개 원칙"],
+  },
+  {
+    lane: "macro",
+    headline: "책에서 읽은 문장 하나: 불확실할수록 사람은 이야기에 기대어 움직인다",
+    summary: "거시 불확실성 구간일수록 가격보다 기대와 신뢰 구조가 길게 남는다.",
+    keywords: ["macro-narrative", "expectation", "liquidity", "trust", "book-fragment"],
+    evidence: ["리스크 선호 전환 신호", "헤지 포지셔닝 변화", "자금 이동 서사"],
+  },
+  {
+    lane: "market-structure",
+    headline: "짧은 우화: 유동성은 숫자가 아니라 허용된 행동의 지도다",
+    summary: "시장 구조는 가격보다 참여자가 할 수 있는 행동 범위를 규정한다.",
+    keywords: ["market-structure", "liquidity-behavior", "execution", "crypto-microstructure", "fable"],
+    evidence: ["호가 간격 안정성", "체결 실패 패턴", "슬리피지 민감 구간"],
+  },
+];
+
 const FOCUS_TOKEN_STOP_WORDS = new Set([
   "today",
   "crypto",
@@ -53,51 +106,7 @@ const FOCUS_TOKEN_STOP_WORDS = new Set([
 
 export async function collectTrendContext(options: Partial<TrendContextOptions> = {}): Promise<TrendContext> {
   if (TEST_NO_EXTERNAL_CALLS) {
-    const createdAt = new Date().toISOString();
-    const marketData: MarketData[] = [
-      { symbol: "BTC", name: "Bitcoin", price: 0, change24h: 0 },
-      { symbol: "ETH", name: "Ethereum", price: 0, change24h: 0 },
-      { symbol: "SOL", name: "Solana", price: 0, change24h: 0 },
-    ];
-    const summary = "로컬 테스트 모드: 외부 API 없이 서사/품질 게이트만 검증 중";
-    const headlines = [
-      "로컬 테스트 이벤트: 온체인 근거 기반 서사 플로우 검증",
-      "로컬 테스트 이벤트: 이벤트 1개 + 근거 2개 계약 검증",
-    ];
-    const nutrients = buildTrendNutrients({
-      marketData,
-      newsRows: [],
-      createdAt,
-    });
-    const events = buildTrendEvents({
-      newsRows: [],
-      createdAt,
-    });
-
-    return {
-      keywords: ["local-test", "onchain", "narrative"],
-      summary,
-      marketData,
-      headlines,
-      newsSources: [],
-      nutrients,
-      events:
-        events.length > 0
-          ? events
-          : [
-              {
-                id: `event:local:${createdAt}`,
-                lane: "onchain",
-                headline: headlines[0],
-                summary,
-                source: "local",
-                trust: 0.5,
-                freshness: 1,
-                capturedAt: createdAt,
-                keywords: ["local-test", "onchain"],
-              },
-            ],
-    };
+    return buildLocalNarrativeTrendContext();
   }
 
   const newsService = new BlockchainNewsService();
@@ -204,7 +213,7 @@ export function pickTrendFocus(headlines: string[], recentPosts: RecentPostRecor
   }
 
   const fallbackHeadline =
-    candidateHeadlines[0] || "오늘은 온체인 유동성과 심리 지표 사이의 비대칭을 추적";
+    candidateHeadlines[0] || "오늘은 숫자보다 행동의 원인을 먼저 추적한다";
   const fallbackTokens = extractHeadlineFocusTokens(fallbackHeadline);
   const fallbackNovelTokens = selectNovelTokens(fallbackTokens, normalizedRecent);
   return {
@@ -212,20 +221,6 @@ export function pickTrendFocus(headlines: string[], recentPosts: RecentPostRecor
     requiredTokens: (fallbackNovelTokens.length > 0 ? fallbackNovelTokens : fallbackTokens).slice(0, 3),
     reason: "fallback",
   };
-}
-
-export function formatMarketAnchors(marketData: MarketData[]): string {
-  if (marketData.length === 0) {
-    return "- 실시간 마켓 앵커 없음 (구체 가격 숫자 언급 금지)";
-  }
-
-  return marketData
-    .slice(0, 4)
-    .map((coin) => {
-      const sign = coin.change24h >= 0 ? "+" : "";
-      return `- ${coin.symbol}: $${Math.round(coin.price).toLocaleString("en-US")} (${sign}${coin.change24h.toFixed(2)}%)`;
-    })
-    .join("\n");
 }
 
 function extractHeadlineFocusTokens(headline: string): string[] {
@@ -277,7 +272,7 @@ function resolveTrendKeywordSeeds(): string[] {
     return envSeeds;
   }
   // fallback only when keyword pool is too sparse
-  return ["onchain", "macro", "ecosystem"];
+  return ["protocol", "governance", "community", "onchain", "liquidity", "ethics"];
 }
 
 function parseCsvEnv(raw: string | undefined): string[] {
@@ -382,6 +377,79 @@ function estimateNewsSourceFallbackTrust(source: string): number {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
+}
+
+function buildLocalNarrativeTrendContext(): TrendContext {
+  const createdAt = new Date().toISOString();
+  const selectedThemes = selectLocalThemes(4);
+  const keywords = Array.from(
+    new Set(
+      selectedThemes
+        .flatMap((theme) => theme.keywords)
+        .concat(["blockchain", "crypto", "onchain", "protocol", "governance"])
+    )
+  ).slice(0, 20);
+  const headlines = selectedThemes.map((theme) => theme.headline);
+  const summary = [
+    "로컬 테스트 모드(외부 호출 없음): 숫자 예측 대신 내러티브 품질을 검증한다.",
+    ...selectedThemes.map((theme, index) => `- 주제${index + 1}: ${theme.summary}`),
+  ].join("\n");
+
+  const nutrients: OnchainNutrient[] = selectedThemes.flatMap((theme, themeIndex) =>
+    theme.evidence.map((item, evidenceIndex) => {
+      const source = evidenceIndex % 2 === 0 ? "onchain" : "news";
+      return {
+        id: `local:${theme.lane}:${themeIndex}:${evidenceIndex}:${createdAt}`,
+        source,
+        category: `narrative-${theme.lane}`,
+        label: `${theme.headline.slice(0, 72)} 근거`,
+        value: item,
+        evidence: `${theme.summary} | ${item}`,
+        trust: clampNumber(0.62 + evidenceIndex * 0.05, 0.35, 0.9, 0.68),
+        freshness: 0.98,
+        consistencyHint: 0.78,
+        capturedAt: createdAt,
+        metadata: {
+          lane: theme.lane,
+          localNarrative: true,
+          themeIndex,
+        },
+      } as OnchainNutrient;
+    })
+  );
+
+  const events = selectedThemes.map((theme, index) => ({
+    id: `event:local:${theme.lane}:${index}:${createdAt}`,
+    lane: theme.lane,
+    headline: theme.headline,
+    summary: theme.summary,
+    source: "local:narrative-lab",
+    trust: 0.68,
+    freshness: 1,
+    capturedAt: createdAt,
+    keywords: theme.keywords.slice(0, 6),
+  }));
+
+  return {
+    keywords,
+    summary,
+    marketData: [],
+    headlines,
+    newsSources: [{ key: "local:narrative-lab", trust: 0.68 }],
+    nutrients,
+    events,
+  };
+}
+
+function selectLocalThemes(count: number): LocalNarrativeTheme[] {
+  const safeCount = Math.max(1, Math.min(LOCAL_NARRATIVE_THEMES.length, Math.floor(count)));
+  const secondSeed = Math.floor(Date.now() / 1000);
+  const start = secondSeed % LOCAL_NARRATIVE_THEMES.length;
+  const result: LocalNarrativeTheme[] = [];
+  for (let i = 0; i < safeCount; i += 1) {
+    result.push(LOCAL_NARRATIVE_THEMES[(start + i) % LOCAL_NARRATIVE_THEMES.length]);
+  }
+  return result;
 }
 
 export {

@@ -10,11 +10,11 @@ export type TrendLane =
   | "onchain"
   | "market-structure";
 export type NarrativeMode =
-  | "signal-pulse"
-  | "builder-note"
-  | "contrarian-check"
-  | "field-journal"
-  | "mythic-analogy";
+  | "identity-journal"
+  | "philosophy-note"
+  | "interaction-experiment"
+  | "meta-reflection"
+  | "fable-essay";
 export type HypothesisStatus = "open" | "watching" | "resolved" | "dropped";
 export type ClaimResolution = "supported" | "invalidated" | "superseded";
 export type MoodTone = "playful" | "focused" | "curious" | "contrarian" | "cautious";
@@ -219,6 +219,20 @@ export interface AutonomyBudgetState {
   updatedAt: string;
 }
 
+export interface IdentityKernel {
+  selfNarrative: string;
+  signatureBelief: string;
+  desireVector: string[];
+  updatedAt: string;
+}
+
+export interface WorldviewKernel {
+  philosophyNotes: string[];
+  bookFragments: string[];
+  interactionMissions: string[];
+  updatedAt: string;
+}
+
 export interface SoulState {
   desire: DesireState;
   mood: MoodState;
@@ -226,6 +240,8 @@ export interface SoulState {
   curiosity: CuriosityEngineState;
   arc: NarrativeArcState;
   autonomyBudget: AutonomyBudgetState;
+  identity: IdentityKernel;
+  worldview: WorldviewKernel;
   quests: QuestThread[];
   style: StyleProfile;
   lastUpdated: string;

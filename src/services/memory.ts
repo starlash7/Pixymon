@@ -11,6 +11,7 @@ import {
   DigestScore,
   EvolutionStage,
   HypothesisStatus,
+  IdentityKernel,
   MoodState,
   MoodTone,
   NarrativeForm,
@@ -29,6 +30,7 @@ import {
   StyleProfile,
   StyleVoice,
   TrendLane,
+  WorldviewKernel,
 } from "../types/agent.js";
 import { quarantineCorruptFile } from "./quarantine.js";
 
@@ -82,6 +84,34 @@ const DEFAULT_CURIOSITY_QUESTIONS = [
   "규제 뉴스가 온체인 활동에 몇 시간 뒤 반영될까?",
 ];
 
+const DEFAULT_SELF_NARRATIVES = [
+  "나는 온체인 단서로 사람들의 선택을 읽는 관찰자다",
+  "나는 가격보다 이유를 먼저 수집하는 픽시몬이다",
+];
+
+const DEFAULT_SIGNATURE_BELIEFS = [
+  "시장은 숫자 이전에 신뢰의 인터페이스다",
+  "서사는 데이터와 충돌할 때 더 선명해진다",
+];
+
+const DEFAULT_PHILOSOPHY_NOTES = [
+  "질문이 결론보다 오래 살아남는 글을 쓴다",
+  "확신은 근거의 수를 늘릴수록 늦게 가져간다",
+  "군중의 언어를 반복하지 말고 동기의 언어를 찾는다",
+];
+
+const DEFAULT_BOOK_FRAGMENTS = [
+  "같은 사실도 관점이 바뀌면 다른 행동을 만든다",
+  "복잡한 시스템에서는 의도보다 인센티브가 빠르게 작동한다",
+  "자유는 제약이 없어서가 아니라 설명 가능한 책임에서 온다",
+];
+
+const DEFAULT_INTERACTION_MISSIONS = [
+  "오늘 신호를 반박할 근거 1개를 댓글로 제시해달라",
+  "이 이벤트가 행동을 바꾼다고 보는 이유를 한 줄로 남겨달라",
+  "내 관찰이 틀렸다면 어떤 데이터가 먼저 깨질지 알려달라",
+];
+
 const DEFAULT_FEAR_PATTERNS = [
   "근거 없는 확신으로 오판하는 상태",
   "데이터보다 군중 심리를 먼저 따라가는 상태",
@@ -101,6 +131,11 @@ interface SoulIntentPlan {
   primaryDesire: string;
   secondaryDesire: string;
   activeQuestion: string;
+  interactionMission: string;
+  philosophyFrame: string;
+  bookFragment: string;
+  selfNarrative: string;
+  signatureBelief: string;
   narrativeForm: NarrativeForm;
   arcStage: ArcStage;
   fear: string;
@@ -332,6 +367,24 @@ function createEmptyAutonomyBudgetState(): AutonomyBudgetState {
   };
 }
 
+function createEmptyIdentityKernel(): IdentityKernel {
+  return {
+    selfNarrative: DEFAULT_SELF_NARRATIVES[0],
+    signatureBelief: DEFAULT_SIGNATURE_BELIEFS[0],
+    desireVector: ["curiosity", "coherence", "participation"],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createEmptyWorldviewKernel(): WorldviewKernel {
+  return {
+    philosophyNotes: [...DEFAULT_PHILOSOPHY_NOTES],
+    bookFragments: [...DEFAULT_BOOK_FRAGMENTS],
+    interactionMissions: [...DEFAULT_INTERACTION_MISSIONS],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function createEmptyStyleProfile(): StyleProfile {
   return {
     voice: "mythic-reporter",
@@ -355,6 +408,8 @@ function createEmptySoulState(): SoulState {
     curiosity: createEmptyCuriosityState(),
     arc: createEmptyNarrativeArcState(),
     autonomyBudget: createEmptyAutonomyBudgetState(),
+    identity: createEmptyIdentityKernel(),
+    worldview: createEmptyWorldviewKernel(),
     quests: [],
     style: createEmptyStyleProfile(),
     lastUpdated: new Date().toISOString(),
@@ -514,6 +569,8 @@ export class MemoryService {
       curiosity: this.normalizeCuriosityState(row.curiosity),
       arc: this.normalizeNarrativeArcState(row.arc),
       autonomyBudget: this.normalizeAutonomyBudgetState(row.autonomyBudget),
+      identity: this.normalizeIdentityKernel(row.identity),
+      worldview: this.normalizeWorldviewKernel(row.worldview),
       quests: this.normalizeQuestThreads(row.quests),
       style: this.normalizeStyleProfile(row.style),
       lastUpdated: typeof row.lastUpdated === "string" ? row.lastUpdated : new Date().toISOString(),
@@ -609,6 +666,49 @@ export class MemoryService {
         fallback.initiativeSlotsPerDay
       ),
       riskBudget: this.clamp(typeof row.riskBudget === "number" ? row.riskBudget : fallback.riskBudget, 0, 1),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeIdentityKernel(raw: unknown): IdentityKernel {
+    const fallback = createEmptyIdentityKernel();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<IdentityKernel>;
+    const desireVector = Array.isArray(row.desireVector)
+      ? row.desireVector
+          .map((item) => this.normalizeTextField(item, "", 32).toLowerCase())
+          .filter((item) => item.length >= 2)
+          .slice(0, 6)
+      : fallback.desireVector;
+    return {
+      selfNarrative: this.normalizeTextField(row.selfNarrative, fallback.selfNarrative, 160),
+      signatureBelief: this.normalizeTextField(row.signatureBelief, fallback.signatureBelief, 160),
+      desireVector: desireVector.length > 0 ? desireVector : [...fallback.desireVector],
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeWorldviewKernel(raw: unknown): WorldviewKernel {
+    const fallback = createEmptyWorldviewKernel();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<WorldviewKernel>;
+    const normalizeList = (input: unknown, limit: number, fallbackList: string[]): string[] => {
+      if (!Array.isArray(input)) return [...fallbackList];
+      const mapped = input
+        .map((item) => this.normalizeTextField(item, "", 180))
+        .filter(Boolean)
+        .filter((item, index, arr) => arr.indexOf(item) === index)
+        .slice(0, limit);
+      return mapped.length > 0 ? mapped : [...fallbackList];
+    };
+    return {
+      philosophyNotes: normalizeList(row.philosophyNotes, 8, fallback.philosophyNotes),
+      bookFragments: normalizeList(row.bookFragments, 8, fallback.bookFragments),
+      interactionMissions: normalizeList(row.interactionMissions, 8, fallback.interactionMissions),
       updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
     };
   }
@@ -1384,6 +1484,16 @@ export class MemoryService {
       },
       arc: { ...state.arc },
       autonomyBudget: { ...state.autonomyBudget },
+      identity: {
+        ...state.identity,
+        desireVector: [...state.identity.desireVector],
+      },
+      worldview: {
+        ...state.worldview,
+        philosophyNotes: [...state.worldview.philosophyNotes],
+        bookFragments: [...state.worldview.bookFragments],
+        interactionMissions: [...state.worldview.interactionMissions],
+      },
       quests: state.quests.map((quest) => ({
         ...quest,
         evidenceIds: [...quest.evidenceIds],
@@ -1599,6 +1709,8 @@ export class MemoryService {
       );
       lines.push(`- Desire: ${soul.desire.primaryDesire}`);
       lines.push(`- Secondary desire: ${soul.desire.secondaryDesire}`);
+      lines.push(`- Identity: ${soul.identity.selfNarrative}`);
+      lines.push(`- Signature belief: ${soul.identity.signatureBelief}`);
       lines.push(
         `- Mood: ${soul.mood.tone} | energy ${Math.round(soul.mood.energy * 100)} | confidence ${Math.round(soul.mood.confidence * 100)}`
       );
@@ -1609,6 +1721,15 @@ export class MemoryService {
       lines.push(`- Arc: ${soul.arc.arcStage} (${soul.arc.activeArcId})`);
       if (activeQuestion) {
         lines.push(`- Open question: ${activeQuestion}`);
+      }
+      if (soul.worldview.philosophyNotes.length > 0) {
+        lines.push(`- Philosophy frame: ${soul.worldview.philosophyNotes[0]}`);
+      }
+      if (soul.worldview.bookFragments.length > 0) {
+        lines.push(`- Book fragment: ${soul.worldview.bookFragments[0]}`);
+      }
+      if (soul.worldview.interactionMissions.length > 0) {
+        lines.push(`- Interaction mission: ${soul.worldview.interactionMissions[0]}`);
       }
       lines.push(`- Shadow: fear=${soul.shadow.fearOf}`);
       if (activeQuests.length > 0) {
@@ -1626,6 +1747,8 @@ export class MemoryService {
     );
     lines.push(`- 욕구: ${soul.desire.primaryDesire}`);
     lines.push(`- 보조 욕구: ${soul.desire.secondaryDesire}`);
+    lines.push(`- 정체성: ${soul.identity.selfNarrative}`);
+    lines.push(`- 신념: ${soul.identity.signatureBelief}`);
     lines.push(
       `- Mood: ${soul.mood.tone} | 에너지 ${Math.round(soul.mood.energy * 100)} | 확신 ${Math.round(soul.mood.confidence * 100)}`
     );
@@ -1636,6 +1759,15 @@ export class MemoryService {
     lines.push(`- Arc: ${soul.arc.arcStage} (${soul.arc.activeArcId})`);
     if (activeQuestion) {
       lines.push(`- 열린 질문: ${activeQuestion}`);
+    }
+    if (soul.worldview.philosophyNotes.length > 0) {
+      lines.push(`- 철학 프레임: ${soul.worldview.philosophyNotes[0]}`);
+    }
+    if (soul.worldview.bookFragments.length > 0) {
+      lines.push(`- 책 파편: ${soul.worldview.bookFragments[0]}`);
+    }
+    if (soul.worldview.interactionMissions.length > 0) {
+      lines.push(`- 상호작용 미션: ${soul.worldview.interactionMissions[0]}`);
     }
     lines.push(`- Shadow: 두려움=${soul.shadow.fearOf}`);
     if (activeQuests.length > 0) {
@@ -1652,19 +1784,27 @@ export class MemoryService {
     const form = this.pickNarrativeForm(soul);
     const question = this.pickActiveQuestion(soul.curiosity.openQuestions, laneHint, language);
     const fear = soul.shadow.fearOf;
+    const philosophyFrame = this.pickWorldviewItem(soul.worldview.philosophyNotes, laneHint);
+    const bookFragment = this.pickWorldviewItem(soul.worldview.bookFragments, laneHint);
+    const interactionMission = this.pickWorldviewItem(soul.worldview.interactionMissions, laneHint);
     const styleDirective =
       language === "ko"
         ? `1인칭 시점, rhythm=${soul.style.rhythm}, 비유밀도=${Math.round(soul.style.metaphorDensity * 100)}%, 유머=${Math.round(soul.style.humorTemperature * 100)}%`
         : `First-person voice, rhythm=${soul.style.rhythm}, metaphor=${Math.round(soul.style.metaphorDensity * 100)}%, humor=${Math.round(soul.style.humorTemperature * 100)}%`;
     const intentLine =
       language === "ko"
-        ? `${soul.desire.primaryDesire}. 하지만 ${fear}는 피한다.`
-        : `${soul.desire.primaryDesire}. But avoid ${fear}.`;
+        ? `${soul.identity.selfNarrative}. ${soul.desire.primaryDesire}. 하지만 ${fear}는 피한다.`
+        : `${soul.identity.selfNarrative}. ${soul.desire.primaryDesire}. But avoid ${fear}.`;
     return {
       intentLine,
       primaryDesire: soul.desire.primaryDesire,
       secondaryDesire: soul.desire.secondaryDesire,
       activeQuestion: question,
+      interactionMission,
+      philosophyFrame,
+      bookFragment,
+      selfNarrative: soul.identity.selfNarrative,
+      signatureBelief: soul.identity.signatureBelief,
       narrativeForm: form,
       arcStage: soul.arc.arcStage,
       fear,
@@ -1704,6 +1844,9 @@ export class MemoryService {
     soul.desire.primaryDesire = this.nextPrimaryDesire(soul.desire, input.lane, language);
     soul.desire.secondaryDesire = this.nextSecondaryDesire(soul.desire, language);
     soul.desire.updatedAt = new Date().toISOString();
+    soul.identity.selfNarrative = this.nextSelfNarrative(soul.identity, input.lane, language);
+    soul.identity.signatureBelief = this.nextSignatureBelief(soul.identity, input.lane, language);
+    soul.identity.updatedAt = new Date().toISOString();
 
     const question = this.extractQuestionFromText(text) || this.pickGeneratedQuestion(input.lane, language);
     const nextQuestions = [question, ...soul.curiosity.openQuestions]
@@ -1718,6 +1861,22 @@ export class MemoryService {
       0.1,
       0.95
     );
+    const reflectiveLine = this.extractReflectiveLine(text);
+    if (reflectiveLine) {
+      soul.worldview.philosophyNotes = [reflectiveLine, ...soul.worldview.philosophyNotes]
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .filter((item, index, arr) => arr.indexOf(item) === index)
+        .slice(0, 8);
+    }
+    if (question) {
+      soul.worldview.interactionMissions = [question, ...soul.worldview.interactionMissions]
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .filter((item, index, arr) => arr.indexOf(item) === index)
+        .slice(0, 8);
+    }
+    soul.worldview.updatedAt = new Date().toISOString();
 
     const currentStageIndex = ARC_STAGE_ORDER.indexOf(soul.arc.arcStage);
     const nextStage = ARC_STAGE_ORDER[(Math.max(0, currentStageIndex) + 1) % ARC_STAGE_ORDER.length];
@@ -2520,11 +2679,11 @@ export class MemoryService {
 
   private normalizeNarrativeMode(raw: unknown): NarrativeMode | undefined {
     if (
-      raw === "signal-pulse" ||
-      raw === "builder-note" ||
-      raw === "contrarian-check" ||
-      raw === "field-journal" ||
-      raw === "mythic-analogy"
+      raw === "identity-journal" ||
+      raw === "philosophy-note" ||
+      raw === "interaction-experiment" ||
+      raw === "meta-reflection" ||
+      raw === "fable-essay"
     ) {
       return raw;
     }
@@ -2660,6 +2819,14 @@ export class MemoryService {
     return "오늘 보이는 움직임 중 진짜 신호는 무엇일까?";
   }
 
+  private pickWorldviewItem(items: string[], laneHint: TrendLane | undefined): string {
+    const cleaned = items.map((item) => item.trim()).filter(Boolean);
+    if (cleaned.length === 0) return "";
+    const laneIndex = laneHint ? ["protocol", "ecosystem", "regulation", "macro", "onchain", "market-structure"].indexOf(laneHint) : -1;
+    const seed = laneIndex >= 0 ? laneIndex : Math.floor(Date.now() / 1000);
+    return cleaned[Math.abs(seed) % cleaned.length];
+  }
+
   private nextPrimaryDesire(desire: DesireState, lane: TrendLane, language: "ko" | "en"): string {
     if (desire.noveltyHunger > 0.72) {
       return language === "en"
@@ -2679,6 +2846,38 @@ export class MemoryService {
     if (lane === "protocol") return language === "en" ? "I want to translate this upgrade into real behavior shifts." : "이 업그레이드를 실제 사용자 행동 변화로 번역하고 싶다";
     if (lane === "regulation") return language === "en" ? "I want to decode policy into practical market behavior." : "정책 변화를 실제 시장 행동 언어로 풀어내고 싶다";
     return language === "en" ? DEFAULT_PRIMARY_DESIRES[0] : DEFAULT_PRIMARY_DESIRES[0];
+  }
+
+  private nextSelfNarrative(identity: IdentityKernel, lane: TrendLane, language: "ko" | "en"): string {
+    if (language === "en") {
+      if (lane === "protocol") return "I am a creature translating protocol change into human behavior.";
+      if (lane === "ecosystem") return "I am a creature mapping community energy into durable participation.";
+      if (lane === "regulation") return "I am a creature reading policy as interface constraints.";
+      if (lane === "macro") return "I am a creature tracing trust flows before price reacts.";
+      if (lane === "onchain") return "I am a creature hunting motives hidden in onchain traces.";
+      return identity.selfNarrative || "I am a creature that narrates why behavior shifts.";
+    }
+
+    if (lane === "protocol") return "나는 프로토콜 변화가 인간 행동으로 번역되는 지점을 추적하는 생명체다";
+    if (lane === "ecosystem") return "나는 커뮤니티 에너지가 지속 참여로 바뀌는 순간을 기록하는 생명체다";
+    if (lane === "regulation") return "나는 정책을 금지가 아닌 인터페이스 제약으로 읽는 생명체다";
+    if (lane === "macro") return "나는 가격보다 먼저 이동하는 신뢰의 흐름을 추적하는 생명체다";
+    if (lane === "onchain") return "나는 온체인 흔적에서 의도를 채집하는 생명체다";
+    return identity.selfNarrative || "나는 행동 변화의 이유를 서사로 기록하는 생명체다";
+  }
+
+  private nextSignatureBelief(identity: IdentityKernel, lane: TrendLane, language: "ko" | "en"): string {
+    if (language === "en") {
+      if (lane === "onchain") return "Data is not truth; it is a trace of intention.";
+      if (lane === "regulation") return "Rules don't kill narratives, they reshape them.";
+      if (lane === "ecosystem") return "Communities outlast incentives when meaning compounds.";
+      return identity.signatureBelief || "Narratives survive when evidence can challenge them.";
+    }
+
+    if (lane === "onchain") return "데이터는 진실 그 자체가 아니라 의도의 흔적이다";
+    if (lane === "regulation") return "규제는 서사를 멈추지 않고 형태를 바꾼다";
+    if (lane === "ecosystem") return "의미가 쌓이는 커뮤니티는 인센티브보다 오래 간다";
+    return identity.signatureBelief || "근거가 반박을 견딜 때 서사는 생명력을 얻는다";
   }
 
   private nextSecondaryDesire(desire: DesireState, language: "ko" | "en"): string {
@@ -2703,6 +2902,15 @@ export class MemoryService {
       return questionMatch[0].trim().slice(0, 140);
     }
     return null;
+  }
+
+  private extractReflectiveLine(text: string): string | null {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized) return null;
+    const parts = normalized.split(/[.!?]/).map((item) => item.trim()).filter(Boolean);
+    if (parts.length === 0) return null;
+    const selected = parts.find((item) => item.length >= 12) || parts[0];
+    return selected ? selected.slice(0, 140) : null;
   }
 
   private resolveMoodToneFromDesire(desire: DesireState, fallback: MoodTone): MoodTone {
