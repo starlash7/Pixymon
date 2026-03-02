@@ -18,6 +18,7 @@ import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
+const ACTION_TWO_PHASE_COMMIT = String(process.env.ACTION_TWO_PHASE_COMMIT || "true").trim().toLowerCase() === "true";
 const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
   minSourceTrust: 0.24,
   minScore: 3.2,
@@ -706,6 +707,8 @@ export async function postTweet(
   const maxAttempts = 3;
   const timezone = normalizeTimezone(options.timezone);
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCostSettings);
+  const actionMode = String(process.env.ACTION_MODE || "observe").trim().toLowerCase();
+  const commitId = `tw_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const createKind = options.createKind || `post:${type}`;
   const quoteTweetId = type === "quote" ? normalizeQuoteTweetId(options.quoteTweetId) : undefined;
   const dispatchLock = type === "briefing" ? acquirePostDispatchLock() : { acquired: true, release: () => {} };
@@ -726,6 +729,10 @@ export async function postTweet(
         console.log(`[POST-GUARD] 글 발행 스킵: ${dispatchBlock}`);
         return null;
       }
+    }
+
+    if (ACTION_TWO_PHASE_COMMIT) {
+      console.log(`[2PC] prepare id=${commitId} mode=${actionMode} kind=${createKind}`);
     }
 
     const createGuard = xApiBudget.checkCreateAllowance({
@@ -756,6 +763,11 @@ export async function postTweet(
         const tweet = quoteTweetId
           ? await twitter.v2.tweet({ text: content, quote_tweet_id: quoteTweetId })
           : await twitter.v2.tweet(content);
+        if (ACTION_TWO_PHASE_COMMIT) {
+          if (!tweet?.data?.id || String(tweet.data.id).trim().length === 0) {
+            throw new Error("two-phase post-check failed: invalid tweet id");
+          }
+        }
         console.log("✅ 트윗 발행 완료! (v2)");
         console.log(`   ID: ${tweet.data.id}`);
         console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.data.id}`);
@@ -766,6 +778,9 @@ export async function postTweet(
         });
         if (type === "briefing") {
           persistPostDispatchState(content);
+        }
+        if (ACTION_TWO_PHASE_COMMIT) {
+          console.log(`[2PC] commit id=${commitId} tweet=${tweet.data.id}`);
         }
         return tweet.data.id;
       } catch (error) {
@@ -780,10 +795,16 @@ export async function postTweet(
         console.error(
           `⚠️ 트윗 발행 실패 (시도 ${attempt}/${maxAttempts})${rateLimited ? " [rate limit]" : ""}`
         );
+        if (ACTION_TWO_PHASE_COMMIT) {
+          console.error(`[2PC] retry id=${commitId} attempt=${attempt}`);
+        }
         await sleep(delayMs);
       }
     }
 
+    if (ACTION_TWO_PHASE_COMMIT) {
+      console.error(`[2PC] abort id=${commitId}`);
+    }
     console.error("❌ 트윗 발행 실패:", lastError);
     throw lastError;
   } finally {

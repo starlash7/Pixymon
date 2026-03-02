@@ -70,6 +70,23 @@ TEST_MODE=true SCHEDULER_MODE=false npm run dev
 TEST_MODE=false SCHEDULER_MODE=true DAILY_ACTIVITY_TARGET=20 DAILY_TARGET_TIMEZONE=Asia/Seoul npm run dev
 ```
 
+로컬 리허설(게시글/말투 확인, 실제 발행 없음):
+
+```bash
+TEST_MODE=true \
+SCHEDULER_MODE=false \
+ACTION_MODE=paper \
+STATE_RECONCILE_ON_BOOT=true \
+ACTION_TWO_PHASE_COMMIT=true \
+npm run dev
+```
+
+리허설 결과 확인 파일:
+
+- `data/STATE.md`
+- `data/operational-state.json`
+- `data/memory.json`
+
 빌드/테스트:
 
 ```bash

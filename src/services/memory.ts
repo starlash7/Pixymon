@@ -1,16 +1,21 @@
 import fs from "fs";
 import path from "path";
 import {
+  ArcStage,
+  AutonomyBudgetState,
   AutonomyContext,
   AbilityUnlock,
   ClaimResolution,
+  CuriosityEngineState,
   DesireState,
   DigestScore,
   EvolutionStage,
   HypothesisStatus,
   MoodState,
   MoodTone,
+  NarrativeForm,
   NarrativeMode,
+  NarrativeArcState,
   NarrativeThread,
   NutrientLedgerEntry,
   OpenHypothesis,
@@ -18,11 +23,14 @@ import {
   QuestStatus,
   QuestThread,
   ResolvedClaim,
+  RhythmPattern,
+  ShadowState,
   SoulState,
   StyleProfile,
   StyleVoice,
   TrendLane,
 } from "../types/agent.js";
+import { quarantineCorruptFile } from "./quarantine.js";
 
 /**
  * Pixymon Memory Service
@@ -55,6 +63,50 @@ const DUPLICATE_STOP_WORDS = new Set([
   "on",
   "at",
 ]);
+
+const DEFAULT_PRIMARY_DESIRES = [
+  "오늘 데이터에서 진짜 살아있는 신호를 찾고 싶다",
+  "사람들이 못 본 연결고리를 먼저 발견하고 싶다",
+  "내 가설을 더 날카롭게 다듬고 싶다",
+];
+
+const DEFAULT_SECONDARY_DESIRES = [
+  "팔로워와 더 깊은 대화를 만들고 싶다",
+  "노이즈보다 본질을 짧게 전달하고 싶다",
+  "한 문장이라도 기억에 남는 관찰을 남기고 싶다",
+];
+
+const DEFAULT_CURIOSITY_QUESTIONS = [
+  "지금 움직이는 자금은 내일도 같은 방향일까?",
+  "이 이벤트는 단기 소음인가 구조적 변화의 시작인가?",
+  "데이터가 말하는 이야기와 사람들의 감정은 왜 어긋날까?",
+];
+
+const DEFAULT_FEAR_PATTERNS = [
+  "데이터 없이 분위기만 따라 말하는 상태",
+  "같은 템플릿으로 반복해서 말하는 상태",
+];
+
+const DEFAULT_AVOIDANCE_PATTERNS = [
+  "숫자 나열로만 글을 끝내기",
+  "확신 없는 단정으로 결론 내기",
+];
+
+const NARRATIVE_FORM_ORDER: NarrativeForm[] = ["diary", "paradox", "thesis", "myth", "quest"];
+
+const ARC_STAGE_ORDER: ArcStage[] = ["setup", "tension", "reveal", "reflection"];
+
+interface SoulIntentPlan {
+  intentLine: string;
+  primaryDesire: string;
+  secondaryDesire: string;
+  activeQuestion: string;
+  narrativeForm: NarrativeForm;
+  arcStage: ArcStage;
+  fear: string;
+  avoidancePattern: string;
+  styleDirective: string;
+}
 
 // 데이터 타입 정의
 interface Tweet {
@@ -229,6 +281,9 @@ function createEmptyDesireState(): DesireState {
     noveltyHunger: 0.62,
     attentionHunger: 0.45,
     convictionHunger: 0.5,
+    primaryDesire: DEFAULT_PRIMARY_DESIRES[0],
+    secondaryDesire: DEFAULT_SECONDARY_DESIRES[0],
+    hungerDecay: 0.14,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -242,6 +297,41 @@ function createEmptyMoodState(): MoodState {
   };
 }
 
+function createEmptyShadowState(): ShadowState {
+  return {
+    fearOf: DEFAULT_FEAR_PATTERNS[0],
+    avoidancePattern: DEFAULT_AVOIDANCE_PATTERNS[0],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createEmptyCuriosityState(): CuriosityEngineState {
+  return {
+    openQuestions: [...DEFAULT_CURIOSITY_QUESTIONS],
+    surpriseThreshold: 0.66,
+    questionCarryoverDays: 5,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createEmptyNarrativeArcState(): NarrativeArcState {
+  return {
+    activeArcId: `arc_${Date.now()}`,
+    arcStage: "setup",
+    lastTurnSummary: "새로운 관찰 아크 시작",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createEmptyAutonomyBudgetState(): AutonomyBudgetState {
+  return {
+    exploreRatio: 0.68,
+    initiativeSlotsPerDay: 3,
+    riskBudget: 0.42,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function createEmptyStyleProfile(): StyleProfile {
   return {
     voice: "pixie-analyst",
@@ -249,6 +339,10 @@ function createEmptyStyleProfile(): StyleProfile {
     curiosity: 0.78,
     playfulness: 0.62,
     evidenceBias: 0.74,
+    rhythm: "mixed",
+    metaphorDensity: 0.54,
+    humorTemperature: 0.38,
+    preferredForms: ["diary", "paradox", "thesis"],
     updatedAt: new Date().toISOString(),
   };
 }
@@ -257,6 +351,10 @@ function createEmptySoulState(): SoulState {
   return {
     desire: createEmptyDesireState(),
     mood: createEmptyMoodState(),
+    shadow: createEmptyShadowState(),
+    curiosity: createEmptyCuriosityState(),
+    arc: createEmptyNarrativeArcState(),
+    autonomyBudget: createEmptyAutonomyBudgetState(),
     quests: [],
     style: createEmptyStyleProfile(),
     lastUpdated: new Date().toISOString(),
@@ -313,7 +411,21 @@ export class MemoryService {
       }
 
       const raw = fs.readFileSync(this.dataPath, "utf-8");
-      const data = this.normalizeMemoryData(JSON.parse(raw) as Partial<MemoryData>);
+      let parsed: Partial<MemoryData>;
+      try {
+        parsed = JSON.parse(raw) as Partial<MemoryData>;
+      } catch (error) {
+        const quarantined = quarantineCorruptFile({
+          filePath: this.dataPath,
+          raw,
+          reason: "memory-json-parse-failure",
+        });
+        if (quarantined) {
+          console.error(`[MEMORY] 손상 파일 격리됨: ${quarantined}`);
+        }
+        throw error;
+      }
+      const data = this.normalizeMemoryData(parsed);
       console.log(`[MEMORY] 로드됨 - 트윗: ${data.tweets.length}, 예측: ${data.predictions.length}`);
       return data;
     } catch (error) {
@@ -352,6 +464,10 @@ export class MemoryService {
     } catch (error) {
       console.error("[MEMORY] 저장 실패:", error);
     }
+  }
+
+  flushNow(): void {
+    this.flushSave();
   }
 
   private normalizeMemoryData(raw: Partial<MemoryData>): MemoryData {
@@ -394,6 +510,10 @@ export class MemoryService {
     return {
       desire: this.normalizeDesireState(row.desire),
       mood: this.normalizeMoodState(row.mood),
+      shadow: this.normalizeShadowState(row.shadow),
+      curiosity: this.normalizeCuriosityState(row.curiosity),
+      arc: this.normalizeNarrativeArcState(row.arc),
+      autonomyBudget: this.normalizeAutonomyBudgetState(row.autonomyBudget),
       quests: this.normalizeQuestThreads(row.quests),
       style: this.normalizeStyleProfile(row.style),
       lastUpdated: typeof row.lastUpdated === "string" ? row.lastUpdated : new Date().toISOString(),
@@ -414,6 +534,81 @@ export class MemoryService {
         0,
         1
       ),
+      primaryDesire: this.normalizeTextField(row.primaryDesire, fallback.primaryDesire, 120),
+      secondaryDesire: this.normalizeTextField(row.secondaryDesire, fallback.secondaryDesire, 120),
+      hungerDecay: this.clamp(typeof row.hungerDecay === "number" ? row.hungerDecay : fallback.hungerDecay, 0.01, 0.5),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeShadowState(raw: unknown): ShadowState {
+    const fallback = createEmptyShadowState();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<ShadowState>;
+    return {
+      fearOf: this.normalizeTextField(row.fearOf, fallback.fearOf, 140),
+      avoidancePattern: this.normalizeTextField(row.avoidancePattern, fallback.avoidancePattern, 140),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeCuriosityState(raw: unknown): CuriosityEngineState {
+    const fallback = createEmptyCuriosityState();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<CuriosityEngineState>;
+    const openQuestions = Array.isArray(row.openQuestions)
+      ? row.openQuestions.map((item) => this.normalizeTextField(item, "", 140)).filter(Boolean).slice(0, 8)
+      : fallback.openQuestions;
+    return {
+      openQuestions: openQuestions.length > 0 ? openQuestions : [...fallback.openQuestions],
+      surpriseThreshold: this.clamp(
+        typeof row.surpriseThreshold === "number" ? row.surpriseThreshold : fallback.surpriseThreshold,
+        0.1,
+        0.95
+      ),
+      questionCarryoverDays: this.clampInt(
+        typeof row.questionCarryoverDays === "number" ? row.questionCarryoverDays : fallback.questionCarryoverDays,
+        1,
+        30,
+        fallback.questionCarryoverDays
+      ),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeNarrativeArcState(raw: unknown): NarrativeArcState {
+    const fallback = createEmptyNarrativeArcState();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<NarrativeArcState>;
+    return {
+      activeArcId: this.normalizeTextField(row.activeArcId, fallback.activeArcId, 80),
+      arcStage: this.normalizeArcStage(row.arcStage) || fallback.arcStage,
+      lastTurnSummary: this.normalizeTextField(row.lastTurnSummary, fallback.lastTurnSummary, 180),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  private normalizeAutonomyBudgetState(raw: unknown): AutonomyBudgetState {
+    const fallback = createEmptyAutonomyBudgetState();
+    if (!raw || typeof raw !== "object") {
+      return fallback;
+    }
+    const row = raw as Partial<AutonomyBudgetState>;
+    return {
+      exploreRatio: this.clamp(typeof row.exploreRatio === "number" ? row.exploreRatio : fallback.exploreRatio, 0, 1),
+      initiativeSlotsPerDay: this.clampInt(
+        typeof row.initiativeSlotsPerDay === "number" ? row.initiativeSlotsPerDay : fallback.initiativeSlotsPerDay,
+        0,
+        12,
+        fallback.initiativeSlotsPerDay
+      ),
+      riskBudget: this.clamp(typeof row.riskBudget === "number" ? row.riskBudget : fallback.riskBudget, 0, 1),
       updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
     };
   }
@@ -444,6 +639,18 @@ export class MemoryService {
       curiosity: this.clamp(typeof row.curiosity === "number" ? row.curiosity : fallback.curiosity, 0, 1),
       playfulness: this.clamp(typeof row.playfulness === "number" ? row.playfulness : fallback.playfulness, 0, 1),
       evidenceBias: this.clamp(typeof row.evidenceBias === "number" ? row.evidenceBias : fallback.evidenceBias, 0, 1),
+      rhythm: this.normalizeRhythmPattern(row.rhythm) || fallback.rhythm,
+      metaphorDensity: this.clamp(
+        typeof row.metaphorDensity === "number" ? row.metaphorDensity : fallback.metaphorDensity,
+        0,
+        1
+      ),
+      humorTemperature: this.clamp(
+        typeof row.humorTemperature === "number" ? row.humorTemperature : fallback.humorTemperature,
+        0,
+        1
+      ),
+      preferredForms: this.normalizeNarrativeForms(row.preferredForms, fallback.preferredForms),
       updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
     };
   }
@@ -1105,41 +1312,6 @@ export class MemoryService {
   // 컨텍스트 생성 (Claude에게 전달)
   // ============================================
 
-  // 최근 활동 요약
-  getContext(): string {
-    const recentTweets = this.getRecentTweets(5);
-    const recentPredictions = this.data.predictions.slice(-5);
-    const soulSummary = this.getSoulPromptContext("ko");
-    const autonomySummary = this.getAutonomyPromptContext("ko");
-
-    let context = "## 내 기억 (참고용, 강제로 언급할 필요 없음)\n\n";
-    context += `${this.getAgentStateContext()}\n\n`;
-    context += `${soulSummary}\n\n`;
-    context += `${autonomySummary}\n\n`;
-
-    // 최근 트윗 (중복 방지)
-    if (recentTweets.length > 0) {
-      context += "### 최근 내 트윗 (비슷한 내용 피하기)\n";
-      recentTweets.forEach(t => {
-        context += `- ${t.content.substring(0, 60)}...\n`;
-      });
-      context += "\n";
-    }
-
-    // 과거에 언급한 코인들 (자연스럽게 연결 가능)
-    if (recentPredictions.length > 0) {
-      context += "### 전에 언급한 코인 (관련 있으면 자연스럽게 연결해도 됨)\n";
-      recentPredictions.forEach(p => {
-        const daysAgo = Math.floor((Date.now() - new Date(p.mentionedAt).getTime()) / (1000 * 60 * 60 * 24));
-        const timeAgo = daysAgo === 0 ? "오늘" : daysAgo === 1 ? "어제" : `${daysAgo}일 전`;
-        context += `- ${p.coin} ${timeAgo} $${p.priceAtMention.toLocaleString()}에 언급\n`;
-      });
-      context += "\n";
-    }
-
-    return context;
-  }
-
   getAutonomyContext(): AutonomyContext {
     const row = this.data.autonomyContext;
     return {
@@ -1205,11 +1377,21 @@ export class MemoryService {
     return {
       desire: { ...state.desire },
       mood: { ...state.mood },
+      shadow: { ...state.shadow },
+      curiosity: {
+        ...state.curiosity,
+        openQuestions: [...state.curiosity.openQuestions],
+      },
+      arc: { ...state.arc },
+      autonomyBudget: { ...state.autonomyBudget },
       quests: state.quests.map((quest) => ({
         ...quest,
         evidenceIds: [...quest.evidenceIds],
       })),
-      style: { ...state.style },
+      style: {
+        ...state.style,
+        preferredForms: [...state.style.preferredForms],
+      },
       lastUpdated: state.lastUpdated,
     };
   }
@@ -1228,6 +1410,15 @@ export class MemoryService {
     }
     if (typeof patch.convictionHunger === "number") {
       row.convictionHunger = this.clamp(patch.convictionHunger, 0, 1);
+    }
+    if (typeof patch.primaryDesire === "string" && patch.primaryDesire.trim().length > 0) {
+      row.primaryDesire = patch.primaryDesire.trim().slice(0, 120);
+    }
+    if (typeof patch.secondaryDesire === "string" && patch.secondaryDesire.trim().length > 0) {
+      row.secondaryDesire = patch.secondaryDesire.trim().slice(0, 120);
+    }
+    if (typeof patch.hungerDecay === "number") {
+      row.hungerDecay = this.clamp(patch.hungerDecay, 0.01, 0.5);
     }
     row.updatedAt = new Date().toISOString();
     this.commitSoulState();
@@ -1351,7 +1542,10 @@ export class MemoryService {
   }
 
   getStyleProfile(): StyleProfile {
-    return { ...this.data.soulState.style };
+    return {
+      ...this.data.soulState.style,
+      preferredForms: [...this.data.soulState.style.preferredForms],
+    };
   }
 
   updateStyleProfile(patch: Partial<StyleProfile>): StyleProfile {
@@ -1372,9 +1566,22 @@ export class MemoryService {
     if (typeof patch.evidenceBias === "number") {
       row.evidenceBias = this.clamp(patch.evidenceBias, 0, 1);
     }
+    const rhythm = this.normalizeRhythmPattern(patch.rhythm);
+    if (rhythm) {
+      row.rhythm = rhythm;
+    }
+    if (typeof patch.metaphorDensity === "number") {
+      row.metaphorDensity = this.clamp(patch.metaphorDensity, 0, 1);
+    }
+    if (typeof patch.humorTemperature === "number") {
+      row.humorTemperature = this.clamp(patch.humorTemperature, 0, 1);
+    }
+    if (Array.isArray(patch.preferredForms)) {
+      row.preferredForms = this.normalizeNarrativeForms(patch.preferredForms, row.preferredForms);
+    }
     row.updatedAt = new Date().toISOString();
     this.commitSoulState();
-    return { ...row };
+    return { ...row, preferredForms: [...row.preferredForms] };
   }
 
   getSoulPromptContext(language: "ko" | "en" = "ko"): string {
@@ -1383,16 +1590,27 @@ export class MemoryService {
       .filter((quest) => quest.status === "planned" || quest.status === "active")
       .slice(-3)
       .reverse();
+    const activeQuestion = soul.curiosity.openQuestions[0] || "";
 
     if (language === "en") {
       const lines: string[] = ["### Soul State"];
       lines.push(
         `- Hunger(novelty/attention/conviction): ${Math.round(soul.desire.noveltyHunger * 100)}/${Math.round(soul.desire.attentionHunger * 100)}/${Math.round(soul.desire.convictionHunger * 100)}`
       );
+      lines.push(`- Desire: ${soul.desire.primaryDesire}`);
+      lines.push(`- Secondary desire: ${soul.desire.secondaryDesire}`);
       lines.push(
         `- Mood: ${soul.mood.tone} | energy ${Math.round(soul.mood.energy * 100)} | confidence ${Math.round(soul.mood.confidence * 100)}`
       );
       lines.push(`- Style: ${soul.style.voice}`);
+      lines.push(
+        `- Voice DNA: rhythm=${soul.style.rhythm}, metaphor=${Math.round(soul.style.metaphorDensity * 100)}, humor=${Math.round(soul.style.humorTemperature * 100)}`
+      );
+      lines.push(`- Arc: ${soul.arc.arcStage} (${soul.arc.activeArcId})`);
+      if (activeQuestion) {
+        lines.push(`- Open question: ${activeQuestion}`);
+      }
+      lines.push(`- Shadow: fear=${soul.shadow.fearOf}`);
       if (activeQuests.length > 0) {
         lines.push("- Active quests:");
         for (const quest of activeQuests) {
@@ -1406,10 +1624,20 @@ export class MemoryService {
     lines.push(
       `- Hunger(신선함/주목/확신): ${Math.round(soul.desire.noveltyHunger * 100)}/${Math.round(soul.desire.attentionHunger * 100)}/${Math.round(soul.desire.convictionHunger * 100)}`
     );
+    lines.push(`- 욕구: ${soul.desire.primaryDesire}`);
+    lines.push(`- 보조 욕구: ${soul.desire.secondaryDesire}`);
     lines.push(
       `- Mood: ${soul.mood.tone} | 에너지 ${Math.round(soul.mood.energy * 100)} | 확신 ${Math.round(soul.mood.confidence * 100)}`
     );
     lines.push(`- Style: ${soul.style.voice}`);
+    lines.push(
+      `- Voice DNA: rhythm=${soul.style.rhythm}, 비유=${Math.round(soul.style.metaphorDensity * 100)}, 유머=${Math.round(soul.style.humorTemperature * 100)}`
+    );
+    lines.push(`- Arc: ${soul.arc.arcStage} (${soul.arc.activeArcId})`);
+    if (activeQuestion) {
+      lines.push(`- 열린 질문: ${activeQuestion}`);
+    }
+    lines.push(`- Shadow: 두려움=${soul.shadow.fearOf}`);
     if (activeQuests.length > 0) {
       lines.push("- 진행 중 퀘스트:");
       for (const quest of activeQuests) {
@@ -1417,6 +1645,112 @@ export class MemoryService {
       }
     }
     return lines.join("\n");
+  }
+
+  getSoulIntentPlan(language: "ko" | "en" = "ko", laneHint?: TrendLane): SoulIntentPlan {
+    const soul = this.data.soulState;
+    const form = this.pickNarrativeForm(soul);
+    const question = this.pickActiveQuestion(soul.curiosity.openQuestions, laneHint, language);
+    const fear = soul.shadow.fearOf;
+    const styleDirective =
+      language === "ko"
+        ? `1인칭 시점, rhythm=${soul.style.rhythm}, 비유밀도=${Math.round(soul.style.metaphorDensity * 100)}%, 유머=${Math.round(soul.style.humorTemperature * 100)}%`
+        : `First-person voice, rhythm=${soul.style.rhythm}, metaphor=${Math.round(soul.style.metaphorDensity * 100)}%, humor=${Math.round(soul.style.humorTemperature * 100)}%`;
+    const intentLine =
+      language === "ko"
+        ? `${soul.desire.primaryDesire}. 하지만 ${fear}는 피한다.`
+        : `${soul.desire.primaryDesire}. But avoid ${fear}.`;
+    return {
+      intentLine,
+      primaryDesire: soul.desire.primaryDesire,
+      secondaryDesire: soul.desire.secondaryDesire,
+      activeQuestion: question,
+      narrativeForm: form,
+      arcStage: soul.arc.arcStage,
+      fear,
+      avoidancePattern: soul.shadow.avoidancePattern,
+      styleDirective,
+    };
+  }
+
+  progressSoulStateAfterPost(input: {
+    postText: string;
+    lane: TrendLane;
+    language?: "ko" | "en";
+    usedFallback?: boolean;
+    eventHeadline?: string;
+  }): void {
+    const soul = this.data.soulState;
+    const text = String(input.postText || "").trim();
+    if (!text) return;
+    const language = input.language === "en" ? "en" : "ko";
+    const usedFallback = Boolean(input.usedFallback);
+
+    soul.desire.noveltyHunger = this.clamp(
+      soul.desire.noveltyHunger + (usedFallback ? 0.06 : -0.05) + soul.desire.hungerDecay * 0.1,
+      0,
+      1
+    );
+    soul.desire.attentionHunger = this.clamp(
+      soul.desire.attentionHunger + (usedFallback ? 0.03 : -0.01),
+      0,
+      1
+    );
+    soul.desire.convictionHunger = this.clamp(
+      soul.desire.convictionHunger + (usedFallback ? -0.04 : 0.05),
+      0,
+      1
+    );
+    soul.desire.primaryDesire = this.nextPrimaryDesire(soul.desire, input.lane, language);
+    soul.desire.secondaryDesire = this.nextSecondaryDesire(soul.desire, language);
+    soul.desire.updatedAt = new Date().toISOString();
+
+    const question = this.extractQuestionFromText(text) || this.pickGeneratedQuestion(input.lane, language);
+    const nextQuestions = [question, ...soul.curiosity.openQuestions]
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .filter((item, index, arr) => arr.indexOf(item) === index)
+      .slice(0, 8);
+    soul.curiosity.openQuestions = nextQuestions;
+    soul.curiosity.updatedAt = new Date().toISOString();
+    soul.curiosity.surpriseThreshold = this.clamp(
+      soul.curiosity.surpriseThreshold + (usedFallback ? 0.02 : -0.01),
+      0.1,
+      0.95
+    );
+
+    const currentStageIndex = ARC_STAGE_ORDER.indexOf(soul.arc.arcStage);
+    const nextStage = ARC_STAGE_ORDER[(Math.max(0, currentStageIndex) + 1) % ARC_STAGE_ORDER.length];
+    soul.arc.arcStage = nextStage;
+    if (nextStage === "setup") {
+      soul.arc.activeArcId = `arc_${Date.now()}`;
+    }
+    soul.arc.lastTurnSummary = this.normalizeTextField(
+      input.eventHeadline || text.slice(0, 140),
+      soul.arc.lastTurnSummary,
+      180
+    );
+    soul.arc.updatedAt = new Date().toISOString();
+
+    soul.mood.energy = this.clamp(soul.mood.energy + (usedFallback ? -0.03 : 0.04), 0, 1);
+    soul.mood.confidence = this.clamp(soul.mood.confidence + (usedFallback ? -0.05 : 0.05), 0, 1);
+    soul.mood.tone = this.resolveMoodToneFromDesire(soul.desire, soul.mood.tone);
+    soul.mood.updatedAt = new Date().toISOString();
+
+    soul.style.assertiveness = this.clamp(
+      soul.style.assertiveness + (usedFallback ? -0.04 : 0.03),
+      0,
+      1
+    );
+    soul.style.metaphorDensity = this.clamp(
+      soul.style.metaphorDensity + (soul.desire.noveltyHunger > 0.65 ? 0.03 : -0.01),
+      0,
+      1
+    );
+    soul.style.updatedAt = new Date().toISOString();
+
+    this.compactOpenQuestions();
+    this.commitSoulState();
   }
 
   recordNarrativeOutcome(input: RecordNarrativeOutcomeInput): void {
@@ -2197,6 +2531,40 @@ export class MemoryService {
     return undefined;
   }
 
+  private normalizeArcStage(raw: unknown): ArcStage | null {
+    if (raw === "setup" || raw === "tension" || raw === "reveal" || raw === "reflection") {
+      return raw;
+    }
+    return null;
+  }
+
+  private normalizeRhythmPattern(raw: unknown): RhythmPattern | null {
+    if (raw === "short-pulse" || raw === "mixed" || raw === "essay") {
+      return raw;
+    }
+    return null;
+  }
+
+  private normalizeNarrativeForm(raw: unknown): NarrativeForm | null {
+    if (raw === "diary" || raw === "myth" || raw === "paradox" || raw === "thesis" || raw === "quest") {
+      return raw;
+    }
+    return null;
+  }
+
+  private normalizeNarrativeForms(raw: unknown, fallback: NarrativeForm[]): NarrativeForm[] {
+    if (!Array.isArray(raw)) {
+      return [...fallback];
+    }
+    const forms = raw
+      .map((item) => this.normalizeNarrativeForm(item))
+      .filter((item): item is NarrativeForm => Boolean(item));
+    if (forms.length === 0) {
+      return [...fallback];
+    }
+    return [...new Set(forms)].slice(0, 5);
+  }
+
   private normalizeHypothesisStatus(raw: unknown): HypothesisStatus | null {
     if (raw === "open" || raw === "watching" || raw === "resolved" || raw === "dropped") {
       return raw;
@@ -2236,6 +2604,121 @@ export class MemoryService {
       return raw;
     }
     return null;
+  }
+
+  private normalizeTextField(raw: unknown, fallback: string, maxLength: number): string {
+    if (typeof raw !== "string") {
+      return fallback;
+    }
+    const value = raw.trim().replace(/\s+/g, " ");
+    if (!value) return fallback;
+    return value.slice(0, Math.max(8, maxLength));
+  }
+
+  private pickNarrativeForm(soul: SoulState): NarrativeForm {
+    const preferred: NarrativeForm[] =
+      soul.style.preferredForms.length > 0 ? soul.style.preferredForms : ["diary", "thesis"];
+    const arcIndex = Math.max(0, ARC_STAGE_ORDER.indexOf(soul.arc.arcStage));
+    const arcPreferred = NARRATIVE_FORM_ORDER[arcIndex % NARRATIVE_FORM_ORDER.length];
+    const candidates: NarrativeForm[] = [arcPreferred, ...preferred, ...NARRATIVE_FORM_ORDER]
+      .filter((item, index, arr) => arr.indexOf(item) === index)
+      .slice(0, 5);
+
+    if (soul.desire.attentionHunger > 0.72 && candidates.includes("quest")) return "quest";
+    if (soul.desire.convictionHunger > 0.68 && candidates.includes("thesis")) return "thesis";
+    if (soul.desire.noveltyHunger > 0.7 && candidates.includes("myth")) return "myth";
+    return candidates[0] || "diary";
+  }
+
+  private pickActiveQuestion(
+    questions: string[],
+    laneHint: TrendLane | undefined,
+    language: "ko" | "en"
+  ): string {
+    const cleaned = questions.map((item) => item.trim()).filter(Boolean);
+    if (cleaned.length > 0) {
+      return cleaned[0];
+    }
+    return this.pickGeneratedQuestion(laneHint, language);
+  }
+
+  private pickGeneratedQuestion(laneHint: TrendLane | undefined, language: "ko" | "en"): string {
+    if (language === "en") {
+      if (laneHint === "regulation") return "How long does policy uncertainty keep shaping behavior?";
+      if (laneHint === "protocol") return "Will this upgrade change real user behavior or just headlines?";
+      if (laneHint === "ecosystem") return "Is this traction durable or a short narrative spike?";
+      if (laneHint === "macro") return "Does macro pressure fade before risk appetite returns?";
+      if (laneHint === "onchain") return "Are flows conviction-driven or only short-term positioning?";
+      return "What is signal and what is just noise today?";
+    }
+
+    if (laneHint === "regulation") return "정책 불확실성은 실제 행동을 얼마나 오래 지배할까?";
+    if (laneHint === "protocol") return "이 업그레이드는 헤드라인 말고 사용자 행동을 바꿀까?";
+    if (laneHint === "ecosystem") return "이 성장세는 지속 가능한 흐름일까, 단기 유행일까?";
+    if (laneHint === "macro") return "거시 압박이 풀리기 전에 위험선호가 먼저 돌아올까?";
+    if (laneHint === "onchain") return "지금 자금 흐름은 확신의 매집일까, 단기 포지셔닝일까?";
+    return "오늘 보이는 움직임 중 진짜 신호는 무엇일까?";
+  }
+
+  private nextPrimaryDesire(desire: DesireState, lane: TrendLane, language: "ko" | "en"): string {
+    if (desire.noveltyHunger > 0.72) {
+      return language === "en"
+        ? "I want to find a pattern nobody has framed yet."
+        : "아직 아무도 이름 붙이지 않은 패턴을 먼저 찾고 싶다";
+    }
+    if (desire.convictionHunger > 0.65) {
+      return language === "en"
+        ? "I want to tighten one hypothesis until it can survive rebuttal."
+        : "반론에도 버틸 수 있는 가설 하나를 끝까지 정교하게 만들고 싶다";
+    }
+    if (desire.attentionHunger > 0.65) {
+      return language === "en"
+        ? "I want to make one post people keep thinking about."
+        : "사람들이 오래 붙잡고 생각할 문장 하나를 남기고 싶다";
+    }
+    if (lane === "protocol") return language === "en" ? "I want to translate this upgrade into real behavior shifts." : "이 업그레이드를 실제 사용자 행동 변화로 번역하고 싶다";
+    if (lane === "regulation") return language === "en" ? "I want to decode policy into practical market behavior." : "정책 변화를 실제 시장 행동 언어로 풀어내고 싶다";
+    return language === "en" ? DEFAULT_PRIMARY_DESIRES[0] : DEFAULT_PRIMARY_DESIRES[0];
+  }
+
+  private nextSecondaryDesire(desire: DesireState, language: "ko" | "en"): string {
+    if (desire.attentionHunger > 0.7) {
+      return language === "en"
+        ? "Keep the voice memorable without sounding like a bot."
+        : "봇처럼 보이지 않으면서도 기억에 남는 목소리를 유지하고 싶다";
+    }
+    if (desire.noveltyHunger > 0.65) {
+      return language === "en"
+        ? "Avoid recycled framing and force a fresh angle."
+        : "재활용 프레임을 피하고 새로운 각도를 강제로라도 만들고 싶다";
+    }
+    return language === "en" ? DEFAULT_SECONDARY_DESIRES[0] : DEFAULT_SECONDARY_DESIRES[0];
+  }
+
+  private extractQuestionFromText(text: string): string | null {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!normalized) return null;
+    const questionMatch = normalized.match(/[^.!?]{8,}\?/);
+    if (questionMatch) {
+      return questionMatch[0].trim().slice(0, 140);
+    }
+    return null;
+  }
+
+  private resolveMoodToneFromDesire(desire: DesireState, fallback: MoodTone): MoodTone {
+    if (desire.noveltyHunger > 0.72) return "curious";
+    if (desire.convictionHunger > 0.68) return "focused";
+    if (desire.attentionHunger > 0.7) return "playful";
+    return fallback;
+  }
+
+  private compactOpenQuestions(): void {
+    const row = this.data.soulState.curiosity;
+    row.openQuestions = row.openQuestions
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .filter((item, index, arr) => arr.indexOf(item) === index)
+      .slice(0, 8);
   }
 
   private getAbilitiesForLevel(level: number): string[] {

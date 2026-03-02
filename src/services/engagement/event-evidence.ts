@@ -12,7 +12,7 @@ const TREND_LANES: TrendLane[] = [
   "market-structure",
 ];
 
-const LANE_MAX_RATIO: Record<TrendLane, number> = {
+const DEFAULT_LANE_MAX_RATIO: Record<TrendLane, number> = {
   protocol: 0.4,
   ecosystem: 0.4,
   regulation: 0.4,
@@ -20,6 +20,8 @@ const LANE_MAX_RATIO: Record<TrendLane, number> = {
   onchain: 0.3,
   "market-structure": 0.4,
 };
+
+const LANE_MAX_RATIO: Record<TrendLane, number> = resolveLaneMaxRatio();
 
 const LANE_KEYWORDS: Record<TrendLane, RegExp> = {
   protocol:
@@ -63,6 +65,7 @@ const EVIDENCE_TOKEN_STOP_WORDS = new Set([
   "스테이블",
   "고래",
   "수수료",
+  ...parseCsvEnv(process.env.EVIDENCE_TOKEN_STOP_WORDS_EXTRA),
 ]);
 
 export function buildTrendEvents(params: {
@@ -266,7 +269,6 @@ export function validateEventEvidenceContract(
 
 export function buildEventEvidenceFallbackPost(
   plan: EventEvidencePlan,
-  postAngle: string,
   language: "ko" | "en",
   maxChars: number = 220
 ): string {
@@ -276,8 +278,8 @@ export function buildEventEvidenceFallbackPost(
   const laneLabel = laneDisplayName(plan.lane, language);
   const base =
     language === "ko"
-      ? `${laneLabel} 이슈: ${eventHeadline}. 근거1 ${evidenceA}. 근거2 ${evidenceB}. ${postAngle} 관점으로 추가 확인 중.`
-      : `${laneLabel} event: ${eventHeadline}. Evidence 1: ${evidenceA}. Evidence 2: ${evidenceB}. Tracking follow-through from a ${postAngle} lens.`;
+      ? `${laneLabel} 이슈: ${eventHeadline}. 근거1 ${evidenceA}. 근거2 ${evidenceB}. 지금은 결론보다 흐름 검증을 이어간다.`
+      : `${laneLabel} event: ${eventHeadline}. Evidence 1: ${evidenceA}. Evidence 2: ${evidenceB}. Keeping conviction open and tracking follow-through.`;
   return sanitizeTweetText(base).slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
 }
 
@@ -459,6 +461,36 @@ function normalizeHeadlineKey(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9가-힣]/g, "")
     .slice(0, 80);
+}
+
+function resolveLaneMaxRatio(): Record<TrendLane, number> {
+  const raw = process.env.LANE_MAX_RATIO_JSON;
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return { ...DEFAULT_LANE_MAX_RATIO };
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<TrendLane, number>>;
+    const next = { ...DEFAULT_LANE_MAX_RATIO };
+    for (const lane of TREND_LANES) {
+      const value = parsed[lane];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        next[lane] = clampNumber(value, 0.1, 0.9, DEFAULT_LANE_MAX_RATIO[lane]);
+      }
+    }
+    return next;
+  } catch {
+    return { ...DEFAULT_LANE_MAX_RATIO };
+  }
+}
+
+function parseCsvEnv(raw: string | undefined): string[] {
+  if (typeof raw !== "string") return [];
+  return raw
+    .split(",")
+    .map((item) => sanitizeTweetText(item).toLowerCase())
+    .filter((item) => item.length >= 2)
+    .filter((item, index, arr) => arr.indexOf(item) === index)
+    .slice(0, 60);
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {

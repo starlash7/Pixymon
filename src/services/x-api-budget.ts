@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { quarantineCorruptFile } from "./quarantine.js";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DEFAULT_DATA_PATH = path.join(DATA_DIR, "x-api-budget.json");
@@ -306,7 +307,21 @@ export class XApiBudgetService {
       }
 
       const raw = fs.readFileSync(this.dataPath, "utf-8");
-      return this.normalizeState(JSON.parse(raw) as Partial<XApiBudgetState>);
+      let parsed: Partial<XApiBudgetState>;
+      try {
+        parsed = JSON.parse(raw) as Partial<XApiBudgetState>;
+      } catch (error) {
+        const quarantined = quarantineCorruptFile({
+          filePath: this.dataPath,
+          raw,
+          reason: "x-api-budget-json-parse-failure",
+        });
+        if (quarantined) {
+          console.error(`[BUDGET] 손상 파일 격리됨: ${quarantined}`);
+        }
+        throw error;
+      }
+      return this.normalizeState(parsed);
     } catch {
       return createEmptyState();
     }
@@ -373,6 +388,11 @@ export class XApiBudgetService {
 
   private save(): void {
     this.persist(this.state);
+  }
+
+  flushNow(): void {
+    this.state.lastUpdated = this.now().toISOString();
+    this.save();
   }
 
   private persist(state: XApiBudgetState): void {
