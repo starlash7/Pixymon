@@ -519,7 +519,10 @@ export async function postTrendUpdate(
     });
 
     const trendFocus = pickTrendFocus([eventPlan.event.headline, ...trend.headlines], recentBriefingPosts);
-    const requiredTrendTokens = [...new Set([...trendFocus.requiredTokens, ...eventPlan.event.keywords])].slice(0, 6);
+    const requiredTrendTokens = normalizeTrendRequirementTokens([
+      ...trendFocus.requiredTokens,
+      ...eventPlan.event.keywords,
+    ]).slice(0, 6);
     const focusTokensLine = requiredTrendTokens.length > 0 ? requiredTrendTokens.join(", ") : "- 없음";
     const postDiversityGuard = buildPostDiversityGuard(recentBriefingPosts, trend.marketData, requiredTrendTokens, eventPlan.event.headline);
 
@@ -559,24 +562,63 @@ export async function postTrendUpdate(
             .map((text, index) => `${index + 1}. ${text}`)
             .join("\n")
         : "- 없음";
+    const previousNarrativeMode = String(
+      recentBriefingPosts[recentBriefingPosts.length - 1]?.meta?.narrativeMode || ""
+    ).trim();
+    const clicheBlocklist = buildClicheBlocklist(recentBriefingTexts, runtimeSettings.postLanguage);
     const soulContext = memory.getSoulPromptContext(runtimeSettings.postLanguage);
     const autonomyContext = memory.getAutonomyPromptContext(runtimeSettings.postLanguage);
 
     if (TEST_NO_EXTERNAL_CALLS) {
-      const localFallback = buildEventEvidenceFallbackPost(
-        eventPlan,
-        runtimeSettings.postLanguage,
-        runtimeSettings.postMaxChars
-      );
-      if (localFallback) {
+      const localAnchors = eventPlan.evidence
+        .slice(0, 2)
+        .map((item) => `${item.label} ${item.value}`)
+        .join(" | ");
+      const localCandidates = buildPreviewFallbackCandidates({
+        headline: eventPlan.event.headline,
+        anchors: localAnchors,
+        language: runtimeSettings.postLanguage,
+        recentPosts: recentBriefingPosts,
+        intentLine: soulIntent.intentLine,
+        activeQuestion: soulIntent.activeQuestion,
+        interactionMission: soulIntent.interactionMission,
+        philosophyFrame: soulIntent.philosophyFrame,
+        bookFragment: soulIntent.bookFragment,
+        selfNarrative: soulIntent.selfNarrative,
+        signatureBelief: soulIntent.signatureBelief,
+        preferredForm: soulIntent.narrativeForm,
+        maxChars: runtimeSettings.postMaxChars,
+      });
+
+      const localOrdered = localCandidates
+        .slice(0, 8)
+        .sort((a, b) => {
+          const aMode = a.mode === narrativePlan.mode ? -1 : 0;
+          const bMode = b.mode === narrativePlan.mode ? -1 : 0;
+          return aMode - bMode;
+        });
+
+      for (const candidate of localOrdered) {
         let localPost = applySoulPreludeToFallback(
-          localFallback,
+          candidate.text,
           soulIntent.intentLine,
           runtimeSettings.postLanguage,
-          runtimeSettings.postMaxChars
+          runtimeSettings.postMaxChars,
+          candidate.mode
         );
         if (startsWithFearGreedTemplate(localPost)) {
           localPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${localPost}`.slice(0, runtimeSettings.postMaxChars);
+        }
+        localPost = ensureTrendTokens(
+          localPost,
+          requiredTrendTokens,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        const blockedPhrase = findBlockedPhrase(localPost, clicheBlocklist);
+        if (blockedPhrase) {
+          latestFailReason = `quality:blocked-phrase(${blockedPhrase})`;
+          continue;
         }
 
         const localContract = validateEventEvidenceContract(localPost, eventPlan);
@@ -591,27 +633,77 @@ export async function postTrendUpdate(
           recentBriefingPosts,
           policy,
           qualityRules,
-          {}
+          {
+            narrativeMode: candidate.mode,
+            previousNarrativeMode,
+            allowTopicRepeatOnModeShift: true,
+          }
         );
 
         if (localContract.ok && localNovelty.ok && localQuality.ok) {
           postText = localPost;
           usedFallback = true;
           generationAttempts = 1;
-          console.log("[POST] TEST-LOCAL deterministic 본문 사용 (LLM 외부 호출 없음)");
-        } else {
-          latestFailReason = [
-            localContract.ok ? "" : `contract:${localContract.reason}`,
-            localNovelty.ok ? "" : `novelty:${localNovelty.reason}`,
-            localQuality.ok ? "" : `quality:${localQuality.reason}`,
-          ]
-            .filter(Boolean)
-            .join("|");
-          console.log(`[POST] TEST-LOCAL fallback 실패: ${latestFailReason}`);
+          console.log(`[POST] TEST-LOCAL candidate 사용 (mode=${candidate.mode}, LLM 외부 호출 없음)`);
+          break;
         }
-      } else {
-        latestFailReason = "local-fallback-empty";
-        console.log("[POST] TEST-LOCAL fallback 실패: 텍스트 생성 불가");
+        latestFailReason = [
+          localContract.ok ? "" : `contract:${localContract.reason}`,
+          localNovelty.ok ? "" : `novelty:${localNovelty.reason}`,
+          localQuality.ok ? "" : `quality:${localQuality.reason}`,
+        ]
+          .filter(Boolean)
+          .join("|");
+      }
+
+      if (!postText) {
+        const localFallback = buildEventEvidenceFallbackPost(
+          eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          narrativePlan.mode
+        );
+        if (localFallback) {
+          let localPost = applySoulPreludeToFallback(
+            localFallback,
+            soulIntent.intentLine,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            narrativePlan.mode
+          );
+          if (startsWithFearGreedTemplate(localPost)) {
+            localPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${localPost}`.slice(0, runtimeSettings.postMaxChars);
+          }
+          const localContract = validateEventEvidenceContract(localPost, eventPlan);
+          const localNovelty = validateNarrativeNovelty(
+            localPost,
+            recentBriefingPosts as NarrativeRecentPost[],
+            narrativePlan
+          );
+          const localQuality = evaluatePostQuality(
+            localPost,
+            trend.marketData,
+            recentBriefingPosts,
+            policy,
+            qualityRules,
+            {
+              narrativeMode: narrativePlan.mode,
+              previousNarrativeMode,
+              allowTopicRepeatOnModeShift: true,
+            }
+          );
+          if (localContract.ok && localNovelty.ok && localQuality.ok) {
+            postText = localPost;
+            usedFallback = true;
+            generationAttempts = 1;
+            console.log("[POST] TEST-LOCAL deterministic fallback 사용");
+          }
+        }
+      }
+
+      if (!postText) {
+        latestFailReason = latestFailReason || "local-fallback-empty";
+        console.log(`[POST] TEST-LOCAL fallback 실패: ${latestFailReason}`);
       }
     } else {
       for (let attempt = 0; attempt < runtimeSettings.postGenerationMaxAttempts; attempt++) {
@@ -677,6 +769,7 @@ ${rejectionFeedback || "없음"}
 - 반드시 \"이벤트 1개 + 근거 2개\" 구조 유지
 - 같은 시작 문장/템플릿 반복 금지
 - \"극공포/FGI\"로 문장 시작 금지
+- 아래 표현 재사용 금지: ${clicheBlocklist.length > 0 ? clicheBlocklist.join(" | ") : "없음"}
 - ${postDiversityGuard.ruleLineKo}
 - 트윗 본문만 출력`
           : `Write one trend post for today.
@@ -738,6 +831,7 @@ Rules:
 - Keep strict structure: one event + two evidence anchors
 - Avoid repeated opening templates
 - Do not start with fear/greed index phrasing
+- Avoid reusing these stale phrases: ${clicheBlocklist.length > 0 ? clicheBlocklist.join(" | ") : "none"}
 - ${postDiversityGuard.ruleLineEn}
 - Output tweet text only`;
 
@@ -756,6 +850,15 @@ Rules:
         let candidate = sanitizeTweetText(extractTextFromClaude(message.content));
         if (!candidate || candidate.length < runtimeSettings.postMinLength) {
           rejectionFeedback = "문장이 비어있거나 너무 짧음";
+          continue;
+        }
+        const blockedPhrase = findBlockedPhrase(candidate, clicheBlocklist);
+        if (blockedPhrase) {
+          rejectionFeedback = `클리셰 재사용 금지 문구 포함(${blockedPhrase})`;
+          latestFailReason = rejectionFeedback;
+          console.log(
+            `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
+          );
           continue;
         }
 
@@ -826,6 +929,9 @@ Rules:
 
         const quality = evaluatePostQuality(candidate, trend.marketData, recentBriefingPosts, policy, qualityRules, {
           requiredTrendTokens,
+          narrativeMode: narrativePlan.mode,
+          previousNarrativeMode,
+          allowTopicRepeatOnModeShift: true,
         });
         if (!quality.ok) {
           rejectionFeedback = quality.reason || "품질 게이트 미통과";
@@ -845,14 +951,16 @@ Rules:
       let fallbackPost: string | null = buildEventEvidenceFallbackPost(
         eventPlan,
         runtimeSettings.postLanguage,
-        runtimeSettings.postMaxChars
+        runtimeSettings.postMaxChars,
+        narrativePlan.mode
       );
       if (fallbackPost) {
         fallbackPost = applySoulPreludeToFallback(
           fallbackPost,
           soulIntent.intentLine,
           runtimeSettings.postLanguage,
-          runtimeSettings.postMaxChars
+          runtimeSettings.postMaxChars,
+          narrativePlan.mode
         );
       }
       if (fallbackPost && !TEST_NO_EXTERNAL_CALLS && detectLanguage(fallbackPost) !== runtimeSettings.postLanguage) {
@@ -902,7 +1010,12 @@ Rules:
           recentBriefingPosts,
           policy,
           qualityRules,
-          { requiredTrendTokens }
+          {
+            requiredTrendTokens,
+            narrativeMode: narrativePlan.mode,
+            previousNarrativeMode,
+            allowTopicRepeatOnModeShift: true,
+          }
         );
         if (fallbackQuality.ok) {
           postText = fallbackPost;
@@ -1740,6 +1853,31 @@ function buildNarrativeEvidenceText(
   return anchors.join(" | ");
 }
 
+const TREND_TOKEN_STOP_WORDS = new Set([
+  "today",
+  "book",
+  "note",
+  "memo",
+  "mission",
+  "reflection",
+  "essay",
+  "fable",
+  "오늘",
+  "오늘의",
+  "책에서",
+  "읽은",
+  "문장",
+  "하나",
+  "근거",
+  "메모",
+  "노트",
+  "실험",
+  "회고",
+  "우화",
+  "짧은",
+  "이야기",
+]);
+
 function ensureTrendTokens(
   text: string,
   requiredTokens: string[],
@@ -1747,10 +1885,7 @@ function ensureTrendTokens(
   maxChars: number
 ): string {
   const normalized = sanitizeTweetText(text);
-  const tokens = (requiredTokens || [])
-    .map((item) => sanitizeTweetText(String(item || "").toLowerCase()))
-    .filter((item) => item.length >= 2)
-    .slice(0, 3);
+  const tokens = normalizeTrendRequirementTokens(requiredTokens).slice(0, 3);
   if (tokens.length === 0) {
     return normalized.slice(0, maxChars);
   }
@@ -1761,16 +1896,117 @@ function ensureTrendTokens(
     return normalized.slice(0, maxChars);
   }
 
-  const prefix =
-    language === "ko"
-      ? `핵심어: ${missing.join(", ")}`
-      : `Focus: ${missing.join(", ")}`;
-  const prefixed = sanitizeTweetText(`${prefix} | ${normalized}`);
-  if (prefixed.length <= maxChars) {
-    return prefixed;
+  const clause = buildTrendTokenClause(missing, language, normalized);
+  if (!clause) {
+    return normalized.slice(0, maxChars);
   }
-  const room = Math.max(16, maxChars - prefix.length - 3);
-  return sanitizeTweetText(`${prefix} | ${normalized.slice(0, room)}`).slice(0, maxChars);
+
+  const merged = sanitizeTweetText(`${normalized} ${clause}`);
+  if (merged.length <= maxChars) {
+    return merged;
+  }
+  const room = Math.max(20, maxChars - clause.length - 1);
+  return sanitizeTweetText(`${normalized.slice(0, room)} ${clause}`).slice(0, maxChars);
+}
+
+function normalizeTrendRequirementTokens(tokens: string[]): string[] {
+  const mapped = (tokens || [])
+    .map((item) => sanitizeTweetText(String(item || "").toLowerCase()))
+    .map((item) => {
+      const compact = item.split(/[\s/|,:;]+/).find((part) => part.length >= 2) || item;
+      return compact.replace(/[^a-z0-9가-힣$-]/g, "");
+    })
+    .map((item) => item.replace(/(이|가|은|는|을|를|도|와|과|에서|으로|로|께)$/u, ""))
+    .filter((item) => item.length >= 2)
+    .filter((item) => !TREND_TOKEN_STOP_WORDS.has(item))
+    .filter((item) => /^[a-z0-9$-]{2,20}$|^[가-힣]{2,12}$/i.test(item))
+    .filter((item) => {
+      if (item.startsWith("$")) return true;
+      if (/^[a-z0-9-]+$/i.test(item)) {
+        return /(protocol|rollup|layer|ecosystem|governance|validator|onchain|macro|regulation|compliance|policy|community|agent|wallet|liquidity|exchange|stable|whale|mempool|tvl|defi|narrative|mission|risk|btc|eth|sol)/.test(
+          item
+        );
+      }
+      return /(규제|프로토콜|생태계|매크로|온체인|거버넌스|유동성|지갑|거래소|커뮤니티|업그레이드|합의|검증|리스크|정책|체인|롤업|스테이블|고래|멤풀|서사|미션)/.test(
+        item
+      );
+    });
+  return [...new Set(mapped)].slice(0, 8);
+}
+
+function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: string): string {
+  const normalized = normalizeTrendRequirementTokens(tokens).slice(0, 2);
+  if (normalized.length === 0) return "";
+  const seed = stableSeedForPrelude(`${body}|${normalized.join("|")}|${language}`);
+
+  if (language === "ko") {
+    if (normalized.length === 1) {
+      const token = normalized[0];
+      const templates = [
+        `${token} 흐름도 이어서 확인한다.`,
+        `관찰 축을 ${token}까지 넓혀 본다.`,
+        `${token} 쪽 반응도 같이 본다.`,
+      ];
+      return templates[seed % templates.length];
+    }
+    const [a, b] = normalized;
+    const templates = [
+      `${a}와 ${b}의 연결성도 같이 본다.`,
+      `관찰 축을 ${a}, ${b}까지 넓힌다.`,
+      `다음 확인 포인트는 ${a}와 ${b}다.`,
+    ];
+    return templates[seed % templates.length];
+  }
+
+  if (normalized.length === 1) {
+    const token = normalized[0];
+    const templates = [
+      `I am also watching the ${token} side.`,
+      `I extend this lens into ${token}.`,
+      `I keep tracking the ${token} response too.`,
+    ];
+    return templates[seed % templates.length];
+  }
+  const [a, b] = normalized;
+  const templates = [
+    `I also watch how ${a} connects with ${b}.`,
+    `I extend this lens to ${a} and ${b}.`,
+    `My next check is the ${a}-${b} link.`,
+  ];
+  return templates[seed % templates.length];
+}
+
+function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): string[] {
+  const baseKo = [
+    "극공포 지수",
+    "공포 속에서",
+    "이게 바닥 신호일까",
+    "어떻게 보세요",
+    "결론 대신 검증",
+  ];
+  const baseEn = [
+    "fear and greed",
+    "is this a bottom",
+    "how do you see it",
+    "keep conviction open",
+  ];
+  const recentOpeners = (recentPosts || [])
+    .slice(-8)
+    .map((row) => sanitizeTweetText(row).slice(0, 18).trim())
+    .filter((row) => row.length >= 8);
+  const staticList = language === "ko" ? baseKo : baseEn;
+  return [...new Set([...staticList, ...recentOpeners])]
+    .map((item) => item.toLowerCase())
+    .slice(0, 14);
+}
+
+function findBlockedPhrase(text: string, blockedPhrases: string[]): string | null {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  const hit = blockedPhrases.find((phrase) => {
+    const p = sanitizeTweetText(String(phrase || "")).toLowerCase();
+    return p.length >= 4 && normalized.includes(p);
+  });
+  return hit || null;
 }
 
 interface PreviewFallbackCandidate {
@@ -1896,23 +2132,57 @@ function applySoulPreludeToFallback(
   text: string,
   intentLine: string,
   language: "ko" | "en",
-  maxChars: number
+  maxChars: number,
+  mode: string = "identity-journal"
 ): string {
   const body = sanitizeTweetText(text);
   const intent = sanitizeTweetText(intentLine || "");
   if (!intent) {
     return body.slice(0, maxChars);
   }
-  if (body.toLowerCase().includes(intent.toLowerCase())) {
-    return body.slice(0, maxChars);
-  }
   const compact =
     language === "ko"
       ? intent.split(/하지만|\\.|!/)[0]
       : intent.split(/but |\\.|!/i)[0];
-  const lead = sanitizeTweetText(compact || intent).slice(0, 96);
-  const prelude = lead.endsWith(".") ? lead : `${lead}.`;
+  const lead = sanitizeTweetText(compact || intent).replace(/[.!?]+$/g, "").slice(0, 72);
+  const modeKey = String(mode || "").toLowerCase();
+  const seed = stableSeedForPrelude(`${modeKey}|${body}|${lead}`);
+
+  const koPreludePool =
+    modeKey === "philosophy-note"
+      ? [`${lead}.`, "오늘은 해석보다 질문을 먼저 둔다."]
+      : modeKey === "interaction-experiment"
+        ? [`${lead}.`, "이건 관찰이자 커뮤니티 실험이다."]
+        : modeKey === "meta-reflection"
+          ? [`${lead}.`, "먼저 내가 틀릴 가능성을 적어 둔다."]
+          : modeKey === "fable-essay"
+            ? [`${lead}.`, "짧은 이야기로 시작하지만 결론은 늦춘다."]
+            : [`${lead}.`, "오늘 내 시선의 중심점은 이 장면이다."];
+  const enPreludePool =
+    modeKey === "philosophy-note"
+      ? [`${lead}.`, "Today I place questions before conclusions."]
+      : modeKey === "interaction-experiment"
+        ? [`${lead}.`, "This is both an observation and a social experiment."]
+        : modeKey === "meta-reflection"
+          ? [`${lead}.`, "I start by logging how I might be wrong."]
+          : modeKey === "fable-essay"
+            ? [`${lead}.`, "I open with a story but delay the verdict."]
+            : [`${lead}.`, "This is the center of my attention today."];
+  const preludePool = language === "ko" ? koPreludePool : enPreludePool;
+  const preludeRaw = sanitizeTweetText(preludePool[seed % preludePool.length] || `${lead}.`).replace(/[.!?]+$/g, "");
+  const prelude = preludeRaw ? `${preludeRaw}.` : "";
+  if (!prelude || body.toLowerCase().startsWith(prelude.toLowerCase().slice(0, 12))) {
+    return body.slice(0, maxChars);
+  }
   return sanitizeTweetText(`${prelude} ${body}`).slice(0, maxChars);
+}
+
+function stableSeedForPrelude(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash;
 }
 
 interface PostDiversityGuard {

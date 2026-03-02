@@ -1,4 +1,4 @@
-import { OnchainEvidence, OnchainNutrient, TrendEvent, TrendLane } from "../../types/agent.js";
+import { NarrativeMode, OnchainEvidence, OnchainNutrient, TrendEvent, TrendLane } from "../../types/agent.js";
 import { EventEvidencePlan, LaneUsageWindow, RecentPostRecord } from "./types.js";
 import { NewsItem } from "../blockchain-news.js";
 import { sanitizeTweetText } from "./quality.js";
@@ -57,6 +57,29 @@ const EVIDENCE_TOKEN_STOP_WORDS = new Set([
   "fear",
   "greed",
   "fgi",
+  "today",
+  "todays",
+  "book",
+  "note",
+  "memo",
+  "mission",
+  "reflection",
+  "essay",
+  "fable",
+  "오늘",
+  "오늘의",
+  "책에서",
+  "읽은",
+  "문장",
+  "하나",
+  "근거",
+  "메모",
+  "노트",
+  "실험",
+  "회고",
+  "우화",
+  "짧은",
+  "이야기",
   "공포",
   "탐욕",
   "지수",
@@ -78,7 +101,20 @@ export function buildTrendEvents(params: {
     if (headline.length < 12) return;
     const summary = sanitizeTweetText(row.item.summary || row.item.title || "").slice(0, 220);
     const lane = inferTrendLane([headline, row.item.category, row.item.summary].join(" "));
-    const freshness = clampNumber(0.95 - index * 0.05, 0.35, 0.95, 0.7);
+    const priceActionOnly = isPriceActionHeadline(`${headline} ${summary}`);
+    const richness = estimateNarrativeRichness(headline, lane);
+    const freshness = clampNumber(
+      0.95 - index * 0.05 - (priceActionOnly ? 0.08 : 0) + richness * 0.06,
+      0.3,
+      0.98,
+      0.7
+    );
+    const adjustedTrust = clampNumber(
+      row.trust - (priceActionOnly ? 0.1 : 0) + (richness - 0.5) * 0.16,
+      0.1,
+      0.98,
+      0.52
+    );
     const key = normalizeHeadlineKey(headline);
     if (dedup.has(key)) return;
     dedup.set(key, {
@@ -87,7 +123,7 @@ export function buildTrendEvents(params: {
       headline,
       summary,
       source: row.sourceKey,
-      trust: clampNumber(row.trust, 0.1, 0.98, 0.52),
+      trust: adjustedTrust,
       freshness,
       capturedAt: params.createdAt,
       keywords: extractHeadlineTokens(headline).slice(0, 6),
@@ -174,6 +210,7 @@ export function planEventEvidenceAct(params: {
   const requireCrossSourceEvidence = params.requireCrossSourceEvidence !== false;
 
   const laneUsage = params.laneUsage || computeLaneUsageWindow(params.recentPosts);
+  const lastLane = inferLastLane(params.recentPosts);
   const scored = events
     .map((event) => {
       const pair = selectEvidencePairForLane(event.lane, evidence, {
@@ -186,9 +223,20 @@ export function planEventEvidenceAct(params: {
       const projectedRatio = (laneUsage.byLane[event.lane] + 1) / Math.max(1, laneUsage.totalPosts + 1);
       const quotaLimited = projectedRatio > LANE_MAX_RATIO[event.lane];
       const novelty = calculateHeadlineNovelty(event.headline, params.recentPosts);
+      const narrativeRichness = estimateNarrativeRichness(event.headline, event.lane);
       const evidenceStrength =
         pair.evidence.reduce((sum, item) => sum + item.trust * item.freshness, 0) / pair.evidence.length;
-      const score = event.trust * 0.42 + event.freshness * 0.2 + novelty * 0.22 + evidenceStrength * 0.16 - (quotaLimited ? 0.35 : 0);
+      const laneRepeatPenalty = lastLane && lastLane === event.lane ? 0.14 : 0;
+      const priceEvidencePenalty = estimatePriceEvidencePenalty(pair.evidence, event.lane);
+      const score =
+        event.trust * 0.35 +
+        event.freshness * 0.19 +
+        novelty * 0.2 +
+        evidenceStrength * 0.16 +
+        narrativeRichness * 0.2 -
+        (quotaLimited ? 0.35 : 0) -
+        laneRepeatPenalty -
+        priceEvidencePenalty;
       return {
         event,
         evidence: pair.evidence,
@@ -270,17 +318,83 @@ export function validateEventEvidenceContract(
 export function buildEventEvidenceFallbackPost(
   plan: EventEvidencePlan,
   language: "ko" | "en",
-  maxChars: number = 220
+  maxChars: number = 220,
+  mode?: NarrativeMode
 ): string {
   const eventHeadline = sanitizeTweetText(plan.event.headline).replace(/\.$/, "");
   const evidenceA = formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = formatEvidenceAnchor(plan.evidence[1], language);
   const laneLabel = laneDisplayName(plan.lane, language);
-  const base =
-    language === "ko"
-      ? `오늘 ${laneLabel}에서 내가 붙잡은 장면은 ${eventHeadline}. 단서 두 개는 ${evidenceA}, ${evidenceB}. 결론 대신 검증을 이어간다.`
-      : `Today in ${laneLabel}, I am tracking this scene: ${eventHeadline}. Two anchors: ${evidenceA}, ${evidenceB}. I keep the verdict open and test follow-through.`;
+  const narrativeMode = mode || inferNarrativeModeFromHeadline(eventHeadline);
+  const seed = stableSeed(`${plan.event.id}|${eventHeadline}|${evidenceA}|${evidenceB}|${narrativeMode}`);
+
+  const koTemplates: Record<NarrativeMode, string[]> = {
+    "identity-journal": [
+      `오늘 ${laneLabel}에서 내가 기록한 장면은 ${eventHeadline}. 나는 ${evidenceA}, ${evidenceB}를 붙여서 판단을 늦춘다.`,
+      `내 일지 한 줄: ${eventHeadline}. 지금 내 근거는 ${evidenceA}와 ${evidenceB}. 결론은 조금 더 유예한다.`,
+    ],
+    "philosophy-note": [
+      `철학 메모: ${eventHeadline}. ${evidenceA}와 ${evidenceB}를 나란히 놓으면 숫자보다 행동의 이유가 먼저 보인다.`,
+      `읽던 문장을 체인 위로 옮기면 ${eventHeadline}. 단서 두 개는 ${evidenceA}, ${evidenceB}. 여기서부터 해석을 시작한다.`,
+    ],
+    "interaction-experiment": [
+      `상호작용 실험: ${eventHeadline}. 내가 붙잡은 단서는 ${evidenceA}, ${evidenceB}. 너라면 어떤 반증을 먼저 찾을래?`,
+      `오늘의 미션형 관찰은 ${eventHeadline}. 근거는 ${evidenceA}, ${evidenceB}. 이 장면을 어떻게 검증할지 의견을 듣고 싶다.`,
+    ],
+    "meta-reflection": [
+      `메타 회고: 나는 자주 결론을 서두른다. 그래서 ${eventHeadline}를 ${evidenceA}, ${evidenceB}로 다시 맞춰 본다.`,
+      `실수 로그: ${eventHeadline}. 단일 신호에 기대지 않기 위해 ${evidenceA}와 ${evidenceB}를 동시에 본다.`,
+    ],
+    "fable-essay": [
+      `짧은 우화: 모두가 소리를 키울 때, 나는 ${eventHeadline}를 ${evidenceA}, ${evidenceB}로 조용히 읽는다.`,
+      `에세이 한 문단으로 남기면 ${eventHeadline}. 단서 두 개(${evidenceA}, ${evidenceB})가 오늘의 결을 만든다.`,
+    ],
+  };
+
+  const enTemplates: Record<NarrativeMode, string[]> = {
+    "identity-journal": [
+      `Identity log: ${eventHeadline}. I anchor this with ${evidenceA} and ${evidenceB}, then delay certainty.`,
+      `One line from my journal: ${eventHeadline}. My anchors are ${evidenceA} and ${evidenceB}. Verdict stays open.`,
+    ],
+    "philosophy-note": [
+      `Philosophy note: ${eventHeadline}. Put ${evidenceA} next to ${evidenceB}, and behavior explains more than price.`,
+      `A book fragment onchain: ${eventHeadline}. Two anchors: ${evidenceA}, ${evidenceB}. I start interpretation there.`,
+    ],
+    "interaction-experiment": [
+      `Interaction experiment: ${eventHeadline}. I am using ${evidenceA} and ${evidenceB}. What would falsify this first?`,
+      `Mission post: ${eventHeadline}. Anchors are ${evidenceA}, ${evidenceB}. Tell me which counter-signal you trust most.`,
+    ],
+    "meta-reflection": [
+      `Meta reflection: I rush conclusions when noise gets loud. So I re-check ${eventHeadline} with ${evidenceA} and ${evidenceB}.`,
+      `Failure log: ${eventHeadline}. To avoid single-signal bias, I hold ${evidenceA} and ${evidenceB} together.`,
+    ],
+    "fable-essay": [
+      `Short fable: while everyone raises volume, I read ${eventHeadline} through ${evidenceA} and ${evidenceB}.`,
+      `One-paragraph essay: ${eventHeadline}. Two anchors, ${evidenceA} and ${evidenceB}, shape today's interpretation.`,
+    ],
+  };
+
+  const pool = language === "ko" ? koTemplates[narrativeMode] : enTemplates[narrativeMode];
+  const base = pool[seed % pool.length] || pool[0];
   return sanitizeTweetText(base).slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
+}
+
+function inferNarrativeModeFromHeadline(headline: string): NarrativeMode {
+  const lower = sanitizeTweetText(headline).toLowerCase();
+  if (/철학|philosophy|책|book|사상|worldview/.test(lower)) return "philosophy-note";
+  if (/실험|experiment|미션|mission|커뮤니티/.test(lower)) return "interaction-experiment";
+  if (/회고|reflection|실수|failure|오판/.test(lower)) return "meta-reflection";
+  if (/우화|fable|에세이|essay|비유/.test(lower)) return "fable-essay";
+  return "identity-journal";
+}
+
+function stableSeed(input: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return Math.abs(hash >>> 0);
 }
 
 export function inferTrendLane(text: string): TrendLane {
@@ -302,6 +416,60 @@ function calculateHeadlineNovelty(headline: string, recentPosts: RecentPostRecor
   if (overlapCount >= 2) return 0.2;
   if (overlapCount === 1) return 0.45;
   return 0.82;
+}
+
+function inferLastLane(recentPosts: RecentPostRecord[]): TrendLane | null {
+  const latest = recentPosts[recentPosts.length - 1];
+  if (!latest?.content) return null;
+  return inferTrendLane(latest.content);
+}
+
+function estimatePriceEvidencePenalty(pair: OnchainEvidence[], lane: TrendLane): number {
+  const priceLikeCount = pair.filter((item) => {
+    const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+    return /(price|24h|pct|percent|market cap|dominance|시총|시세|변동|등락|도미넌스|공포|탐욕|fgi)/.test(normalized);
+  }).length;
+
+  if (lane === "onchain") {
+    return priceLikeCount >= 2 ? 0.05 : 0;
+  }
+  if (lane === "market-structure") {
+    return priceLikeCount >= 2 ? 0.08 : priceLikeCount === 1 ? 0.03 : 0;
+  }
+  return priceLikeCount >= 2 ? 0.16 : priceLikeCount === 1 ? 0.06 : 0;
+}
+
+function estimateNarrativeRichness(headline: string, lane: TrendLane): number {
+  const normalized = sanitizeTweetText(headline).toLowerCase();
+  const conceptualHits =
+    (normalized.match(
+      /protocol|governance|validator|rollup|developer|community|mission|identity|철학|책|서사|규제|정책|compliance|adoption|ecosystem|user behavior|coordination|incentive/g
+    ) || []).length;
+  const priceNoiseHits =
+    (normalized.match(
+      /price|surge|jump|rally|drops?|plunge|soar|pump|dump|hits?\s+\$|\$[a-z]{2,10}|fgi|fear|greed|극공포|공포|탐욕|상승|하락|급등|급락|시총/g
+    ) || []).length;
+  const laneBase =
+    lane === "protocol" || lane === "ecosystem" || lane === "regulation"
+      ? 0.62
+      : lane === "macro"
+        ? 0.52
+        : lane === "market-structure"
+          ? 0.46
+          : 0.42;
+  return clampNumber(laneBase + conceptualHits * 0.08 - priceNoiseHits * 0.06, 0.12, 0.95, 0.5);
+}
+
+function isPriceActionHeadline(text: string): boolean {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  const hasPriceMove =
+    /(price|surge|jump|rally|drops?|plunge|soar|pump|dump|up|down|상승|하락|급등|급락|돌파|붕괴)/.test(normalized);
+  const hasNumericAnchor = /[$€¥£]\s?\d|\d+(?:[.,]\d+)?%|\$[a-z]{2,10}/.test(normalized);
+  const hasConceptualAnchor =
+    /(protocol|governance|validator|compliance|regulation|community|ecosystem|adoption|incentive|coordination|철학|정체성|미션|상호작용|규제|정책|생태계)/.test(
+      normalized
+    );
+  return hasPriceMove && hasNumericAnchor && !hasConceptualAnchor;
 }
 
 function selectEvidenceForLane(lane: TrendLane, evidence: OnchainEvidence[]): OnchainEvidence[] {

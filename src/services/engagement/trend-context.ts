@@ -92,6 +92,29 @@ const FOCUS_TOKEN_STOP_WORDS = new Set([
   "fear",
   "greed",
   "fgi",
+  "today",
+  "todays",
+  "book",
+  "note",
+  "memo",
+  "mission",
+  "reflection",
+  "essay",
+  "fable",
+  "오늘",
+  "오늘의",
+  "책에서",
+  "읽은",
+  "문장",
+  "하나",
+  "근거",
+  "메모",
+  "노트",
+  "실험",
+  "회고",
+  "우화",
+  "짧은",
+  "이야기",
   "공포",
   "탐욕",
   "지수",
@@ -147,10 +170,6 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
   }
 
   const keywords = Array.from(keywordSet).filter(Boolean).slice(0, 18);
-  const topCoinSummary = marketData
-    .slice(0, 4)
-    .map((coin) => `${coin.symbol} ${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(1)}%`)
-    .join(" | ");
   const newsSummary = titlePool.slice(0, 4).map((title) => `- ${title}`).join("\n");
   const createdAt = new Date().toISOString();
   const nutrients = buildTrendNutrients({
@@ -158,14 +177,21 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
     newsRows: filteredNews,
     createdAt,
   });
-  const events = buildTrendEvents({
+  const marketEvents = buildTrendEvents({
     newsRows: filteredNews,
     createdAt,
   });
+  const narrativeBridgeEvents = buildNarrativeBridgeEvents({
+    newsRows: filteredNews,
+    createdAt,
+  });
+  const events = dedupTrendEvents([...narrativeBridgeEvents, ...marketEvents], 12);
+  const laneMix = summarizeLaneMix(events);
+  const soulIntent = memory.getSoulIntentPlan("ko");
 
   return {
     keywords: keywords.length > 0 ? keywords : ["crypto", "blockchain", "layer2", "onchain", "ETF", "macro"],
-    summary: `마켓 흐름: ${topCoinSummary || "데이터 확인 중"}\n핫 토픽:\n${newsSummary || "- 데이터 부족"}`,
+    summary: `관찰 프레임: ${laneMix}\n서사 초점: ${soulIntent.primaryDesire}\n핫 토픽:\n${newsSummary || "- 데이터 부족"}`,
     marketData,
     headlines: titlePool.slice(0, 8),
     newsSources: filteredNews.slice(0, 8).map((row) => ({ key: row.sourceKey, trust: row.trust })),
@@ -290,7 +316,7 @@ export function buildTrendNutrients(params: {
   newsRows: Array<{ item: NewsItem; sourceKey: string; trust: number }>;
   createdAt: string;
 }): OnchainNutrient[] {
-  const marketNutrients: OnchainNutrient[] = params.marketData.slice(0, 5).map((coin, index) => {
+  const marketNutrients: OnchainNutrient[] = params.marketData.slice(0, 2).map((coin, index) => {
     const absChange = Math.abs(coin.change24h);
     const direction = coin.change24h > 0.1 ? "up" : coin.change24h < -0.1 ? "down" : "flat";
     const lane = inferTrendLane(`${coin.symbol} price ${coin.change24h}% liquidity market`);
@@ -343,6 +369,105 @@ export function buildTrendNutrients(params: {
     }
   }
   return Array.from(dedup.values());
+}
+
+function buildNarrativeBridgeEvents(params: {
+  newsRows: Array<{ item: NewsItem; sourceKey: string; trust: number }>;
+  createdAt: string;
+}): Array<{
+  id: string;
+  lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure";
+  headline: string;
+  summary: string;
+  source: string;
+  trust: number;
+  freshness: number;
+  capturedAt: string;
+  keywords: string[];
+}> {
+  const soulIntent = memory.getSoulIntentPlan("ko");
+  const topNews = params.newsRows
+    .map((row) => sanitizeTweetText(row.item.title))
+    .filter((title) => title.length >= 10)
+    .slice(0, 2);
+  if (topNews.length === 0) return [];
+
+  const reframed = topNews.map((headline, index) => {
+    const lane = inferTrendLane(`${headline} ${soulIntent.philosophyFrame} ${soulIntent.interactionMission}`);
+    const narrativeHeadline =
+      index % 2 === 0
+        ? `정체성 노트: ${headline}를 '${soulIntent.signatureBelief}' 관점으로 다시 읽는다`
+        : `커뮤니티 미션: ${headline}가 행동을 바꾼다면 어떤 근거가 먼저 보일까`;
+    const summary =
+      index % 2 === 0
+        ? `${soulIntent.selfNarrative}. ${soulIntent.philosophyFrame}. 사건을 가격이 아닌 선택의 구조로 해석한다.`
+        : `${soulIntent.primaryDesire}. ${soulIntent.interactionMission}. 반증 가능한 질문을 남긴다.`;
+
+    return {
+      id: `event:bridge:${lane}:${index}:${params.createdAt}`,
+      lane,
+      headline: sanitizeTweetText(narrativeHeadline).slice(0, 150),
+      summary: sanitizeTweetText(summary).slice(0, 220),
+      source: "soul:narrative-bridge",
+      trust: 0.66,
+      freshness: 0.9 - index * 0.04,
+      capturedAt: params.createdAt,
+      keywords: extractHeadlineFocusTokens(narrativeHeadline).slice(0, 6),
+    };
+  });
+
+  return reframed.slice(0, 2);
+}
+
+function dedupTrendEvents(
+  events: Array<{
+    id: string;
+    lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure";
+    headline: string;
+    summary: string;
+    source: string;
+    trust: number;
+    freshness: number;
+    capturedAt: string;
+    keywords: string[];
+  }>,
+  maxItems: number
+): Array<{
+  id: string;
+  lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure";
+  headline: string;
+  summary: string;
+  source: string;
+  trust: number;
+  freshness: number;
+  capturedAt: string;
+  keywords: string[];
+}> {
+  const dedup = new Map<string, (typeof events)[number]>();
+  for (const event of events) {
+    const key = sanitizeTweetText(event.headline).toLowerCase().replace(/[^a-z0-9가-힣]/g, "");
+    if (!dedup.has(key)) {
+      dedup.set(key, event);
+    }
+  }
+  return Array.from(dedup.values()).slice(0, Math.max(2, Math.min(24, maxItems)));
+}
+
+function summarizeLaneMix(
+  events: Array<{
+    lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure";
+  }>
+): string {
+  if (!Array.isArray(events) || events.length === 0) return "이벤트 부족, 관측 모드";
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    counts.set(event.lane, (counts.get(event.lane) || 0) + 1);
+  }
+  const top = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([lane, count]) => `${lane} ${count}`);
+  return top.join(" | ");
 }
 
 function inferNewsCategory(title: string, fallback: string): string {
@@ -398,13 +523,14 @@ function buildLocalNarrativeTrendContext(): TrendContext {
   const nutrients: OnchainNutrient[] = selectedThemes.flatMap((theme, themeIndex) =>
     theme.evidence.map((item, evidenceIndex) => {
       const source = evidenceIndex % 2 === 0 ? "onchain" : "news";
+      const compactValue = sanitizeTweetText(item).slice(0, 48);
       return {
         id: `local:${theme.lane}:${themeIndex}:${evidenceIndex}:${createdAt}`,
         source,
         category: `narrative-${theme.lane}`,
-        label: `${theme.headline.slice(0, 72)} 근거`,
-        value: item,
-        evidence: `${theme.summary} | ${item}`,
+        label: `${localLaneLabel(theme.lane)} 근거 ${evidenceIndex + 1}`,
+        value: compactValue,
+        evidence: `${theme.summary} | ${compactValue}`,
         trust: clampNumber(0.62 + evidenceIndex * 0.05, 0.35, 0.9, 0.68),
         freshness: 0.98,
         consistencyHint: 0.78,
@@ -450,6 +576,15 @@ function selectLocalThemes(count: number): LocalNarrativeTheme[] {
     result.push(LOCAL_NARRATIVE_THEMES[(start + i) % LOCAL_NARRATIVE_THEMES.length]);
   }
   return result;
+}
+
+function localLaneLabel(lane: LocalNarrativeTheme["lane"]): string {
+  if (lane === "protocol") return "프로토콜";
+  if (lane === "ecosystem") return "생태계";
+  if (lane === "regulation") return "규제";
+  if (lane === "macro") return "매크로";
+  if (lane === "onchain") return "온체인";
+  return "시장구조";
 }
 
 export {
