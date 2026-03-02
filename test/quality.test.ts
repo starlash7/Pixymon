@@ -18,6 +18,9 @@ test("inferTopicTag classifies core topics", () => {
   assert.equal(inferTopicTag("극공포(FGI 10)인데 심리는 과열"), "sentiment");
   assert.equal(inferTopicTag("Layer2 rollup mainnet update"), "tech");
   assert.equal(inferTopicTag("FOMC macro risk remains high"), "macro");
+  assert.equal(inferTopicTag("규제 업데이트: policy compliance roadmap"), "regulation");
+  assert.equal(inferTopicTag("철학 메모: 신뢰는 설계다"), "philosophy");
+  assert.equal(inferTopicTag("오늘 커뮤니티 실험 미션을 던진다"), "interaction");
 });
 
 test("resolveContentQualityRules clamps out-of-range values", () => {
@@ -102,6 +105,10 @@ test("evaluatePostQuality rejects same signal lane even with short phrasing", ()
       content: "스테이블코인 유입이 꾸준히 늘고 있는 구간이다.",
       timestamp: new Date().toISOString(),
     },
+    {
+      content: "스테이블 자금 유입이 이어지는데 가격 반응은 제한적이다.",
+      timestamp: new Date().toISOString(),
+    },
   ];
 
   const result = evaluatePostQuality(
@@ -175,4 +182,24 @@ test("evaluatePostQuality enforces sentiment ratio budget", () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.reason, "sentiment 비중 초과(50%)");
+});
+
+test("evaluatePostQuality rejects numeric-heavy ticker dump style", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const text =
+    "$BTC 66304.4 +2.5%, $ETH 1976.1 -2.1%, $SOL 145.6 +4.2%, TVL 98.3B, Dominance 56.2%, FGI 9, MVRV 1.82";
+
+  const result = evaluatePostQuality(
+    text,
+    [{ symbol: "BTC", name: "Bitcoin", price: 66304.4, change24h: 2.5 }],
+    [],
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason || ""), /숫자\/티커 과밀/);
 });

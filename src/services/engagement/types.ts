@@ -68,6 +68,9 @@ export interface PostQualityContext {
     required: boolean;
     isEvent: boolean;
   };
+  narrativeMode?: string;
+  previousNarrativeMode?: string;
+  allowTopicRepeatOnModeShift?: boolean;
 }
 
 export interface AdaptivePolicy {
