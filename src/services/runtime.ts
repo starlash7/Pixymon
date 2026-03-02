@@ -3,7 +3,7 @@ import { TwitterApi } from "twitter-api-v2";
 import { RuntimeConfig } from "../config/runtime.js";
 import { memory } from "./memory.js";
 import { postTrendUpdate, runDailyQuotaCycle, runDailyQuotaLoop } from "./engagement.js";
-import { TEST_MODE, getMentions } from "./twitter.js";
+import { TEST_MODE, TEST_NO_EXTERNAL_CALLS, getMentions } from "./twitter.js";
 import { operationalState } from "./operational-state.js";
 import { xApiBudget } from "./x-api-budget.js";
 
@@ -13,6 +13,9 @@ export function printStartupBanner(config: RuntimeConfig): void {
   console.log("  AI: Claude | Mode: Analyst");
   if (TEST_MODE) {
     console.log("  [TEST MODE] 실제 트윗 발행 안 함");
+  }
+  if (TEST_NO_EXTERNAL_CALLS) {
+    console.log("  [TEST-LOCAL] 외부 API 호출 차단");
   }
   if (config.schedulerMode) {
     console.log("  [SCHEDULER] 24/7 자동 실행 모드");
