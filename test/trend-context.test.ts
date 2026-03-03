@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildEventEvidenceFallbackPost,
   buildOnchainEvidence,
   buildTrendEvents,
   planEventEvidenceAct,
@@ -327,6 +328,74 @@ test("planEventEvidenceAct returns diversity metadata for selected evidence pair
   assert.equal(plan?.hasOnchainEvidence, true);
   assert.equal(plan?.hasCrossSourceEvidence, true);
   assert.equal(plan?.evidenceSourceDiversity, 2);
+});
+
+test("buildEventEvidenceFallbackPost avoids label-style opener leakage", () => {
+  const createdAt = new Date().toISOString();
+  const fallback = buildEventEvidenceFallbackPost(
+    {
+      lane: "onchain",
+      event: {
+        id: "event-onchain",
+        lane: "onchain",
+        headline: "조용한 체인에서도 의도는 주소 이동에서 먼저 드러난다",
+        summary: "Address flow structure signals intent before volume catches up.",
+        source: "news:test",
+        trust: 0.82,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["onchain", "address", "intent"],
+      },
+      evidence: [
+        {
+          id: "ev1",
+          lane: "onchain",
+          nutrientId: "n1",
+          source: "onchain",
+          label: "지갑 군집 변화",
+          value: "확대",
+          summary: "Wallet cluster dispersion expanded.",
+          trust: 0.8,
+          freshness: 0.9,
+          capturedAt: createdAt,
+        },
+        {
+          id: "ev2",
+          lane: "macro",
+          nutrientId: "n2",
+          source: "news",
+          label: "리스크 선호 전환",
+          value: "지연",
+          summary: "Risk appetite rotation still lagging.",
+          trust: 0.76,
+          freshness: 0.86,
+          capturedAt: createdAt,
+        },
+      ],
+      hasOnchainEvidence: true,
+      hasCrossSourceEvidence: true,
+      evidenceSourceDiversity: 2,
+      laneUsage: {
+        totalPosts: 0,
+        byLane: {
+          protocol: 0,
+          ecosystem: 0,
+          regulation: 0,
+          macro: 0,
+          onchain: 0,
+          "market-structure": 0,
+        },
+      },
+      laneProjectedRatio: 0.2,
+      laneQuotaLimited: false,
+    },
+    "ko",
+    220,
+    "identity-journal"
+  );
+
+  assert.equal(/(?:오늘 기록:|관찰 노트:|온체인에서 오늘 붙잡은 장면:)/.test(fallback), false);
+  assert.ok(fallback.length >= 30);
 });
 
 test("buildTrendEvents maps news rows into lane-tagged events", () => {

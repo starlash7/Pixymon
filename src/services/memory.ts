@@ -1868,9 +1868,12 @@ export class MemoryService {
     soul.identity.signatureBelief = this.nextSignatureBelief(soul.identity, input.lane, language);
     soul.identity.updatedAt = new Date().toISOString();
 
-    const question = this.extractQuestionFromText(text) || this.pickGeneratedQuestion(input.lane, language);
+    const question = this.normalizeSoulSnippet(
+      this.extractQuestionFromText(text) || this.pickGeneratedQuestion(input.lane, language),
+      140
+    );
     const nextQuestions = [question, ...soul.curiosity.openQuestions]
-      .map((item) => item.trim())
+      .map((item) => this.normalizeSoulSnippet(item, 140))
       .filter(Boolean)
       .filter((item, index, arr) => arr.indexOf(item) === index)
       .slice(0, 8);
@@ -1881,17 +1884,17 @@ export class MemoryService {
       0.1,
       0.95
     );
-    const reflectiveLine = this.extractReflectiveLine(text);
+    const reflectiveLine = this.normalizeSoulSnippet(this.extractReflectiveLine(text) || "", 140);
     if (reflectiveLine) {
       soul.worldview.philosophyNotes = [reflectiveLine, ...soul.worldview.philosophyNotes]
-        .map((item) => item.trim())
+        .map((item) => this.normalizeSoulSnippet(item, 140))
         .filter(Boolean)
         .filter((item, index, arr) => arr.indexOf(item) === index)
         .slice(0, 8);
     }
     if (question) {
       soul.worldview.interactionMissions = [question, ...soul.worldview.interactionMissions]
-        .map((item) => item.trim())
+        .map((item) => this.normalizeSoulSnippet(item, 140))
         .filter(Boolean)
         .filter((item, index, arr) => arr.indexOf(item) === index)
         .slice(0, 8);
@@ -2845,7 +2848,7 @@ export class MemoryService {
   }
 
   private pickWorldviewItem(items: string[], laneHint: TrendLane | undefined): string {
-    const cleaned = items.map((item) => item.trim()).filter(Boolean);
+    const cleaned = items.map((item) => this.normalizeSoulSnippet(item, 120)).filter(Boolean);
     if (cleaned.length === 0) return "";
     const laneIndex = laneHint
       ? ["protocol", "ecosystem", "regulation", "macro", "onchain", "market-structure"].indexOf(laneHint)
@@ -2879,7 +2882,7 @@ export class MemoryService {
   private nextSelfNarrative(identity: IdentityKernel, lane: TrendLane, language: "ko" | "en"): string {
     const daySeed = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
     const pick = (pool: string[]): string => pool[daySeed % pool.length] || pool[0];
-    const identityFallback = String(identity.selfNarrative || "").trim().replace(/\s+/g, " ").slice(0, 160);
+    const identityFallback = this.normalizeSoulSnippet(identity.selfNarrative || "", 160);
 
     if (language === "en") {
       if (lane === "protocol") {
@@ -2953,13 +2956,19 @@ export class MemoryService {
       if (lane === "onchain") return "Data is not truth; it is a trace of intention.";
       if (lane === "regulation") return "Rules don't kill narratives, they reshape them.";
       if (lane === "ecosystem") return "Communities outlast incentives when meaning compounds.";
-      return identity.signatureBelief || "Narratives survive when evidence can challenge them.";
+      return (
+        this.normalizeSoulSnippet(identity.signatureBelief || "", 160) ||
+        "Narratives survive when evidence can challenge them."
+      );
     }
 
     if (lane === "onchain") return "데이터는 진실 그 자체가 아니라 의도의 흔적이다";
     if (lane === "regulation") return "규제는 서사를 멈추지 않고 형태를 바꾼다";
     if (lane === "ecosystem") return "의미가 쌓이는 커뮤니티는 인센티브보다 오래 간다";
-    return identity.signatureBelief || "근거가 반박을 견딜 때 서사는 생명력을 얻는다";
+    return (
+      this.normalizeSoulSnippet(identity.signatureBelief || "", 160) ||
+      "근거가 반박을 견딜 때 서사는 생명력을 얻는다"
+    );
   }
 
   private nextSecondaryDesire(desire: DesireState, language: "ko" | "en"): string {
@@ -2993,6 +3002,34 @@ export class MemoryService {
     if (parts.length === 0) return null;
     const selected = parts.find((item) => item.length >= 12) || parts[0];
     return selected ? selected.slice(0, 140) : null;
+  }
+
+  private normalizeSoulSnippet(text: string, maxLength: number = 140): string {
+    const normalized = String(text || "")
+      .replace(/\r?\n+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/[“”]/g, "\"")
+      .replace(/[‘’]/g, "'")
+      .replace(
+        /^(?:오늘의\s*)?(?:자아\s*노트|정체성\s*메모|철학\s*(?:메모|노트)|상호작용\s*실험|메타\s*회고|짧은\s*우화|실수\s*로그|관찰\s*노트|내\s*일지(?:\s*한\s*줄)?)\s*[:：-]\s*/i,
+        ""
+      )
+      .replace(
+        /^(?:identity\s*note|philosophy\s*note|interaction\s*experiment|meta\s*reflection|short\s*fable|failure\s*log|observation\s*note|mission\s*post)\s*[:：-]\s*/i,
+        ""
+      )
+      .replace(/\b(?:meta reflection|interaction experiment|philosophy note|identity note)\s*[:：-]\s*/gi, "")
+      .replace(/\s*\|\s*/g, " · ")
+      .trim();
+    if (!normalized) return "";
+    const hard = normalized.slice(0, Math.max(16, maxLength));
+    if (hard.length < normalized.length) {
+      const cut = Math.max(hard.lastIndexOf(" "), hard.lastIndexOf("."), hard.lastIndexOf(","), hard.lastIndexOf("·"));
+      if (cut >= Math.floor(hard.length * 0.62)) {
+        return hard.slice(0, cut).trim();
+      }
+    }
+    return hard.trim();
   }
 
   private resolveMoodToneFromDesire(desire: DesireState, fallback: MoodTone): MoodTone {
