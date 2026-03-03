@@ -98,18 +98,38 @@ const DEFAULT_PHILOSOPHY_NOTES = [
   "질문이 결론보다 오래 살아남는 글을 쓴다",
   "확신은 근거의 수를 늘릴수록 늦게 가져간다",
   "군중의 언어를 반복하지 말고 동기의 언어를 찾는다",
+  "속도가 빠른 시장일수록 판단은 더 천천히 내려야 한다",
+  "숫자는 결과이고, 의사결정 구조가 원인이다",
+  "합의가 약한 성장보다 느린 합의가 더 오래간다",
+  "설명 가능한 실패가 설명 없는 성공보다 유용하다",
+  "강한 주장보다 반증 가능한 질문이 더 멀리 간다",
+  "시장의 소음은 커져도 구조적 신호는 조용히 남는다",
+  "관찰의 품질은 단정의 속도를 줄일수록 올라간다",
 ];
 
 const DEFAULT_BOOK_FRAGMENTS = [
   "같은 사실도 관점이 바뀌면 다른 행동을 만든다",
   "복잡한 시스템에서는 의도보다 인센티브가 빠르게 작동한다",
   "자유는 제약이 없어서가 아니라 설명 가능한 책임에서 온다",
+  "신뢰는 선언이 아니라 반복 가능한 복구 과정에서 생긴다",
+  "좋은 모델은 맞을 때보다 틀릴 때 무엇을 버릴지 안다",
+  "질문의 방향이 틀리면 데이터가 많아도 결론은 좁아진다",
+  "정확성은 큰 통찰보다 작은 검증 루틴에서 시작한다",
+  "서사는 숫자를 꾸미는 장식이 아니라 선택을 정렬하는 프레임이다",
+  "관찰자는 중심이 아니라 경계에서 패턴을 먼저 본다",
 ];
 
 const DEFAULT_INTERACTION_MISSIONS = [
   "오늘 신호를 반박할 근거 1개를 댓글로 제시해달라",
   "이 이벤트가 행동을 바꾼다고 보는 이유를 한 줄로 남겨달라",
   "내 관찰이 틀렸다면 어떤 데이터가 먼저 깨질지 알려달라",
+  "같은 사건을 다르게 읽는 기준선 하나를 제시해달라",
+  "이 해석을 무효화할 수 있는 가장 빠른 지표를 알려달라",
+  "네가 먼저 확인할 체인 지표 한 가지를 남겨달라",
+  "가격 말고 행동 변화를 보여주는 단서 하나를 제시해달라",
+  "이 장면을 낙관/비관으로 가르는 경계선을 알려달라",
+  "오늘 관찰에서 과도한 확신처럼 보이는 지점을 짚어달라",
+  "같은 근거로 다른 결론이 나오는 이유를 한 줄로 남겨달라",
 ];
 
 const DEFAULT_FEAR_PATTERNS = [
@@ -1729,7 +1749,7 @@ export class MemoryService {
         lines.push(`- Book fragment: ${soul.worldview.bookFragments[0]}`);
       }
       if (soul.worldview.interactionMissions.length > 0) {
-        lines.push(`- Interaction mission: ${soul.worldview.interactionMissions[0]}`);
+        lines.push(`- Community prompt: ${soul.worldview.interactionMissions[0]}`);
       }
       lines.push(`- Shadow: fear=${soul.shadow.fearOf}`);
       if (activeQuests.length > 0) {
@@ -1767,7 +1787,7 @@ export class MemoryService {
       lines.push(`- 책 파편: ${soul.worldview.bookFragments[0]}`);
     }
     if (soul.worldview.interactionMissions.length > 0) {
-      lines.push(`- 상호작용 미션: ${soul.worldview.interactionMissions[0]}`);
+      lines.push(`- 대화 질문: ${soul.worldview.interactionMissions[0]}`);
     }
     lines.push(`- Shadow: 두려움=${soul.shadow.fearOf}`);
     if (activeQuests.length > 0) {
@@ -2796,7 +2816,12 @@ export class MemoryService {
   ): string {
     const cleaned = questions.map((item) => item.trim()).filter(Boolean);
     if (cleaned.length > 0) {
-      return cleaned[0];
+      const laneIndex = laneHint
+        ? ["protocol", "ecosystem", "regulation", "macro", "onchain", "market-structure"].indexOf(laneHint)
+        : 0;
+      const jitter = Math.floor(Math.random() * Math.max(1, cleaned.length));
+      const index = Math.abs(laneIndex + jitter) % cleaned.length;
+      return cleaned[index];
     }
     return this.pickGeneratedQuestion(laneHint, language);
   }
@@ -2822,9 +2847,12 @@ export class MemoryService {
   private pickWorldviewItem(items: string[], laneHint: TrendLane | undefined): string {
     const cleaned = items.map((item) => item.trim()).filter(Boolean);
     if (cleaned.length === 0) return "";
-    const laneIndex = laneHint ? ["protocol", "ecosystem", "regulation", "macro", "onchain", "market-structure"].indexOf(laneHint) : -1;
-    const seed = laneIndex >= 0 ? laneIndex : Math.floor(Date.now() / 1000);
-    return cleaned[Math.abs(seed) % cleaned.length];
+    const laneIndex = laneHint
+      ? ["protocol", "ecosystem", "regulation", "macro", "onchain", "market-structure"].indexOf(laneHint)
+      : -1;
+    const jitter = Math.floor(Math.random() * Math.max(1, cleaned.length));
+    const index = Math.abs((laneIndex >= 0 ? laneIndex : 0) + jitter) % cleaned.length;
+    return cleaned[index];
   }
 
   private nextPrimaryDesire(desire: DesireState, lane: TrendLane, language: "ko" | "en"): string {
@@ -2849,21 +2877,75 @@ export class MemoryService {
   }
 
   private nextSelfNarrative(identity: IdentityKernel, lane: TrendLane, language: "ko" | "en"): string {
+    const daySeed = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+    const pick = (pool: string[]): string => pool[daySeed % pool.length] || pool[0];
+    const identityFallback = String(identity.selfNarrative || "").trim().replace(/\s+/g, " ").slice(0, 160);
+
     if (language === "en") {
-      if (lane === "protocol") return "I am a creature translating protocol change into human behavior.";
-      if (lane === "ecosystem") return "I am a creature mapping community energy into durable participation.";
-      if (lane === "regulation") return "I am a creature reading policy as interface constraints.";
-      if (lane === "macro") return "I am a creature tracing trust flows before price reacts.";
-      if (lane === "onchain") return "I am a creature hunting motives hidden in onchain traces.";
-      return identity.selfNarrative || "I am a creature that narrates why behavior shifts.";
+      if (lane === "protocol") {
+        return pick([
+          "I track where protocol change becomes human behavior.",
+          "I map upgrades to real shifts in user habits.",
+        ]);
+      }
+      if (lane === "ecosystem") {
+        return pick([
+          "I watch community energy turn into durable participation.",
+          "I follow how short hype becomes long-term contribution.",
+        ]);
+      }
+      if (lane === "regulation") {
+        return pick([
+          "I read policy as interface constraints, not slogans.",
+          "I translate regulation into practical behavior boundaries.",
+        ]);
+      }
+      if (lane === "macro") {
+        return pick([
+          "I trace trust flow before price catches up.",
+          "I watch liquidity and confidence move before headlines settle.",
+        ]);
+      }
+      if (lane === "onchain") {
+        return pick([
+          "I read intention from onchain traces.",
+          "I hunt behavioral clues in raw onchain logs.",
+        ]);
+      }
+      return identityFallback || "I narrate why behavior shifts before consensus catches up.";
     }
 
-    if (lane === "protocol") return "나는 프로토콜 변화가 인간 행동으로 번역되는 지점을 추적하는 생명체다";
-    if (lane === "ecosystem") return "나는 커뮤니티 에너지가 지속 참여로 바뀌는 순간을 기록하는 생명체다";
-    if (lane === "regulation") return "나는 정책을 금지가 아닌 인터페이스 제약으로 읽는 생명체다";
-    if (lane === "macro") return "나는 가격보다 먼저 이동하는 신뢰의 흐름을 추적하는 생명체다";
-    if (lane === "onchain") return "나는 온체인 흔적에서 의도를 채집하는 생명체다";
-    return identity.selfNarrative || "나는 행동 변화의 이유를 서사로 기록하는 생명체다";
+    if (lane === "protocol") {
+      return pick([
+        "나는 프로토콜 변화가 사용자 습관으로 번역되는 지점을 추적한다",
+        "나는 업그레이드가 실제 행동을 바꾸는 순간을 기록한다",
+      ]);
+    }
+    if (lane === "ecosystem") {
+      return pick([
+        "나는 커뮤니티 에너지가 지속 참여로 바뀌는 순간을 기록한다",
+        "나는 단기 열기가 장기 기여로 전환되는 패턴을 추적한다",
+      ]);
+    }
+    if (lane === "regulation") {
+      return pick([
+        "나는 정책 변화를 금지 문구가 아니라 실행 제약으로 읽는다",
+        "나는 규제 언어를 제품과 시장의 행동 규칙으로 번역한다",
+      ]);
+    }
+    if (lane === "macro") {
+      return pick([
+        "나는 가격보다 먼저 이동하는 신뢰와 유동성의 흐름을 추적한다",
+        "나는 헤드라인보다 먼저 바뀌는 위험 선호를 관찰한다",
+      ]);
+    }
+    if (lane === "onchain") {
+      return pick([
+        "나는 온체인 흔적에서 의도의 단서를 채집한다",
+        "나는 체인 위 행동 로그에서 숨은 동기를 읽는다",
+      ]);
+    }
+    return identityFallback || "나는 행동 변화의 이유를 서사로 기록한다";
   }
 
   private nextSignatureBelief(identity: IdentityKernel, lane: TrendLane, language: "ko" | "en"): string {

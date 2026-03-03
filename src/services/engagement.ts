@@ -50,10 +50,13 @@ import {
   toReasonCode,
 } from "./engagement/policy.js";
 import {
+  enforceActionAndInvalidation,
   evaluatePostQuality,
   evaluateReplyQuality,
+  polishTweetText,
   resolveContentQualityRules,
   sanitizeTweetText,
+  stripNarrativeControlTags,
 } from "./engagement/quality.js";
 import {
   AdaptivePolicy,
@@ -307,13 +310,13 @@ ${toneGuide}
         messages: [{ role: "user", content: userPrompt }],
       });
 
-      let replyText = sanitizeTweetText(extractTextFromClaude(message.content));
+      let replyText = finalizeGeneratedText(extractTextFromClaude(message.content), lang, 180);
       if (!replyText || replyText.length < 5) continue;
 
       if (detectLanguage(replyText) !== lang) {
         const rewritten = await rewriteByLanguage(claude, replyText, lang, 180);
         if (rewritten) {
-          replyText = rewritten;
+          replyText = finalizeGeneratedText(rewritten, lang, 180);
         }
       }
 
@@ -485,7 +488,10 @@ export async function postTrendUpdate(
         const selectedPreview = previewCandidates.find((candidate) => {
           const duplicate = memory.checkDuplicate(candidate.text, 0.92);
           if (duplicate.isDuplicate) return false;
-          return evaluatePostQuality(candidate.text, trend.marketData, [], previewPolicy, previewBaseQuality).ok;
+          return evaluatePostQuality(candidate.text, trend.marketData, [], previewPolicy, previewBaseQuality, {
+            language: runtimeSettings.postLanguage,
+            requireActionAndInvalidation: true,
+          }).ok;
         });
         if (!selectedPreview) {
           console.log("[POST] TEST_MODE preview fallback 스킵: 품질 게이트 통과 후보 없음");
@@ -609,12 +615,19 @@ export async function postTrendUpdate(
         if (startsWithFearGreedTemplate(localPost)) {
           localPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${localPost}`.slice(0, runtimeSettings.postMaxChars);
         }
+        localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         localPost = ensureTrendTokens(
           localPost,
           requiredTrendTokens,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
+        localPost = enforceActionAndInvalidation(
+          localPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         const blockedPhrase = findBlockedPhrase(localPost, clicheBlocklist);
         if (blockedPhrase) {
           latestFailReason = `quality:blocked-phrase(${blockedPhrase})`;
@@ -637,6 +650,8 @@ export async function postTrendUpdate(
             narrativeMode: candidate.mode,
             previousNarrativeMode,
             allowTopicRepeatOnModeShift: true,
+            language: runtimeSettings.postLanguage,
+            requireActionAndInvalidation: true,
           }
         );
 
@@ -674,6 +689,13 @@ export async function postTrendUpdate(
           if (startsWithFearGreedTemplate(localPost)) {
             localPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${localPost}`.slice(0, runtimeSettings.postMaxChars);
           }
+          localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+          localPost = enforceActionAndInvalidation(
+            localPost,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars
+          );
+          localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
           const localContract = validateEventEvidenceContract(localPost, eventPlan);
           const localNovelty = validateNarrativeNovelty(
             localPost,
@@ -690,6 +712,8 @@ export async function postTrendUpdate(
               narrativeMode: narrativePlan.mode,
               previousNarrativeMode,
               allowTopicRepeatOnModeShift: true,
+              language: runtimeSettings.postLanguage,
+              requireActionAndInvalidation: true,
             }
           );
           if (localContract.ok && localNovelty.ok && localQuality.ok) {
@@ -720,10 +744,10 @@ export async function postTrendUpdate(
 - 두려움: ${soulIntent.fear}
 - 회피 패턴: ${soulIntent.avoidancePattern}
 - 열린 질문: ${soulIntent.activeQuestion}
-- 상호작용 미션: ${soulIntent.interactionMission}
+- 대화 유도 질문: ${soulIntent.interactionMission}
 - 철학 프레임: ${soulIntent.philosophyFrame}
 - 책/문장 파편: ${soulIntent.bookFragment}
-- 서사 폼: ${soulIntent.narrativeForm}
+- 선호 형식: ${soulIntent.narrativeForm}
 - 아크 단계: ${soulIntent.arcStage}
 - 문체 지시: ${soulIntent.styleDirective}
 
@@ -734,8 +758,7 @@ ${eventPlan.event.headline}
 1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
 2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
 
-Narrative lane: ${eventPlan.lane}
-Narrative mode: ${narrativePlan.mode}
+글의 관점 레인: ${eventPlan.lane}
 오프닝 가이드: ${narrativePlan.openingDirective}
 본문 가이드: ${narrativePlan.bodyDirective}
 엔딩 가이드: ${narrativePlan.endingDirective}
@@ -767,6 +790,7 @@ ${rejectionFeedback || "없음"}
 - 과장/확정적 투자 조언 금지
 - 금기 없이 자유롭게 상상해도 되지만 숫자/사실 왜곡 금지
 - 반드시 \"이벤트 1개 + 근거 2개\" 구조 유지
+- 반드시 \"지금 확인할 행동 1개 + 틀리는 조건(반증) 1개\"를 문장 안에 포함
 - 같은 시작 문장/템플릿 반복 금지
 - \"극공포/FGI\"로 문장 시작 금지
 - 아래 표현 재사용 금지: ${clicheBlocklist.length > 0 ? clicheBlocklist.join(" | ") : "없음"}
@@ -782,10 +806,10 @@ Character intent (highest priority):
 - Fear: ${soulIntent.fear}
 - Avoidance pattern: ${soulIntent.avoidancePattern}
 - Open question: ${soulIntent.activeQuestion}
-- Interaction mission: ${soulIntent.interactionMission}
+- Community prompt: ${soulIntent.interactionMission}
 - Philosophy frame: ${soulIntent.philosophyFrame}
 - Book fragment: ${soulIntent.bookFragment}
-- Narrative form: ${soulIntent.narrativeForm}
+- Preferred form: ${soulIntent.narrativeForm}
 - Arc stage: ${soulIntent.arcStage}
 - Voice directive: ${soulIntent.styleDirective}
 
@@ -797,7 +821,6 @@ Required evidence (must include both):
 2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
 
 Narrative lane: ${eventPlan.lane}
-Narrative mode: ${narrativePlan.mode}
 Opening directive: ${narrativePlan.openingDirective}
 Body directive: ${narrativePlan.bodyDirective}
 Ending directive: ${narrativePlan.endingDirective}
@@ -829,6 +852,7 @@ Rules:
 - No financial certainty claims
 - You can be imaginative, but do not fabricate numbers/facts
 - Keep strict structure: one event + two evidence anchors
+- Include one concrete action to verify now, and one falsification condition
 - Avoid repeated opening templates
 - Do not start with fear/greed index phrasing
 - Avoid reusing these stale phrases: ${clicheBlocklist.length > 0 ? clicheBlocklist.join(" | ") : "none"}
@@ -847,11 +871,16 @@ Rules:
         messages: [{ role: "user", content: userPrompt }],
       });
 
-        let candidate = sanitizeTweetText(extractTextFromClaude(message.content));
+        let candidate = finalizeGeneratedText(
+          extractTextFromClaude(message.content),
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
         if (!candidate || candidate.length < runtimeSettings.postMinLength) {
           rejectionFeedback = "문장이 비어있거나 너무 짧음";
           continue;
         }
+        candidate = finalizeGeneratedText(candidate, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         const blockedPhrase = findBlockedPhrase(candidate, clicheBlocklist);
         if (blockedPhrase) {
           rejectionFeedback = `클리셰 재사용 금지 문구 포함(${blockedPhrase})`;
@@ -870,9 +899,22 @@ Rules:
             runtimeSettings.postMaxChars
           );
           if (rewritten) {
-            candidate = rewritten;
+            candidate = finalizeGeneratedText(rewritten, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
           }
         }
+        candidate = finalizeGeneratedText(candidate, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+        candidate = ensureTrendTokens(
+          candidate,
+          requiredTrendTokens,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        candidate = enforceActionAndInvalidation(
+          candidate,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        candidate = finalizeGeneratedText(candidate, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
 
         if (startsWithFearGreedTemplate(candidate)) {
           rejectionFeedback = "금지된 오프너(FGI/극공포 시작)";
@@ -932,6 +974,8 @@ Rules:
           narrativeMode: narrativePlan.mode,
           previousNarrativeMode,
           allowTopicRepeatOnModeShift: true,
+          language: runtimeSettings.postLanguage,
+          requireActionAndInvalidation: true,
         });
         if (!quality.ok) {
           rejectionFeedback = quality.reason || "품질 게이트 미통과";
@@ -963,6 +1007,13 @@ Rules:
           narrativePlan.mode
         );
       }
+      if (fallbackPost) {
+        fallbackPost = finalizeGeneratedText(
+          fallbackPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+      }
       if (fallbackPost && !TEST_NO_EXTERNAL_CALLS && detectLanguage(fallbackPost) !== runtimeSettings.postLanguage) {
         const rewrittenFallback = await rewriteByLanguage(
           claude,
@@ -971,8 +1022,19 @@ Rules:
           runtimeSettings.postMaxChars
         );
         if (rewrittenFallback) {
-          fallbackPost = rewrittenFallback;
+          fallbackPost = finalizeGeneratedText(
+            rewrittenFallback,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars
+          );
         }
+      }
+      if (fallbackPost) {
+        fallbackPost = finalizeGeneratedText(
+          fallbackPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
       }
       if (fallbackPost && startsWithFearGreedTemplate(fallbackPost)) {
         fallbackPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${fallbackPost}`.slice(0, runtimeSettings.postMaxChars);
@@ -981,6 +1043,16 @@ Rules:
         fallbackPost = ensureTrendTokens(
           fallbackPost,
           requiredTrendTokens,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        fallbackPost = enforceActionAndInvalidation(
+          fallbackPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        fallbackPost = finalizeGeneratedText(
+          fallbackPost,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
@@ -1015,6 +1087,8 @@ Rules:
             narrativeMode: narrativePlan.mode,
             previousNarrativeMode,
             allowTopicRepeatOnModeShift: true,
+            language: runtimeSettings.postLanguage,
+            requireActionAndInvalidation: true,
           }
         );
         if (fallbackQuality.ok) {
@@ -1232,7 +1306,11 @@ Rules:
         messages: [{ role: "user", content: userPrompt }],
       });
 
-      let quoteText = sanitizeTweetText(extractTextFromClaude(message.content));
+      let quoteText = finalizeGeneratedText(
+        extractTextFromClaude(message.content),
+        quoteLanguage,
+        runtimeSettings.postMaxChars
+      );
       if (!quoteText || quoteText.length < runtimeSettings.postMinLength) continue;
 
       if (detectLanguage(quoteText) !== quoteLanguage) {
@@ -1243,9 +1321,10 @@ Rules:
           runtimeSettings.postMaxChars
         );
         if (rewritten) {
-          quoteText = rewritten;
+          quoteText = finalizeGeneratedText(rewritten, quoteLanguage, runtimeSettings.postMaxChars);
         }
       }
+      quoteText = finalizeGeneratedText(quoteText, quoteLanguage, runtimeSettings.postMaxChars);
 
       if (startsWithFearGreedTemplate(quoteText)) {
         continue;
@@ -1653,7 +1732,7 @@ async function rewriteByLanguage(
   maxChars: number
 ): Promise<string | null> {
   if (TEST_NO_EXTERNAL_CALLS) {
-    const normalized = sanitizeTweetText(text);
+    const normalized = finalizeGeneratedText(text, lang, maxChars);
     if (!normalized) return null;
     return normalized.slice(0, maxChars);
   }
@@ -1687,12 +1766,18 @@ Rules:
       messages: [{ role: "user", content: prompt }],
     });
 
-    const rewritten = sanitizeTweetText(extractTextFromClaude(message.content));
+    const rewritten = finalizeGeneratedText(extractTextFromClaude(message.content), lang, maxChars);
     if (!rewritten) return null;
     return rewritten.slice(0, maxChars);
   } catch {
     return null;
   }
+}
+
+function finalizeGeneratedText(text: string, language: "ko" | "en", maxChars: number): string {
+  const stripped = stripNarrativeControlTags(text);
+  const polished = polishTweetText(stripped, language);
+  return truncateAtWordBoundary(polished, maxChars);
 }
 
 async function getOrCreateTrendContext(
@@ -1895,6 +1980,9 @@ function ensureTrendTokens(
   if (missing.length === 0) {
     return normalized.slice(0, maxChars);
   }
+  if (language === "ko" && (normalized.length >= 150 || missing.length <= 1)) {
+    return normalized.slice(0, maxChars);
+  }
 
   const clause = buildTrendTokenClause(missing, language, normalized);
   if (!clause) {
@@ -1920,6 +2008,7 @@ function normalizeTrendRequirementTokens(tokens: string[]): string[] {
     .filter((item) => item.length >= 2)
     .filter((item) => !TREND_TOKEN_STOP_WORDS.has(item))
     .filter((item) => /^[a-z0-9$-]{2,20}$|^[가-힣]{2,12}$/i.test(item))
+    .filter((item) => !/^[a-z]+-[a-z0-9-]+$/i.test(item))
     .filter((item) => {
       if (item.startsWith("$")) return true;
       if (/^[a-z0-9-]+$/i.test(item)) {
@@ -1935,25 +2024,35 @@ function normalizeTrendRequirementTokens(tokens: string[]): string[] {
 }
 
 function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: string): string {
-  const normalized = normalizeTrendRequirementTokens(tokens).slice(0, 2);
+  let normalized = normalizeTrendRequirementTokens(tokens).slice(0, 2);
   if (normalized.length === 0) return "";
   const seed = stableSeedForPrelude(`${body}|${normalized.join("|")}|${language}`);
 
   if (language === "ko") {
+    normalized = normalized
+      .map((token) => toKoTrendToken(token))
+      .filter((token) => token.length >= 2)
+      .slice(0, 2);
+    if (normalized.length === 0) return "";
     if (normalized.length === 1) {
       const token = normalized[0];
       const templates = [
         `${token} 흐름도 이어서 확인한다.`,
         `관찰 축을 ${token}까지 넓혀 본다.`,
         `${token} 쪽 반응도 같이 본다.`,
+        `${token}에서 먼저 흔들리는 지점을 추적한다.`,
+        `${token} 흐름이 실제 행동으로 이어지는지도 본다.`,
       ];
       return templates[seed % templates.length];
     }
     const [a, b] = normalized;
     const templates = [
-      `${a}와 ${b}의 연결성도 같이 본다.`,
+      `${a} · ${b}의 연결성도 같이 본다.`,
       `관찰 축을 ${a}, ${b}까지 넓힌다.`,
-      `다음 확인 포인트는 ${a}와 ${b}다.`,
+      `다음 확인 포인트는 ${a}, ${b} 쪽이다.`,
+      `${a} -> ${b} 전이 신호도 함께 본다.`,
+      `${a} · ${b} 동조 여부를 먼저 대조한다.`,
+      `${a}, ${b}의 시간차 반응을 함께 추적한다.`,
     ];
     return templates[seed % templates.length];
   }
@@ -1964,6 +2063,8 @@ function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: st
       `I am also watching the ${token} side.`,
       `I extend this lens into ${token}.`,
       `I keep tracking the ${token} response too.`,
+      `I track where ${token} reacts first.`,
+      `I also test whether ${token} changes behavior, not just tone.`,
     ];
     return templates[seed % templates.length];
   }
@@ -1972,8 +2073,38 @@ function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: st
     `I also watch how ${a} connects with ${b}.`,
     `I extend this lens to ${a} and ${b}.`,
     `My next check is the ${a}-${b} link.`,
+    `I compare whether ${a} and ${b} move in the same direction.`,
+    `I track the response lag between ${a} and ${b}.`,
+    `I test if signal from ${a} propagates into ${b}.`,
   ];
   return templates[seed % templates.length];
+}
+
+function toKoTrendToken(token: string): string {
+  const lower = String(token || "").toLowerCase();
+  const alias: Record<string, string> = {
+    protocol: "프로토콜",
+    ecosystem: "생태계",
+    regulation: "규제",
+    policy: "정책",
+    compliance: "컴플라이언스",
+    governance: "거버넌스",
+    macro: "매크로",
+    onchain: "온체인",
+    validator: "검증자",
+    liquidity: "유동성",
+    community: "커뮤니티",
+    stable: "스테이블",
+    exchange: "거래소",
+    whale: "고래",
+    mempool: "멤풀",
+    defi: "디파이",
+    risk: "리스크",
+  };
+  if (alias[lower]) return alias[lower];
+  if (lower.startsWith("$")) return lower.toUpperCase();
+  if (/^[가-힣]{2,12}$/.test(lower)) return lower;
+  return "";
 }
 
 function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): string[] {
@@ -1983,6 +2114,10 @@ function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): str
     "이게 바닥 신호일까",
     "어떻게 보세요",
     "결론 대신 검증",
+    "나는 지금",
+    "오늘의 미션",
+    "상호작용 실험",
+    "짧은 우화",
   ];
   const baseEn = [
     "fear and greed",
@@ -2048,6 +2183,136 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       .map((post) => sanitizeTweetText(post.content).slice(0, 24).toLowerCase())
       .filter(Boolean)
   );
+  const seedBase = stableSeedForPrelude(`${headline}|${anchors}|${Date.now()}`);
+  const pick = (pool: string[], offset: number): string => pool[(seedBase + offset) % pool.length];
+
+  const koActionPool = [
+    "다음 사이클에서 순서를 다시 맞춰 본다",
+    "지금은 체인 로그의 선후를 먼저 확인한다",
+    "우선 실행 흔적이 서로 맞물리는지 대조한다",
+    "먼저 흐름의 연결 고리를 검토한다",
+    "지금은 지표 간 시간차를 먼저 확인한다",
+    "우선 기준선 대비 이탈 구간을 추적한다",
+    "먼저 단서 두 개의 동조 여부를 점검한다",
+    "지금은 행동 신호가 확산되는 경로를 본다",
+    "먼저 실제 사용자 반응으로 번역되는지 확인한다",
+    "지금은 신호의 지속 시간을 짧게 재본다",
+    "우선 약한 신호부터 강한 신호 순으로 정렬한다",
+    "지금은 체인/시장 반응의 순서를 교차 검토한다",
+  ];
+  const koInvalidationPool = [
+    "핵심 전제가 깨지면 이 해석을 접는다",
+    "반대 증거가 이어지면 지금 관점을 바꾼다",
+    "조건이 맞지 않으면 결론을 철회한다",
+    "엇갈린 신호가 누적되면 가설을 폐기한다",
+    "반증 신호가 먼저 뜨면 이 가설은 종료한다",
+    "기준선이 무너지면 지금 해석을 즉시 버린다",
+    "핵심 단서가 뒤집히면 관점을 새로 잡는다",
+    "전제와 다른 흐름이 이어지면 결론을 닫지 않는다",
+    "반대 방향의 일관성이 확인되면 읽기를 바꾼다",
+    "동조가 끊기면 이 해석을 보류한다",
+    "핵심 체크포인트가 어긋나면 관찰 프레임을 교체한다",
+    "예상 경로가 깨지면 이 결론은 무효다",
+  ];
+  const koClosePool = [
+    "너라면 어디서부터 확인하겠어?",
+    "이 장면에서 네가 먼저 보는 반증은 뭐야?",
+    "같은 장면을 다르게 읽는 포인트가 있다면 알려줘.",
+    "이 해석이 틀렸다고 판단할 지점은 어디일까?",
+  ];
+
+  const enActionPool = [
+    "I check sequence first in the next cycle",
+    "I verify execution traces before adding conviction",
+    "I compare how these signals connect in time",
+    "I inspect the flow linkage before making a claim",
+    "I check lag between indicators before deciding",
+    "I track where baseline drift starts first",
+    "I verify whether both anchors stay aligned",
+    "I inspect propagation path across related signals",
+    "I test whether this translates into real user behavior",
+    "I measure signal persistence before taking a stance",
+    "I order weak signals before strong signals",
+    "I cross-check chain reaction against market reaction",
+  ];
+  const enInvalidationPool = [
+    "I drop this read if the core premise breaks",
+    "I revise this if counter-evidence keeps stacking",
+    "I retract the claim when conditions fail",
+    "I abandon this thesis if opposing signals align",
+    "I terminate this thesis when falsifiers appear first",
+    "I discard this read if the baseline collapses",
+    "I replace this view when key anchors invert",
+    "I keep this open if the path diverges from premise",
+    "I switch interpretations when opposite consistency appears",
+    "I hold this read only while alignment remains intact",
+    "I replace this frame if checkpoints drift out of sync",
+    "This claim becomes invalid the moment path assumptions fail",
+  ];
+  const enClosePool = [
+    "Where would you test this first?",
+    "What is your earliest falsifier here?",
+    "If you read this differently, what do you anchor on?",
+    "At what point would you call this view wrong?",
+  ];
+
+  const koEvidenceLeadPool = [
+    `붙잡은 근거는 ${anchors}`,
+    `${anchors} 같은 화면에 둔다`,
+    `기준선으로 두는 건 ${anchors}`,
+    `${anchors} 두 조각을 먼저 확인한다`,
+  ];
+  const enEvidenceLeadPool = [
+    `My anchors are ${anchors}`,
+    `I place ${anchors} on the same frame`,
+    `My baseline is ${anchors}`,
+    `I verify ${anchors} as the first two anchors`,
+  ];
+
+  const koBeliefPool = [
+    philosophyFrame || signatureBelief || "숫자보다 행동의 이유를 먼저 본다",
+    philosophyFrame || signatureBelief || "강한 주장보다 검증 가능한 가설을 우선한다",
+    philosophyFrame || signatureBelief || "노이즈보다 구조를 먼저 읽는다",
+  ];
+  const enBeliefPool = [
+    philosophyFrame || signatureBelief || "I prioritize behavior over raw numbers",
+    philosophyFrame || signatureBelief || "I prefer testable hypotheses over loud claims",
+    philosophyFrame || signatureBelief || "I read structure before noise",
+  ];
+
+  const composeKo = (offset: number, ask?: string): string => {
+    const scene = sanitizeTweetText(headline).replace(/[,:;-]\s*$/g, "");
+    const belief = pick(koBeliefPool, offset + 1);
+    const evidence = pick(koEvidenceLeadPool, offset + 2);
+    const action = pick(koActionPool, offset + 3);
+    const invalidation = pick(koInvalidationPool, offset + 4);
+    const patterns = [
+      `${scene}, ${belief}. ${evidence}. ${action}. ${invalidation}.`,
+      `${scene}. ${evidence}. ${action}. ${invalidation}.`,
+      `${scene}. ${belief}. ${action}. ${evidence}. ${invalidation}.`,
+      `${scene}. ${action}. ${evidence}. ${invalidation}.`,
+    ];
+    const base = patterns[(seedBase + offset) % patterns.length];
+    const askText = ask ? normalizeQuestionTail(ask, "ko") : "";
+    return sanitizeTweetText(askText ? `${base} ${askText}` : base);
+  };
+
+  const composeEn = (offset: number, ask?: string): string => {
+    const scene = sanitizeTweetText(headline).replace(/[,:;-]\s*$/g, "");
+    const belief = pick(enBeliefPool, offset + 1);
+    const evidence = pick(enEvidenceLeadPool, offset + 2);
+    const action = pick(enActionPool, offset + 3);
+    const invalidation = pick(enInvalidationPool, offset + 4);
+    const patterns = [
+      `${scene}, ${belief}. ${evidence}. ${action}. ${invalidation}.`,
+      `${scene}. ${evidence}. ${action}. ${invalidation}.`,
+      `${scene}. ${belief}. ${action}. ${evidence}. ${invalidation}.`,
+      `${scene}. ${action}. ${evidence}. ${invalidation}.`,
+    ];
+    const base = patterns[(seedBase + offset) % patterns.length];
+    const askText = ask ? normalizeQuestionTail(ask, "en") : "";
+    return sanitizeTweetText(askText ? `${base} ${askText}` : base);
+  };
 
   const rawCandidates: PreviewFallbackCandidate[] =
     input.language === "ko"
@@ -2055,54 +2320,54 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
           {
             mode: "identity-journal",
             lane,
-            text: `오늘의 자아 노트: ${selfNarrative || "나는 온체인 단서로 인간의 선택을 읽는다"}. ${intentLine}. ${headline}. 근거: ${anchors}.`,
+            text: composeKo(3),
           },
           {
             mode: "philosophy-note",
             lane,
-            text: `철학 메모: ${philosophyFrame || signatureBelief || "블록체인은 숫자보다 약속의 구조다"}. ${bookFragment}. ${headline}. 단서: ${anchors}.`,
+            text: composeKo(7),
           },
           {
             mode: "interaction-experiment",
             lane,
-            text: `상호작용 실험: ${headline}. 오늘 미션: "${interactionMission || activeQuestion || "너라면 어떤 근거를 더 확인하겠어?"}" 근거: ${anchors}.`,
+            text: composeKo(11, interactionMission || activeQuestion || pick(koClosePool, 9)),
           },
           {
             mode: "meta-reflection",
             lane,
-            text: `메타 회고: ${headline}. 내가 자주 빠지는 오류는 성급한 결론이다. 그래서 ${anchors}를 먼저 맞춰 본다.`,
+            text: composeKo(15),
           },
           {
             mode: "fable-essay",
             lane,
-            text: `짧은 우화: 모두가 가격을 외칠 때, 나는 이유를 줍는다. ${headline}. 단서는 ${anchors}. 결론은 아직 열어 둔다.`,
+            text: composeKo(19),
           },
         ]
       : [
           {
             mode: "identity-journal",
             lane,
-            text: `Identity note: ${selfNarrative || "I read choices onchain before I read prices"}. ${intentLine}. ${headline}. Evidence: ${anchors}.`,
+            text: composeEn(3),
           },
           {
             mode: "philosophy-note",
             lane,
-            text: `Philosophy note: ${philosophyFrame || signatureBelief || "crypto is a coordination machine before it is a market"}. ${bookFragment}. ${headline}. Evidence: ${anchors}.`,
+            text: composeEn(7),
           },
           {
             mode: "interaction-experiment",
             lane,
-            text: `Interaction experiment: ${headline}. Mission: "${interactionMission || activeQuestion || "what evidence would change your mind?"}" Evidence: ${anchors}.`,
+            text: composeEn(11, interactionMission || activeQuestion || pick(enClosePool, 9)),
           },
           {
             mode: "meta-reflection",
             lane,
-            text: `Meta reflection: ${headline}. My recurring failure mode is rushing conviction. So I stay with evidence first: ${anchors}.`,
+            text: composeEn(15),
           },
           {
             mode: "fable-essay",
             lane,
-            text: `A short fable: while everyone screams price, I collect motives. ${headline}. Clues: ${anchors}. Verdict stays open.`,
+            text: composeEn(19),
           },
         ];
 
@@ -2112,7 +2377,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   return rotated
     .map((candidate) => ({
       ...candidate,
-      text: sanitizeTweetText(candidate.text).slice(0, input.maxChars),
+      text: truncateAtWordBoundary(sanitizeTweetText(candidate.text), input.maxChars),
     }))
     .sort((a, b) => {
       const preferred = String(input.preferredForm || "").toLowerCase();
@@ -2130,51 +2395,31 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
 
 function applySoulPreludeToFallback(
   text: string,
-  intentLine: string,
-  language: "ko" | "en",
+  _intentLine: string,
+  _language: "ko" | "en",
   maxChars: number,
-  mode: string = "identity-journal"
+  _mode: string = "identity-journal"
 ): string {
-  const body = sanitizeTweetText(text);
-  const intent = sanitizeTweetText(intentLine || "");
-  if (!intent) {
-    return body.slice(0, maxChars);
-  }
-  const compact =
-    language === "ko"
-      ? intent.split(/하지만|\\.|!/)[0]
-      : intent.split(/but |\\.|!/i)[0];
-  const lead = sanitizeTweetText(compact || intent).replace(/[.!?]+$/g, "").slice(0, 72);
-  const modeKey = String(mode || "").toLowerCase();
-  const seed = stableSeedForPrelude(`${modeKey}|${body}|${lead}`);
+  return truncateAtWordBoundary(stripNarrativeControlTags(text), maxChars);
+}
 
-  const koPreludePool =
-    modeKey === "philosophy-note"
-      ? [`${lead}.`, "오늘은 해석보다 질문을 먼저 둔다."]
-      : modeKey === "interaction-experiment"
-        ? [`${lead}.`, "이건 관찰이자 커뮤니티 실험이다."]
-        : modeKey === "meta-reflection"
-          ? [`${lead}.`, "먼저 내가 틀릴 가능성을 적어 둔다."]
-          : modeKey === "fable-essay"
-            ? [`${lead}.`, "짧은 이야기로 시작하지만 결론은 늦춘다."]
-            : [`${lead}.`, "오늘 내 시선의 중심점은 이 장면이다."];
-  const enPreludePool =
-    modeKey === "philosophy-note"
-      ? [`${lead}.`, "Today I place questions before conclusions."]
-      : modeKey === "interaction-experiment"
-        ? [`${lead}.`, "This is both an observation and a social experiment."]
-        : modeKey === "meta-reflection"
-          ? [`${lead}.`, "I start by logging how I might be wrong."]
-          : modeKey === "fable-essay"
-            ? [`${lead}.`, "I open with a story but delay the verdict."]
-            : [`${lead}.`, "This is the center of my attention today."];
-  const preludePool = language === "ko" ? koPreludePool : enPreludePool;
-  const preludeRaw = sanitizeTweetText(preludePool[seed % preludePool.length] || `${lead}.`).replace(/[.!?]+$/g, "");
-  const prelude = preludeRaw ? `${preludeRaw}.` : "";
-  if (!prelude || body.toLowerCase().startsWith(prelude.toLowerCase().slice(0, 12))) {
-    return body.slice(0, maxChars);
+function truncateAtWordBoundary(text: string, maxChars: number): string {
+  const normalized = sanitizeTweetText(String(text || ""));
+  if (normalized.length <= maxChars) {
+    return normalized;
   }
-  return sanitizeTweetText(`${prelude} ${body}`).slice(0, maxChars);
+  const hard = normalized.slice(0, maxChars);
+  const cut = Math.max(
+    hard.lastIndexOf(". "),
+    hard.lastIndexOf("? "),
+    hard.lastIndexOf("! "),
+    hard.lastIndexOf(", "),
+    hard.lastIndexOf(" ")
+  );
+  if (cut >= Math.floor(maxChars * 0.65)) {
+    return hard.slice(0, cut).trim();
+  }
+  return hard.trim();
 }
 
 function stableSeedForPrelude(input: string): number {
@@ -2183,6 +2428,14 @@ function stableSeedForPrelude(input: string): number {
     hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
   }
   return hash;
+}
+
+function normalizeQuestionTail(text: string, language: "ko" | "en"): string {
+  const trimmed = sanitizeTweetText(text);
+  if (!trimmed) return "";
+  if (/[?؟]$/.test(trimmed)) return trimmed;
+  if (/[.!]$/.test(trimmed)) return trimmed;
+  return language === "ko" ? `${trimmed}?` : `${trimmed}?`;
 }
 
 interface PostDiversityGuard {
