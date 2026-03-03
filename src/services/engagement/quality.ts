@@ -110,6 +110,11 @@ export function polishTweetText(text: string, language: "ko" | "en" = "ko"): str
     .replace(/\s*·\s*/g, " · ")
     .replace(/\s{2,}/g, " ");
 
+  const quoteCount = (output.match(/"/g) || []).length;
+  if (quoteCount % 2 === 1) {
+    output = output.replace(/"/g, "");
+  }
+
   if (language === "ko") {
     output = output
       .replace(/([가-힣])([$A-Za-z]{2,10})/g, "$1 $2")
@@ -269,6 +274,14 @@ export function evaluatePostQuality(
     };
   }
   const candidateMotifs = extractNarrativeMotifs(normalizedText);
+  const modeShiftAllowed =
+    context.allowTopicRepeatOnModeShift === true &&
+    typeof context.narrativeMode === "string" &&
+    typeof context.previousNarrativeMode === "string" &&
+    context.narrativeMode.length > 0 &&
+    context.previousNarrativeMode.length > 0 &&
+    context.narrativeMode !== context.previousNarrativeMode;
+
   if (candidateMotifs.size >= 4) {
     const motifDup = recentPostTexts
       .slice(-16)
@@ -284,7 +297,8 @@ export function evaluatePostQuality(
       const lane = buildSignalLane(post.content);
       return lane && lane === candidateLane;
     }).length;
-    if (sameLaneCount >= 2) {
+    const laneAllowance = modeShiftAllowed ? 1 : 0;
+    if (sameLaneCount >= 2 + laneAllowance) {
       return { ok: false, reason: `동일 시그널 레인 반복(${candidateLane})` };
     }
   }
@@ -306,7 +320,9 @@ export function evaluatePostQuality(
       return { ok: false, reason: "서두 구조 반복" };
     }
     const suffix = candidateStructure.slice(-32);
-    if (suffix.length >= 16 && recentStructures.some((item) => item.slice(-32) === suffix)) {
+    const sameSuffixCount =
+      suffix.length >= 16 ? recentStructures.filter((item) => item.slice(-32) === suffix).length : 0;
+    if (sameSuffixCount >= 2) {
       return { ok: false, reason: "마무리 패턴 반복" };
     }
   }
@@ -315,20 +331,13 @@ export function evaluatePostQuality(
     const candidateTag = inferTopicTag(normalizedText);
     const recentTags = recentWithin24.map((post) => inferTopicTag(post.content));
     const lastTag = recentTags[recentTags.length - 1];
-    const modeShiftAllowed =
-      context.allowTopicRepeatOnModeShift === true &&
-      typeof context.narrativeMode === "string" &&
-      typeof context.previousNarrativeMode === "string" &&
-      context.narrativeMode.length > 0 &&
-      context.previousNarrativeMode.length > 0 &&
-      context.narrativeMode !== context.previousNarrativeMode;
 
     if (rules.topicBlockConsecutiveTag && lastTag === candidateTag && !modeShiftAllowed) {
       return { ok: false, reason: `주제 다양성 부족(${candidateTag} 연속)` };
     }
     const sameTagCount = recentTags.filter((tag) => tag === candidateTag).length;
     const tagAllowance = rules.topicMaxSameTag24h + (modeShiftAllowed ? 1 : 0);
-    if (sameTagCount >= tagAllowance) {
+    if (isCoreTopicTag(candidateTag) && sameTagCount >= tagAllowance) {
       return { ok: false, reason: `24h 내 동일 주제 과밀(${candidateTag})` };
     }
     if (candidateTag === "sentiment") {
@@ -509,6 +518,19 @@ function containsAnyTrendToken(text: string, requiredTrendTokens: string[]): boo
     if (token.startsWith("$") && normalizedText.includes(token.slice(1))) return true;
     return false;
   });
+}
+
+function isCoreTopicTag(tag: string): boolean {
+  return [
+    "sentiment",
+    "bitcoin",
+    "ethereum",
+    "regulation",
+    "macro",
+    "onchain",
+    "ai",
+    "defi",
+  ].includes(String(tag || "").toLowerCase());
 }
 
 function detectSurfaceIssue(text: string, language: "ko" | "en"): string | null {

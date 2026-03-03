@@ -135,6 +135,38 @@ test("evaluatePostQuality rejects same signal lane even with short phrasing", ()
   assert.equal(result.reason, "동일 시그널 레인 반복(stable-flow|observation-ending)");
 });
 
+test("evaluatePostQuality allows one extra lane repeat when narrative mode shifts", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const recentPosts: Array<{ content: string; timestamp: string }> = [
+    {
+      content: "스테이블코인 유입이 꾸준히 늘고 있는 구간이다.",
+      timestamp: new Date().toISOString(),
+    },
+    {
+      content: "스테이블 자금 유입이 이어지는데 가격 반응은 제한적이다.",
+      timestamp: new Date().toISOString(),
+    },
+  ];
+
+  const result = evaluatePostQuality(
+    "스테이블 자금이 계속 들어오면서 단기 반응이 제한되는 모습이다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    }),
+    {
+      narrativeMode: "meta-reflection",
+      previousNarrativeMode: "interaction-experiment",
+      allowTopicRepeatOnModeShift: true,
+    }
+  );
+
+  assert.equal(result.ok, true);
+});
+
 test("evaluatePostQuality rejects sentiment when fear-greed event is required but missing", () => {
   const policy = getDefaultAdaptivePolicy();
   const result = evaluatePostQuality(
@@ -191,6 +223,52 @@ test("evaluatePostQuality enforces sentiment ratio budget", () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.reason, "sentiment 비중 초과(50%)");
+});
+
+test("evaluatePostQuality does not apply topic density cap to philosophy form tag", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const now = new Date().toISOString();
+  const recentPosts: Array<{ content: string; timestamp: string }> = [
+    { content: "철학 메모 대신 오늘은 단서를 먼저 붙잡는다.", timestamp: now },
+    { content: "book fragment를 체인 행동으로 번역해 본다.", timestamp: now },
+    { content: "worldview lens로 사용자 행동 변화를 본다.", timestamp: now },
+  ];
+
+  const result = evaluatePostQuality(
+    "철학 프레임은 남기되 실행 단서를 먼저 대조한다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 70000, change24h: 1.1 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 2,
+    })
+  );
+
+  assert.equal(result.ok, true);
+});
+
+test("evaluatePostQuality does not hard-cap tech topic density", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const now = new Date().toISOString();
+  const recentPosts: Array<{ content: string; timestamp: string }> = [
+    { content: "Layer2 rollup 업그레이드 일정 점검.", timestamp: now },
+    { content: "mainnet 업그레이드 이후 노드 동기화 품질 점검.", timestamp: now },
+    { content: "protocol 변경이 사용자 체감 지연에 미친 영향 기록.", timestamp: now },
+  ];
+
+  const result = evaluatePostQuality(
+    "업그레이드 이슈는 남아 있지만 실행 흔적과 반증 조건을 먼저 대조한다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 70000, change24h: 1.1 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 2,
+    })
+  );
+
+  assert.equal(result.ok, true);
 });
 
 test("evaluatePostQuality rejects numeric-heavy ticker dump style", () => {
@@ -279,6 +357,11 @@ test("evaluatePostQuality rejects bot-style lead opener", () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.reason, "폼 기반 오프너 노출");
+});
+
+test("polishTweetText removes unmatched double quote", () => {
+  const text = '나는 "지금 자금 흐름은 확신의 매집일까';
+  assert.equal(polishTweetText(text, "ko"), "나는 지금 자금 흐름은 확신의 매집일까");
 });
 
 test("evaluatePostQuality allows one opening-prefix collision", () => {

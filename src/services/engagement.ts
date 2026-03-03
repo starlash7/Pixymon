@@ -1845,10 +1845,16 @@ function deconflictOpening(
   ];
   const leadPool = language === "ko" ? koLeads : enLeads;
   const seed = stableSeedForPrelude(`${seedHint}|${normalized}|${Date.now()}`);
+  const escapedLeads = leadPool.map((lead) => lead.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const leadPattern = new RegExp(`^(?:${escapedLeads.join("|")})\\s*`, "i");
+  const baseBody = normalized.replace(leadPattern, "").trim();
 
   for (let i = 0; i < leadPool.length; i += 1) {
     const lead = leadPool[(seed + i) % leadPool.length];
-    const candidate = finalizeGeneratedText(`${lead} ${normalized}`, language, maxChars);
+    if (sanitizeTweetText(normalized).toLowerCase().startsWith(sanitizeTweetText(lead).toLowerCase())) {
+      continue;
+    }
+    const candidate = finalizeGeneratedText(`${lead} ${baseBody}`, language, maxChars);
     const candidatePrefix = sanitizeTweetText(candidate).toLowerCase().slice(0, 24);
     if (!recentPrefixes.has(candidatePrefix)) {
       return candidate;
@@ -2239,15 +2245,22 @@ interface BuildPreviewFallbackCandidatesInput {
 }
 
 function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInput): PreviewFallbackCandidate[] {
+  const compactThought = (text: string, max = 52): string =>
+    sanitizeTweetText(text || "")
+      .replace(/[,:;]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, max);
+
   const headline = sanitizeTweetText(input.headline || "").replace(/\.$/, "") || "오늘은 구조적 원인을 먼저 추적";
   const anchors = sanitizeTweetText(input.anchors || "");
   const intentLine = sanitizeTweetText(input.intentLine || "");
   const activeQuestion = sanitizeTweetText(input.activeQuestion || "");
   const interactionMission = sanitizeTweetText(input.interactionMission || "");
-  const philosophyFrame = sanitizeTweetText(input.philosophyFrame || "");
+  const philosophyFrame = compactThought(input.philosophyFrame || "");
   const bookFragment = sanitizeTweetText(input.bookFragment || "");
   const selfNarrative = sanitizeTweetText(input.selfNarrative || "");
-  const signatureBelief = sanitizeTweetText(input.signatureBelief || "");
+  const signatureBelief = compactThought(input.signatureBelief || "");
   const lane = inferTrendLaneFromText(headline);
   const recentOpeners = new Set(
     input.recentPosts
