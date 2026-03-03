@@ -316,7 +316,8 @@ export function evaluatePostQuality(
   const candidateStructure = normalizeNarrativeStructure(normalizedText);
   if (candidateStructure) {
     const prefix = candidateStructure.slice(0, 34);
-    if (prefix && recentStructures.some((item) => item.slice(0, 34) === prefix)) {
+    const samePrefixCount = prefix ? recentStructures.filter((item) => item.slice(0, 34) === prefix).length : 0;
+    if (samePrefixCount >= 2) {
       return { ok: false, reason: "서두 구조 반복" };
     }
     const suffix = candidateStructure.slice(-32);

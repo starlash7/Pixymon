@@ -56,6 +56,10 @@ test("evaluatePostQuality rejects repeated structure patterns", () => {
         content: "극공포 구간인데 스테이블 유입이 증가했다. 심리와 데이터 괴리를 어떻게 읽어야 할까?",
         timestamp: new Date().toISOString(),
       },
+      {
+        content: "극공포 구간인데 스테이블 유입이 다시 늘었다. 심리와 데이터 괴리를 어떻게 읽어야 할까?",
+        timestamp: new Date().toISOString(),
+      },
     ],
     policy,
     resolveContentQualityRules({

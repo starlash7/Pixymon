@@ -1830,31 +1830,51 @@ function deconflictOpening(
   }
 
   const koLeads = [
-    "이번엔 이 장면부터 적는다:",
-    "오늘 기록의 출발점:",
-    "내 관찰의 첫 줄:",
-    "먼저 붙잡은 장면:",
-    "다시 시작해보면:",
-    "지금 노트 첫 문장:",
+    "이번에는 장면을 조금 다르게 연다",
+    "오늘 메모는 여기서 출발한다",
+    "지금 포착한 단서부터 적는다",
+    "먼저 이 장면을 붙잡고 시작한다",
+    "소음 대신 이 장면부터 기록한다",
+    "이번 줄은 이 단서에서 시작한다",
   ];
   const enLeads = [
-    "Starting from this scene:",
-    "My first line today:",
-    "If I begin here:",
-    "One line to start:",
+    "I open this one from a different angle",
+    "I start today's note from this scene",
+    "I begin with this clue first",
+    "I anchor this line on this moment",
   ];
   const leadPool = language === "ko" ? koLeads : enLeads;
   const seed = stableSeedForPrelude(`${seedHint}|${normalized}|${Date.now()}`);
   const escapedLeads = leadPool.map((lead) => lead.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const leadPattern = new RegExp(`^(?:${escapedLeads.join("|")})\\s*`, "i");
+  const leadPattern = new RegExp(`^(?:${escapedLeads.join("|")})(?:[.!?]\\s+|\\s+)`, "i");
   const baseBody = normalized.replace(leadPattern, "").trim();
+  const sentences = baseBody
+    .split(/(?<=[.!?])\s+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (sentences.length >= 2) {
+    const rotatedBody = finalizeGeneratedText(
+      `${sentences[1]} ${sentences[0]} ${sentences.slice(2).join(" ")}`,
+      language,
+      maxChars
+    );
+    const rotatedPrefix = sanitizeTweetText(rotatedBody).toLowerCase().slice(0, 24);
+    if (rotatedPrefix && !recentPrefixes.has(rotatedPrefix)) {
+      return rotatedBody;
+    }
+  }
 
   for (let i = 0; i < leadPool.length; i += 1) {
     const lead = leadPool[(seed + i) % leadPool.length];
-    if (sanitizeTweetText(normalized).toLowerCase().startsWith(sanitizeTweetText(lead).toLowerCase())) {
+    if (
+      sanitizeTweetText(normalized)
+        .toLowerCase()
+        .startsWith(`${sanitizeTweetText(lead).toLowerCase()}.`)
+    ) {
       continue;
     }
-    const candidate = finalizeGeneratedText(`${lead} ${baseBody}`, language, maxChars);
+    const candidate = finalizeGeneratedText(`${lead}. ${baseBody}`, language, maxChars);
     const candidatePrefix = sanitizeTweetText(candidate).toLowerCase().slice(0, 24);
     if (!recentPrefixes.has(candidatePrefix)) {
       return candidate;
@@ -2202,6 +2222,10 @@ function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): str
     "오늘의 미션",
     "상호작용 실험",
     "짧은 우화",
+    "관찰 노트",
+    "철학 메모",
+    "메타 회고",
+    "ai 생명체",
   ];
   const baseEn = [
     "fear and greed",
@@ -2245,22 +2269,52 @@ interface BuildPreviewFallbackCandidatesInput {
 }
 
 function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInput): PreviewFallbackCandidate[] {
-  const compactThought = (text: string, max = 52): string =>
-    sanitizeTweetText(text || "")
-      .replace(/[,:;]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, max);
+  const clipAtBoundary = (text: string, max: number): string => {
+    const normalized = sanitizeTweetText(text || "");
+    if (normalized.length <= max) {
+      return normalized;
+    }
+    const hard = normalized.slice(0, max);
+    const cut = Math.max(hard.lastIndexOf(" "), hard.lastIndexOf("."), hard.lastIndexOf(","), hard.lastIndexOf("·"));
+    if (cut >= Math.floor(max * 0.62)) {
+      return hard.slice(0, cut).trim();
+    }
+    return hard.trim();
+  };
 
-  const headline = sanitizeTweetText(input.headline || "").replace(/\.$/, "") || "오늘은 구조적 원인을 먼저 추적";
-  const anchors = sanitizeTweetText(input.anchors || "");
-  const intentLine = sanitizeTweetText(input.intentLine || "");
-  const activeQuestion = sanitizeTweetText(input.activeQuestion || "");
-  const interactionMission = sanitizeTweetText(input.interactionMission || "");
-  const philosophyFrame = compactThought(input.philosophyFrame || "");
-  const bookFragment = sanitizeTweetText(input.bookFragment || "");
-  const selfNarrative = sanitizeTweetText(input.selfNarrative || "");
-  const signatureBelief = compactThought(input.signatureBelief || "");
+  const compactThought = (text: string, max = 52): string =>
+    clipAtBoundary(
+      sanitizeTweetText(text || "")
+        .replace(/[,:;]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+      max
+    );
+
+  const compactClause = (text: string, max = 88): string =>
+    clipAtBoundary(
+      sanitizeTweetText(text || "")
+        .replace(/^[\"'`]+|[\"'`]+$/g, "")
+        .replace(/\s*[|]\s*/g, " · ")
+        .replace(/\s{2,}/g, " ")
+        .trim(),
+      max
+    );
+
+  const headline =
+    compactClause(input.headline || "", 112).replace(/\.$/, "") || "오늘은 구조적 원인을 먼저 추적한다";
+  const anchors = compactClause(input.anchors || "", 120);
+  const intentLine = compactThought(input.intentLine || "", 58);
+  const activeQuestion = compactClause(input.activeQuestion || "", 96);
+  const interactionMission = compactClause(input.interactionMission || "", 96);
+  const philosophyFrame = compactThought(input.philosophyFrame || "", 58);
+  const bookFragment = compactThought(input.bookFragment || "", 52);
+  const selfNarrative = compactThought(input.selfNarrative || "", 54);
+  const signatureBelief = compactThought(input.signatureBelief || "", 54);
+  const worldviewHint = compactThought(
+    philosophyFrame || signatureBelief || selfNarrative || intentLine || "",
+    58
+  );
   const lane = inferTrendLaneFromText(headline);
   const recentOpeners = new Set(
     input.recentPosts
@@ -2268,8 +2322,27 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       .map((post) => sanitizeTweetText(post.content).slice(0, 24).toLowerCase())
       .filter(Boolean)
   );
-  const seedBase = stableSeedForPrelude(`${headline}|${anchors}|${Date.now()}`);
+  const seedBase = stableSeedForPrelude(`${headline}|${anchors}|${worldviewHint}|${Date.now()}`);
   const pick = (pool: string[], offset: number): string => pool[(seedBase + offset) % pool.length];
+
+  const koLeadPool = [
+    "오늘 먼저 눈에 들어온 장면은",
+    "지금 메모의 시작점은",
+    "체인 로그에서 먼저 잡힌 건",
+    "소음보다 앞서 포착된 건",
+    "이번 사이클의 출발점은",
+    "지금 기록을 여는 장면은",
+    "먼저 붙잡은 단서는",
+    "오늘 화면에서 가장 이상했던 건",
+  ];
+  const enLeadPool = [
+    "The first scene I lock on today is",
+    "I start this note from",
+    "What stands out before the noise is",
+    "The opening clue in this cycle is",
+    "The first frame I anchor on is",
+    "I open this record with",
+  ];
 
   const koActionPool = [
     "다음 사이클에서 순서를 다시 맞춰 본다",
@@ -2355,46 +2428,72 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   ];
 
   const koBeliefPool = [
-    philosophyFrame || signatureBelief || "숫자보다 행동의 이유를 먼저 본다",
-    philosophyFrame || signatureBelief || "강한 주장보다 검증 가능한 가설을 우선한다",
-    philosophyFrame || signatureBelief || "노이즈보다 구조를 먼저 읽는다",
+    worldviewHint || "숫자보다 행동의 이유를 먼저 본다",
+    signatureBelief || "강한 주장보다 검증 가능한 가설을 우선한다",
+    philosophyFrame || "노이즈보다 구조를 먼저 읽는다",
+    bookFragment
+      ? `${bookFragment}라는 문장을 오늘 체인 화면에 겹쳐 본다`
+      : "단정 대신 재현 가능한 설명을 먼저 고른다",
   ];
   const enBeliefPool = [
-    philosophyFrame || signatureBelief || "I prioritize behavior over raw numbers",
-    philosophyFrame || signatureBelief || "I prefer testable hypotheses over loud claims",
-    philosophyFrame || signatureBelief || "I read structure before noise",
+    worldviewHint || "I prioritize behavior over raw numbers",
+    signatureBelief || "I prefer testable hypotheses over loud claims",
+    philosophyFrame || "I read structure before noise",
+    bookFragment ? `I overlay "${bookFragment}" on today's chain scene` : "I prefer reproducible explanations over loud certainty",
   ];
 
   const composeKo = (offset: number, ask?: string): string => {
-    const scene = sanitizeTweetText(headline).replace(/[,:;-]\s*$/g, "");
+    const scene = compactClause(headline, 110).replace(/[,:;-]\s*$/g, "");
+    const lead = pick(koLeadPool, offset);
+    const altLead = pick(koLeadPool, offset + 7);
     const belief = pick(koBeliefPool, offset + 1);
     const evidence = pick(koEvidenceLeadPool, offset + 2);
     const action = pick(koActionPool, offset + 3);
     const invalidation = pick(koInvalidationPool, offset + 4);
-    const patterns = [
-      `${scene}, ${belief}. ${evidence}. ${action}. ${invalidation}.`,
-      `${scene}. ${evidence}. ${action}. ${invalidation}.`,
-      `${scene}. ${belief}. ${action}. ${evidence}. ${invalidation}.`,
-      `${scene}. ${action}. ${evidence}. ${invalidation}.`,
+    const openerPool = [
+      `${lead} ${scene}`,
+      `${scene}`,
+      `${altLead} ${scene}`,
+      selfNarrative ? `${selfNarrative}. ${scene}` : `${scene}`,
+      worldviewHint ? `${worldviewHint}. ${scene}` : `${scene}`,
+      bookFragment ? `${bookFragment}. ${scene}` : `${scene}`,
     ];
-    const base = patterns[(seedBase + offset) % patterns.length];
+    const opener = compactClause(openerPool[(seedBase + offset) % openerPool.length], 132).replace(/[.!?]\s*$/, "");
+    const patterns = [
+      `${opener}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${belief}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${action}. ${evidence}. ${invalidation}.`,
+      `${opener}. ${belief}. ${action}. ${invalidation}.`,
+    ];
+    const base = compactClause(patterns[(seedBase + offset) % patterns.length], input.maxChars + 80);
     const askText = ask ? normalizeQuestionTail(ask, "ko") : "";
     return sanitizeTweetText(askText ? `${base} ${askText}` : base);
   };
 
   const composeEn = (offset: number, ask?: string): string => {
-    const scene = sanitizeTweetText(headline).replace(/[,:;-]\s*$/g, "");
+    const scene = compactClause(headline, 110).replace(/[,:;-]\s*$/g, "");
+    const lead = pick(enLeadPool, offset);
+    const altLead = pick(enLeadPool, offset + 7);
     const belief = pick(enBeliefPool, offset + 1);
     const evidence = pick(enEvidenceLeadPool, offset + 2);
     const action = pick(enActionPool, offset + 3);
     const invalidation = pick(enInvalidationPool, offset + 4);
-    const patterns = [
-      `${scene}, ${belief}. ${evidence}. ${action}. ${invalidation}.`,
-      `${scene}. ${evidence}. ${action}. ${invalidation}.`,
-      `${scene}. ${belief}. ${action}. ${evidence}. ${invalidation}.`,
-      `${scene}. ${action}. ${evidence}. ${invalidation}.`,
+    const openerPool = [
+      `${lead} ${scene}`,
+      `${scene}`,
+      `${altLead} ${scene}`,
+      selfNarrative ? `${selfNarrative}. ${scene}` : `${scene}`,
+      worldviewHint ? `${worldviewHint}. ${scene}` : `${scene}`,
+      bookFragment ? `${bookFragment}. ${scene}` : `${scene}`,
     ];
-    const base = patterns[(seedBase + offset) % patterns.length];
+    const opener = compactClause(openerPool[(seedBase + offset) % openerPool.length], 132).replace(/[.!?]\s*$/, "");
+    const patterns = [
+      `${opener}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${belief}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${action}. ${evidence}. ${invalidation}.`,
+      `${opener}. ${belief}. ${action}. ${invalidation}.`,
+    ];
+    const base = compactClause(patterns[(seedBase + offset) % patterns.length], input.maxChars + 80);
     const askText = ask ? normalizeQuestionTail(ask, "en") : "";
     return sanitizeTweetText(askText ? `${base} ${askText}` : base);
   };
@@ -2458,8 +2557,19 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
 
   const rotation = Date.now() % Math.max(1, rawCandidates.length);
   const rotated = rawCandidates.slice(rotation).concat(rawCandidates.slice(0, rotation));
+  const deduped: PreviewFallbackCandidate[] = [];
+  const seenOpenings = new Set<string>();
+  for (const candidate of rotated) {
+    const text = truncateAtWordBoundary(sanitizeTweetText(candidate.text), input.maxChars);
+    const openingKey = sanitizeTweetText(text).toLowerCase().slice(0, 30);
+    if (openingKey && seenOpenings.has(openingKey)) {
+      continue;
+    }
+    seenOpenings.add(openingKey);
+    deduped.push({ ...candidate, text });
+  }
 
-  return rotated
+  return deduped
     .map((candidate) => ({
       ...candidate,
       text: truncateAtWordBoundary(sanitizeTweetText(candidate.text), input.maxChars),

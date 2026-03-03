@@ -336,8 +336,8 @@ export function buildEventEvidenceFallbackPost(
 
   const koTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `${laneLabel}에서 오늘 붙잡은 장면: ${eventHeadline}. 단서는 ${evidenceA}, ${evidenceB}. 다음 체크에서 순서가 어긋나면 지금 해석을 접는다.`,
-      `오늘 기록: ${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 먼저 나란히 둔다. 둘이 엇갈리기 시작하면 이 관점을 폐기한다.`,
+      `${laneLabel}에서 오늘 먼저 붙잡은 장면은 ${eventHeadline}. 단서는 ${evidenceA}, ${evidenceB}. 다음 체크에서 순서가 어긋나면 지금 해석을 접는다.`,
+      `${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 먼저 나란히 둔다. 둘이 엇갈리기 시작하면 이 관점을 폐기한다.`,
     ],
     "philosophy-note": [
       `한 줄로 옮기면 ${eventHeadline}. 기준선은 두 단서(${evidenceA}, ${evidenceB})다. 숫자보다 선택의 이유가 먼저 드러나고, 실행 흔적이 맞지 않으면 이 해석을 버린다.`,
@@ -349,7 +349,7 @@ export function buildEventEvidenceFallbackPost(
     ],
     "meta-reflection": [
       `내가 경계하는 오류는 결론을 너무 빨리 닫는 습관이다. 그래서 ${eventHeadline}. 기준선은 두 단서(${evidenceA}, ${evidenceB})다. 핵심 조건이 깨지면 해석을 바꾼다.`,
-      `이 장면에서는 단일 신호에 기대는 실수를 피하려 한다: ${eventHeadline}. 두 단서(${evidenceA}, ${evidenceB})를 같이 보고, 반대 증거가 쌓이면 가설을 접는다.`,
+      `이 장면에서는 단일 신호에 기대는 실수를 피하려 한다. ${eventHeadline}. 두 단서(${evidenceA}, ${evidenceB})를 같이 보고, 반대 증거가 쌓이면 가설을 접는다.`,
     ],
     "fable-essay": [
       `소음이 커질수록 장면은 단순해진다. ${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 천천히 대조한다. 구조가 맞지 않으면 이 결론을 뒤집는다.`,
