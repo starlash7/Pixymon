@@ -64,6 +64,8 @@ export interface ContentQualityRules {
 
 export interface PostQualityContext {
   requiredTrendTokens?: string[];
+  language?: "ko" | "en";
+  requireActionAndInvalidation?: boolean;
   fearGreedEvent?: {
     required: boolean;
     isEvent: boolean;

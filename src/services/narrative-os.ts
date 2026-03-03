@@ -59,29 +59,29 @@ const MODE_BY_LANE: Record<TrendLane, NarrativeMode[]> = {
 
 const OPENING_BY_MODE_KO: Record<NarrativeMode, string[]> = {
   "identity-journal": [
-    "오늘 픽시몬 일지 첫 줄은",
-    "내가 지금 집요하게 보는 건",
-    "오늘 내 정체성 메모는",
+    "오늘 내가 붙잡은 장면은",
+    "지금 내가 집요하게 보는 건",
+    "이 장면이 오늘 내 정체성을 드러낸다",
   ],
   "philosophy-note": [
-    "철학 노트로 번역하면 오늘 장면은",
+    "이 장면을 사유의 프레임으로 옮기면",
     "읽던 문장을 체인 위로 옮기면",
-    "사상 메모 한 줄로 요약하면",
+    "한 줄 관점으로 요약하면",
   ],
   "interaction-experiment": [
-    "오늘 커뮤니티 실험을 하나 건다",
-    "이번엔 반응 실험 모드로 간다",
-    "오늘의 미션형 관찰은",
+    "여기서 네 시선을 빌리고 싶은 장면은",
+    "이 대목에서 사람들이 다르게 읽는 지점은",
+    "지금 함께 확인하고 싶은 장면은",
   ],
   "meta-reflection": [
-    "먼저 내 실수부터 적는다",
-    "메타 회고부터 시작하면",
+    "먼저 내가 틀릴 지점부터 적는다",
+    "확신 전에 의심부터 남긴다",
     "오늘 내가 경계하는 실패 패턴은",
   ],
   "fable-essay": [
-    "짧은 우화로 남기면",
-    "오늘은 에세이 한 문단으로 쓰면",
-    "은유 하나만 빌리면",
+    "이 장면을 이야기로 풀어 쓰면",
+    "한 문단으로 정리해 보면",
+    "비유 하나를 빌리면",
   ],
 };
 
@@ -92,24 +92,24 @@ const OPENING_BY_MODE_EN: Record<NarrativeMode, string[]> = {
     "If I write one line about who I am today:",
   ],
   "philosophy-note": [
-    "Philosophy note, translated onchain:",
+    "If I translate this through a worldview lens:",
     "If I map a book fragment to today's tape:",
     "One worldview line for this moment:",
   ],
   "interaction-experiment": [
-    "Running one interaction experiment today:",
-    "Mission mode for the community:",
-    "Today's response test starts with this:",
+    "Here is the point where I need a second perspective:",
+    "This is where people may read the same signal differently:",
+    "The scene I want to test with the community is this:",
   ],
   "meta-reflection": [
-    "I start with my own failure mode:",
-    "Meta reflection first:",
+    "I start by naming where I can be wrong:",
+    "Before conviction, I leave room for doubt:",
     "Before a claim, I log this mistake pattern:",
   ],
   "fable-essay": [
-    "A short fable from today's chain weather:",
-    "If this were a one-paragraph essay:",
-    "One metaphor, then evidence:",
+    "If I unfold this scene as a short story:",
+    "If I leave this in one paragraph:",
+    "If I borrow one metaphor first:",
   ],
 };
 
@@ -214,9 +214,17 @@ function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]):
     usage.set(inferred, (usage.get(inferred) || 0) + 1);
   }
 
-  return ordered
+  const ranked = ordered
     .map((mode, index) => ({ mode, score: (usage.get(mode) || 0) + index * 0.05 }))
-    .sort((a, b) => a.score - b.score)[0]?.mode || ordered[0];
+    .sort((a, b) => a.score - b.score);
+
+  const best = ranked[0];
+  if (!best) return ordered[0];
+  const nearBest = ranked.filter((item) => item.score <= best.score + 0.08);
+  if (nearBest.length === 1) {
+    return best.mode;
+  }
+  return nearBest[Math.floor(Math.random() * nearBest.length)]?.mode || best.mode;
 }
 
 function inferModeFromText(text: string): NarrativeMode {
@@ -251,26 +259,26 @@ function buildBodyDirective(mode: NarrativeMode, language: "ko" | "en"): string 
   if (language === "ko") {
     if (mode === "identity-journal") return "1인칭 자아 문장 1개로 시작하고, 이벤트 1개와 근거 2개를 연결";
     if (mode === "philosophy-note") return "철학/책에서 가져온 프레임 1개를 현재 크립토 맥락으로 번역";
-    if (mode === "interaction-experiment") return "팔로워가 즉시 참여할 수 있는 미션/질문 1개를 넣고 근거를 제시";
+    if (mode === "interaction-experiment") return "팔로워가 바로 답할 수 있는 질문 1개를 넣고 근거를 제시";
     if (mode === "meta-reflection") return "내가 틀릴 수 있는 지점을 먼저 고백하고 검증 조건을 밝힘";
-    return "우화/에세이 톤을 쓰되, 은유는 1회만 사용하고 근거 2개로 고정";
+    return "짧은 에세이 톤을 쓰되, 은유는 1회만 사용하고 근거 2개로 고정";
   }
 
   if (mode === "identity-journal") return "Open in first person, then connect one event with two evidence points";
   if (mode === "philosophy-note") return "Use one philosophy/book frame and translate it into current crypto context";
-  if (mode === "interaction-experiment") return "Include one concrete mission/question for followers and attach evidence";
+  if (mode === "interaction-experiment") return "Include one concrete audience question and attach evidence";
   if (mode === "meta-reflection") return "State your potential failure mode first, then define verification condition";
-  return "Keep fable/essay tone with one metaphor max, grounded by two evidence points";
+  return "Keep essay tone with one metaphor max, grounded by two evidence points";
 }
 
 function buildEndingDirective(mode: NarrativeMode, language: "ko" | "en"): string {
   if (language === "ko") {
-    if (mode === "interaction-experiment") return "마지막 문장은 팔로워 행동을 유도하는 미션형 질문";
+    if (mode === "interaction-experiment") return "마지막 문장은 팔로워가 답할 수 있는 열린 질문";
     if (mode === "meta-reflection") return "마지막 문장은 내가 틀릴 조건을 명시한 열린 질문";
     return "마지막 문장은 대화를 여는 질문형 또는 관찰형";
   }
 
-  if (mode === "interaction-experiment") return "End with an action-oriented mission question";
+  if (mode === "interaction-experiment") return "End with an open question that invites a direct reply";
   if (mode === "meta-reflection") return "End with a falsifiable open question";
   return "End with an open dialogue invitation";
 }

@@ -1,16 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  enforceActionAndInvalidation,
   evaluatePostQuality,
   inferTopicTag,
+  polishTweetText,
   resolveContentQualityRules,
   sanitizeTweetText,
+  stripNarrativeControlTags,
+  validateActionAndInvalidation,
 } from "../src/services/engagement/quality.ts";
 import { getDefaultAdaptivePolicy } from "../src/services/engagement/policy.ts";
 
 test("sanitizeTweetText normalizes whitespace and quotes", () => {
   const text = '  BTC   “flow”   looks   stable   ';
   assert.equal(sanitizeTweetText(text), 'BTC "flow" looks stable');
+});
+
+test("polishTweetText fixes punctuation spacing and broken bracket joins", () => {
+  const text = "BTC:0(+0.00%)|온체인로그,다시본다";
+  assert.equal(polishTweetText(text, "ko"), "BTC: 0 (+0.00%) | 온체인로그, 다시본다");
 });
 
 test("inferTopicTag classifies core topics", () => {
@@ -202,4 +211,124 @@ test("evaluatePostQuality rejects numeric-heavy ticker dump style", () => {
 
   assert.equal(result.ok, false);
   assert.match(String(result.reason || ""), /숫자\/티커 과밀/);
+});
+
+test("evaluatePostQuality rejects malformed numeric/bracket format", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const result = evaluatePostQuality(
+    "관찰 노트: BTC:0(+0.000 (+0.00%) - SOL: $0 기준으로 확인한다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 66304.4, change24h: 2.5 }],
+    [],
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason || ""), /(비정상 숫자\/괄호 결합|수치 포맷 손상|괄호 짝 불일치|비정상 시세 포맷)/);
+});
+
+test("evaluatePostQuality rejects korean text with severe spacing issues", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const result = evaluatePostQuality(
+    "오늘체인로그를재확인했고반증조건이보이면즉시관점을바꾼다결론보다검증이먼저다",
+    [{ symbol: "BTC", name: "Bitcoin", price: 70000, change24h: 1.1 }],
+    [],
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "띄어쓰기 이상");
+});
+
+test("evaluatePostQuality rejects narrative label leakage text", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const result = evaluatePostQuality(
+    "상호작용 실험: 이 장면을 다시 확인하자.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    [],
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "내부 서사 라벨 노출");
+});
+
+test("evaluatePostQuality rejects bot-style lead opener", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const result = evaluatePostQuality(
+    "오늘의 미션은 온체인 흐름을 검증하는 것이다. 반증이 나오면 수정한다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    [],
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "폼 기반 오프너 노출");
+});
+
+test("stripNarrativeControlTags removes control labels from generated text", () => {
+  assert.equal(
+    stripNarrativeControlTags("철학 메모: 프로토콜 변화는 행동을 바꾼다."),
+    "프로토콜 변화는 행동을 바꾼다."
+  );
+  assert.equal(
+    stripNarrativeControlTags("Meta reflection: Identity note: this should read naturally."),
+    "this should read naturally."
+  );
+});
+
+test("validateActionAndInvalidation enforces both action and invalidation", () => {
+  const missingInvalidation = validateActionAndInvalidation(
+    "먼저 체인 로그를 확인하고 다음 사이클에서 다시 점검한다.",
+    "ko"
+  );
+  assert.equal(missingInvalidation.ok, false);
+
+  const valid = validateActionAndInvalidation(
+    "먼저 체인 로그를 확인하고, 반대 신호가 이어지면 이 가설을 접는다.",
+    "ko"
+  );
+  assert.equal(valid.ok, true);
+});
+
+test("enforceActionAndInvalidation injects bridge when structure is missing", () => {
+  const output = enforceActionAndInvalidation("온체인 단서를 모아본다.", "ko", 220);
+  const check = validateActionAndInvalidation(output, "ko");
+  assert.equal(check.ok, true);
+});
+
+test("evaluatePostQuality rejects when action/invalidation gate is required and absent", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const result = evaluatePostQuality(
+    "오늘 이벤트와 근거를 붙여서 해석한다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    [],
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    }),
+    {
+      requireActionAndInvalidation: true,
+      language: "ko",
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason || ""), /(행동 계획 부재|반증\/무효화 조건 부재)/);
 });

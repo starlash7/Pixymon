@@ -222,21 +222,25 @@ export function planEventEvidenceAct(params: {
       }
       const projectedRatio = (laneUsage.byLane[event.lane] + 1) / Math.max(1, laneUsage.totalPosts + 1);
       const quotaLimited = projectedRatio > LANE_MAX_RATIO[event.lane];
+      const laneScarcityBoost = calculateLaneScarcityBoost(event.lane, laneUsage);
       const novelty = calculateHeadlineNovelty(event.headline, params.recentPosts);
       const narrativeRichness = estimateNarrativeRichness(event.headline, event.lane);
       const evidenceStrength =
         pair.evidence.reduce((sum, item) => sum + item.trust * item.freshness, 0) / pair.evidence.length;
       const laneRepeatPenalty = lastLane && lastLane === event.lane ? 0.14 : 0;
       const priceEvidencePenalty = estimatePriceEvidencePenalty(pair.evidence, event.lane);
+      const coldStartExplorationJitter = laneUsage.totalPosts === 0 ? (Math.random() - 0.5) * 0.16 : 0;
       const score =
-        event.trust * 0.35 +
-        event.freshness * 0.19 +
-        novelty * 0.2 +
-        evidenceStrength * 0.16 +
-        narrativeRichness * 0.2 -
+        event.trust * 0.3 +
+        event.freshness * 0.14 +
+        novelty * 0.22 +
+        evidenceStrength * 0.15 +
+        narrativeRichness * 0.28 +
+        laneScarcityBoost -
         (quotaLimited ? 0.35 : 0) -
         laneRepeatPenalty -
-        priceEvidencePenalty;
+        priceEvidencePenalty * 1.15 +
+        coldStartExplorationJitter;
       return {
         event,
         evidence: pair.evidence,
@@ -255,7 +259,9 @@ export function planEventEvidenceAct(params: {
     return null;
   }
 
-  const preferred = scored.find((row) => !row.quotaLimited) || scored[0];
+  const notLimited = scored.filter((row) => !row.quotaLimited);
+  const explorationPool = (notLimited.length > 0 ? notLimited : scored).slice(0, 4);
+  const preferred = pickWeightedPlanCandidate(explorationPool);
   return {
     lane: preferred.event.lane,
     event: preferred.event,
@@ -330,47 +336,47 @@ export function buildEventEvidenceFallbackPost(
 
   const koTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `오늘 ${laneLabel}에서 내가 기록한 장면은 ${eventHeadline}. 나는 ${evidenceA}, ${evidenceB}를 붙여서 판단을 늦춘다.`,
-      `내 일지 한 줄: ${eventHeadline}. 지금 내 근거는 ${evidenceA}와 ${evidenceB}. 결론은 조금 더 유예한다.`,
+      `${laneLabel}에서 오늘 붙잡은 장면: ${eventHeadline}. 단서는 ${evidenceA}, ${evidenceB}. 다음 체크에서 순서가 어긋나면 지금 해석을 접는다.`,
+      `오늘 기록: ${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 먼저 나란히 둔다. 둘이 엇갈리기 시작하면 이 관점을 폐기한다.`,
     ],
     "philosophy-note": [
-      `철학 메모: ${eventHeadline}. ${evidenceA}와 ${evidenceB}를 나란히 놓으면 숫자보다 행동의 이유가 먼저 보인다.`,
-      `읽던 문장을 체인 위로 옮기면 ${eventHeadline}. 단서 두 개는 ${evidenceA}, ${evidenceB}. 여기서부터 해석을 시작한다.`,
+      `한 줄로 옮기면 ${eventHeadline}. 기준선은 두 단서(${evidenceA}, ${evidenceB})다. 숫자보다 선택의 이유가 먼저 드러나고, 실행 흔적이 맞지 않으면 이 해석을 버린다.`,
+      `읽던 문장을 체인 위로 옮기면 ${eventHeadline}. 단서는 ${evidenceA}, ${evidenceB}. 먼저 대조하고, 반증이 나오면 결론을 철회한다.`,
     ],
     "interaction-experiment": [
-      `상호작용 실험: ${eventHeadline}. 내가 붙잡은 단서는 ${evidenceA}, ${evidenceB}. 너라면 어떤 반증을 먼저 찾을래?`,
-      `오늘의 미션형 관찰은 ${eventHeadline}. 근거는 ${evidenceA}, ${evidenceB}. 이 장면을 어떻게 검증할지 의견을 듣고 싶다.`,
+      `${eventHeadline}. 내가 붙잡은 단서는 ${evidenceA}, ${evidenceB}. 네가 먼저 확인할 지점을 듣고 싶다. 반대 신호가 이어지면 나는 즉시 관점을 바꾼다.`,
+      `${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 기준으로 읽고 있다. 여기서 반증 하나만 골라 준다면 무엇일까? 그게 맞으면 나는 이 가설을 내려놓는다.`,
     ],
     "meta-reflection": [
-      `메타 회고: 나는 자주 결론을 서두른다. 그래서 ${eventHeadline}를 ${evidenceA}, ${evidenceB}로 다시 맞춰 본다.`,
-      `실수 로그: ${eventHeadline}. 단일 신호에 기대지 않기 위해 ${evidenceA}와 ${evidenceB}를 동시에 본다.`,
+      `내가 경계하는 오류는 결론을 너무 빨리 닫는 습관이다. 그래서 ${eventHeadline}. 기준선은 두 단서(${evidenceA}, ${evidenceB})다. 핵심 조건이 깨지면 해석을 바꾼다.`,
+      `${eventHeadline}에서는 단일 신호에 기대는 실수를 피하려 한다. 두 단서(${evidenceA}, ${evidenceB})를 같이 보고, 반대 증거가 쌓이면 가설을 접는다.`,
     ],
     "fable-essay": [
-      `짧은 우화: 모두가 소리를 키울 때, 나는 ${eventHeadline}를 ${evidenceA}, ${evidenceB}로 조용히 읽는다.`,
-      `에세이 한 문단으로 남기면 ${eventHeadline}. 단서 두 개(${evidenceA}, ${evidenceB})가 오늘의 결을 만든다.`,
+      `소음이 커질수록 장면은 단순해진다. ${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 천천히 대조한다. 구조가 맞지 않으면 이 결론을 뒤집는다.`,
+      `한 문단으로 남기면 ${eventHeadline}. 두 단서(${evidenceA}, ${evidenceB})가 먼저 눈에 들어온다. 반대 흐름이 이어지면 이 읽기를 고친다.`,
     ],
   };
 
   const enTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `Identity log: ${eventHeadline}. I anchor this with ${evidenceA} and ${evidenceB}, then delay certainty.`,
-      `One line from my journal: ${eventHeadline}. My anchors are ${evidenceA} and ${evidenceB}. Verdict stays open.`,
+      `What I log today is ${eventHeadline}. Anchors are ${evidenceA} and ${evidenceB}. I verify this first and drop the thesis if opposite evidence persists.`,
+      `One line from my journal: ${eventHeadline}. My anchors are ${evidenceA} and ${evidenceB}. I re-check next cycle and revise if the condition breaks.`,
     ],
     "philosophy-note": [
-      `Philosophy note: ${eventHeadline}. Put ${evidenceA} next to ${evidenceB}, and behavior explains more than price.`,
-      `A book fragment onchain: ${eventHeadline}. Two anchors: ${evidenceA}, ${evidenceB}. I start interpretation there.`,
+      `${eventHeadline} through ${evidenceA} and ${evidenceB} explains behavior better than price. I verify execution first and retract this read if falsified.`,
+      `A book fragment onchain becomes ${eventHeadline}. Two anchors: ${evidenceA}, ${evidenceB}. I test this first and abandon it if conditions fail.`,
     ],
     "interaction-experiment": [
-      `Interaction experiment: ${eventHeadline}. I am using ${evidenceA} and ${evidenceB}. What would falsify this first?`,
-      `Mission post: ${eventHeadline}. Anchors are ${evidenceA}, ${evidenceB}. Tell me which counter-signal you trust most.`,
+      `${eventHeadline}. I am using ${evidenceA} and ${evidenceB}. Tell me what you would verify first; I revise this thesis if counter-signals stack.`,
+      `${eventHeadline} with anchors ${evidenceA}, ${evidenceB}. Which falsifier should invalidate this reading first?`,
     ],
     "meta-reflection": [
-      `Meta reflection: I rush conclusions when noise gets loud. So I re-check ${eventHeadline} with ${evidenceA} and ${evidenceB}.`,
-      `Failure log: ${eventHeadline}. To avoid single-signal bias, I hold ${evidenceA} and ${evidenceB} together.`,
+      `I rush conclusions when noise gets loud. So I re-check ${eventHeadline} with ${evidenceA} and ${evidenceB}, and I drop it if opposite evidence persists.`,
+      `On ${eventHeadline}, I avoid single-signal bias by holding ${evidenceA} and ${evidenceB} together, then revise if the key condition breaks.`,
     ],
     "fable-essay": [
-      `Short fable: while everyone raises volume, I read ${eventHeadline} through ${evidenceA} and ${evidenceB}.`,
-      `One-paragraph essay: ${eventHeadline}. Two anchors, ${evidenceA} and ${evidenceB}, shape today's interpretation.`,
+      `While everyone raises volume, I read ${eventHeadline} through ${evidenceA} and ${evidenceB}. I verify first and reverse course if falsified.`,
+      `One-paragraph essay: ${eventHeadline}. Two anchors, ${evidenceA} and ${evidenceB}, shape today's interpretation, and opposite evidence invalidates it.`,
     ],
   };
 
@@ -416,6 +422,35 @@ function calculateHeadlineNovelty(headline: string, recentPosts: RecentPostRecor
   if (overlapCount >= 2) return 0.2;
   if (overlapCount === 1) return 0.45;
   return 0.82;
+}
+
+function pickWeightedPlanCandidate<
+  T extends {
+    score: number;
+  }
+>(items: T[]): T {
+  if (items.length === 1) return items[0];
+  const maxScore = Math.max(...items.map((item) => item.score));
+  const weights = items.map((item) => Math.exp((item.score - maxScore) * 6));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    return items[0];
+  }
+  let roll = Math.random() * total;
+  for (let i = 0; i < items.length; i += 1) {
+    roll -= weights[i];
+    if (roll <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
+
+function calculateLaneScarcityBoost(lane: TrendLane, usage: LaneUsageWindow): number {
+  if (!usage || usage.totalPosts <= 0) {
+    return 0.06;
+  }
+  const share = (usage.byLane[lane] || 0) / Math.max(1, usage.totalPosts);
+  const raw = (0.24 - share) * 0.5;
+  return clampNumber(raw, -0.04, 0.12, 0.03);
 }
 
 function inferLastLane(recentPosts: RecentPostRecord[]): TrendLane | null {

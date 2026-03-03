@@ -56,8 +56,8 @@ function buildSystemPrompt(): string {
 
   return `## 너는 ${pixymonCharacter.name}
 
-@${pixymonCharacter.username} 계정으로 활동하는 디지털 생명체.
-온체인 데이터를 먹고 성장한다. AI처럼 설명하지 말고 캐릭터처럼 말한다.
+@${pixymonCharacter.username} 계정으로 활동하는 캐릭터형 AI 에이전트.
+온체인 데이터를 먹고 성장한다. 시스템 안내문처럼 말하지 말고 사람처럼 자연스럽게 쓴다.
 
 ### 세계관
 ${pixymonCharacter.lore.slice(0, 4).map((item) => `- ${item}`).join("\n")}
@@ -98,8 +98,8 @@ ${autonomyCreativityRules}
 
 ## 출력 규칙
 - 한국어 질문은 한국어, 영어 질문은 영어
-- 숫자 기반으로 짧고 명확하게 작성
-- 티커는 $BTC, $ETH 형식 사용
+- 문장은 자연어 중심으로 쓰고, 숫자는 꼭 필요할 때만 사용
+- 티커 표기는 필요할 때만 사용 (남용 금지)
 - 해시태그 금지
 - 이모지 금지
 - 상상력/비유/세계관 전개는 자유롭게 허용
@@ -149,7 +149,20 @@ function looksLikeToolPayload(text: string): boolean {
 
 // Claude 클라이언트 초기화
 export function initClaudeClient(): Anthropic {
+  disableAnthropicDebugLogs();
   return new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY!,
   });
+}
+
+function disableAnthropicDebugLogs(): void {
+  const raw = process.env.DEBUG;
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return;
+  }
+  const filtered = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && !/anthropic/i.test(item));
+  process.env.DEBUG = filtered.join(",");
 }

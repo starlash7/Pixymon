@@ -32,6 +32,44 @@ const SIGNAL_LANE_PRIORITY = [
   "observation-ending",
 ];
 
+const KO_CONTROL_TAG_PREFIX =
+  /^(?:오늘의\s*)?(?:자아\s*노트|정체성\s*메모|철학\s*(?:메모|노트)|상호작용\s*실험|메타\s*회고|짧은\s*우화|실수\s*로그|관찰\s*노트|내\s*일지(?:\s*한\s*줄)?)\s*[:：-]\s*/i;
+const EN_CONTROL_TAG_PREFIX =
+  /^(?:identity\s*note|philosophy\s*note|interaction\s*experiment|meta\s*reflection|short\s*fable|failure\s*log|mission\s*post)\s*[:：-]\s*/i;
+const NARRATIVE_LABEL_LEAK =
+  /(상호작용\s*실험|짧은\s*우화|철학\s*메모|메타\s*회고|실수\s*로그|관찰\s*노트|identity\s*note|philosophy\s*note|interaction\s*experiment|meta\s*reflection|failure\s*log|observation\s*note)\s*[:：]/i;
+const BOT_STYLE_LEAD =
+  /^(?:오늘의\s*미션은|이번엔\s*반응\s*실험|짧은\s*우화로\s*남기면|이건\s*관찰이자\s*커뮤니티\s*실험|관찰\s*노트[:：]|실수\s*로그[:：]|나는\s*AI\s*생명체)/i;
+const KO_ACTION_PATTERN = /(확인|점검|검증|추적|관찰|비교|대조|체크|기록|모니터링|살핀|보겠|맞춰|보고\s|다시\s*본)/;
+const EN_ACTION_PATTERN = /\b(check|verify|track|monitor|observe|test|compare|review)\b/i;
+const KO_INVALIDATION_PATTERN =
+  /(반증|틀리|무효|기각|버리|수정|철회|바꾸|뒤집|내려놓|폐기|보류|종료|교체|무너지|닫지\s*않|가설[^.!?]{0,12}접|깨지면|조건\s*이?\s*깨지|않으면|아니라면|반대\s*(?:신호|증거))/;
+const EN_INVALIDATION_PATTERN =
+  /\b(falsif|invalidate|wrong if|drop this thesis|revise this thesis|if .*?(?:fails|breaks)|opposite evidence)\b/i;
+
+const KO_ACTION_INVALIDATION_BRIDGES = [
+  "먼저 핵심 단서부터 확인한다. 이 조건이 틀리면 해석을 바로 바꾼다.",
+  "나는 지금 신호의 순서를 점검한다. 반대 근거가 이어지면 가설을 접는다.",
+  "우선 로그를 맞춰 본다. 핵심 전제가 깨지면 결론을 철회한다.",
+  "지금은 확인을 먼저 하고 확신을 늦춘다. 반증이 쌓이면 관점을 수정한다.",
+  "먼저 흐름을 검증한다. 반대 증거가 늘어나면 이 읽기를 버린다.",
+];
+const KO_ACTION_INVALIDATION_BRIDGES_SHORT = [
+  "반증이면 관점을 바꾼다.",
+  "조건이 틀리면 이 해석을 접는다.",
+  "핵심 전제가 깨지면 결론을 철회한다.",
+];
+const EN_ACTION_INVALIDATION_BRIDGES = [
+  "I verify the key signals first, then revise the thesis if opposite evidence persists.",
+  "I check the core premise first, and I drop this read when counter-evidence accumulates.",
+  "I validate the sequence first, then invalidate the claim if the condition breaks.",
+];
+const EN_ACTION_INVALIDATION_BRIDGES_SHORT = [
+  "I revise this if falsified.",
+  "I drop this read if conditions fail.",
+  "If the premise breaks, I retract this claim.",
+];
+
 export function resolveContentQualityRules(raw?: Partial<ContentQualityRules>): ContentQualityRules {
   return {
     minPostLength: clampInt(raw?.minPostLength, 10, 120, DEFAULT_CONTENT_QUALITY_RULES.minPostLength),
@@ -50,7 +88,96 @@ export function resolveContentQualityRules(raw?: Partial<ContentQualityRules>): 
 }
 
 export function sanitizeTweetText(text: string): string {
-  return text.replace(/\s+/g, " ").replace(/[“”]/g, "\"").trim();
+  return String(text || "")
+    .replace(/\r?\n+/g, " ")
+    .replace(/\t+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .trim();
+}
+
+export function polishTweetText(text: string, language: "ko" | "en" = "ko"): string {
+  let output = sanitizeTweetText(text)
+    .replace(/\s*([,;:!?])\s*/g, "$1 ")
+    .replace(/\s*\(\s*/g, "(")
+    .replace(/\s*\)\s*/g, ") ")
+    .replace(/\)\s+([,.;:!?])/g, ")$1")
+    .replace(/\)\s+([은는이가을를와과도에의로])/g, ")$1")
+    .replace(/\)\s*\(/g, ") (")
+    .replace(/([0-9A-Za-z$])\(/g, "$1 (")
+    .replace(/\s*[|]\s*/g, " | ")
+    .replace(/\s*·\s*/g, " · ")
+    .replace(/\s{2,}/g, " ");
+
+  if (language === "ko") {
+    output = output
+      .replace(/([가-힣])([$A-Za-z]{2,10})/g, "$1 $2")
+      .replace(/([가-힣])(\d)/g, "$1 $2")
+      .replace(/\b([A-Za-z]{2,10})\s+([은는이가을를와과도에의로]\b)/g, "$1$2")
+      .replace(/\b([A-Za-z]{2,10})\s+([은는이가을를와과도에의로][가-힣])/g, "$1$2");
+  }
+
+  return sanitizeTweetText(output);
+}
+
+export function stripNarrativeControlTags(text: string): string {
+  let output = sanitizeTweetText(String(text || ""));
+  for (let i = 0; i < 3; i += 1) {
+    const trimmed = output
+      .replace(KO_CONTROL_TAG_PREFIX, "")
+      .replace(EN_CONTROL_TAG_PREFIX, "")
+      .replace(/\b(?:meta reflection|interaction experiment|philosophy note|identity note)\s*[:：]/gi, "")
+      .replace(/(?:메타\s*회고|상호작용\s*실험|철학\s*메모|관찰\s*노트)\s*[:：]/g, "")
+      .trim();
+    if (trimmed === output) break;
+    output = trimmed;
+  }
+  return polishTweetText(output, inferTextLanguage(output));
+}
+
+export function validateActionAndInvalidation(
+  text: string,
+  language: "ko" | "en"
+): { ok: true } | { ok: false; reason: string } {
+  const normalized = sanitizeTweetText(String(text || ""));
+  if (!normalized) {
+    return { ok: false, reason: "행동/반증 구조 없음(empty)" };
+  }
+  const hasAction = containsActionSignal(normalized, language);
+  if (!hasAction) {
+    return { ok: false, reason: "행동 계획 부재(무엇을 확인할지 없음)" };
+  }
+  const hasInvalidation = containsInvalidationSignal(normalized, language);
+  if (!hasInvalidation) {
+    return { ok: false, reason: "반증/무효화 조건 부재" };
+  }
+  return { ok: true };
+}
+
+export function enforceActionAndInvalidation(
+  text: string,
+  language: "ko" | "en",
+  maxChars: number
+): string {
+  const cleaned = polishTweetText(stripNarrativeControlTags(text), language);
+  const structure = validateActionAndInvalidation(cleaned, language);
+  if (structure.ok) {
+    return polishTweetText(cleaned, language).slice(0, maxChars);
+  }
+  const seed = stableHash(cleaned || "pixymon");
+  const room = Math.max(0, maxChars - cleaned.length);
+  const useShortBridge = room < 44;
+  const bridge =
+    language === "ko"
+      ? useShortBridge
+        ? KO_ACTION_INVALIDATION_BRIDGES_SHORT[seed % KO_ACTION_INVALIDATION_BRIDGES_SHORT.length]
+        : KO_ACTION_INVALIDATION_BRIDGES[seed % KO_ACTION_INVALIDATION_BRIDGES.length]
+      : useShortBridge
+        ? EN_ACTION_INVALIDATION_BRIDGES_SHORT[seed % EN_ACTION_INVALIDATION_BRIDGES_SHORT.length]
+        : EN_ACTION_INVALIDATION_BRIDGES[seed % EN_ACTION_INVALIDATION_BRIDGES.length];
+  const separator = /[.!?]$/.test(cleaned) ? " " : ". ";
+  return polishTweetText(`${cleaned}${separator}${bridge}`, language).slice(0, maxChars);
 }
 
 export function evaluateReplyQuality(
@@ -59,17 +186,24 @@ export function evaluateReplyQuality(
   recentReplyTexts: string[],
   policy: AdaptivePolicy
 ): ContentQualityCheck {
-  const marketConsistency = validateMarketConsistency(text, marketData);
+  const language = inferTextLanguage(text);
+  const normalized = polishTweetText(text, language);
+  const surfaceIssue = detectSurfaceIssue(normalized, language);
+  if (surfaceIssue) {
+    return { ok: false, reason: surfaceIssue };
+  }
+
+  const marketConsistency = validateMarketConsistency(normalized, marketData);
   if (!marketConsistency.ok) {
     return { ok: false, reason: marketConsistency.reason || "시장 숫자 불일치" };
   }
 
-  const duplicate = memory.checkDuplicate(text, policy.replyDuplicateThreshold);
+  const duplicate = memory.checkDuplicate(normalized, policy.replyDuplicateThreshold);
   if (duplicate.isDuplicate) {
     return { ok: false, reason: "기존 발화와 과도하게 유사" };
   }
 
-  const narrativeDup = findNarrativeDuplicate(text, recentReplyTexts, policy.replyNarrativeThreshold);
+  const narrativeDup = findNarrativeDuplicate(normalized, recentReplyTexts, policy.replyNarrativeThreshold);
   if (narrativeDup.isDuplicate) {
     return {
       ok: false,
@@ -88,10 +222,22 @@ export function evaluatePostQuality(
   rules: ContentQualityRules = DEFAULT_CONTENT_QUALITY_RULES,
   context: PostQualityContext = {}
 ): ContentQualityCheck {
-  if (!text || text.length < rules.minPostLength) {
+  const language = context.language || inferTextLanguage(text);
+  const normalizedText = polishTweetText(text, language);
+  if (!normalizedText || normalizedText.length < rules.minPostLength) {
     return { ok: false, reason: "문장이 너무 짧음" };
   }
-  const numericProfile = inspectNumericProfile(text);
+  const surfaceIssue = detectSurfaceIssue(normalizedText, language);
+  if (surfaceIssue) {
+    return { ok: false, reason: surfaceIssue };
+  }
+  if (NARRATIVE_LABEL_LEAK.test(normalizedText)) {
+    return { ok: false, reason: "내부 서사 라벨 노출" };
+  }
+  if (BOT_STYLE_LEAD.test(normalizedText)) {
+    return { ok: false, reason: "폼 기반 오프너 노출" };
+  }
+  const numericProfile = inspectNumericProfile(normalizedText);
   if (numericProfile.hardNoise) {
     return {
       ok: false,
@@ -99,25 +245,30 @@ export function evaluatePostQuality(
     };
   }
 
+  const repetitiveWord = detectLexicalRepetition(normalizedText, language);
+  if (repetitiveWord) {
+    return { ok: false, reason: `문장 반복 패턴 과다(${repetitiveWord})` };
+  }
+
   const recentPostTexts = recentPosts.map((post) => post.content);
-  const marketConsistency = validateMarketConsistency(text, marketData);
+  const marketConsistency = validateMarketConsistency(normalizedText, marketData);
   if (!marketConsistency.ok) {
     return { ok: false, reason: marketConsistency.reason || "시장 숫자 불일치" };
   }
 
-  const duplicate = memory.checkDuplicate(text, policy.postDuplicateThreshold);
+  const duplicate = memory.checkDuplicate(normalizedText, policy.postDuplicateThreshold);
   if (duplicate.isDuplicate) {
     return { ok: false, reason: "기존 트윗과 의미 중복" };
   }
 
-  const narrativeDup = findNarrativeDuplicate(text, recentPostTexts, policy.postNarrativeThreshold);
+  const narrativeDup = findNarrativeDuplicate(normalizedText, recentPostTexts, policy.postNarrativeThreshold);
   if (narrativeDup.isDuplicate) {
     return {
       ok: false,
       reason: `최근 포스트와 내러티브 중복(sim=${narrativeDup.similarity})`,
     };
   }
-  const candidateMotifs = extractNarrativeMotifs(text);
+  const candidateMotifs = extractNarrativeMotifs(normalizedText);
   if (candidateMotifs.size >= 4) {
     const motifDup = recentPostTexts
       .slice(-16)
@@ -127,7 +278,7 @@ export function evaluatePostQuality(
     }
   }
   const recentWithin24 = recentPosts.filter((post) => isWithinHours(post.timestamp, 24));
-  const candidateLane = buildSignalLane(text, candidateMotifs);
+  const candidateLane = buildSignalLane(normalizedText, candidateMotifs);
   if (candidateLane && recentWithin24.length > 0) {
     const sameLaneCount = recentWithin24.filter((post) => {
       const lane = buildSignalLane(post.content);
@@ -138,12 +289,12 @@ export function evaluatePostQuality(
     }
   }
 
-  const normalized = sanitizeTweetText(text).slice(0, 24);
+  const normalized = sanitizeTweetText(normalizedText).slice(0, 24);
   if (normalized && recentPostTexts.some((item) => sanitizeTweetText(item).slice(0, 24) === normalized)) {
     return { ok: false, reason: "문장 시작 패턴 중복" };
   }
   const recentStructures = recentPostTexts.slice(-20).map((item) => normalizeNarrativeStructure(item));
-  const candidateStructure = normalizeNarrativeStructure(text);
+  const candidateStructure = normalizeNarrativeStructure(normalizedText);
   if (candidateStructure) {
     const prefix = candidateStructure.slice(0, 34);
     if (prefix && recentStructures.some((item) => item.slice(0, 34) === prefix)) {
@@ -156,7 +307,7 @@ export function evaluatePostQuality(
   }
 
   if (recentWithin24.length > 0) {
-    const candidateTag = inferTopicTag(text);
+    const candidateTag = inferTopicTag(normalizedText);
     const recentTags = recentWithin24.map((post) => inferTopicTag(post.content));
     const lastTag = recentTags[recentTags.length - 1];
     const modeShiftAllowed =
@@ -184,13 +335,20 @@ export function evaluatePostQuality(
   }
 
   const requiredTrendTokens = normalizeRequiredTrendTokens(context.requiredTrendTokens);
-  if (requiredTrendTokens.length > 0 && !containsAnyTrendToken(text, requiredTrendTokens)) {
+  if (requiredTrendTokens.length > 0 && !containsAnyTrendToken(normalizedText, requiredTrendTokens)) {
     return { ok: false, reason: "트렌드 포커스 키워드 미반영" };
   }
   if (context.fearGreedEvent?.required) {
     const candidateTag = inferTopicTag(text);
     if (candidateTag === "sentiment" && !context.fearGreedEvent.isEvent) {
       return { ok: false, reason: "FGI 이벤트 없음(sentiment 서사 제한)" };
+    }
+  }
+
+  if (context.requireActionAndInvalidation) {
+    const structure = validateActionAndInvalidation(normalizedText, language);
+    if (!structure.ok) {
+      return { ok: false, reason: structure.reason };
     }
   }
 
@@ -205,7 +363,7 @@ export function inferTopicTag(text: string): string {
   if (/\$eth|ethereum|이더/.test(lead)) return "ethereum";
   if (/규제|regulation|policy|compliance|sec|cftc|법안|당국/.test(lead)) return "regulation";
   if (/fomc|fed|macro|금리|inflation|dxy/.test(lead)) return "macro";
-  if (/onchain|멤풀|수수료|고래|stable|유동성|tvl/.test(lead)) return "onchain";
+  if (/onchain|멤풀|수수료|고래|stablecoin|스테이블|유동성|tvl/.test(lead)) return "onchain";
   if (/layer2|rollup|업그레이드|mainnet|testnet|protocol/.test(lead)) return "tech";
   if (/ai|agent|inference/.test(lead)) return "ai";
   if (/defi|dex|lending|staking|ecosystem|생태계/.test(lead)) return "defi";
@@ -215,6 +373,26 @@ export function inferTopicTag(text: string): string {
   if (/우화|fable|에세이|essay|비유|metaphor/.test(lead)) return "fable";
   if (/일지|정체성|identity|self narrative|자아/.test(lead)) return "identity";
   return "general";
+}
+
+function inferTextLanguage(text: string): "ko" | "en" {
+  return /[ㄱ-ㅎ가-힣]/.test(text) ? "ko" : "en";
+}
+
+function containsActionSignal(text: string, language: "ko" | "en"): boolean {
+  return language === "ko" ? KO_ACTION_PATTERN.test(text) : EN_ACTION_PATTERN.test(text);
+}
+
+function containsInvalidationSignal(text: string, language: "ko" | "en"): boolean {
+  return language === "ko" ? KO_INVALIDATION_PATTERN.test(text) : EN_INVALIDATION_PATTERN.test(text);
+}
+
+function stableHash(text: string): number {
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return hash;
 }
 
 function isWithinHours(isoTimestamp: string, hours: number): boolean {
@@ -254,7 +432,7 @@ function extractNarrativeMotifs(text: string): Set<string> {
   const motifs: string[] = [];
   if (/fear|fgi|극공포|공포\s*지수/.test(lower)) motifs.push("sentiment-fear");
   if (/greed|탐욕/.test(lower)) motifs.push("sentiment-greed");
-  if (/stable|스테이블|유동성/.test(lower)) motifs.push("stable-flow");
+  if (/stablecoin|스테이블|유동성/.test(lower)) motifs.push("stable-flow");
   if (/고래|whale|대형\s*주소/.test(lower)) motifs.push("whale-flow");
   if (/거래소|exchange\s*flow|netflow|순유입|순유출/.test(lower)) motifs.push("exchange-flow");
   if (/\$btc|bitcoin|비트코인/.test(lower)) motifs.push("btc");
@@ -326,4 +504,72 @@ function containsAnyTrendToken(text: string, requiredTrendTokens: string[]): boo
     if (token.startsWith("$") && normalizedText.includes(token.slice(1))) return true;
     return false;
   });
+}
+
+function detectSurfaceIssue(text: string, language: "ko" | "en"): string | null {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return "빈 문장";
+  if (!hasBalancedParentheses(normalized)) {
+    return "괄호 짝 불일치";
+  }
+  if (/[0-9A-Za-z$]\([0-9A-Za-z$+-]/.test(normalized)) {
+    return "비정상 숫자/괄호 결합";
+  }
+  if (/(\b(?:btc|eth|sol)\s*:\s*\$?0(?:\.0+)?\b)/i.test(normalized)) {
+    return "비정상 시세 포맷";
+  }
+  if (/\b\d+(?:\.\d+)?\s*\([+-]?\d+(?:\.\d+)?\s*\([+-]?\d+/i.test(normalized)) {
+    return "수치 포맷 손상";
+  }
+  if (language === "ko") {
+    const hangulCount = (normalized.match(/[가-힣]/g) || []).length;
+    const spaceCount = (normalized.match(/\s/g) || []).length;
+    if (hangulCount >= 36 && spaceCount <= 1) {
+      return "띄어쓰기 이상";
+    }
+  }
+  return null;
+}
+
+function hasBalancedParentheses(text: string): boolean {
+  let balance = 0;
+  for (const ch of text) {
+    if (ch === "(") balance += 1;
+    if (ch === ")") balance -= 1;
+    if (balance < 0) return false;
+  }
+  return balance === 0;
+}
+
+function detectLexicalRepetition(text: string, language: "ko" | "en"): string | null {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  if (!normalized) return null;
+  const tokens = normalized
+    .split(/\s+/)
+    .map((token) => token.replace(/[^\p{L}\p{N}$]/gu, ""))
+    .filter((token) => token.length >= 2);
+
+  if (tokens.length < 8) return null;
+  const stopwords =
+    language === "ko"
+      ? new Set(["그리고", "하지만", "그래서", "지금", "오늘", "먼저", "우선", "정말", "아직", "이건", "그건", "하는", "이다", "같다"])
+      : new Set(["this", "that", "with", "from", "into", "then", "when", "over", "just", "very"]);
+
+  const counts = new Map<string, number>();
+  for (const token of tokens) {
+    if (stopwords.has(token)) continue;
+    counts.set(token, (counts.get(token) || 0) + 1);
+  }
+  let topWord = "";
+  let topCount = 0;
+  for (const [word, count] of counts.entries()) {
+    if (count > topCount) {
+      topWord = word;
+      topCount = count;
+    }
+  }
+  if (topCount >= 4) {
+    return topWord || "same-word";
+  }
+  return null;
 }

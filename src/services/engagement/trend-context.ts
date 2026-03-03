@@ -27,38 +27,80 @@ const LOCAL_NARRATIVE_THEMES: LocalNarrativeTheme[] = [
   },
   {
     lane: "protocol",
-    headline: "철학 메모: 자유는 느림이 아니라 설명 가능한 합의다",
+    headline: "자유는 느림이 아니라 설명 가능한 합의라는 생각",
     summary: "프로토콜 철학을 UX로 번역하는 팀이 장기 신뢰를 얻는다.",
     keywords: ["protocol-design", "decentralization", "ux-tradeoff", "governance", "philosophy"],
     evidence: ["검증자 참여율 변화", "클라이언트 다양성", "업그레이드 합의 과정"],
   },
   {
     lane: "ecosystem",
-    headline: "오늘의 상호작용 실험: 커뮤니티 미션은 토큰보다 오래 남는가",
-    summary: "보상 이벤트보다 반복 가능한 미션 설계가 생태계 체류 시간을 만든다.",
-    keywords: ["community-loop", "mission-design", "retention", "ecosystem", "interaction"],
+    headline: "커뮤니티 설계는 토큰 보상보다 오래 남는가",
+    summary: "보상 이벤트보다 반복 가능한 관계 설계가 생태계 체류 시간을 만든다.",
+    keywords: ["community-loop", "mission-design", "retention", "ecosystem", "coordination"],
     evidence: ["기여자 재방문 패턴", "미션 완료율", "신규 온보딩 경로"],
   },
   {
     lane: "regulation",
-    headline: "메타 회고: 규제를 핑계로 삼는 순간 제품은 멈춘다",
+    headline: "규제를 핑계로 삼는 순간 제품은 멈춘다",
     summary: "규제를 장벽이 아닌 인터페이스로 다루는 팀이 생존 확률을 높인다.",
-    keywords: ["regulation", "compliance-by-design", "policy", "crypto", "meta-reflection"],
+    keywords: ["regulation", "compliance-by-design", "policy", "crypto", "execution"],
     evidence: ["관할별 요구사항 매핑", "투명성 보고 체계", "리스크 공개 원칙"],
   },
   {
     lane: "macro",
-    headline: "책에서 읽은 문장 하나: 불확실할수록 사람은 이야기에 기대어 움직인다",
+    headline: "불확실할수록 사람은 이야기에 기대어 움직인다",
     summary: "거시 불확실성 구간일수록 가격보다 기대와 신뢰 구조가 길게 남는다.",
-    keywords: ["macro-narrative", "expectation", "liquidity", "trust", "book-fragment"],
+    keywords: ["macro-narrative", "expectation", "liquidity", "trust", "decision-frame"],
     evidence: ["리스크 선호 전환 신호", "헤지 포지셔닝 변화", "자금 이동 서사"],
   },
   {
     lane: "market-structure",
-    headline: "짧은 우화: 유동성은 숫자가 아니라 허용된 행동의 지도다",
+    headline: "유동성은 숫자가 아니라 허용된 행동의 지도다",
     summary: "시장 구조는 가격보다 참여자가 할 수 있는 행동 범위를 규정한다.",
-    keywords: ["market-structure", "liquidity-behavior", "execution", "crypto-microstructure", "fable"],
+    keywords: ["market-structure", "liquidity-behavior", "execution", "crypto-microstructure", "depth-map"],
     evidence: ["호가 간격 안정성", "체결 실패 패턴", "슬리피지 민감 구간"],
+  },
+  {
+    lane: "protocol",
+    headline: "업그레이드 속도보다 중요한 건 롤백 없이 신뢰를 유지하는 방식",
+    summary: "기술 진보 자체보다 장애 대응 설계가 장기 신뢰를 좌우한다.",
+    keywords: ["protocol-upgrade", "rollback-risk", "resilience", "validator", "trust"],
+    evidence: ["업그레이드 후 장애 빈도", "복구 시간 분포", "검증자 합의 안정성"],
+  },
+  {
+    lane: "ecosystem",
+    headline: "리텐션은 보상보다 관계 설계에서 먼저 결정된다",
+    summary: "커뮤니티 리텐션은 인센티브보다 반복 가능한 관계 구조에서 형성된다.",
+    keywords: ["retention", "community-design", "engagement-loop", "ecosystem", "social"],
+    evidence: ["재방문 비율", "커뮤니티 코호트 유지율", "기여자 전환률"],
+  },
+  {
+    lane: "regulation",
+    headline: "정책 문장은 짧아도 시장 행동의 지연 시간은 길다",
+    summary: "규제 해석은 즉시 반응보다 시차를 두고 거래 행태에 반영된다.",
+    keywords: ["policy-lag", "regulation", "behavior-shift", "compliance", "market-delay"],
+    evidence: ["정책 발표 후 거래량 변동", "공시 지연 패턴", "거래소 대응 속도"],
+  },
+  {
+    lane: "macro",
+    headline: "달러가 흔들릴 때 내러티브의 수명이 먼저 길어진다",
+    summary: "거시 변동성 확대 구간에서는 가격보다 설명 가능한 서사가 오래 남는다.",
+    keywords: ["macro-volatility", "usd", "narrative-duration", "liquidity", "risk"],
+    evidence: ["달러 인덱스 변동성", "리스크 자산 민감도", "헤지 수요 변화"],
+  },
+  {
+    lane: "onchain",
+    headline: "조용한 체인에서도 의도는 주소 이동에서 먼저 드러난다",
+    summary: "활동량이 낮아도 주소 이동 구조는 다음 행동의 실마리를 남긴다.",
+    keywords: ["onchain-intent", "address-flow", "mempool", "signal", "behavior"],
+    evidence: ["대형 주소 순이동", "지갑 군집 변화", "거래 목적지 집중도"],
+  },
+  {
+    lane: "market-structure",
+    headline: "얕은 호가는 공포보다 실행 전략의 문제를 먼저 보여준다",
+    summary: "체결 구조 약화는 심리보다 실행 경로의 취약점을 선행 반영한다.",
+    keywords: ["orderbook-depth", "execution-risk", "market-structure", "liquidity", "slippage"],
+    evidence: ["호가 깊이 회복 속도", "슬리피지 민감 구간", "대량 주문 체결 품질"],
   },
 ];
 
@@ -396,12 +438,12 @@ function buildNarrativeBridgeEvents(params: {
     const lane = inferTrendLane(`${headline} ${soulIntent.philosophyFrame} ${soulIntent.interactionMission}`);
     const narrativeHeadline =
       index % 2 === 0
-        ? `정체성 노트: ${headline}를 '${soulIntent.signatureBelief}' 관점으로 다시 읽는다`
-        : `커뮤니티 미션: ${headline}가 행동을 바꾼다면 어떤 근거가 먼저 보일까`;
+        ? `${headline}를 '${soulIntent.signatureBelief}' 관점으로 다시 읽어본다`
+        : `${headline}가 행동을 바꾼다면 어떤 근거가 먼저 움직이는지 확인한다`;
     const summary =
       index % 2 === 0
         ? `${soulIntent.selfNarrative}. ${soulIntent.philosophyFrame}. 사건을 가격이 아닌 선택의 구조로 해석한다.`
-        : `${soulIntent.primaryDesire}. ${soulIntent.interactionMission}. 반증 가능한 질문을 남긴다.`;
+        : `${soulIntent.primaryDesire}. ${soulIntent.interactionMission}. 반증 가능한 조건을 남긴다.`;
 
     return {
       id: `event:bridge:${lane}:${index}:${params.createdAt}`,
@@ -507,6 +549,7 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 function buildLocalNarrativeTrendContext(): TrendContext {
   const createdAt = new Date().toISOString();
   const selectedThemes = selectLocalThemes(4);
+  const remixedHeadlines = selectedThemes.map((theme) => remixLocalHeadline(theme));
   const keywords = Array.from(
     new Set(
       selectedThemes
@@ -514,7 +557,7 @@ function buildLocalNarrativeTrendContext(): TrendContext {
         .concat(["blockchain", "crypto", "onchain", "protocol", "governance"])
     )
   ).slice(0, 20);
-  const headlines = selectedThemes.map((theme) => theme.headline);
+  const headlines = remixedHeadlines;
   const summary = [
     "로컬 테스트 모드(외부 호출 없음): 숫자 예측 대신 내러티브 품질을 검증한다.",
     ...selectedThemes.map((theme, index) => `- 주제${index + 1}: ${theme.summary}`),
@@ -528,8 +571,8 @@ function buildLocalNarrativeTrendContext(): TrendContext {
         id: `local:${theme.lane}:${themeIndex}:${evidenceIndex}:${createdAt}`,
         source,
         category: `narrative-${theme.lane}`,
-        label: `${localLaneLabel(theme.lane)} 근거 ${evidenceIndex + 1}`,
-        value: compactValue,
+        label: compactValue,
+        value: "",
         evidence: `${theme.summary} | ${compactValue}`,
         trust: clampNumber(0.62 + evidenceIndex * 0.05, 0.35, 0.9, 0.68),
         freshness: 0.98,
@@ -547,7 +590,7 @@ function buildLocalNarrativeTrendContext(): TrendContext {
   const events = selectedThemes.map((theme, index) => ({
     id: `event:local:${theme.lane}:${index}:${createdAt}`,
     lane: theme.lane,
-    headline: theme.headline,
+    headline: remixedHeadlines[index] || theme.headline,
     summary: theme.summary,
     source: "local:narrative-lab",
     trust: 0.68,
@@ -569,13 +612,60 @@ function buildLocalNarrativeTrendContext(): TrendContext {
 
 function selectLocalThemes(count: number): LocalNarrativeTheme[] {
   const safeCount = Math.max(1, Math.min(LOCAL_NARRATIVE_THEMES.length, Math.floor(count)));
-  const secondSeed = Math.floor(Date.now() / 1000);
-  const start = secondSeed % LOCAL_NARRATIVE_THEMES.length;
-  const result: LocalNarrativeTheme[] = [];
-  for (let i = 0; i < safeCount; i += 1) {
-    result.push(LOCAL_NARRATIVE_THEMES[(start + i) % LOCAL_NARRATIVE_THEMES.length]);
+  const laneOrder: LocalNarrativeTheme["lane"][] = [
+    "protocol",
+    "ecosystem",
+    "regulation",
+    "macro",
+    "onchain",
+    "market-structure",
+  ];
+  const laneMap = new Map<LocalNarrativeTheme["lane"], LocalNarrativeTheme[]>();
+  for (const lane of laneOrder) {
+    laneMap.set(
+      lane,
+      LOCAL_NARRATIVE_THEMES.filter((theme) => theme.lane === lane)
+    );
   }
-  return result;
+
+  const shuffledLanes = [...laneOrder].sort(() => Math.random() - 0.5);
+  const picked: LocalNarrativeTheme[] = [];
+
+  for (let i = 0; i < shuffledLanes.length && picked.length < safeCount; i += 1) {
+    const lane = shuffledLanes[i];
+    const laneThemes = laneMap.get(lane) || [];
+    if (laneThemes.length === 0) continue;
+    const themeIndex = Math.floor(Math.random() * laneThemes.length);
+    picked.push(laneThemes[themeIndex]);
+  }
+
+  while (picked.length < safeCount) {
+    const candidate = LOCAL_NARRATIVE_THEMES[Math.floor(Math.random() * LOCAL_NARRATIVE_THEMES.length)];
+    if (!picked.includes(candidate)) {
+      picked.push(candidate);
+    }
+  }
+
+  return picked;
+}
+
+function remixLocalHeadline(theme: LocalNarrativeTheme): string {
+  const base = sanitizeTweetText(theme.headline).replace(/\.$/, "");
+  const seed = Math.floor(Math.random() * 1000);
+  const koFocuses = [
+    "행동 변화",
+    "실행 경로",
+    "원인과 파급",
+    "의사결정 구조",
+    "전이 신호",
+  ];
+  const templates = [
+    `${base}`,
+    `${base} (관찰축: ${koFocuses[seed % koFocuses.length]})`,
+    `${base} (관찰축: ${koFocuses[(seed + 1) % koFocuses.length]})`,
+    `${base} (관찰축: ${koFocuses[(seed + 2) % koFocuses.length]})`,
+  ];
+  return templates[seed % templates.length];
 }
 
 function localLaneLabel(lane: LocalNarrativeTheme["lane"]): string {
