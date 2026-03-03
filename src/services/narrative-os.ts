@@ -150,12 +150,14 @@ export function validateNarrativeNovelty(
     };
   }
 
-  const samePrefix = recentPosts
-    .slice(-10)
+  const samePrefixCount = recentPosts
+    .slice(-12)
     .map((post) => normalizeNarrativeText(post.content))
-    .find((row) => row.slice(0, 24) === normalized.slice(0, 24));
-  if (samePrefix) {
+    .filter((row) => row.slice(0, 24) === normalized.slice(0, 24)).length;
+  if (samePrefixCount >= 2) {
     penalties.push({ code: "opening-pattern-repeat", weight: 0.45 });
+  } else if (samePrefixCount === 1) {
+    penalties.push({ code: "opening-pattern-repeat-soft", weight: 0.2 });
   }
 
   if (plan.bannedOpeners.some((opener) => normalized.startsWith(normalizeNarrativeText(opener)))) {

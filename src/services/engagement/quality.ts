@@ -290,8 +290,13 @@ export function evaluatePostQuality(
   }
 
   const normalized = sanitizeTweetText(normalizedText).slice(0, 24);
-  if (normalized && recentPostTexts.some((item) => sanitizeTweetText(item).slice(0, 24) === normalized)) {
-    return { ok: false, reason: "문장 시작 패턴 중복" };
+  if (normalized) {
+    const openingRepeatCount = recentPostTexts
+      .slice(-12)
+      .filter((item) => sanitizeTweetText(item).slice(0, 24) === normalized).length;
+    if (openingRepeatCount >= 2) {
+      return { ok: false, reason: "문장 시작 패턴 중복" };
+    }
   }
   const recentStructures = recentPostTexts.slice(-20).map((item) => normalizeNarrativeStructure(item));
   const candidateStructure = normalizeNarrativeStructure(normalizedText);

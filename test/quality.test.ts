@@ -281,6 +281,61 @@ test("evaluatePostQuality rejects bot-style lead opener", () => {
   assert.equal(result.reason, "폼 기반 오프너 노출");
 });
 
+test("evaluatePostQuality allows one opening-prefix collision", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const recentPosts: Array<{ content: string; timestamp: string }> = [
+    {
+      content:
+        "opening frame sameprefix tokenA branch-one. I monitor wallet flow and revise this if falsified.",
+      timestamp: new Date().toISOString(),
+    },
+  ];
+
+  const result = evaluatePostQuality(
+    "opening frame sameprefix tokenB branch-two. I monitor validator lag and revise this if falsified.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 70000, change24h: 1.1 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, true);
+});
+
+test("evaluatePostQuality blocks repeated opening-prefix collisions when count is high", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const now = new Date().toISOString();
+  const recentPosts: Array<{ content: string; timestamp: string }> = [
+    {
+      content:
+        "opening frame sameprefix tokenA branch-one. I monitor wallet flow and revise this if falsified.",
+      timestamp: now,
+    },
+    {
+      content:
+        "opening frame sameprefix tokenC branch-three. I track execution path and drop this read if invalidated.",
+      timestamp: now,
+    },
+  ];
+
+  const result = evaluatePostQuality(
+    "opening frame sameprefix tokenB branch-two. I monitor validator lag and revise this if falsified.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 70000, change24h: 1.1 }],
+    recentPosts,
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "문장 시작 패턴 중복");
+});
+
 test("stripNarrativeControlTags removes control labels from generated text", () => {
   assert.equal(
     stripNarrativeControlTags("철학 메모: 프로토콜 변화는 행동을 바꾼다."),

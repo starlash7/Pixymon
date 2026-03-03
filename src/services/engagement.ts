@@ -622,6 +622,13 @@ export async function postTrendUpdate(
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
+        localPost = deconflictOpening(
+          localPost,
+          recentBriefingPosts.map((post) => post.content),
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          `${eventPlan.event.id}:${candidate.mode}`
+        );
         localPost = enforceActionAndInvalidation(
           localPost,
           runtimeSettings.postLanguage,
@@ -694,6 +701,13 @@ export async function postTrendUpdate(
             localPost,
             runtimeSettings.postLanguage,
             runtimeSettings.postMaxChars
+          );
+          localPost = deconflictOpening(
+            localPost,
+            recentBriefingPosts.map((post) => post.content),
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            `${eventPlan.event.id}:${narrativePlan.mode}:fallback-local`
           );
           localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
           const localContract = validateEventEvidenceContract(localPost, eventPlan);
@@ -909,6 +923,13 @@ Rules:
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
+        candidate = deconflictOpening(
+          candidate,
+          recentBriefingPosts.map((post) => post.content),
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          `${eventPlan.event.id}:${narrativePlan.mode}:llm:${attempt}`
+        );
         candidate = enforceActionAndInvalidation(
           candidate,
           runtimeSettings.postLanguage,
@@ -1045,6 +1066,13 @@ Rules:
           requiredTrendTokens,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
+        );
+        fallbackPost = deconflictOpening(
+          fallbackPost,
+          recentBriefingPosts.map((post) => post.content),
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          `${eventPlan.event.id}:${narrativePlan.mode}:fallback`
         );
         fallbackPost = enforceActionAndInvalidation(
           fallbackPost,
@@ -1780,6 +1808,56 @@ function finalizeGeneratedText(text: string, language: "ko" | "en", maxChars: nu
   return truncateAtWordBoundary(polished, maxChars);
 }
 
+function deconflictOpening(
+  text: string,
+  recentPosts: string[],
+  language: "ko" | "en",
+  maxChars: number,
+  seedHint: string
+): string {
+  const normalized = finalizeGeneratedText(text, language, maxChars);
+  if (!normalized) return normalized;
+
+  const recentPrefixes = new Set(
+    (recentPosts || [])
+      .slice(-16)
+      .map((post) => sanitizeTweetText(post).toLowerCase().slice(0, 24))
+      .filter((prefix) => prefix.length >= 12)
+  );
+  const currentPrefix = sanitizeTweetText(normalized).toLowerCase().slice(0, 24);
+  if (!currentPrefix || !recentPrefixes.has(currentPrefix)) {
+    return normalized;
+  }
+
+  const koLeads = [
+    "이번엔 이 장면부터 적는다:",
+    "오늘 기록의 출발점:",
+    "내 관찰의 첫 줄:",
+    "먼저 붙잡은 장면:",
+    "다시 시작해보면:",
+    "지금 노트 첫 문장:",
+  ];
+  const enLeads = [
+    "Starting from this scene:",
+    "My first line today:",
+    "If I begin here:",
+    "One line to start:",
+  ];
+  const leadPool = language === "ko" ? koLeads : enLeads;
+  const seed = stableSeedForPrelude(`${seedHint}|${normalized}|${Date.now()}`);
+
+  for (let i = 0; i < leadPool.length; i += 1) {
+    const lead = leadPool[(seed + i) % leadPool.length];
+    const candidate = finalizeGeneratedText(`${lead} ${normalized}`, language, maxChars);
+    const candidatePrefix = sanitizeTweetText(candidate).toLowerCase().slice(0, 24);
+    if (!recentPrefixes.has(candidatePrefix)) {
+      return candidate;
+    }
+  }
+
+  return normalized;
+}
+
 async function getOrCreateTrendContext(
   cache: EngagementCycleCache | undefined,
   options: { minNewsSourceTrust: number }
@@ -2125,38 +2203,17 @@ function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): str
     "how do you see it",
     "keep conviction open",
   ];
-  const recentOpeners = (recentPosts || [])
-    .slice(-8)
-    .map((row) => sanitizeTweetText(row).slice(0, 18).trim())
-    .filter((row) => row.length >= 8);
   const staticList = language === "ko" ? baseKo : baseEn;
-  const staticRules = staticList.map((item) => sanitizeTweetText(item).toLowerCase());
-  const recentRules = recentOpeners
-    .map((item) => sanitizeTweetText(item).toLowerCase())
-    .filter((item) => item.length >= 10)
-    .map((item) => `recent:${item}`);
-
-  return [...new Set([...staticRules, ...recentRules])].slice(0, 16);
+  return [...new Set(staticList.map((item) => sanitizeTweetText(item).toLowerCase()))].slice(0, 16);
 }
 
 function findBlockedPhrase(text: string, blockedPhrases: string[]): string | null {
   const normalized = sanitizeTweetText(text).toLowerCase();
   const hit = blockedPhrases.find((phrase) => {
-    const raw = sanitizeTweetText(String(phrase || "")).toLowerCase();
-    if (!raw) return false;
-
-    const recentPrefix = "recent:";
-    if (raw.startsWith(recentPrefix)) {
-      const p = raw.slice(recentPrefix.length).trim();
-      if (p.length < 10) return false;
-      const opener = normalized.slice(0, 72);
-      return opener.startsWith(p) || opener.includes(p);
-    }
-
-    return raw.length >= 4 && normalized.includes(raw);
+    const p = sanitizeTweetText(String(phrase || "")).toLowerCase();
+    return p.length >= 4 && normalized.includes(p);
   });
-  if (!hit) return null;
-  return hit.startsWith("recent:") ? hit.slice("recent:".length) : hit;
+  return hit || null;
 }
 
 interface PreviewFallbackCandidate {
