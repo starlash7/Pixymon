@@ -2130,18 +2130,33 @@ function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): str
     .map((row) => sanitizeTweetText(row).slice(0, 18).trim())
     .filter((row) => row.length >= 8);
   const staticList = language === "ko" ? baseKo : baseEn;
-  return [...new Set([...staticList, ...recentOpeners])]
-    .map((item) => item.toLowerCase())
-    .slice(0, 14);
+  const staticRules = staticList.map((item) => sanitizeTweetText(item).toLowerCase());
+  const recentRules = recentOpeners
+    .map((item) => sanitizeTweetText(item).toLowerCase())
+    .filter((item) => item.length >= 10)
+    .map((item) => `recent:${item}`);
+
+  return [...new Set([...staticRules, ...recentRules])].slice(0, 16);
 }
 
 function findBlockedPhrase(text: string, blockedPhrases: string[]): string | null {
   const normalized = sanitizeTweetText(text).toLowerCase();
   const hit = blockedPhrases.find((phrase) => {
-    const p = sanitizeTweetText(String(phrase || "")).toLowerCase();
-    return p.length >= 4 && normalized.includes(p);
+    const raw = sanitizeTweetText(String(phrase || "")).toLowerCase();
+    if (!raw) return false;
+
+    const recentPrefix = "recent:";
+    if (raw.startsWith(recentPrefix)) {
+      const p = raw.slice(recentPrefix.length).trim();
+      if (p.length < 10) return false;
+      const opener = normalized.slice(0, 72);
+      return opener.startsWith(p) || opener.includes(p);
+    }
+
+    return raw.length >= 4 && normalized.includes(raw);
   });
-  return hit || null;
+  if (!hit) return null;
+  return hit.startsWith("recent:") ? hit.slice("recent:".length) : hit;
 }
 
 interface PreviewFallbackCandidate {
