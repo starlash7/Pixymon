@@ -327,7 +327,23 @@ export function buildEventEvidenceFallbackPost(
   maxChars: number = 220,
   mode?: NarrativeMode
 ): string {
-  const eventHeadline = sanitizeTweetText(plan.event.headline).replace(/\.$/, "");
+  const stripKoHeadlinePrefix = (text: string): string => {
+    let output = String(text || "").trim();
+    for (let i = 0; i < 2; i += 1) {
+      const next = output
+        .replace(
+          /^(?:오늘\s*다룰\s*핵심\s*이슈는|이번\s*글의\s*중심\s*쟁점은|한\s*줄\s*요약[:：]?|오늘\s*픽시몬이\s*보는\s*핵심\s*이슈는|픽시몬\s*메모의\s*중심\s*쟁점은|지금\s*픽시몬의\s*한\s*줄\s*요약은|픽시몬이\s*먼저\s*짚는\s*포인트는|픽시몬\s*기준으로\s*핵심만\s*말하면|오늘\s*픽시몬이\s*고른\s*핵심\s*장면은|픽시몬이\s*이번\s*사이클에서\s*먼저\s*확인할\s*이슈는|픽시몬\s*노트의\s*출발점은|(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*(?:이슈|맥락|포인트)\s*[:：]?)\s*/i,
+          ""
+        )
+        .trim();
+      if (next === output) break;
+      output = next;
+    }
+    return output;
+  };
+
+  const eventHeadlineRaw = sanitizeTweetText(plan.event.headline).replace(/\.$/, "");
+  const eventHeadline = language === "ko" ? stripKoHeadlinePrefix(eventHeadlineRaw) : eventHeadlineRaw;
   const evidenceA = formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = formatEvidenceAnchor(plan.evidence[1], language);
   const laneLabel = laneDisplayName(plan.lane, language);
@@ -336,24 +352,24 @@ export function buildEventEvidenceFallbackPost(
 
   const koTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `${laneLabel}에서 오늘 먼저 붙잡은 장면은 ${eventHeadline}. 단서는 ${evidenceA}, ${evidenceB}. 다음 체크에서 순서가 어긋나면 지금 해석을 접는다.`,
-      `${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 먼저 나란히 둔다. 둘이 엇갈리기 시작하면 이 관점을 폐기한다.`,
+      `${eventHeadline}. 나는 ${evidenceA}, ${evidenceB} 두 근거를 먼저 소화한다. 순서가 뒤집히면 이 해석은 바로 폐기한다.`,
+      `${eventHeadline}. 픽시몬 기준으로 두 근거(${evidenceA}, ${evidenceB})를 먼저 먹고 검증한다. 다음 체크에서 깨지면 결론을 철회한다.`,
     ],
     "philosophy-note": [
-      `한 줄로 옮기면 ${eventHeadline}. 기준선은 두 단서(${evidenceA}, ${evidenceB})다. 숫자보다 선택의 이유가 먼저 드러나고, 실행 흔적이 맞지 않으면 이 해석을 버린다.`,
-      `읽던 문장을 체인 위로 옮기면 ${eventHeadline}. 단서는 ${evidenceA}, ${evidenceB}. 먼저 대조하고, 반증이 나오면 결론을 철회한다.`,
+      `${eventHeadline}. ${evidenceA}, ${evidenceB} 두 근거를 같은 프레임에 둔다. 실행 흔적이 틀리면 이 해석을 버린다.`,
+      `${eventHeadline}. 나는 두 근거(${evidenceA}, ${evidenceB})를 먼저 대조한다. 반대 신호가 누적되면 결론을 철회한다.`,
     ],
     "interaction-experiment": [
-      `${eventHeadline}. 내가 붙잡은 단서는 ${evidenceA}, ${evidenceB}. 네가 먼저 확인할 지점을 듣고 싶다. 반대 신호가 이어지면 나는 즉시 관점을 바꾼다.`,
-      `${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 기준으로 읽고 있다. 여기서 반증 하나만 골라 준다면 무엇일까? 그게 맞으면 나는 이 가설을 내려놓는다.`,
+      `${eventHeadline}. 나는 두 근거(${evidenceA}, ${evidenceB})를 먼저 먹고 소화한다. 너라면 첫 체크포인트를 어디로 잡겠어? 반대 신호가 이어지면 나는 즉시 관점을 바꾼다.`,
+      `${eventHeadline}. 두 근거(${evidenceA}, ${evidenceB})를 기준으로 본다. 이 해석을 뒤집을 근거가 있다면 무엇일까? 핵심 전제가 깨지면 가설을 내려놓는다.`,
     ],
     "meta-reflection": [
-      `내가 경계하는 오류는 결론을 너무 빨리 닫는 습관이다. 그래서 ${eventHeadline}. 기준선은 두 단서(${evidenceA}, ${evidenceB})다. 핵심 조건이 깨지면 해석을 바꾼다.`,
-      `이 장면에서는 단일 신호에 기대는 실수를 피하려 한다. ${eventHeadline}. 두 단서(${evidenceA}, ${evidenceB})를 같이 보고, 반대 증거가 쌓이면 가설을 접는다.`,
+      `내가 경계하는 오류는 결론을 너무 빨리 닫는 습관이다. ${eventHeadline}. 두 근거(${evidenceA}, ${evidenceB})를 함께 소화하고, 핵심 조건이 깨지면 해석을 바꾼다.`,
+      `${eventHeadline}. 단일 신호에 기대는 실수를 피하려고 두 근거(${evidenceA}, ${evidenceB})를 같이 본다. 반대 증거가 쌓이면 가설을 접는다.`,
     ],
     "fable-essay": [
-      `소음이 커질수록 장면은 단순해진다. ${eventHeadline}. 나는 두 단서(${evidenceA}, ${evidenceB})를 천천히 대조한다. 구조가 맞지 않으면 이 결론을 뒤집는다.`,
-      `한 문단으로 남기면 ${eventHeadline}. 두 단서(${evidenceA}, ${evidenceB})가 먼저 눈에 들어온다. 반대 흐름이 이어지면 이 읽기를 고친다.`,
+      `소음이 커질수록 핵심은 단순해진다. ${eventHeadline}. 두 근거(${evidenceA}, ${evidenceB})를 천천히 먹고 소화한 뒤, 구조가 맞지 않으면 결론을 뒤집는다.`,
+      `한 문장으로 남기면 ${eventHeadline}. 두 근거(${evidenceA}, ${evidenceB})를 먼저 소화하고, 반대 흐름이 이어지면 이 읽기를 고친다.`,
     ],
   };
 

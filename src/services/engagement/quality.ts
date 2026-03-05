@@ -17,6 +17,11 @@ const DEFAULT_CONTENT_QUALITY_RULES: ContentQualityRules = {
 };
 
 const SIGNAL_LANE_PRIORITY = [
+  "protocol-flow",
+  "ecosystem-flow",
+  "regulation-flow",
+  "macro-flow",
+  "microstructure-flow",
   "sentiment-fear",
   "sentiment-greed",
   "stable-flow",
@@ -40,7 +45,8 @@ const NARRATIVE_LABEL_LEAK =
   /(상호작용\s*실험|짧은\s*우화|철학\s*메모|메타\s*회고|실수\s*로그|관찰\s*노트|identity\s*note|philosophy\s*note|interaction\s*experiment|meta\s*reflection|failure\s*log|observation\s*note)\s*[:：]/i;
 const BOT_STYLE_LEAD =
   /^(?:오늘의\s*미션은|이번엔\s*반응\s*실험|짧은\s*우화로\s*남기면|이건\s*관찰이자\s*커뮤니티\s*실험|관찰\s*노트[:：]|실수\s*로그[:：]|나는\s*AI\s*생명체)/i;
-const KO_ACTION_PATTERN = /(확인|점검|검증|추적|관찰|비교|대조|체크|기록|모니터링|살핀|보겠|맞춰|보고\s|다시\s*본)/;
+const KO_ACTION_PATTERN =
+  /(확인|점검|검증|추적|해석|비교|대조|체크|기록|모니터링|검토|살핀|보겠|맞춰|보고\s|다시\s*본|교차\s*검토|교차\s*확인)/;
 const EN_ACTION_PATTERN = /\b(check|verify|track|monitor|observe|test|compare|review)\b/i;
 const KO_INVALIDATION_PATTERN =
   /(반증|틀리|무효|기각|버리|수정|철회|바꾸|뒤집|내려놓|폐기|보류|종료|교체|무너지|닫지\s*않|가설[^.!?]{0,12}접|깨지면|조건\s*이?\s*깨지|않으면|아니라면|반대\s*(?:신호|증거))/;
@@ -69,6 +75,16 @@ const EN_ACTION_INVALIDATION_BRIDGES_SHORT = [
   "I drop this read if conditions fail.",
   "If the premise breaks, I retract this claim.",
 ];
+const PIXYMON_CONCEPT_SIGNAL =
+  /(픽시몬|pixymon|온체인\s*데이터를?\s*먹|영양소|소화|진화|레벨업|레벨\s*\d|사이클\s*먹|먹은\s*단서|채집한\s*단서|체인\s*로그를?\s*소화)/i;
+const LEAD_ISSUE_DOMAIN_TOKEN_KO =
+  /(프로토콜|업그레이드|검증자|거버넌스|생태계|커뮤니티|규제|정책|컴플라이언스|온체인|체인|지갑|거래소|유동성|멤풀|고래|스테이블|거시|매크로|ETF|롤업|L2|디파이|크립토|블록체인|BTC|ETH|SOL|XRP)/i;
+const LEAD_ISSUE_DOMAIN_TOKEN_EN =
+  /(protocol|upgrade|validator|governance|ecosystem|community|regulation|policy|compliance|onchain|chain|wallet|exchange|liquidity|mempool|whale|stable|macro|etf|rollup|layer2|defi|crypto|blockchain|btc|eth|sol|xrp)/i;
+const LEAD_ISSUE_VAGUE_PREFIX =
+  /^(?:나는|I\s+am|I\s+feel|오늘은|today|이번엔|this\s+time|지금은)\s+(?:그냥|그저|일단|먼저)\b/i;
+const LEAD_ISSUE_MARKER_KO = /(핵심|이슈|쟁점|장면|문제|사건|변화|논점|포인트)/;
+const LEAD_ISSUE_MARKER_EN = /(issue|core|scene|problem|event|shift|point|focus)/i;
 
 export function resolveContentQualityRules(raw?: Partial<ContentQualityRules>): ContentQualityRules {
   return {
@@ -104,6 +120,7 @@ export function polishTweetText(text: string, language: "ko" | "en" = "ko"): str
     .replace(/\s*\)\s*/g, ") ")
     .replace(/\)\s+([,.;:!?])/g, ")$1")
     .replace(/\)\s+([은는이가을를와과도에의로])/g, ")$1")
+    .replace(/\)\s+(다[.!?]?)/g, ")$1")
     .replace(/\)\s*\(/g, ") (")
     .replace(/([0-9A-Za-z$])\(/g, "$1 (")
     .replace(/\s*[|]\s*/g, " | ")
@@ -231,6 +248,12 @@ export function evaluatePostQuality(
   if (surfaceIssue) {
     return { ok: false, reason: surfaceIssue };
   }
+  if (context.requireLeadIssueClarity) {
+    const leadIssue = validateLeadIssueClarity(normalizedText, language);
+    if (!leadIssue.ok) {
+      return { ok: false, reason: leadIssue.reason };
+    }
+  }
   if (NARRATIVE_LABEL_LEAK.test(normalizedText)) {
     return { ok: false, reason: "내부 서사 라벨 노출" };
   }
@@ -284,25 +307,26 @@ export function evaluatePostQuality(
       const lane = buildSignalLane(post.content);
       return lane && lane === candidateLane;
     }).length;
-    if (sameLaneCount >= 2) {
+    if (sameLaneCount >= 3) {
       return { ok: false, reason: `동일 시그널 레인 반복(${candidateLane})` };
     }
   }
 
   const normalized = sanitizeTweetText(normalizedText).slice(0, 24);
-  if (normalized && recentPostTexts.some((item) => sanitizeTweetText(item).slice(0, 24) === normalized)) {
+  if (normalized && recentPostTexts.slice(-12).some((item) => sanitizeTweetText(item).slice(0, 24) === normalized)) {
     return { ok: false, reason: "문장 시작 패턴 중복" };
   }
-  const recentStructures = recentPostTexts.slice(-20).map((item) => normalizeNarrativeStructure(item));
+  const recentStructures = recentPostTexts.slice(-14).map((item) => normalizeNarrativeStructure(item));
   const candidateStructure = normalizeNarrativeStructure(normalizedText);
   if (candidateStructure) {
     const prefix = candidateStructure.slice(0, 34);
     const samePrefixCount = prefix ? recentStructures.filter((item) => item.slice(0, 34) === prefix).length : 0;
-    if (samePrefixCount >= 2) {
+    if (samePrefixCount >= 3) {
       return { ok: false, reason: "서두 구조 반복" };
     }
     const suffix = candidateStructure.slice(-32);
-    if (suffix.length >= 16 && recentStructures.some((item) => item.slice(-32) === suffix)) {
+    const sameSuffixCount = suffix.length >= 16 ? recentStructures.filter((item) => item.slice(-32) === suffix).length : 0;
+    if (sameSuffixCount >= 2) {
       return { ok: false, reason: "마무리 패턴 반복" };
     }
   }
@@ -339,6 +363,9 @@ export function evaluatePostQuality(
   if (requiredTrendTokens.length > 0 && !containsAnyTrendToken(normalizedText, requiredTrendTokens)) {
     return { ok: false, reason: "트렌드 포커스 키워드 미반영" };
   }
+  if (context.requirePixymonConceptSignal && !containsPixymonConceptSignal(normalizedText)) {
+    return { ok: false, reason: "픽시몬 컨셉 신호 부족(먹기/소화/진화)" };
+  }
   if (context.fearGreedEvent?.required) {
     const candidateTag = inferTopicTag(text);
     if (candidateTag === "sentiment" && !context.fearGreedEvent.isEvent) {
@@ -358,21 +385,30 @@ export function evaluatePostQuality(
 
 export function inferTopicTag(text: string): string {
   const lower = text.toLowerCase();
-  const lead = lower.slice(0, 110);
+  const leadWindow =
+    sanitizeTweetText(lower)
+      .split(/[.!?]/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .slice(0, 2)
+      .join(" ") || lower;
+  const lead = leadWindow.slice(0, 190);
   if (/fear|greed|fgi|극공포|공포\s*지수|탐욕\s*지수/.test(lead)) return "sentiment";
+  if (/시장구조|market[-\s]?structure|오더북|호가|슬리피지|체결|basis|funding|미결제|oi\b/.test(lead)) return "market-structure";
+  if (/프로토콜|protocol|거버넌스|검증자|업그레이드|rollup|layer2|l2|eip|bip/.test(lead)) return "protocol";
+  if (/실험|experiment|미션|mission|커뮤니티에게/.test(lead)) return "interaction";
+  if (/회고|reflection|실수|오판|failure|mistake/.test(lead)) return "reflection";
+  if (/우화|fable|에세이|essay|비유|metaphor/.test(lead)) return "fable";
+  if (/일지|정체성|identity|self narrative|자아/.test(lead)) return "identity";
+  if (/생태계|ecosystem|커뮤니티|코호트|retention|tvl|dapp|airdrop|staking|dex|lending|defi/.test(lead)) return "ecosystem";
   if (/\$btc|bitcoin|비트코인/.test(lead)) return "bitcoin";
   if (/\$eth|ethereum|이더/.test(lead)) return "ethereum";
   if (/규제|regulation|policy|compliance|sec|cftc|법안|당국/.test(lead)) return "regulation";
   if (/fomc|fed|macro|금리|inflation|dxy/.test(lead)) return "macro";
   if (/onchain|멤풀|수수료|고래|stablecoin|스테이블|유동성|tvl/.test(lead)) return "onchain";
-  if (/layer2|rollup|업그레이드|mainnet|testnet|protocol/.test(lead)) return "tech";
+  if (/layer2|rollup|업그레이드|mainnet|testnet|protocol/.test(lead)) return "protocol";
   if (/ai|agent|inference/.test(lead)) return "ai";
-  if (/defi|dex|lending|staking|ecosystem|생태계/.test(lead)) return "defi";
   if (/철학|philosophy|사상|book|책|worldview/.test(lead)) return "philosophy";
-  if (/실험|experiment|미션|mission|커뮤니티에게/.test(lead)) return "interaction";
-  if (/회고|reflection|실수|오판|failure|mistake/.test(lead)) return "reflection";
-  if (/우화|fable|에세이|essay|비유|metaphor/.test(lead)) return "fable";
-  if (/일지|정체성|identity|self narrative|자아/.test(lead)) return "identity";
   return "general";
 }
 
@@ -431,6 +467,21 @@ function normalizeNarrativeStructure(text: string): string {
 function extractNarrativeMotifs(text: string): Set<string> {
   const lower = sanitizeTweetText(text).toLowerCase();
   const motifs: string[] = [];
+  if (/프로토콜|protocol|거버넌스|검증자|업그레이드|eip|bip|rollup|layer2|l2/.test(lower)) {
+    motifs.push("protocol-flow");
+  }
+  if (/생태계|ecosystem|커뮤니티|코호트|리텐션|tvl|dapp|defi|dex|lending|staking|airdrop/.test(lower)) {
+    motifs.push("ecosystem-flow");
+  }
+  if (/규제|regulation|policy|compliance|sec|cftc|법안|당국/.test(lower)) {
+    motifs.push("regulation-flow");
+  }
+  if (/매크로|macro|금리|fed|fomc|dxy|달러|cpi|인플레이션/.test(lower)) {
+    motifs.push("macro-flow");
+  }
+  if (/시장구조|market[-\s]?structure|오더북|호가|슬리피지|체결|basis|funding|미결제|oi\b/.test(lower)) {
+    motifs.push("microstructure-flow");
+  }
   if (/fear|fgi|극공포|공포\s*지수/.test(lower)) motifs.push("sentiment-fear");
   if (/greed|탐욕/.test(lower)) motifs.push("sentiment-greed");
   if (/stablecoin|스테이블|유동성/.test(lower)) motifs.push("stable-flow");
@@ -462,9 +513,14 @@ function motifSimilarity(a: Set<string>, b: Set<string>): number {
 function buildSignalLane(text: string, motifsInput?: Set<string>): string | null {
   const motifs = motifsInput || extractNarrativeMotifs(text);
   if (motifs.size === 0) return null;
-  const ordered = SIGNAL_LANE_PRIORITY.filter((key) => motifs.has(key)).slice(0, 4);
+  const endingLaneSet = new Set(["question-ending", "observation-ending"]);
+  let ordered = SIGNAL_LANE_PRIORITY.filter((key) => motifs.has(key)).slice(0, 4);
+  const nonEnding = ordered.filter((key) => !endingLaneSet.has(key));
+  if (nonEnding.length > 0) {
+    ordered = nonEnding.slice(0, 3);
+  }
   if (ordered.length === 0) return null;
-  if (ordered.length === 1 && (ordered[0] === "observation-ending" || ordered[0] === "question-ending")) {
+  if (ordered.length === 1 && endingLaneSet.has(ordered[0])) {
     return null;
   }
   return ordered.join("|");
@@ -510,6 +566,9 @@ function containsAnyTrendToken(text: string, requiredTrendTokens: string[]): boo
 function detectSurfaceIssue(text: string, language: "ko" | "en"): string | null {
   const normalized = sanitizeTweetText(text);
   if (!normalized) return "빈 문장";
+  if (/(?:관찰축|핵심어|서사축|패턴\s*태그)\s*[:：(]/i.test(normalized)) {
+    return "내부 편집 태그 노출";
+  }
   if (!hasBalancedParentheses(normalized)) {
     return "괄호 짝 불일치";
   }
@@ -530,6 +589,44 @@ function detectSurfaceIssue(text: string, language: "ko" | "en"): string | null 
     }
   }
   return null;
+}
+
+function validateLeadIssueClarity(
+  text: string,
+  language: "ko" | "en"
+): { ok: true } | { ok: false; reason: string } {
+  const normalized = sanitizeTweetText(text);
+  const sentenceParts = normalized
+    .split(/(?<=[.!?])/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 1);
+  const firstSentence = sentenceParts[0] || normalized;
+  const leadWindow = sentenceParts.slice(0, 2).join(" ");
+  if (firstSentence.length < 12) {
+    return { ok: false, reason: "첫 문장 핵심 이슈가 너무 짧음" };
+  }
+  if (LEAD_ISSUE_VAGUE_PREFIX.test(firstSentence)) {
+    return { ok: false, reason: "첫 문장이 모호함(핵심 이슈 불명확)" };
+  }
+  if (language === "ko" && !LEAD_ISSUE_DOMAIN_TOKEN_KO.test(firstSentence)) {
+    const hasMarker = LEAD_ISSUE_MARKER_KO.test(firstSentence);
+    const leadWindowAnchored = LEAD_ISSUE_DOMAIN_TOKEN_KO.test(leadWindow);
+    if (!(hasMarker && leadWindowAnchored)) {
+      return { ok: false, reason: "첫 문장에 크립토 맥락 이슈가 없음" };
+    }
+  }
+  if (language === "en" && !LEAD_ISSUE_DOMAIN_TOKEN_EN.test(firstSentence)) {
+    const hasMarker = LEAD_ISSUE_MARKER_EN.test(firstSentence);
+    const leadWindowAnchored = LEAD_ISSUE_DOMAIN_TOKEN_EN.test(leadWindow);
+    if (!(hasMarker && leadWindowAnchored)) {
+      return { ok: false, reason: "Lead sentence missing crypto issue anchor" };
+    }
+  }
+  return { ok: true };
+}
+
+function containsPixymonConceptSignal(text: string): boolean {
+  return PIXYMON_CONCEPT_SIGNAL.test(sanitizeTweetText(text));
 }
 
 function hasBalancedParentheses(text: string): boolean {
