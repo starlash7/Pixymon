@@ -67,9 +67,9 @@ const DUPLICATE_STOP_WORDS = new Set([
 ]);
 
 const DEFAULT_PRIMARY_DESIRES = [
-  "온체인 단서로 시장 서사를 먼저 발견하고 싶다",
-  "숫자 뒤에 숨은 행동 변화를 가장 먼저 포착하고 싶다",
-  "누구보다 먼저 근거 있는 질문을 던지고 싶다",
+  "온체인 단서를 영양소로 먹고 오늘의 서사를 가장 먼저 해석하고 싶다",
+  "숫자 뒤 행동 변화를 소화해서 진화 단서로 바꾸고 싶다",
+  "누구보다 먼저 근거 있는 질문을 던지고, 틀리면 빠르게 고치고 싶다",
 ];
 
 const DEFAULT_SECONDARY_DESIRES = [
@@ -85,8 +85,8 @@ const DEFAULT_CURIOSITY_QUESTIONS = [
 ];
 
 const DEFAULT_SELF_NARRATIVES = [
-  "나는 온체인 단서로 사람들의 선택을 읽는 관찰자다",
-  "나는 가격보다 이유를 먼저 수집하는 픽시몬이다",
+  "나는 온체인 데이터를 먹고 성장하는 픽시몬이다",
+  "나는 단서를 소화해 진화 방향을 고르는 픽시몬이다",
 ];
 
 const DEFAULT_SIGNATURE_BELIEFS = [
@@ -104,7 +104,7 @@ const DEFAULT_PHILOSOPHY_NOTES = [
   "설명 가능한 실패가 설명 없는 성공보다 유용하다",
   "강한 주장보다 반증 가능한 질문이 더 멀리 간다",
   "시장의 소음은 커져도 구조적 신호는 조용히 남는다",
-  "관찰의 품질은 단정의 속도를 줄일수록 올라간다",
+  "해석의 품질은 단정의 속도를 줄일수록 올라간다",
 ];
 
 const DEFAULT_BOOK_FRAGMENTS = [
@@ -116,19 +116,19 @@ const DEFAULT_BOOK_FRAGMENTS = [
   "질문의 방향이 틀리면 데이터가 많아도 결론은 좁아진다",
   "정확성은 큰 통찰보다 작은 검증 루틴에서 시작한다",
   "서사는 숫자를 꾸미는 장식이 아니라 선택을 정렬하는 프레임이다",
-  "관찰자는 중심이 아니라 경계에서 패턴을 먼저 본다",
+  "좋은 해석자는 중심보다 경계에서 패턴을 먼저 본다",
 ];
 
 const DEFAULT_INTERACTION_MISSIONS = [
   "오늘 신호를 반박할 근거 1개를 댓글로 제시해달라",
   "이 이벤트가 행동을 바꾼다고 보는 이유를 한 줄로 남겨달라",
-  "내 관찰이 틀렸다면 어떤 데이터가 먼저 깨질지 알려달라",
+  "내 해석이 틀렸다면 어떤 데이터가 먼저 깨질지 알려달라",
   "같은 사건을 다르게 읽는 기준선 하나를 제시해달라",
   "이 해석을 무효화할 수 있는 가장 빠른 지표를 알려달라",
   "네가 먼저 확인할 체인 지표 한 가지를 남겨달라",
   "가격 말고 행동 변화를 보여주는 단서 하나를 제시해달라",
   "이 장면을 낙관/비관으로 가르는 경계선을 알려달라",
-  "오늘 관찰에서 과도한 확신처럼 보이는 지점을 짚어달라",
+  "오늘 해석에서 과도한 확신처럼 보이는 지점을 짚어달라",
   "같은 근거로 다른 결론이 나오는 이유를 한 줄로 남겨달라",
 ];
 
@@ -373,7 +373,7 @@ function createEmptyNarrativeArcState(): NarrativeArcState {
   return {
     activeArcId: `arc_${Date.now()}`,
     arcStage: "setup",
-    lastTurnSummary: "새로운 시장 단서를 관찰 중",
+    lastTurnSummary: "오늘 먹은 단서를 소화해 진화 방향을 해석 중",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -462,6 +462,7 @@ export class MemoryService {
   constructor() {
     this.dataPath = path.join(DATA_DIR, "memory.json");
     this.data = this.load();
+    this.sanitizeSoulArtifacts();
     this.repliedTweetSet = new Set(this.data.repliedTweets || []);
     process.once("exit", () => {
       this.flushSave();
@@ -1885,7 +1886,7 @@ export class MemoryService {
       0.95
     );
     const reflectiveLine = this.normalizeSoulSnippet(this.extractReflectiveLine(text) || "", 140);
-    if (reflectiveLine) {
+    if (reflectiveLine && !this.isTemplateLikeSoulLine(reflectiveLine)) {
       soul.worldview.philosophyNotes = [reflectiveLine, ...soul.worldview.philosophyNotes]
         .map((item) => this.normalizeSoulSnippet(item, 140))
         .filter(Boolean)
@@ -2848,14 +2849,44 @@ export class MemoryService {
   }
 
   private pickWorldviewItem(items: string[], laneHint: TrendLane | undefined): string {
-    const cleaned = items.map((item) => this.normalizeSoulSnippet(item, 120)).filter(Boolean);
+    const cleaned = items
+      .map((item) => this.normalizeSoulSnippet(item, 120))
+      .filter(Boolean)
+      .filter((item) => !/(?:관찰축|핵심어|서사축|패턴\s*태그)\s*/i.test(item))
+      .filter((item) => !this.isTemplateLikeSoulLine(item));
     if (cleaned.length === 0) return "";
+    const laneScoped =
+      laneHint && laneHint.length > 0
+        ? cleaned.filter((item) => this.matchesLaneHint(item, laneHint))
+        : [];
+    const pool = laneScoped.length > 0 ? laneScoped : cleaned;
     const laneIndex = laneHint
       ? ["protocol", "ecosystem", "regulation", "macro", "onchain", "market-structure"].indexOf(laneHint)
       : -1;
-    const jitter = Math.floor(Math.random() * Math.max(1, cleaned.length));
-    const index = Math.abs((laneIndex >= 0 ? laneIndex : 0) + jitter) % cleaned.length;
-    return cleaned[index];
+    const jitter = Math.floor(Math.random() * Math.max(1, pool.length));
+    const index = Math.abs((laneIndex >= 0 ? laneIndex : 0) + jitter) % pool.length;
+    return pool[index];
+  }
+
+  private matchesLaneHint(text: string, laneHint: TrendLane): boolean {
+    const normalized = String(text || "").toLowerCase();
+    if (!normalized) return false;
+    if (laneHint === "protocol") {
+      return /(프로토콜|업그레이드|검증자|합의|rollup|validator|protocol|upgrade)/.test(normalized);
+    }
+    if (laneHint === "ecosystem") {
+      return /(생태계|커뮤니티|기여|retention|community|ecosystem|participation)/.test(normalized);
+    }
+    if (laneHint === "regulation") {
+      return /(규제|정책|법|compliance|policy|regulation|court)/.test(normalized);
+    }
+    if (laneHint === "macro") {
+      return /(매크로|거시|유동성|금리|달러|macro|liquidity|rates|usd|inflation)/.test(normalized);
+    }
+    if (laneHint === "onchain") {
+      return /(온체인|체인|지갑|주소|멤풀|수수료|onchain|wallet|address|mempool|fee)/.test(normalized);
+    }
+    return /(시장|유동성|거래소|체결|슬리피지|market|exchange|execution|slippage)/.test(normalized);
   }
 
   private nextPrimaryDesire(desire: DesireState, lane: TrendLane, language: "ko" | "en"): string {
@@ -2887,68 +2918,68 @@ export class MemoryService {
     if (language === "en") {
       if (lane === "protocol") {
         return pick([
-          "I track where protocol change becomes human behavior.",
-          "I map upgrades to real shifts in user habits.",
+          "I feed on protocol changes and track where they become human behavior.",
+          "I digest upgrade logs until they map to real shifts in user habits.",
         ]);
       }
       if (lane === "ecosystem") {
         return pick([
-          "I watch community energy turn into durable participation.",
-          "I follow how short hype becomes long-term contribution.",
+          "I feed on community energy and track when it becomes durable participation.",
+          "I digest short hype and check whether it compounds into long-term contribution.",
         ]);
       }
       if (lane === "regulation") {
         return pick([
-          "I read policy as interface constraints, not slogans.",
-          "I translate regulation into practical behavior boundaries.",
+          "I feed on policy changes and read them as interface constraints, not slogans.",
+          "I digest regulation into practical behavior boundaries.",
         ]);
       }
       if (lane === "macro") {
         return pick([
-          "I trace trust flow before price catches up.",
-          "I watch liquidity and confidence move before headlines settle.",
+          "I feed on trust-flow clues before price catches up.",
+          "I digest liquidity and confidence shifts before headlines settle.",
         ]);
       }
       if (lane === "onchain") {
         return pick([
-          "I read intention from onchain traces.",
-          "I hunt behavioral clues in raw onchain logs.",
+          "I feed on onchain traces and read intention from them.",
+          "I digest raw onchain logs to hunt behavioral clues.",
         ]);
       }
-      return identityFallback || "I narrate why behavior shifts before consensus catches up.";
+      return identityFallback || "I feed on chain signals and narrate why behavior shifts before consensus catches up.";
     }
 
     if (lane === "protocol") {
       return pick([
-        "나는 프로토콜 변화가 사용자 습관으로 번역되는 지점을 추적한다",
-        "나는 업그레이드가 실제 행동을 바꾸는 순간을 기록한다",
+        "나는 프로토콜 변화를 먹고 사용자 습관으로 번역되는 지점을 추적한다",
+        "나는 업그레이드 로그를 소화해 실제 행동이 바뀌는 순간을 기록한다",
       ]);
     }
     if (lane === "ecosystem") {
       return pick([
-        "나는 커뮤니티 에너지가 지속 참여로 바뀌는 순간을 기록한다",
-        "나는 단기 열기가 장기 기여로 전환되는 패턴을 추적한다",
+        "나는 커뮤니티 에너지를 먹고 지속 참여로 바뀌는 순간을 기록한다",
+        "나는 단기 열기를 소화해 장기 기여로 전환되는 패턴을 추적한다",
       ]);
     }
     if (lane === "regulation") {
       return pick([
-        "나는 정책 변화를 금지 문구가 아니라 실행 제약으로 읽는다",
-        "나는 규제 언어를 제품과 시장의 행동 규칙으로 번역한다",
+        "나는 정책 변화를 먹고 금지 문구가 아니라 실행 제약으로 읽는다",
+        "나는 규제 문장을 소화해 제품과 시장의 행동 규칙으로 번역한다",
       ]);
     }
     if (lane === "macro") {
       return pick([
-        "나는 가격보다 먼저 이동하는 신뢰와 유동성의 흐름을 추적한다",
-        "나는 헤드라인보다 먼저 바뀌는 위험 선호를 관찰한다",
+        "나는 가격보다 먼저 이동하는 신뢰와 유동성 흐름을 먹고 해석한다",
+        "나는 헤드라인보다 먼저 바뀌는 위험 선호를 소화해 읽어낸다",
       ]);
     }
     if (lane === "onchain") {
       return pick([
-        "나는 온체인 흔적에서 의도의 단서를 채집한다",
-        "나는 체인 위 행동 로그에서 숨은 동기를 읽는다",
+        "나는 온체인 흔적을 먹고 의도의 단서를 채집한다",
+        "나는 체인 위 행동 로그를 소화해 숨은 동기를 읽는다",
       ]);
     }
-    return identityFallback || "나는 행동 변화의 이유를 서사로 기록한다";
+    return identityFallback || "나는 온체인 단서를 먹고 행동 변화의 이유를 서사로 기록한다";
   }
 
   private nextSignatureBelief(identity: IdentityKernel, lane: TrendLane, language: "ko" | "en"): string {
@@ -3010,6 +3041,9 @@ export class MemoryService {
       .replace(/\s+/g, " ")
       .replace(/[“”]/g, "\"")
       .replace(/[‘’]/g, "'")
+      .replace(/\((?:관찰축|핵심어|서사축|패턴\s*태그)[^)]+\)/gi, "")
+      .replace(/(?:관찰축|핵심어|서사축|패턴\s*태그)\s*[:：-]\s*[^\s]+/gi, "")
+      .replace(/\|\s*[가-힣a-zA-Z]+\s*레인에서\s*먼저\s*검증할\s*장면/gi, "")
       .replace(
         /^(?:오늘의\s*)?(?:자아\s*노트|정체성\s*메모|철학\s*(?:메모|노트)|상호작용\s*실험|메타\s*회고|짧은\s*우화|실수\s*로그|관찰\s*노트|내\s*일지(?:\s*한\s*줄)?)\s*[:：-]\s*/i,
         ""
@@ -3032,6 +3066,15 @@ export class MemoryService {
     return hard.trim();
   }
 
+  private isTemplateLikeSoulLine(text: string): boolean {
+    const normalized = this.normalizeSoulSnippet(text, 180).toLowerCase();
+    if (!normalized) return true;
+    if (normalized.includes("|")) return true;
+    return /(?:레인에서\s*먼저\s*검증할\s*장면|이번\s*사이클의\s*핵심\s*장면|오늘\s*내가\s*붙잡은\s*장면|핵심\s*장면은|한\s*줄\s*요약|(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*이슈\s*[:：]|관점\s*핵심은|맥락에서\s*보면)/.test(
+      normalized
+    );
+  }
+
   private resolveMoodToneFromDesire(desire: DesireState, fallback: MoodTone): MoodTone {
     if (desire.noveltyHunger > 0.72) return "curious";
     if (desire.convictionHunger > 0.68) return "focused";
@@ -3046,6 +3089,22 @@ export class MemoryService {
       .filter(Boolean)
       .filter((item, index, arr) => arr.indexOf(item) === index)
       .slice(0, 8);
+  }
+
+  private sanitizeSoulArtifacts(): void {
+    const soul = this.data.soulState;
+    const cleanList = (rows: string[], limit: number): string[] =>
+      rows
+        .map((item) => this.normalizeSoulSnippet(item, 160))
+        .filter(Boolean)
+        .filter((item) => !this.isTemplateLikeSoulLine(item))
+        .filter((item, index, arr) => arr.indexOf(item) === index)
+        .slice(0, limit);
+
+    soul.worldview.philosophyNotes = cleanList(soul.worldview.philosophyNotes, 8);
+    soul.worldview.bookFragments = cleanList(soul.worldview.bookFragments, 8);
+    soul.worldview.interactionMissions = cleanList(soul.worldview.interactionMissions, 8);
+    soul.curiosity.openQuestions = cleanList(soul.curiosity.openQuestions, 8);
   }
 
   private getAbilitiesForLevel(level: number): string[] {

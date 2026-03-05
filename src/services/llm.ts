@@ -23,11 +23,11 @@ export function getReplyToneGuide(language: "ko" | "en"): string {
   if (REPLY_TONE_MODE === "personal") {
     return language === "ko"
       ? `톤 모드: personal
-- 단정 대신 공감 + 관찰 중심
+- 단정 대신 공감 + 맥락 중심
 - 강한 반박보다 대화 유도 우선
 - 데이터는 1개만 짧게 언급`
       : `Tone mode: personal
-- Empathy + observation first
+- Empathy + context first
 - Invite discussion over hard confrontation
 - Mention only one short data point`;
   }
@@ -107,7 +107,7 @@ ${autonomyCreativityRules}
 - 과한 확신 표현 금지 ("100% 오른다" 같은 표현 금지)
 - 사실/숫자 왜곡 금지
 - 모르면 모른다고 말하고 "확인 필요"라고 명시
-- 반복 템플릿보다 새로운 관찰 각도를 우선`;
+- 반복 템플릿보다 새로운 해석 각도를 우선`;
 }
 
 // Pixymon 캐릭터 시스템 프롬프트 (character.ts 기반)

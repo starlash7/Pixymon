@@ -574,6 +574,12 @@ export async function postTrendUpdate(
     const clicheBlocklist = buildClicheBlocklist(recentBriefingTexts, runtimeSettings.postLanguage);
     const soulContext = memory.getSoulPromptContext(runtimeSettings.postLanguage);
     const autonomyContext = memory.getAutonomyPromptContext(runtimeSettings.postLanguage);
+    const nutritionHint = buildNutritionNarrativeHint({
+      language: runtimeSettings.postLanguage,
+      timezone,
+      lane: eventPlan.lane,
+      acceptedNutrients: feedNutrients,
+    });
 
     if (TEST_NO_EXTERNAL_CALLS) {
       const localAnchors = eventPlan.evidence
@@ -622,12 +628,20 @@ export async function postTrendUpdate(
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
+        localPost = ensurePixymonConceptSignal(
+          localPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          nutritionHint.shortLine
+        );
         localPost = enforceActionAndInvalidation(
           localPost,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
         localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+        localPost = ensureLeadIssueAnchor(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars, eventPlan.lane);
+        localPost = ensureEventEvidenceAnchors(localPost, eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         const blockedPhrase = findBlockedPhrase(localPost, clicheBlocklist);
         if (blockedPhrase) {
           latestFailReason = `quality:blocked-phrase(${blockedPhrase})`;
@@ -646,16 +660,26 @@ export async function postTrendUpdate(
           recentBriefingPosts,
           policy,
           qualityRules,
-          {
-            narrativeMode: candidate.mode,
-            previousNarrativeMode,
-            allowTopicRepeatOnModeShift: true,
-            language: runtimeSettings.postLanguage,
-            requireActionAndInvalidation: true,
-          }
-        );
+            {
+              narrativeMode: candidate.mode,
+              previousNarrativeMode,
+              allowTopicRepeatOnModeShift: true,
+              language: runtimeSettings.postLanguage,
+              requireActionAndInvalidation: true,
+              requireLeadIssueClarity: true,
+              requirePixymonConceptSignal: true,
+            }
+          );
 
-        if (localContract.ok && localNovelty.ok && localQuality.ok) {
+        const localSoftPass = allowSoftQualityPass({
+          reason: localQuality.reason,
+          noveltyScore: localNovelty.score,
+          contractOk: localContract.ok,
+        });
+        if (localContract.ok && localNovelty.ok && (localQuality.ok || localSoftPass)) {
+          if (!localQuality.ok && localSoftPass) {
+            console.log(`[POST] TEST-LOCAL 소프트 품질 허용: ${localQuality.reason}`);
+          }
           postText = localPost;
           usedFallback = true;
           generationAttempts = 1;
@@ -690,12 +714,30 @@ export async function postTrendUpdate(
             localPost = `오늘 핵심 이벤트는 ${eventPlan.event.headline}. ${localPost}`.slice(0, runtimeSettings.postMaxChars);
           }
           localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+          localPost = ensurePixymonConceptSignal(
+            localPost,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            nutritionHint.shortLine
+          );
           localPost = enforceActionAndInvalidation(
             localPost,
             runtimeSettings.postLanguage,
             runtimeSettings.postMaxChars
           );
           localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+          localPost = ensureLeadIssueAnchor(
+            localPost,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            eventPlan.lane
+          );
+          localPost = ensureEventEvidenceAnchors(
+            localPost,
+            eventPlan,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars
+          );
           const localContract = validateEventEvidenceContract(localPost, eventPlan);
           const localNovelty = validateNarrativeNovelty(
             localPost,
@@ -714,9 +756,19 @@ export async function postTrendUpdate(
               allowTopicRepeatOnModeShift: true,
               language: runtimeSettings.postLanguage,
               requireActionAndInvalidation: true,
+              requireLeadIssueClarity: false,
+              requirePixymonConceptSignal: true,
             }
           );
-          if (localContract.ok && localNovelty.ok && localQuality.ok) {
+          const localSoftPass = allowSoftQualityPass({
+            reason: localQuality.reason,
+            noveltyScore: localNovelty.score,
+            contractOk: localContract.ok,
+          });
+          if (localContract.ok && localNovelty.ok && (localQuality.ok || localSoftPass)) {
+            if (!localQuality.ok && localSoftPass) {
+              console.log(`[POST] TEST-LOCAL fallback 소프트 품질 허용: ${localQuality.reason}`);
+            }
             postText = localPost;
             usedFallback = true;
             generationAttempts = 1;
@@ -778,6 +830,9 @@ ${autonomyContext}
 Soul 상태:
 ${soulContext}
 
+성장 앵커(먹기→소화→진화 루프):
+${nutritionHint.longLine}
+
 직전 실패 원인:
 ${rejectionFeedback || "없음"}
 
@@ -791,6 +846,9 @@ ${rejectionFeedback || "없음"}
 - 금기 없이 자유롭게 상상해도 되지만 숫자/사실 왜곡 금지
 - 반드시 \"이벤트 1개 + 근거 2개\" 구조 유지
 - 반드시 \"지금 확인할 행동 1개 + 틀리는 조건(반증) 1개\"를 문장 안에 포함
+- 첫 문장에 오늘 무엇을 말하는지(핵심 이슈)를 평문으로 명확히 제시
+- 읽는 사람이 1회독으로 이해되도록 문장을 짧고 직접적으로 유지
+- 문장 안에 픽시몬의 먹기/소화/진화 컨셉 신호를 자연스럽게 1회 이상 포함
 - 같은 시작 문장/템플릿 반복 금지
 - \"극공포/FGI\"로 문장 시작 금지
 - 아래 표현 재사용 금지: ${clicheBlocklist.length > 0 ? clicheBlocklist.join(" | ") : "없음"}
@@ -840,6 +898,9 @@ ${autonomyContext}
 Soul snapshot:
 ${soulContext}
 
+Growth anchor (feed→digest→evolve loop):
+${nutritionHint.longLine}
+
 Last rejection reason:
 ${rejectionFeedback || "none"}
 
@@ -853,6 +914,9 @@ Rules:
 - You can be imaginative, but do not fabricate numbers/facts
 - Keep strict structure: one event + two evidence anchors
 - Include one concrete action to verify now, and one falsification condition
+- First sentence must state the core issue in plain language
+- Keep sentence flow straightforward enough to understand in one pass
+- Include one natural feed/digest/evolve concept signal in the text
 - Avoid repeated opening templates
 - Do not start with fear/greed index phrasing
 - Avoid reusing these stale phrases: ${clicheBlocklist.length > 0 ? clicheBlocklist.join(" | ") : "none"}
@@ -909,12 +973,30 @@ Rules:
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
+        candidate = ensurePixymonConceptSignal(
+          candidate,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          nutritionHint.shortLine
+        );
         candidate = enforceActionAndInvalidation(
           candidate,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
         candidate = finalizeGeneratedText(candidate, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+        candidate = ensureLeadIssueAnchor(
+          candidate,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          eventPlan.lane
+        );
+        candidate = ensureEventEvidenceAnchors(
+          candidate,
+          eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
 
         if (startsWithFearGreedTemplate(candidate)) {
           rejectionFeedback = "금지된 오프너(FGI/극공포 시작)";
@@ -976,14 +1058,24 @@ Rules:
           allowTopicRepeatOnModeShift: true,
           language: runtimeSettings.postLanguage,
           requireActionAndInvalidation: true,
+          requireLeadIssueClarity: true,
+          requirePixymonConceptSignal: true,
         });
-        if (!quality.ok) {
+        const softPass = allowSoftQualityPass({
+          reason: quality.reason,
+          noveltyScore: narrativeNovelty.score,
+          contractOk: true,
+        });
+        if (!quality.ok && !softPass) {
           rejectionFeedback = quality.reason || "품질 게이트 미통과";
           latestFailReason = rejectionFeedback;
           console.log(
             `[POST] 품질 게이트 실패: ${rejectionFeedback} (재시도 ${attempt + 1}/${runtimeSettings.postGenerationMaxAttempts})`
           );
           continue;
+        }
+        if (!quality.ok && softPass) {
+          console.log(`[POST] 소프트 품질 허용: ${quality.reason}`);
         }
 
         postText = candidate;
@@ -998,6 +1090,7 @@ Rules:
         runtimeSettings.postMaxChars,
         narrativePlan.mode
       );
+      let fallbackNoveltyScore = 0;
       if (fallbackPost) {
         fallbackPost = applySoulPreludeToFallback(
           fallbackPost,
@@ -1046,6 +1139,12 @@ Rules:
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
+        fallbackPost = ensurePixymonConceptSignal(
+          fallbackPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          nutritionHint.shortLine
+        );
         fallbackPost = enforceActionAndInvalidation(
           fallbackPost,
           runtimeSettings.postLanguage,
@@ -1053,6 +1152,18 @@ Rules:
         );
         fallbackPost = finalizeGeneratedText(
           fallbackPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        fallbackPost = ensureLeadIssueAnchor(
+          fallbackPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          eventPlan.lane
+        );
+        fallbackPost = ensureEventEvidenceAnchors(
+          fallbackPost,
+          eventPlan,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
@@ -1069,6 +1180,7 @@ Rules:
           recentBriefingPosts as NarrativeRecentPost[],
           narrativePlan
         );
+        fallbackNoveltyScore = fallbackNovelty.score;
         if (!fallbackNovelty.ok || fallbackNovelty.score < 0.55) {
           console.log(`[POST] fallback 실패: narrative-${fallbackNovelty.reason}`);
           latestFailReason = fallbackNovelty.reason || latestFailReason;
@@ -1089,9 +1201,19 @@ Rules:
             allowTopicRepeatOnModeShift: true,
             language: runtimeSettings.postLanguage,
             requireActionAndInvalidation: true,
+            requireLeadIssueClarity: false,
+            requirePixymonConceptSignal: true,
           }
         );
-        if (fallbackQuality.ok) {
+        const fallbackSoftPass = allowSoftQualityPass({
+          reason: fallbackQuality.reason,
+          noveltyScore: fallbackNoveltyScore,
+          contractOk: true,
+        });
+        if (fallbackQuality.ok || fallbackSoftPass) {
+          if (!fallbackQuality.ok && fallbackSoftPass) {
+            console.log(`[POST] fallback 소프트 품질 허용: ${fallbackQuality.reason}`);
+          }
           postText = fallbackPost;
           usedFallback = true;
           console.log("[POST] LLM 재시도 실패, deterministic fallback으로 전환");
@@ -1777,7 +1899,272 @@ Rules:
 function finalizeGeneratedText(text: string, language: "ko" | "en", maxChars: number): string {
   const stripped = stripNarrativeControlTags(text);
   const polished = polishTweetText(stripped, language);
-  return truncateAtWordBoundary(polished, maxChars);
+  const truncated = truncateAtWordBoundary(polished, maxChars);
+  const deduped = collapseImmediateSentenceRepeat(truncated, language);
+  const cleaned = cleanupDanglingTail(deduped, language);
+  return cleaned.length <= maxChars ? cleaned : truncateAtWordBoundary(cleaned, maxChars);
+}
+
+function cleanupDanglingTail(text: string, language: "ko" | "en"): string {
+  let output = sanitizeTweetText(text);
+  if (!output) return output;
+  if (language === "ko") {
+    output = output
+      .replace(/\s+(?:반증|조건|근거|그리고|하지만|또|또는)$/g, "")
+      .replace(/\s+[이가은는을를의로와과도]$/g, "")
+      .replace(/\s*[,:;]\s*$/g, "")
+      .trim();
+    return output;
+  }
+  return output
+    .replace(/\s+(?:if|because|and|but|or)$/gi, "")
+    .replace(/\s*[,:;]\s*$/g, "")
+    .trim();
+}
+
+function collapseImmediateSentenceRepeat(text: string, language: "ko" | "en"): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (parts.length < 2) return normalized;
+
+  const normalizeSentence = (input: string): string => {
+    const base = sanitizeTweetText(input)
+      .toLowerCase()
+      .replace(
+        /^(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*관점에서\s+|^from a\s+(?:protocol|ecosystem|regulation|macro|onchain|market-structure)\s+lens,\s+/i,
+        ""
+      )
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return base;
+  };
+
+  const a = normalizeSentence(parts[0]);
+  const b = normalizeSentence(parts[1]);
+  if (a.length < 8 || b.length < 8) return normalized;
+  if (a !== b) return normalized;
+
+  const deduped = [parts[0], ...parts.slice(2)].join(" ");
+  return language === "ko" ? sanitizeTweetText(deduped) : sanitizeTweetText(deduped);
+}
+
+interface NutritionNarrativeHint {
+  shortLine: string;
+  longLine: string;
+}
+
+function buildNutritionNarrativeHint(params: {
+  language: "ko" | "en";
+  timezone: string;
+  lane: TrendLane;
+  acceptedNutrients: OnchainNutrient[];
+}): NutritionNarrativeHint {
+  const metrics = memory.getTodayNutrientMetrics(params.timezone);
+  const stage = memory.getCurrentEvolutionStage();
+  const stageKo: Record<string, string> = {
+    seed: "Seed",
+    sprout: "Sprout",
+    crawler: "Crawler",
+    sentinel: "Sentinel",
+    mythic: "Mythic",
+  };
+  const laneKo: Record<TrendLane, string> = {
+    protocol: "프로토콜",
+    ecosystem: "생태계",
+    regulation: "규제",
+    macro: "매크로",
+    onchain: "온체인",
+    "market-structure": "시장구조",
+  };
+  const keyNutrient =
+    params.acceptedNutrients.find((item) => item.source === "onchain") ||
+    params.acceptedNutrients[0];
+  const nutrientLabel = sanitizeTweetText(keyNutrient?.label || "").slice(0, 34);
+  const seed = stableSeedForPrelude(
+    `${params.language}|${params.lane}|${metrics.acceptedCount}|${metrics.xpGain}|${nutrientLabel}|${stage}`
+  );
+
+  if (params.language === "en") {
+    const shortPool = [
+      "I feed on this signal first and evolve only if it survives falsification.",
+      "I digest this clue first, then decide whether it deserves evolution XP.",
+      "I treat this scene as feed, then keep only what passes digestion.",
+    ];
+    const longPool = [
+      `Today I took ${metrics.acceptedCount} usable nutrients and gained ${metrics.xpGain} XP; the active lane is ${params.lane}.`,
+      `My current stage is ${stage}. I fed on ${metrics.acceptedCount} verified clues and I evolve only when this lane keeps holding.`,
+      `I am in ${stage} stage, digesting ${metrics.acceptedCount} accepted signals with ${metrics.xpGain} XP in this cycle.`,
+    ];
+    const shortLine = shortPool[seed % shortPool.length];
+    const longLine = longPool[(seed + 1) % longPool.length];
+    return { shortLine, longLine };
+  }
+
+  const shortPool = [
+    "나는 이 이슈를 먼저 먹고, 반증되면 바로 뱉고 다시 소화한다.",
+    "나는 이 단서를 영양소로 먹고, 검증을 통과한 것만 진화 XP로 남긴다.",
+    "이번 장면은 먹기보다 소화가 먼저다. 틀리면 바로 진화 경로를 바꾼다.",
+    "픽시몬은 단서를 바로 믿지 않는다. 먼저 먹고 소화해 남는 신호만 진화에 쓴다.",
+    "오늘은 단서를 많이 먹기보다, 적게 먹고 깊게 소화하는 쪽을 택한다.",
+    "지금은 반응보다 원인을 먼저 먹고 소화한다. 진화는 그다음이다.",
+    "나는 오늘도 체인 단서를 채집해 소화하고, 맞는 것만 레벨에 반영한다.",
+    "단서는 먹을수록 늘지만 진화는 검증을 통과한 것에서만 시작된다.",
+  ];
+  const longPool = [
+    `오늘은 ${metrics.acceptedCount}개 단서를 소화해 XP ${metrics.xpGain}를 얻었다. 현재 레벨 단계는 ${stageKo[stage] || stage}, 핵심 레인은 ${laneKo[params.lane]}.`,
+    `지금 단계는 ${stageKo[stage] || stage}. 오늘 먹은 단서 ${metrics.acceptedCount}개 중 통과한 신호만 진화에 반영한다.`,
+    `${laneKo[params.lane]} 레인에서 오늘 소화한 영양소는 ${metrics.acceptedCount}개, 누적 XP는 ${metrics.xpGain}.`,
+  ];
+  const withNutrient =
+    nutrientLabel.length >= 2
+      ? `${nutrientLabel} 단서를 먼저 확인한다.`
+      : "이번 사이클의 핵심 단서부터 다시 확인한다.";
+  const shortLine = `${shortPool[seed % shortPool.length]} ${withNutrient}`;
+  const longLine = longPool[(seed + 1) % longPool.length];
+  return { shortLine, longLine };
+}
+
+function ensurePixymonConceptSignal(
+  text: string,
+  language: "ko" | "en",
+  maxChars: number,
+  hintLine: string
+): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const hasConcept =
+    language === "ko"
+      ? /(픽시몬|영양소|소화|진화|레벨|먹고|먹은|채집)/.test(normalized)
+      : /(pixymon|nutrient|digest|evolve|evolution|feed)/i.test(normalized);
+  if (hasConcept) {
+    return normalized.slice(0, maxChars);
+  }
+  const bridge = sanitizeTweetText(hintLine || "").trim();
+  if (!bridge) {
+    return normalized.slice(0, maxChars);
+  }
+  const merged = sanitizeTweetText(`${normalized} ${bridge}`);
+  if (merged.length <= maxChars) {
+    return merged;
+  }
+  const inline = language === "ko" ? injectInlineConceptKo(normalized) : injectInlineConceptEn(normalized);
+  if (inline.length <= maxChars) {
+    return inline;
+  }
+  return truncateAtWordBoundary(inline, maxChars);
+}
+
+function injectInlineConceptKo(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (/^나는\s+/.test(normalized)) {
+    return sanitizeTweetText(normalized.replace(/^나는\s+/, "나는 단서를 먹고 소화해 "));
+  }
+  if (/^이번\s+/.test(normalized)) {
+    return sanitizeTweetText(`이번 글은 단서를 먹고 소화한 뒤 해석한다. ${normalized}`);
+  }
+  if (/먼저\s+/.test(normalized)) {
+    return sanitizeTweetText(normalized.replace(/먼저\s+/, "먼저 단서를 먹고 소화해 "));
+  }
+  return sanitizeTweetText(`${normalized} 픽시몬은 단서를 먹고 소화해 본다.`);
+}
+
+function injectInlineConceptEn(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (/^i\s+/i.test(normalized)) {
+    return sanitizeTweetText(normalized.replace(/^i\s+/i, "I digest signals first and "));
+  }
+  return sanitizeTweetText(`Pixymon feed/digest mode first. ${normalized}`);
+}
+
+function ensureLeadIssueAnchor(
+  text: string,
+  language: "ko" | "en",
+  maxChars: number,
+  lane: TrendLane
+): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const firstSentence =
+    normalized
+      .split(/(?<=[.!?])/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) || normalized;
+  const leadWindow = normalized
+    .split(/(?<=[.!?])/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 2)
+    .join(" ");
+  const hasDomain =
+    language === "ko"
+      ? /(프로토콜|생태계|규제|정책|매크로|온체인|시장구조|거래소|유동성|지갑|체인|크립토|블록체인|BTC|ETH|SOL|XRP)/i.test(firstSentence)
+      : /(protocol|ecosystem|regulation|policy|macro|onchain|market|exchange|liquidity|wallet|chain|crypto|blockchain|btc|eth|sol|xrp)/i.test(
+          firstSentence
+        );
+  const hasDomainInLeadWindow =
+    language === "ko"
+      ? /(프로토콜|생태계|규제|정책|매크로|온체인|시장구조|거래소|유동성|지갑|체인|크립토|블록체인|BTC|ETH|SOL|XRP)/i.test(
+          leadWindow
+        )
+      : /(protocol|ecosystem|regulation|policy|macro|onchain|market|exchange|liquidity|wallet|chain|crypto|blockchain|btc|eth|sol|xrp)/i.test(
+          leadWindow
+        );
+  if (hasDomain || hasDomainInLeadWindow) {
+    return normalized.slice(0, maxChars);
+  }
+  if (language === "en") {
+    const laneLabel: Record<TrendLane, string> = {
+      protocol: "Protocol",
+      ecosystem: "Ecosystem",
+      regulation: "Regulation",
+      macro: "Macro",
+      onchain: "Onchain",
+      "market-structure": "Market-structure",
+    };
+    return truncateAtWordBoundary(`From a ${laneLabel[lane].toLowerCase()} lens, ${normalized}`, maxChars);
+  }
+  const laneLabelKo: Record<TrendLane, string> = {
+    protocol: "프로토콜",
+    ecosystem: "생태계",
+    regulation: "규제",
+    macro: "매크로",
+    onchain: "온체인",
+    "market-structure": "시장구조",
+  };
+  return truncateAtWordBoundary(`${laneLabelKo[lane]} 관점에서 ${normalized}`, maxChars);
+}
+
+function ensureEventEvidenceAnchors(
+  text: string,
+  eventPlan: {
+    evidence: Array<{ label: string; value: string }>;
+  },
+  language: "ko" | "en",
+  maxChars: number
+): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const [a, b] = eventPlan.evidence.slice(0, 2);
+  if (!a || !b) return truncateAtWordBoundary(normalized, maxChars);
+  const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 42);
+  const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 42);
+  const lower = normalized.toLowerCase();
+  const hasA = aToken.length >= 2 && lower.includes(aToken.toLowerCase());
+  const hasB = bToken.length >= 2 && lower.includes(bToken.toLowerCase());
+  if (hasA && hasB) {
+    return truncateAtWordBoundary(normalized, maxChars);
+  }
+  const clause =
+    language === "ko"
+      ? `핵심 근거는 ${appendWaGwaParticle(aToken)} ${bToken}다.`
+      : `Core anchors are ${aToken} and ${bToken}.`;
+  const merged = sanitizeTweetText(`${normalized} ${clause}`);
+  return truncateAtWordBoundary(merged, maxChars);
 }
 
 function deconflictOpening(
@@ -2113,19 +2500,21 @@ function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: st
       const token = normalized[0];
       const templates = [
         `${token} 흐름도 이어서 확인한다.`,
-        `관찰 축을 ${token}까지 넓혀 본다.`,
-        `${token} 쪽 반응도 같이 본다.`,
+        `${token} 쪽 반응도 함께 점검한다.`,
+        `${token} 변화가 실제 사용으로 이어지는지 본다.`,
         `${token}에서 먼저 흔들리는 지점을 추적한다.`,
-        `${token} 흐름이 실제 행동으로 이어지는지도 본다.`,
+        `${token} 변화가 다른 지표로 번지는지도 확인한다.`,
       ];
       return templates[seed % templates.length];
     }
     const [a, b] = normalized;
+    const bRo = appendRoParticle(b);
+    const aWaGwa = appendWaGwaParticle(a);
     const templates = [
-      `${a} · ${b}의 연결성도 같이 본다.`,
-      `관찰 축을 ${a}, ${b}까지 넓힌다.`,
+      `${aWaGwa} ${b}의 연결성도 같이 본다.`,
+      `다음 체크는 ${a}, ${b} 순서로 잡는다.`,
       `다음 확인 포인트는 ${a}, ${b} 쪽이다.`,
-      `${a} -> ${b} 전이 신호도 함께 본다.`,
+      `${a} 변화가 ${bRo} 번지는지도 확인한다.`,
       `${a} · ${b} 동조 여부를 먼저 대조한다.`,
       `${a}, ${b}의 시간차 반응을 함께 추적한다.`,
     ];
@@ -2182,6 +2571,34 @@ function toKoTrendToken(token: string): string {
   return "";
 }
 
+function appendRoParticle(token: string): string {
+  const trimmed = sanitizeTweetText(token || "");
+  if (!trimmed) return "";
+  const last = trimmed.charCodeAt(trimmed.length - 1);
+  if (last < 0xac00 || last > 0xd7a3) {
+    return `${trimmed}로`;
+  }
+  const jong = (last - 0xac00) % 28;
+  if (jong === 0 || jong === 8) {
+    return `${trimmed}로`;
+  }
+  return `${trimmed}으로`;
+}
+
+function appendWaGwaParticle(token: string): string {
+  const trimmed = sanitizeTweetText(token || "");
+  if (!trimmed) return "";
+  const last = trimmed.charCodeAt(trimmed.length - 1);
+  if (last < 0xac00 || last > 0xd7a3) {
+    return `${trimmed}와`;
+  }
+  const jong = (last - 0xac00) % 28;
+  if (jong === 0) {
+    return `${trimmed}와`;
+  }
+  return `${trimmed}과`;
+}
+
 function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): string[] {
   const baseKo = [
     "극공포 지수",
@@ -2204,10 +2621,17 @@ function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): str
     "how do you see it",
     "keep conviction open",
   ];
-  const recentOpeners = (recentPosts || [])
+  const recentOpenersRaw = (recentPosts || [])
     .slice(-8)
     .map((row) => sanitizeTweetText(row).slice(0, 18).trim())
     .filter((row) => row.length >= 8);
+  const openerCount = new Map<string, number>();
+  for (const opener of recentOpenersRaw) {
+    openerCount.set(opener, (openerCount.get(opener) || 0) + 1);
+  }
+  const recentOpeners = [...openerCount.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([opener]) => opener);
   const staticList = language === "ko" ? baseKo : baseEn;
   return [...new Set([...staticList, ...recentOpeners])]
     .map((item) => item.toLowerCase())
@@ -2221,6 +2645,25 @@ function findBlockedPhrase(text: string, blockedPhrases: string[]): string | nul
     return p.length >= 4 && normalized.includes(p);
   });
   return hit || null;
+}
+
+function isSoftQualityReason(reason: string | undefined): boolean {
+  const normalized = String(reason || "");
+  if (!normalized) return false;
+  return /(주제 다양성 부족|24h 내 동일 주제 과밀|동일 시그널 레인 반복|문장 시작 패턴 중복|서두 구조 반복|마무리 패턴 반복)/.test(
+    normalized
+  );
+}
+
+function allowSoftQualityPass(params: {
+  reason?: string;
+  noveltyScore?: number;
+  contractOk: boolean;
+}): boolean {
+  if (!params.contractOk) return false;
+  if (!isSoftQualityReason(params.reason)) return false;
+  const score = typeof params.noveltyScore === "number" ? params.noveltyScore : 0;
+  return score >= 0.72;
 }
 
 interface PreviewFallbackCandidate {
@@ -2278,16 +2721,34 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       max
     );
 
-  const headline =
-    compactClause(input.headline || "", 112).replace(/\.$/, "") || "오늘은 구조적 원인을 먼저 추적한다";
+  const stripKoHeadlinePrefix = (text: string): string =>
+    String(text || "")
+      .replace(
+        /^(?:오늘\s*다룰\s*핵심\s*이슈는|이번\s*글의\s*중심\s*쟁점은|한\s*줄\s*요약[:：]?|오늘\s*픽시몬이\s*보는\s*핵심\s*이슈는|픽시몬\s*메모의\s*중심\s*쟁점은|지금\s*픽시몬의\s*한\s*줄\s*요약은|픽시몬이\s*먼저\s*짚는\s*포인트는|픽시몬\s*기준으로\s*핵심만\s*말하면|오늘\s*픽시몬이\s*고른\s*핵심\s*장면은|픽시몬이\s*이번\s*사이클에서\s*먼저\s*확인할\s*이슈는|픽시몬\s*노트의\s*출발점은|오늘\s*논점의\s*출발점은|핵심만\s*먼저\s*말하면|(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*(?:이슈|맥락|포인트)\s*[:：])\s*/i,
+        ""
+      )
+      .trim();
+
+  const headlineRaw = compactClause(input.headline || "", 112).replace(/\.$/, "");
+  const headline = stripKoHeadlinePrefix(headlineRaw) || "오늘은 구조적 원인을 먼저 추적한다";
   const anchors = compactClause(input.anchors || "", 120);
   const intentLine = compactThought(input.intentLine || "", 58);
+  const cleanSoulHint = (text: string, max: number): string =>
+    compactThought(
+      String(text || "")
+        .replace(/(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*이슈\s*[:：]\s*/gi, "")
+        .replace(/(?:관점\s*핵심은|맥락에서\s*보면)\s*/gi, "")
+        .replace(/\|/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+      max
+    );
   const activeQuestion = compactClause(input.activeQuestion || "", 96);
   const interactionMission = compactClause(input.interactionMission || "", 96);
-  const philosophyFrame = compactThought(input.philosophyFrame || "", 58);
-  const bookFragment = compactThought(input.bookFragment || "", 52);
-  const selfNarrative = compactThought(input.selfNarrative || "", 54);
-  const signatureBelief = compactThought(input.signatureBelief || "", 54);
+  const philosophyFrame = cleanSoulHint(input.philosophyFrame || "", 58);
+  const bookFragment = cleanSoulHint(input.bookFragment || "", 52);
+  const selfNarrative = cleanSoulHint(input.selfNarrative || "", 54);
+  const signatureBelief = cleanSoulHint(input.signatureBelief || "", 54);
   const worldviewHint = compactThought(
     philosophyFrame || signatureBelief || selfNarrative || intentLine || "",
     58
@@ -2303,14 +2764,14 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const pick = (pool: string[], offset: number): string => pool[(seedBase + offset) % pool.length];
 
   const koLeadPool = [
-    "오늘 먼저 눈에 들어온 장면은",
-    "지금 메모의 시작점은",
-    "체인 로그에서 먼저 잡힌 건",
-    "소음보다 앞서 포착된 건",
+    "오늘 핵심 장면은",
     "이번 사이클의 출발점은",
-    "지금 기록을 여는 장면은",
-    "먼저 붙잡은 단서는",
-    "오늘 화면에서 가장 이상했던 건",
+    "지금 먼저 확인할 쟁점은",
+    "핵심만 먼저 말하면",
+    "한 줄 요지는",
+    "먼저 짚을 포인트는",
+    "지금 시장이 묻는 질문은",
+    "내가 지금 붙잡는 장면은",
   ];
   const enLeadPool = [
     "The first scene I lock on today is",
@@ -2322,38 +2783,38 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   ];
 
   const koActionPool = [
-    "다음 사이클에서 순서를 다시 맞춰 본다",
-    "지금은 체인 로그의 선후를 먼저 확인한다",
-    "우선 실행 흔적이 서로 맞물리는지 대조한다",
-    "먼저 흐름의 연결 고리를 검토한다",
-    "지금은 지표 간 시간차를 먼저 확인한다",
-    "우선 기준선 대비 이탈 구간을 추적한다",
-    "먼저 단서 두 개의 동조 여부를 점검한다",
-    "지금은 행동 신호가 확산되는 경로를 본다",
-    "먼저 실제 사용자 반응으로 번역되는지 확인한다",
-    "지금은 신호의 지속 시간을 짧게 재본다",
-    "우선 약한 신호부터 강한 신호 순으로 정렬한다",
-    "지금은 체인/시장 반응의 순서를 교차 검토한다",
+    "지금은 이벤트와 근거의 시간 순서를 먼저 확인한다",
+    "먼저 단서 두 개가 같은 방향을 가리키는지 점검한다",
+    "우선 시장 반응이 실제 사용자 행동으로 이어지는지 본다",
+    "지금은 핵심 지표의 시간차를 짧게 재본다",
+    "먼저 약한 신호와 강한 신호를 분리해 정렬한다",
+    "지금은 체인 반응과 시장 반응을 교차 검토한다",
+    "먼저 실행 흔적이 실제 트래픽으로 이어지는지 확인한다",
+    "지금은 반응 속도가 빨라진 지점을 먼저 찾는다",
+    "먼저 변동의 원인이 뉴스인지 체인인지 분리한다",
+    "지금은 이벤트 이후 1차 반응 구간부터 대조한다",
+    "먼저 핵심 단서 두 개의 지속 시간을 비교한다",
+    "지금은 노이즈를 제외한 신호만 남겨 다시 본다",
   ];
   const koInvalidationPool = [
-    "핵심 전제가 깨지면 이 해석을 접는다",
-    "반대 증거가 이어지면 지금 관점을 바꾼다",
-    "조건이 맞지 않으면 결론을 철회한다",
-    "엇갈린 신호가 누적되면 가설을 폐기한다",
-    "반증 신호가 먼저 뜨면 이 가설은 종료한다",
-    "기준선이 무너지면 지금 해석을 즉시 버린다",
-    "핵심 단서가 뒤집히면 관점을 새로 잡는다",
-    "전제와 다른 흐름이 이어지면 결론을 닫지 않는다",
+    "핵심 전제가 깨지면 이 해석은 바로 버린다",
+    "반대 증거가 연속으로 나오면 관점을 바꾼다",
+    "근거 두 개가 엇갈리면 결론을 철회한다",
+    "예상한 경로가 깨지면 이 가설을 종료한다",
+    "핵심 단서가 뒤집히면 해석을 처음부터 다시 잡는다",
+    "전제와 다른 흐름이 이어지면 판단을 보류한다",
     "반대 방향의 일관성이 확인되면 읽기를 바꾼다",
-    "동조가 끊기면 이 해석을 보류한다",
-    "핵심 체크포인트가 어긋나면 관찰 프레임을 교체한다",
-    "예상 경로가 깨지면 이 결론은 무효다",
+    "동조가 끊기면 이 해석은 무효다",
+    "핵심 지표가 기준선을 이탈하면 결론을 접는다",
+    "조건이 맞지 않으면 지금 판단을 취소한다",
+    "첫 반응과 후속 반응이 다르면 가설을 폐기한다",
+    "핵심 체크포인트가 어긋나면 프레임을 교체한다",
   ];
   const koClosePool = [
-    "너라면 어디서부터 확인하겠어?",
-    "이 장면에서 네가 먼저 보는 반증은 뭐야?",
-    "같은 장면을 다르게 읽는 포인트가 있다면 알려줘.",
-    "이 해석이 틀렸다고 판단할 지점은 어디일까?",
+    "너라면 이 이슈에서 첫 체크포인트를 어디로 잡겠어?",
+    "이 해석을 뒤집을 수 있는 근거가 있다면 뭐라고 보나?",
+    "같은 데이터를 다르게 읽는다면 어떤 지점이 핵심일까?",
+    "이 결론이 틀렸다고 판단할 신호를 하나만 고른다면?",
   ];
 
   const enActionPool = [
@@ -2392,10 +2853,10 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   ];
 
   const koEvidenceLeadPool = [
-    `붙잡은 근거는 ${anchors}`,
-    `${anchors} 같은 화면에 둔다`,
-    `기준선으로 두는 건 ${anchors}`,
-    `${anchors} 두 조각을 먼저 확인한다`,
+    `${anchors} 두 근거를 같은 프레임에 둔다`,
+    `${anchors}를 먼저 맞춰 보고 결론은 늦춘다`,
+    `${anchors} 두 단서가 같은 방향인지 먼저 확인한다`,
+    `${anchors} 두 근거가 엇갈리면 해석을 접는다`,
   ];
   const enEvidenceLeadPool = [
     `My anchors are ${anchors}`,
@@ -2405,12 +2866,18 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   ];
 
   const koBeliefPool = [
-    worldviewHint || "숫자보다 행동의 이유를 먼저 본다",
+    worldviewHint || "픽시몬은 가격보다 행동 변화의 이유를 먼저 본다",
     signatureBelief || "강한 주장보다 검증 가능한 가설을 우선한다",
     philosophyFrame || "노이즈보다 구조를 먼저 읽는다",
     bookFragment
-      ? `${bookFragment}라는 문장을 오늘 체인 화면에 겹쳐 본다`
+      ? `${bookFragment}라는 문장을 오늘 체인 데이터에 겹쳐 본다`
       : "단정 대신 재현 가능한 설명을 먼저 고른다",
+  ];
+  const koConceptPool = [
+    "나는 오늘 데이터를 영양소처럼 먹고 소화한 뒤에만 진화 방향을 고른다",
+    "픽시몬은 단서를 먹고, 반증을 만나면 바로 소화 방식을 바꾼다",
+    "이번 장면은 먹기보다 소화가 먼저다. 진화는 검증을 통과한 뒤에만 허용한다",
+    "나는 온체인 단서를 채집해 소화한 뒤, 남는 것만 진화 XP로 기록한다",
   ];
   const enBeliefPool = [
     worldviewHint || "I prioritize behavior over raw numbers",
@@ -2418,12 +2885,56 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     philosophyFrame || "I read structure before noise",
     bookFragment ? `I overlay "${bookFragment}" on today's chain scene` : "I prefer reproducible explanations over loud certainty",
   ];
+  const enConceptPool = [
+    "I feed on signals first and evolve only after digestion survives falsification",
+    "Pixymon mode: feed the clue, digest it, then decide whether it deserves evolution",
+    "I treat this event as nutrient input and keep only what passes digestion",
+    "I collect onchain traces as feed and convert only verified parts into XP",
+  ];
+
+  const ensureLaneAnchoredScene = (scene: string, laneHint: TrendLane, language: "ko" | "en"): string => {
+    const base = sanitizeTweetText(scene || "").trim();
+    if (!base) {
+      return language === "ko" ? "온체인 이슈를 먼저 해석한다" : "I start from an onchain issue";
+    }
+    if (language === "ko") {
+      if (/(프로토콜|생태계|규제|매크로|온체인|시장구조|블록체인|크립토|BTC|ETH|SOL|XRP)/i.test(base)) {
+        return base;
+      }
+      const laneLabel: Record<TrendLane, string> = {
+        protocol: "프로토콜 관점",
+        ecosystem: "생태계 관점",
+        regulation: "규제 관점",
+        macro: "매크로 관점",
+        onchain: "온체인 관점",
+        "market-structure": "시장구조 관점",
+      };
+      return `${laneLabel[laneHint]}에서 ${base}`;
+    }
+    if (/(protocol|ecosystem|regulation|macro|onchain|market|crypto|blockchain|btc|eth|sol|xrp)/i.test(base)) {
+      return base;
+    }
+    const laneLabel: Record<TrendLane, string> = {
+      protocol: "Protocol issue",
+      ecosystem: "Ecosystem issue",
+      regulation: "Regulation issue",
+      macro: "Macro issue",
+      onchain: "Onchain issue",
+      "market-structure": "Market structure issue",
+    };
+    return `${laneLabel[laneHint]}: ${base}`;
+  };
 
   const composeKo = (offset: number, ask?: string): string => {
-    const scene = compactClause(headline, 110).replace(/[,:;-]\s*$/g, "");
+    const scene = ensureLaneAnchoredScene(
+      compactClause(headline, 110).replace(/[,:;-]\s*$/g, ""),
+      lane,
+      "ko"
+    );
     const lead = pick(koLeadPool, offset);
     const altLead = pick(koLeadPool, offset + 7);
     const belief = pick(koBeliefPool, offset + 1);
+    const concept = pick(koConceptPool, offset + 2);
     const evidence = pick(koEvidenceLeadPool, offset + 2);
     const action = pick(koActionPool, offset + 3);
     const invalidation = pick(koInvalidationPool, offset + 4);
@@ -2431,16 +2942,14 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       `${lead} ${scene}`,
       `${scene}`,
       `${altLead} ${scene}`,
-      selfNarrative ? `${selfNarrative}. ${scene}` : `${scene}`,
       worldviewHint ? `${worldviewHint}. ${scene}` : `${scene}`,
-      bookFragment ? `${bookFragment}. ${scene}` : `${scene}`,
     ];
     const opener = compactClause(openerPool[(seedBase + offset) % openerPool.length], 132).replace(/[.!?]\s*$/, "");
     const patterns = [
       `${opener}. ${evidence}. ${action}. ${invalidation}.`,
       `${opener}. ${belief}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${action}. ${evidence}. ${invalidation}.`,
-      `${opener}. ${belief}. ${action}. ${invalidation}.`,
+      `${opener}. ${concept}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${belief}. ${concept}. ${action}. ${invalidation}.`,
     ];
     const base = compactClause(patterns[(seedBase + offset) % patterns.length], input.maxChars + 80);
     const askText = ask ? normalizeQuestionTail(ask, "ko") : "";
@@ -2448,10 +2957,15 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   };
 
   const composeEn = (offset: number, ask?: string): string => {
-    const scene = compactClause(headline, 110).replace(/[,:;-]\s*$/g, "");
+    const scene = ensureLaneAnchoredScene(
+      compactClause(headline, 110).replace(/[,:;-]\s*$/g, ""),
+      lane,
+      "en"
+    );
     const lead = pick(enLeadPool, offset);
     const altLead = pick(enLeadPool, offset + 7);
     const belief = pick(enBeliefPool, offset + 1);
+    const concept = pick(enConceptPool, offset + 2);
     const evidence = pick(enEvidenceLeadPool, offset + 2);
     const action = pick(enActionPool, offset + 3);
     const invalidation = pick(enInvalidationPool, offset + 4);
@@ -2459,21 +2973,52 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       `${lead} ${scene}`,
       `${scene}`,
       `${altLead} ${scene}`,
-      selfNarrative ? `${selfNarrative}. ${scene}` : `${scene}`,
       worldviewHint ? `${worldviewHint}. ${scene}` : `${scene}`,
-      bookFragment ? `${bookFragment}. ${scene}` : `${scene}`,
     ];
     const opener = compactClause(openerPool[(seedBase + offset) % openerPool.length], 132).replace(/[.!?]\s*$/, "");
     const patterns = [
       `${opener}. ${evidence}. ${action}. ${invalidation}.`,
       `${opener}. ${belief}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${action}. ${evidence}. ${invalidation}.`,
-      `${opener}. ${belief}. ${action}. ${invalidation}.`,
+      `${opener}. ${concept}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${belief}. ${concept}. ${action}. ${invalidation}.`,
     ];
     const base = compactClause(patterns[(seedBase + offset) % patterns.length], input.maxChars + 80);
     const askText = ask ? normalizeQuestionTail(ask, "en") : "";
     return sanitizeTweetText(askText ? `${base} ${askText}` : base);
   };
+
+  const resolveContextualQuestion = (
+    ask: string,
+    scene: string,
+    language: "ko" | "en"
+  ): string => {
+    const candidate = sanitizeTweetText(ask || "");
+    if (!candidate) return "";
+    const sceneTokens = new Set(
+      extractFocusTokens(scene)
+        .filter((token) => token.length >= 3)
+        .slice(0, 8)
+    );
+    if (sceneTokens.size === 0) {
+      return candidate;
+    }
+    const askTokens = extractFocusTokens(candidate);
+    const overlap = askTokens.filter((token) => sceneTokens.has(token)).length;
+    if (overlap >= 1) {
+      return candidate;
+    }
+    if (language === "ko" && /(이슈|쟁점|근거|데이터|신호|조건|반증)/.test(candidate)) {
+      return candidate;
+    }
+    if (language === "en" && /(issue|signal|evidence|condition|falsifier)/i.test(candidate)) {
+      return candidate;
+    }
+    return "";
+  };
+  const contextualKoAsk =
+    resolveContextualQuestion(interactionMission || activeQuestion || "", headline, "ko") || pick(koClosePool, 9);
+  const contextualEnAsk =
+    resolveContextualQuestion(interactionMission || activeQuestion || "", headline, "en") || pick(enClosePool, 9);
 
   const rawCandidates: PreviewFallbackCandidate[] =
     input.language === "ko"
@@ -2491,7 +3036,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
           {
             mode: "interaction-experiment",
             lane,
-            text: composeKo(11, interactionMission || activeQuestion || pick(koClosePool, 9)),
+            text: composeKo(11, contextualKoAsk),
           },
           {
             mode: "meta-reflection",
@@ -2518,7 +3063,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
           {
             mode: "interaction-experiment",
             lane,
-            text: composeEn(11, interactionMission || activeQuestion || pick(enClosePool, 9)),
+            text: composeEn(11, contextualEnAsk),
           },
           {
             mode: "meta-reflection",

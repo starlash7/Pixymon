@@ -233,7 +233,7 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
 
   return {
     keywords: keywords.length > 0 ? keywords : ["crypto", "blockchain", "layer2", "onchain", "ETF", "macro"],
-    summary: `관찰 프레임: ${laneMix}\n서사 초점: ${soulIntent.primaryDesire}\n핫 토픽:\n${newsSummary || "- 데이터 부족"}`,
+    summary: `핵심 프레임: ${laneMix}\n서사 초점: ${soulIntent.primaryDesire}\n핫 토픽:\n${newsSummary || "- 데이터 부족"}`,
     marketData,
     headlines: titlePool.slice(0, 8),
     newsSources: filteredNews.slice(0, 8).map((row) => ({ key: row.sourceKey, trust: row.trust })),
@@ -500,7 +500,7 @@ function summarizeLaneMix(
     lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure";
   }>
 ): string {
-  if (!Array.isArray(events) || events.length === 0) return "이벤트 부족, 관측 모드";
+  if (!Array.isArray(events) || events.length === 0) return "이벤트 부족, 해석 모드";
   const counts = new Map<string, number>();
   for (const event of events) {
     counts.set(event.lane, (counts.get(event.lane) || 0) + 1);
@@ -559,7 +559,7 @@ function buildLocalNarrativeTrendContext(): TrendContext {
   ).slice(0, 20);
   const headlines = remixedHeadlines;
   const summary = [
-    "로컬 테스트 모드(외부 호출 없음): 숫자 예측 대신 내러티브 품질을 검증한다.",
+    "로컬 테스트 모드(외부 호출 없음): 숫자 예측 대신 먹기→소화→진화 서사 품질을 검증한다.",
     ...selectedThemes.map((theme, index) => `- 주제${index + 1}: ${theme.summary}`),
   ].join("\n");
 
@@ -652,18 +652,12 @@ function selectLocalThemes(count: number): LocalNarrativeTheme[] {
 function remixLocalHeadline(theme: LocalNarrativeTheme): string {
   const base = sanitizeTweetText(theme.headline).replace(/\.$/, "");
   const seed = Math.floor(Math.random() * 1000);
-  const koFocuses = [
-    "행동 변화",
-    "실행 경로",
-    "원인과 파급",
-    "의사결정 구조",
-    "전이 신호",
-  ];
+  const focus = localLaneLabel(theme.lane);
   const templates = [
     `${base}`,
-    `${base} (관찰축: ${koFocuses[seed % koFocuses.length]})`,
-    `${base} (관찰축: ${koFocuses[(seed + 1) % koFocuses.length]})`,
-    `${base} (관찰축: ${koFocuses[(seed + 2) % koFocuses.length]})`,
+    `${focus} 이슈: ${base}`,
+    `${focus} 맥락: ${base}`,
+    `${focus} 포인트: ${base}`,
   ];
   return templates[seed % templates.length];
 }

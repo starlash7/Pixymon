@@ -66,6 +66,8 @@ export interface PostQualityContext {
   requiredTrendTokens?: string[];
   language?: "ko" | "en";
   requireActionAndInvalidation?: boolean;
+  requireLeadIssueClarity?: boolean;
+  requirePixymonConceptSignal?: boolean;
   fearGreedEvent?: {
     required: boolean;
     isEvent: boolean;
