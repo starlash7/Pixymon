@@ -603,7 +603,7 @@ export async function postTrendUpdate(
       });
 
       const localOrdered = localCandidates
-        .slice(0, 8)
+        .slice(0, 12)
         .sort((a, b) => {
           const aMode = a.mode === narrativePlan.mode ? -1 : 0;
           const bMode = b.mode === narrativePlan.mode ? -1 : 0;
@@ -1181,7 +1181,10 @@ Rules:
           narrativePlan
         );
         fallbackNoveltyScore = fallbackNovelty.score;
-        if (!fallbackNovelty.ok || fallbackNovelty.score < 0.55) {
+        const noveltyHardFail =
+          fallbackNovelty.score < 0.45 ||
+          (fallbackNovelty.reason === "narrative-skeleton-repeat" && fallbackNovelty.score < 0.52);
+        if (noveltyHardFail) {
           console.log(`[POST] fallback 실패: narrative-${fallbackNovelty.reason}`);
           latestFailReason = fallbackNovelty.reason || latestFailReason;
           fallbackPost = null;
@@ -1902,7 +1905,8 @@ function finalizeGeneratedText(text: string, language: "ko" | "en", maxChars: nu
   const truncated = truncateAtWordBoundary(polished, maxChars);
   const deduped = collapseImmediateSentenceRepeat(truncated, language);
   const cleaned = cleanupDanglingTail(deduped, language);
-  return cleaned.length <= maxChars ? cleaned : truncateAtWordBoundary(cleaned, maxChars);
+  const punctuated = ensureTerminalPunctuation(cleaned, language, maxChars);
+  return punctuated.length <= maxChars ? punctuated : truncateAtWordBoundary(punctuated, maxChars);
 }
 
 function cleanupDanglingTail(text: string, language: "ko" | "en"): string {
@@ -1920,6 +1924,17 @@ function cleanupDanglingTail(text: string, language: "ko" | "en"): string {
     .replace(/\s+(?:if|because|and|but|or)$/gi, "")
     .replace(/\s*[,:;]\s*$/g, "")
     .trim();
+}
+
+function ensureTerminalPunctuation(text: string, language: "ko" | "en", maxChars: number): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  if (/[.!?]$/.test(normalized)) return normalized;
+  const suffix = language === "ko" ? "." : ".";
+  if (normalized.length + suffix.length <= maxChars) {
+    return `${normalized}${suffix}`;
+  }
+  return normalized;
 }
 
 function collapseImmediateSentenceRepeat(text: string, language: "ko" | "en"): string {
@@ -2061,14 +2076,14 @@ function ensurePixymonConceptSignal(
 
 function injectInlineConceptKo(text: string): string {
   const normalized = sanitizeTweetText(text);
+  if (/^(?:오늘\s*핵심\s*장면은|이번\s*사이클의\s*출발점은|지금\s*먼저\s*확인할\s*쟁점은|핵심만\s*먼저\s*말하면|한\s*줄\s*요지는|먼저\s*짚을\s*포인트는|지금\s*시장이\s*묻는\s*질문은|내가\s*지금\s*붙잡는\s*장면은)/.test(normalized)) {
+    return sanitizeTweetText(`${normalized} 픽시몬은 단서를 먼저 먹고 소화한다.`);
+  }
   if (/^나는\s+/.test(normalized)) {
     return sanitizeTweetText(normalized.replace(/^나는\s+/, "나는 단서를 먹고 소화해 "));
   }
   if (/^이번\s+/.test(normalized)) {
     return sanitizeTweetText(`이번 글은 단서를 먹고 소화한 뒤 해석한다. ${normalized}`);
-  }
-  if (/먼저\s+/.test(normalized)) {
-    return sanitizeTweetText(normalized.replace(/먼저\s+/, "먼저 단서를 먹고 소화해 "));
   }
   return sanitizeTweetText(`${normalized} 픽시몬은 단서를 먹고 소화해 본다.`);
 }
@@ -2161,7 +2176,7 @@ function ensureEventEvidenceAnchors(
   }
   const clause =
     language === "ko"
-      ? `핵심 근거는 ${appendWaGwaParticle(aToken)} ${bToken}다.`
+      ? `핵심 근거는 ${aToken}, ${bToken}이다.`
       : `Core anchors are ${aToken} and ${bToken}.`;
   const merged = sanitizeTweetText(`${normalized} ${clause}`);
   return truncateAtWordBoundary(merged, maxChars);
@@ -2511,9 +2526,9 @@ function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: st
     const bRo = appendRoParticle(b);
     const aWaGwa = appendWaGwaParticle(a);
     const templates = [
-      `${aWaGwa} ${b}의 연결성도 같이 본다.`,
-      `다음 체크는 ${a}, ${b} 순서로 잡는다.`,
-      `다음 확인 포인트는 ${a}, ${b} 쪽이다.`,
+      `${aWaGwa} ${b}의 연결도 같이 본다.`,
+      `${a}, ${b} 흐름을 나란히 점검한다.`,
+      `${a}, ${b} 쪽 반응을 함께 비교한다.`,
       `${a} 변화가 ${bRo} 번지는지도 확인한다.`,
       `${a} · ${b} 동조 여부를 먼저 대조한다.`,
       `${a}, ${b}의 시간차 반응을 함께 추적한다.`,
@@ -2650,7 +2665,7 @@ function findBlockedPhrase(text: string, blockedPhrases: string[]): string | nul
 function isSoftQualityReason(reason: string | undefined): boolean {
   const normalized = String(reason || "");
   if (!normalized) return false;
-  return /(주제 다양성 부족|24h 내 동일 주제 과밀|동일 시그널 레인 반복|문장 시작 패턴 중복|서두 구조 반복|마무리 패턴 반복)/.test(
+  return /(주제 다양성 부족|24h 내 동일 주제 과밀|동일 시그널 레인 반복|문장 시작 패턴 중복|서두 구조 반복|마무리 패턴 반복|첫 문장에 크립토 맥락 이슈가 없음)/.test(
     normalized
   );
 }
@@ -2663,7 +2678,7 @@ function allowSoftQualityPass(params: {
   if (!params.contractOk) return false;
   if (!isSoftQualityReason(params.reason)) return false;
   const score = typeof params.noveltyScore === "number" ? params.noveltyScore : 0;
-  return score >= 0.72;
+  return score >= 0.64;
 }
 
 interface PreviewFallbackCandidate {
@@ -2898,7 +2913,17 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       return language === "ko" ? "온체인 이슈를 먼저 해석한다" : "I start from an onchain issue";
     }
     if (language === "ko") {
-      if (/(프로토콜|생태계|규제|매크로|온체인|시장구조|블록체인|크립토|BTC|ETH|SOL|XRP)/i.test(base)) {
+      const detectKoLane = (text: string): TrendLane | null => {
+        if (/프로토콜/.test(text)) return "protocol";
+        if (/생태계/.test(text)) return "ecosystem";
+        if (/규제/.test(text)) return "regulation";
+        if (/매크로|거시/.test(text)) return "macro";
+        if (/온체인/.test(text)) return "onchain";
+        if (/시장구조|오더북|체결|슬리피지/.test(text)) return "market-structure";
+        return null;
+      };
+      const detected = detectKoLane(base);
+      if (detected && detected === laneHint) {
         return base;
       }
       const laneLabel: Record<TrendLane, string> = {
@@ -2909,23 +2934,41 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
         onchain: "온체인 관점",
         "market-structure": "시장구조 관점",
       };
-      return `${laneLabel[laneHint]}에서 ${base}`;
+      const stripped = base
+        .replace(/^(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*(?:관점에서|이슈[:：]?|맥락[:：]?|포인트[:：]?)\s*/i, "")
+        .trim();
+      const body = stripped || base;
+      return `${laneLabel[laneHint]}에서 ${body}`;
     }
-    if (/(protocol|ecosystem|regulation|macro|onchain|market|crypto|blockchain|btc|eth|sol|xrp)/i.test(base)) {
+    const detectEnLane = (text: string): TrendLane | null => {
+      if (/protocol|upgrade|rollup|validator/i.test(text)) return "protocol";
+      if (/ecosystem|community|retention|defi|dex/i.test(text)) return "ecosystem";
+      if (/regulation|policy|compliance|sec|cftc/i.test(text)) return "regulation";
+      if (/macro|fed|fomc|cpi|dxy|rates?/i.test(text)) return "macro";
+      if (/onchain|mempool|wallet|address/i.test(text)) return "onchain";
+      if (/market\s*structure|orderbook|slippage|liquidity|funding/i.test(text)) return "market-structure";
+      return null;
+    };
+    const detected = detectEnLane(base);
+    if (detected && detected === laneHint) {
       return base;
     }
     const laneLabel: Record<TrendLane, string> = {
-      protocol: "Protocol issue",
-      ecosystem: "Ecosystem issue",
-      regulation: "Regulation issue",
-      macro: "Macro issue",
-      onchain: "Onchain issue",
-      "market-structure": "Market structure issue",
+      protocol: "protocol lens",
+      ecosystem: "ecosystem lens",
+      regulation: "regulation lens",
+      macro: "macro lens",
+      onchain: "onchain lens",
+      "market-structure": "market-structure lens",
     };
-    return `${laneLabel[laneHint]}: ${base}`;
+    const stripped = base
+      .replace(/^(?:from\s+a\s+)?(?:protocol|ecosystem|regulation|macro|onchain|market[-\s]?structure)\s*(?:lens|issue|context)\s*[:,]?\s*/i, "")
+      .trim();
+    const body = stripped || base;
+    return `From a ${laneLabel[laneHint]}, ${body}`;
   };
 
-  const composeKo = (offset: number, ask?: string): string => {
+  const composeKo = (offset: number, variant: number, ask?: string): string => {
     const scene = ensureLaneAnchoredScene(
       compactClause(headline, 110).replace(/[,:;-]\s*$/g, ""),
       lane,
@@ -2950,13 +2993,20 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       `${opener}. ${belief}. ${evidence}. ${action}. ${invalidation}.`,
       `${opener}. ${concept}. ${evidence}. ${action}. ${invalidation}.`,
       `${opener}. ${belief}. ${concept}. ${action}. ${invalidation}.`,
+      `${opener}. ${action}. ${evidence}. ${invalidation}.`,
+      `${belief}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${evidence}. ${invalidation}. ${action}.`,
+      `${opener}. ${concept}. ${action}. ${evidence}. ${invalidation}.`,
+      `${concept}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${action}. ${invalidation}. ${evidence}.`,
     ];
-    const base = compactClause(patterns[(seedBase + offset) % patterns.length], input.maxChars + 80);
+    const index = Math.abs(seedBase + offset + variant * 5) % patterns.length;
+    const base = compactClause(patterns[index], input.maxChars + 80);
     const askText = ask ? normalizeQuestionTail(ask, "ko") : "";
     return sanitizeTweetText(askText ? `${base} ${askText}` : base);
   };
 
-  const composeEn = (offset: number, ask?: string): string => {
+  const composeEn = (offset: number, variant: number, ask?: string): string => {
     const scene = ensureLaneAnchoredScene(
       compactClause(headline, 110).replace(/[,:;-]\s*$/g, ""),
       lane,
@@ -2981,8 +3031,15 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       `${opener}. ${belief}. ${evidence}. ${action}. ${invalidation}.`,
       `${opener}. ${concept}. ${evidence}. ${action}. ${invalidation}.`,
       `${opener}. ${belief}. ${concept}. ${action}. ${invalidation}.`,
+      `${opener}. ${action}. ${evidence}. ${invalidation}.`,
+      `${belief}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${evidence}. ${invalidation}. ${action}.`,
+      `${opener}. ${concept}. ${action}. ${evidence}. ${invalidation}.`,
+      `${concept}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${action}. ${invalidation}. ${evidence}.`,
     ];
-    const base = compactClause(patterns[(seedBase + offset) % patterns.length], input.maxChars + 80);
+    const index = Math.abs(seedBase + offset + variant * 5) % patterns.length;
+    const base = compactClause(patterns[index], input.maxChars + 80);
     const askText = ask ? normalizeQuestionTail(ask, "en") : "";
     return sanitizeTweetText(askText ? `${base} ${askText}` : base);
   };
@@ -3004,14 +3061,21 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     }
     const askTokens = extractFocusTokens(candidate);
     const overlap = askTokens.filter((token) => sceneTokens.has(token)).length;
+    const isQuestionLike =
+      language === "ko"
+        ? /[?？]$|어디|무엇|왜|어떻게|어떤|일까|일지|보나|인가/.test(candidate)
+        : /[?]$|\bwhere\b|\bwhat\b|\bwhy\b|\bhow\b|\bwhich\b/i.test(candidate);
+    if (!isQuestionLike) {
+      return "";
+    }
     if (overlap >= 1) {
-      return candidate;
+      return normalizeQuestionTail(candidate, language);
     }
     if (language === "ko" && /(이슈|쟁점|근거|데이터|신호|조건|반증)/.test(candidate)) {
-      return candidate;
+      return normalizeQuestionTail(candidate, language);
     }
     if (language === "en" && /(issue|signal|evidence|condition|falsifier)/i.test(candidate)) {
-      return candidate;
+      return normalizeQuestionTail(candidate, language);
     }
     return "";
   };
@@ -3020,62 +3084,35 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const contextualEnAsk =
     resolveContextualQuestion(interactionMission || activeQuestion || "", headline, "en") || pick(enClosePool, 9);
 
+  const candidateModes: Array<{
+    mode: string;
+    baseOffset: number;
+    askKo?: string;
+    askEn?: string;
+  }> = [
+    { mode: "identity-journal", baseOffset: 3 },
+    { mode: "philosophy-note", baseOffset: 7 },
+    { mode: "interaction-experiment", baseOffset: 11, askKo: contextualKoAsk, askEn: contextualEnAsk },
+    { mode: "meta-reflection", baseOffset: 15 },
+    { mode: "fable-essay", baseOffset: 19 },
+  ];
+
   const rawCandidates: PreviewFallbackCandidate[] =
     input.language === "ko"
-      ? [
-          {
-            mode: "identity-journal",
+      ? candidateModes.flatMap((config) =>
+          [0, 1, 2].map((variant) => ({
+            mode: config.mode,
             lane,
-            text: composeKo(3),
-          },
-          {
-            mode: "philosophy-note",
+            text: composeKo(config.baseOffset + variant * 2, variant, config.askKo),
+          }))
+        )
+      : candidateModes.flatMap((config) =>
+          [0, 1, 2].map((variant) => ({
+            mode: config.mode,
             lane,
-            text: composeKo(7),
-          },
-          {
-            mode: "interaction-experiment",
-            lane,
-            text: composeKo(11, contextualKoAsk),
-          },
-          {
-            mode: "meta-reflection",
-            lane,
-            text: composeKo(15),
-          },
-          {
-            mode: "fable-essay",
-            lane,
-            text: composeKo(19),
-          },
-        ]
-      : [
-          {
-            mode: "identity-journal",
-            lane,
-            text: composeEn(3),
-          },
-          {
-            mode: "philosophy-note",
-            lane,
-            text: composeEn(7),
-          },
-          {
-            mode: "interaction-experiment",
-            lane,
-            text: composeEn(11, contextualEnAsk),
-          },
-          {
-            mode: "meta-reflection",
-            lane,
-            text: composeEn(15),
-          },
-          {
-            mode: "fable-essay",
-            lane,
-            text: composeEn(19),
-          },
-        ];
+            text: composeEn(config.baseOffset + variant * 2, variant, config.askEn),
+          }))
+        );
 
   const rotation = Date.now() % Math.max(1, rawCandidates.length);
   const rotated = rawCandidates.slice(rotation).concat(rawCandidates.slice(0, rotation));
