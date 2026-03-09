@@ -346,30 +346,29 @@ export function buildEventEvidenceFallbackPost(
   const eventHeadline = language === "ko" ? stripKoHeadlinePrefix(eventHeadlineRaw) : eventHeadlineRaw;
   const evidenceA = formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = formatEvidenceAnchor(plan.evidence[1], language);
-  const laneLabel = laneDisplayName(plan.lane, language);
   const narrativeMode = mode || inferNarrativeModeFromHeadline(eventHeadline);
   const seed = stableSeed(`${plan.event.id}|${eventHeadline}|${evidenceA}|${evidenceB}|${narrativeMode}`);
 
   const koTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `${eventHeadline}. 나는 ${evidenceA}, ${evidenceB} 두 근거를 먼저 소화한다. 순서가 뒤집히면 이 해석은 바로 폐기한다.`,
-      `${eventHeadline}. 픽시몬 기준으로 두 근거(${evidenceA}, ${evidenceB})를 먼저 먹고 검증한다. 다음 체크에서 깨지면 결론을 철회한다.`,
+      `지금 계속 마음에 남는 건 ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 붙여 놓고 본다. 둘이 같은 쪽을 오래 가리킬 때만 말을 보탠다.`,
+      `오늘은 이 장면을 다시 본다. ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 보다 보면 전제 하나만 흔들려도 이 읽기는 곧바로 접게 된다.`,
     ],
     "philosophy-note": [
-      `${eventHeadline}. ${evidenceA}, ${evidenceB} 두 근거를 같은 프레임에 둔다. 실행 흔적이 틀리면 이 해석을 버린다.`,
-      `${eventHeadline}. 나는 두 근거(${evidenceA}, ${evidenceB})를 먼저 대조한다. 반대 신호가 누적되면 결론을 철회한다.`,
+      `한 걸음 물러서서 보면 ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 나란히 두면 말보다 순서가 먼저 보인다. 흐름이 엇갈리기 시작하면 나는 처음부터 다시 읽는다.`,
+      `지금은 ${eventHeadline}를 크게 말할 때가 아니라 ${evidenceA}, ${evidenceB} 사이의 시간차를 보는 쪽이 낫다. 둘이 딴소리를 하면 이 해석은 버린다.`,
     ],
     "interaction-experiment": [
-      `${eventHeadline}. 나는 두 근거(${evidenceA}, ${evidenceB})를 먼저 먹고 소화한다. 너라면 첫 체크포인트를 어디로 잡겠어? 반대 신호가 이어지면 나는 즉시 관점을 바꾼다.`,
-      `${eventHeadline}. 두 근거(${evidenceA}, ${evidenceB})를 기준으로 본다. 이 해석을 뒤집을 근거가 있다면 무엇일까? 핵심 전제가 깨지면 가설을 내려놓는다.`,
+      `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 보면 어디서부터 말이 갈릴까? 너라면 첫 의심을 어디에 둘지 궁금하다. 전제가 흔들리면 나는 이 읽기를 바로 접는다.`,
+      `오늘은 ${eventHeadline}를 두고 ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 본다. 이 장면을 가장 먼저 뒤집을 신호가 뭐라고 보는지 듣고 싶다. 흐름이 엇갈리면 나는 생각을 바꾼다.`,
     ],
     "meta-reflection": [
-      `내가 경계하는 오류는 결론을 너무 빨리 닫는 습관이다. ${eventHeadline}. 두 근거(${evidenceA}, ${evidenceB})를 함께 소화하고, 핵심 조건이 깨지면 해석을 바꾼다.`,
-      `${eventHeadline}. 단일 신호에 기대는 실수를 피하려고 두 근거(${evidenceA}, ${evidenceB})를 같이 본다. 반대 증거가 쌓이면 가설을 접는다.`,
+      `내가 늘 경계하는 건 신호 하나에 기대는 습관이다. ${eventHeadline}. 그래서 ${evidenceA}, ${evidenceB}, 이 두 단서를 함께 놓고 본다. 오래 버티는 쪽이 아니면 이 해석은 접는다.`,
+      `${eventHeadline}. 예쁘게 맞아 보이는 숫자 하나보다 ${evidenceA}, ${evidenceB}, 이 두 단서가 더 중요하다. 둘이 갈라지면 이 문장은 여기서 멈춘다.`,
     ],
     "fable-essay": [
-      `소음이 커질수록 핵심은 단순해진다. ${eventHeadline}. 두 근거(${evidenceA}, ${evidenceB})를 천천히 먹고 소화한 뒤, 구조가 맞지 않으면 결론을 뒤집는다.`,
-      `한 문장으로 남기면 ${eventHeadline}. 두 근거(${evidenceA}, ${evidenceB})를 먼저 소화하고, 반대 흐름이 이어지면 이 읽기를 고친다.`,
+      `시장이 시끄러울수록 나는 더 조용한 흔적을 찾게 된다. ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 천천히 소화해 보고 둘이 갈라지면 이야기도 여기서 바꾼다.`,
+      `짧게 남기면 ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 씹어 본 뒤에도 맛이 같을 때만 다음 문장으로 넘긴다. 다르면 이 읽기는 바로 접는다.`,
     ],
   };
 
@@ -638,26 +637,6 @@ function formatEvidenceAnchor(evidence: OnchainEvidence | undefined, language: "
     return `${evidence.label} ${evidence.value}`.replace(/\s+/g, " ").trim().slice(0, 70);
   }
   return `${evidence.label} ${evidence.value}`.replace(/\s+/g, " ").trim().slice(0, 70);
-}
-
-function laneDisplayName(lane: TrendLane, language: "ko" | "en"): string {
-  const ko: Record<TrendLane, string> = {
-    protocol: "프로토콜",
-    ecosystem: "생태계",
-    regulation: "규제",
-    macro: "매크로",
-    onchain: "온체인",
-    "market-structure": "시장구조",
-  };
-  const en: Record<TrendLane, string> = {
-    protocol: "Protocol",
-    ecosystem: "Ecosystem",
-    regulation: "Regulation",
-    macro: "Macro",
-    onchain: "On-chain",
-    "market-structure": "Market structure",
-  };
-  return language === "ko" ? ko[lane] : en[lane];
 }
 
 function extractHeadlineTokens(headline: string): string[] {

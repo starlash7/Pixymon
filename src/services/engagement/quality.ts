@@ -46,24 +46,24 @@ const NARRATIVE_LABEL_LEAK =
 const BOT_STYLE_LEAD =
   /^(?:오늘의\s*미션은|이번엔\s*반응\s*실험|짧은\s*우화로\s*남기면|이건\s*관찰이자\s*커뮤니티\s*실험|관찰\s*노트[:：]|실수\s*로그[:：]|나는\s*AI\s*생명체)/i;
 const KO_ACTION_PATTERN =
-  /(확인|점검|검증|추적|해석|비교|대조|체크|기록|모니터링|검토|살핀|보겠|맞춰|보고\s|다시\s*본|교차\s*검토|교차\s*확인)/;
+  /(확인|점검|검증|추적|해석|비교|대조|체크|기록|모니터링|검토|살핀|지켜본|짚어?\s*본|가려내|가른다|맞춰\s*본|부터\s*본|보겠|보고\s|다시\s*본|교차\s*검토|교차\s*확인)/;
 const EN_ACTION_PATTERN = /\b(check|verify|track|monitor|observe|test|compare|review)\b/i;
 const KO_INVALIDATION_PATTERN =
-  /(반증|틀리|무효|기각|버리|수정|철회|바꾸|뒤집|내려놓|폐기|보류|종료|교체|무너지|닫지\s*않|가설[^.!?]{0,12}접|깨지면|조건\s*이?\s*깨지|않으면|아니라면|반대\s*(?:신호|증거))/;
+  /(반증|틀리|무효|기각|버리|수정|철회|바꾸|바꾼|뒤집|내려놓|폐기|보류|종료|교체|무너지|닫지\s*않|갈아엎|놓아주|미루|돌아가|다시\s*읽|접는다|접게|늦춘다|멈춘다|효력을\s*잃|가설[^.!?]{0,12}접|깨지면|조건\s*이?\s*깨지|않으면|아니라면|반대\s*(?:신호|증거)|딴소리)/;
 const EN_INVALIDATION_PATTERN =
   /\b(falsif|invalidate|wrong if|drop this thesis|revise this thesis|if .*?(?:fails|breaks)|opposite evidence)\b/i;
 
 const KO_ACTION_INVALIDATION_BRIDGES = [
-  "먼저 핵심 단서부터 확인한다. 이 조건이 틀리면 해석을 바로 바꾼다.",
-  "나는 지금 신호의 순서를 점검한다. 반대 근거가 이어지면 가설을 접는다.",
-  "우선 로그를 맞춰 본다. 핵심 전제가 깨지면 결론을 철회한다.",
-  "지금은 확인을 먼저 하고 확신을 늦춘다. 반증이 쌓이면 관점을 수정한다.",
-  "먼저 흐름을 검증한다. 반대 증거가 늘어나면 이 읽기를 버린다.",
+  "그래서 오늘은 이 둘의 시간차부터 본다. 흐름이 어긋나면 생각을 바로 바꾼다.",
+  "지금은 확신보다 확인이 먼저다. 전제가 흔들리면 이 읽기는 접는다.",
+  "일단 두 신호의 순서를 맞춰 본다. 서로 딴소리를 하면 해석을 버린다.",
+  "오늘은 먼저 움직인 쪽을 가려낸다. 반대 증거가 더 오래 남으면 다시 읽는다.",
+  "우선 말보다 흐름을 본다. 조건이 깨지는 순간 이 결론은 내려놓는다.",
 ];
 const KO_ACTION_INVALIDATION_BRIDGES_SHORT = [
-  "반증이면 관점을 바꾼다.",
-  "조건이 틀리면 이 해석을 접는다.",
-  "핵심 전제가 깨지면 결론을 철회한다.",
+  "엇갈리면 다시 읽는다.",
+  "전제가 흔들리면 이 해석은 접는다.",
+  "딴소리를 하면 결론을 늦춘다.",
 ];
 const EN_ACTION_INVALIDATION_BRIDGES = [
   "I verify the key signals first, then revise the thesis if opposite evidence persists.",
