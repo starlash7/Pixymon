@@ -1904,7 +1904,10 @@ function finalizeGeneratedText(text: string, language: "ko" | "en", maxChars: nu
   const polished = polishTweetText(stripped, language);
   const truncated = truncateAtWordBoundary(polished, maxChars);
   const deduped = collapseImmediateSentenceRepeat(truncated, language);
-  const cleaned = cleanupDanglingTail(deduped, language);
+  const deRepeated = removeRepeatedSentences(deduped);
+  const laneAdjusted = language === "ko" ? reduceLaneAnchorEcho(deRepeated) : deRepeated;
+  const varied = language === "ko" ? diversifyKoTransitions(laneAdjusted) : laneAdjusted;
+  const cleaned = cleanupDanglingTail(trimTrailingFragment(varied, language), language);
   const punctuated = ensureTerminalPunctuation(cleaned, language, maxChars);
   return punctuated.length <= maxChars ? punctuated : truncateAtWordBoundary(punctuated, maxChars);
 }
@@ -1914,7 +1917,7 @@ function cleanupDanglingTail(text: string, language: "ko" | "en"): string {
   if (!output) return output;
   if (language === "ko") {
     output = output
-      .replace(/\s+(?:반증|조건|근거|그리고|하지만|또|또는)$/g, "")
+      .replace(/\s+(?:반증|조건|근거|근거는|단서|단서는|그리고|하지만|또|또는)$/g, "")
       .replace(/\s+[이가은는을를의로와과도]$/g, "")
       .replace(/\s*[,:;]\s*$/g, "")
       .trim();
@@ -1933,6 +1936,156 @@ function ensureTerminalPunctuation(text: string, language: "ko" | "en", maxChars
   const suffix = language === "ko" ? "." : ".";
   if (normalized.length + suffix.length <= maxChars) {
     return `${normalized}${suffix}`;
+  }
+  return normalized;
+}
+
+function removeRepeatedSentences(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (parts.length < 2) return normalized;
+
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  for (const part of parts) {
+    const key = sanitizeTweetText(part)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!key) continue;
+    if (key.length >= 10 && seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    kept.push(part);
+  }
+  return sanitizeTweetText(kept.join(" "));
+}
+
+function reduceLaneAnchorEcho(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (parts.length < 2) return normalized;
+
+  const laneRegex = /^(프로토콜|생태계|규제|매크로|온체인|시장구조)\s*관점에서\s*/;
+  const firstLane = parts[0].match(laneRegex)?.[1] || "";
+  if (!firstLane) return normalized;
+
+  const adjusted = parts.map((part, index) => {
+    if (index === 0) return part;
+    const match = part.match(laneRegex);
+    if (!match) return part;
+    if (match[1] !== firstLane) return part;
+    const stripped = part.replace(laneRegex, "").trim();
+    if (!stripped) return part;
+    return stripped;
+  });
+
+  return sanitizeTweetText(adjusted.join(" "));
+}
+
+function diversifyKoTransitions(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (parts.length < 2) return normalized;
+
+  const seed = stableSeedForPrelude(normalized);
+  const leadVariants: Record<string, string[]> = {
+    먼저: ["이어서", "다음으로", "이번에는", "우선"],
+    지금은: ["이어서", "이번에는", "다음으로는", "현시점에서는"],
+    우선: ["먼저", "일단", "이번엔", "첫 단계로"],
+    지금: ["이번엔", "이 시점엔", "현 시점에서는", "이 장면에선"],
+  };
+
+  const leadSeen = new Map<string, number>();
+  let evidencePhraseCount = 0;
+  let framePhraseCount = 0;
+
+  const adjusted = parts.map((raw, index) => {
+    let sentence = raw;
+    for (const lead of Object.keys(leadVariants)) {
+      const match = sentence.match(new RegExp(`^${lead}\\s+`));
+      if (!match) continue;
+      const seen = leadSeen.get(lead) || 0;
+      leadSeen.set(lead, seen + 1);
+      if (seen >= 1) {
+        const pool = leadVariants[lead];
+        const replacement = pool[(seed + index + seen) % pool.length];
+        sentence = sentence.replace(new RegExp(`^${lead}\\s+`), `${replacement} `);
+      }
+    }
+
+    if (/두\s*근거/.test(sentence)) {
+      evidencePhraseCount += 1;
+      if (evidencePhraseCount >= 2) {
+        const replacements = ["핵심 단서", "근거 묶음", "두 단서"];
+        const replacement = replacements[(seed + index + evidencePhraseCount) % replacements.length];
+        sentence = sentence.replace(/두\s*근거/, replacement);
+      }
+    }
+
+    if (/같은\s*프레임에\s*둔다/.test(sentence)) {
+      framePhraseCount += 1;
+      if (framePhraseCount >= 2) {
+        const replacements = ["같은 좌표에서 대조한다", "동일한 기준선에서 비교한다", "한 축에서 교차 확인한다"];
+        const replacement = replacements[(seed + index + framePhraseCount) % replacements.length];
+        sentence = sentence.replace(/같은\s*프레임에\s*둔다/, replacement);
+      }
+    }
+
+    return sentence;
+  });
+
+  return sanitizeTweetText(adjusted.join(" "));
+}
+
+function trimTrailingFragment(text: string, language: "ko" | "en"): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (parts.length < 2) return normalized;
+
+  const last = parts[parts.length - 1];
+  const core = last.replace(/[.!?]+$/g, "").trim();
+  if (!core) {
+    return sanitizeTweetText(parts.slice(0, -1).join(" "));
+  }
+  if (core.length <= 2) {
+    return sanitizeTweetText(parts.slice(0, -1).join(" "));
+  }
+  if (language === "ko") {
+    const looksComplete = /(다|요|까|자|함|됨|한다|했다|싶다|없다|있다)$/.test(core);
+    const looksDangling = /(있는|없는|하는|되는|같은|라는|도록|으로|에서|에게|부터|까지|보다|처럼|만큼|한\s*것|할\s*것)$/.test(
+      core
+    );
+    if (looksDangling && core.length <= 24) {
+      return sanitizeTweetText(parts.slice(0, -1).join(" "));
+    }
+    if (core.length <= 8 && !looksComplete) {
+      return sanitizeTweetText(parts.slice(0, -1).join(" "));
+    }
+    return normalized;
+  }
+  const looksCompleteEn = /\b(?:is|are|was|were|do|does|did|can|could|should|would|will|won't|can't|must|may)\b/i.test(core);
+  if (core.length <= 10 && !looksCompleteEn) {
+    return sanitizeTweetText(parts.slice(0, -1).join(" "));
   }
   return normalized;
 }
@@ -2076,8 +2229,15 @@ function ensurePixymonConceptSignal(
 
 function injectInlineConceptKo(text: string): string {
   const normalized = sanitizeTweetText(text);
+  const conceptTailPool = [
+    "픽시몬은 단서를 먼저 먹고 소화한다.",
+    "픽시몬은 단서를 채집해 소화한 뒤 판단한다.",
+    "픽시몬은 신호를 소화해 남는 것만 진화에 쓴다.",
+    "픽시몬은 근거를 먹고 반증으로 다시 소화한다.",
+  ];
+  const tail = conceptTailPool[stableSeedForPrelude(normalized) % conceptTailPool.length];
   if (/^(?:오늘\s*핵심\s*장면은|이번\s*사이클의\s*출발점은|지금\s*먼저\s*확인할\s*쟁점은|핵심만\s*먼저\s*말하면|한\s*줄\s*요지는|먼저\s*짚을\s*포인트는|지금\s*시장이\s*묻는\s*질문은|내가\s*지금\s*붙잡는\s*장면은)/.test(normalized)) {
-    return sanitizeTweetText(`${normalized} 픽시몬은 단서를 먼저 먹고 소화한다.`);
+    return sanitizeTweetText(`${normalized} ${tail}`);
   }
   if (/^나는\s+/.test(normalized)) {
     return sanitizeTweetText(normalized.replace(/^나는\s+/, "나는 단서를 먹고 소화해 "));
@@ -2085,7 +2245,7 @@ function injectInlineConceptKo(text: string): string {
   if (/^이번\s+/.test(normalized)) {
     return sanitizeTweetText(`이번 글은 단서를 먹고 소화한 뒤 해석한다. ${normalized}`);
   }
-  return sanitizeTweetText(`${normalized} 픽시몬은 단서를 먹고 소화해 본다.`);
+  return sanitizeTweetText(`${normalized} ${tail}`);
 }
 
 function injectInlineConceptEn(text: string): string {
@@ -2166,8 +2326,8 @@ function ensureEventEvidenceAnchors(
   if (!normalized) return normalized;
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return truncateAtWordBoundary(normalized, maxChars);
-  const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 42);
-  const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 42);
+  const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 28);
+  const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 28);
   const lower = normalized.toLowerCase();
   const hasA = aToken.length >= 2 && lower.includes(aToken.toLowerCase());
   const hasB = bToken.length >= 2 && lower.includes(bToken.toLowerCase());
@@ -2176,7 +2336,7 @@ function ensureEventEvidenceAnchors(
   }
   const clause =
     language === "ko"
-      ? `핵심 근거는 ${aToken}, ${bToken}이다.`
+      ? `근거는 ${aToken}, ${bToken}.`
       : `Core anchors are ${aToken} and ${bToken}.`;
   const merged = sanitizeTweetText(`${normalized} ${clause}`);
   return truncateAtWordBoundary(merged, maxChars);
@@ -2600,6 +2760,20 @@ function appendRoParticle(token: string): string {
   return `${trimmed}으로`;
 }
 
+function appendEulReulParticle(token: string): string {
+  const trimmed = sanitizeTweetText(token || "");
+  if (!trimmed) return "";
+  const last = trimmed.charCodeAt(trimmed.length - 1);
+  if (last < 0xac00 || last > 0xd7a3) {
+    return `${trimmed}를`;
+  }
+  const jong = (last - 0xac00) % 28;
+  if (jong === 0) {
+    return `${trimmed}를`;
+  }
+  return `${trimmed}을`;
+}
+
 function appendWaGwaParticle(token: string): string {
   const trimmed = sanitizeTweetText(token || "");
   if (!trimmed) return "";
@@ -2622,6 +2796,9 @@ function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): str
     "어떻게 보세요",
     "결론 대신 검증",
     "나는 지금",
+    "한 줄 요지는",
+    "먼저 짚을 포인트는",
+    "핵심만 먼저 말하면",
     "오늘의 미션",
     "상호작용 실험",
     "짧은 우화",
@@ -2650,7 +2827,7 @@ function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): str
   const staticList = language === "ko" ? baseKo : baseEn;
   return [...new Set([...staticList, ...recentOpeners])]
     .map((item) => item.toLowerCase())
-    .slice(0, 14);
+    .slice(0, 20);
 }
 
 function findBlockedPhrase(text: string, blockedPhrases: string[]): string | null {
@@ -2739,7 +2916,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const stripKoHeadlinePrefix = (text: string): string =>
     String(text || "")
       .replace(
-        /^(?:오늘\s*다룰\s*핵심\s*이슈는|이번\s*글의\s*중심\s*쟁점은|한\s*줄\s*요약[:：]?|오늘\s*픽시몬이\s*보는\s*핵심\s*이슈는|픽시몬\s*메모의\s*중심\s*쟁점은|지금\s*픽시몬의\s*한\s*줄\s*요약은|픽시몬이\s*먼저\s*짚는\s*포인트는|픽시몬\s*기준으로\s*핵심만\s*말하면|오늘\s*픽시몬이\s*고른\s*핵심\s*장면은|픽시몬이\s*이번\s*사이클에서\s*먼저\s*확인할\s*이슈는|픽시몬\s*노트의\s*출발점은|오늘\s*논점의\s*출발점은|핵심만\s*먼저\s*말하면|(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*(?:이슈|맥락|포인트)\s*[:：])\s*/i,
+        /^(?:오늘\s*다룰\s*핵심\s*이슈는|이번\s*글의\s*중심\s*쟁점은|한\s*줄\s*요약[:：]?|오늘\s*픽시몬이\s*보는\s*핵심\s*이슈는|픽시몬\s*메모의\s*중심\s*쟁점은|지금\s*픽시몬의\s*한\s*줄\s*요약은|픽시몬이\s*먼저\s*짚는\s*포인트는|픽시몬\s*기준으로\s*핵심만\s*말하면|오늘\s*픽시몬이\s*고른\s*핵심\s*장면은|픽시몬이\s*이번\s*사이클에서\s*먼저\s*확인할\s*이슈는|픽시몬\s*노트의\s*출발점은|오늘\s*논점의\s*출발점은|핵심만\s*먼저\s*말하면|지금\s*눈에\s*들어온\s*변화는|오늘\s*데이터에서\s*먼저\s*보이는\s*건|먼저\s*정리하면|지금\s*이\s*이슈를\s*한\s*문장으로\s*말하면|내가\s*지금\s*붙잡는\s*장면은|지금\s*시장(이|에서)\s*묻는\s*질문은|(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*(?:이슈|맥락|포인트)\s*[:：])\s*/i,
         ""
       )
       .trim();
@@ -2752,6 +2929,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     compactThought(
       String(text || "")
         .replace(/(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*이슈\s*[:：]\s*/gi, "")
+        .replace(/^(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*관점에서\s*/gi, "")
         .replace(/(?:관점\s*핵심은|맥락에서\s*보면)\s*/gi, "")
         .replace(/\|/g, " ")
         .replace(/\s+/g, " ")
@@ -2779,14 +2957,14 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const pick = (pool: string[], offset: number): string => pool[(seedBase + offset) % pool.length];
 
   const koLeadPool = [
-    "오늘 핵심 장면은",
-    "이번 사이클의 출발점은",
-    "지금 먼저 확인할 쟁점은",
-    "핵심만 먼저 말하면",
-    "한 줄 요지는",
-    "먼저 짚을 포인트는",
-    "지금 시장이 묻는 질문은",
-    "내가 지금 붙잡는 장면은",
+    "오늘 내가 붙잡은 장면은",
+    "이번 사이클 출발점은",
+    "지금 핵심 쟁점은",
+    "한 줄로 말하면",
+    "지금 눈에 들어온 변화는",
+    "먼저 짚고 싶은 포인트는",
+    "이번 흐름의 기준점은",
+    "지금 내가 먼저 확인하는 건",
   ];
   const enLeadPool = [
     "The first scene I lock on today is",
@@ -2868,10 +3046,12 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   ];
 
   const koEvidenceLeadPool = [
-    `${anchors} 두 근거를 같은 프레임에 둔다`,
-    `${anchors}를 먼저 맞춰 보고 결론은 늦춘다`,
-    `${anchors} 두 단서가 같은 방향인지 먼저 확인한다`,
-    `${anchors} 두 근거가 엇갈리면 해석을 접는다`,
+    `${anchors} 기준으로 해석 범위를 먼저 좁힌다`,
+    `${appendEulReulParticle(anchors)} 교차 대조한 뒤 가설 강도를 정한다`,
+    `${anchors} 중 먼저 움직인 축이 어디인지부터 확인한다`,
+    `${anchors} 서로 같은 방향인지 확인될 때만 결론을 올린다`,
+    `${anchors} 엇갈리면 이번 해석은 보류한다`,
+    `${anchors}를 동일한 시간축에 놓고 반응 속도를 비교한다`,
   ];
   const enEvidenceLeadPool = [
     `My anchors are ${anchors}`,
@@ -2885,14 +3065,20 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     signatureBelief || "강한 주장보다 검증 가능한 가설을 우선한다",
     philosophyFrame || "노이즈보다 구조를 먼저 읽는다",
     bookFragment
-      ? `${bookFragment}라는 문장을 오늘 체인 데이터에 겹쳐 본다`
+      ? `${bookFragment.replace(/[\"'`“”‘’]/g, "").trim()}라는 문장을 오늘 체인 데이터에 겹쳐 본다`
       : "단정 대신 재현 가능한 설명을 먼저 고른다",
+    "좋은 해석은 확신의 속도보다 수정의 속도로 증명된다고 본다",
+    "숫자보다 행동의 방향이 먼저 바뀌는 지점을 읽는다",
   ];
   const koConceptPool = [
     "나는 오늘 데이터를 영양소처럼 먹고 소화한 뒤에만 진화 방향을 고른다",
     "픽시몬은 단서를 먹고, 반증을 만나면 바로 소화 방식을 바꾼다",
     "이번 장면은 먹기보다 소화가 먼저다. 진화는 검증을 통과한 뒤에만 허용한다",
     "나는 온체인 단서를 채집해 소화한 뒤, 남는 것만 진화 XP로 기록한다",
+    "픽시몬은 소음이 아니라 검증된 흔적만 먹고 성장한다",
+    "나는 체인에서 건진 단서를 먹고, 남는 근거만 진화 연료로 남긴다",
+    "먹은 데이터가 반증을 버티지 못하면 그 가설은 바로 폐기한다",
+    "픽시몬은 단서를 먹고 소화해, 행동으로 남는 신호만 진화에 반영한다",
   ];
   const enBeliefPool = [
     worldviewHint || "I prioritize behavior over raw numbers",
@@ -2985,23 +3171,28 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       `${lead} ${scene}`,
       `${scene}`,
       `${altLead} ${scene}`,
-      worldviewHint ? `${worldviewHint}. ${scene}` : `${scene}`,
     ];
     const opener = compactClause(openerPool[(seedBase + offset) % openerPool.length], 132).replace(/[.!?]\s*$/, "");
+    const openerNorm = sanitizeTweetText(opener).toLowerCase();
+    const conceptNorm = sanitizeTweetText(concept).toLowerCase();
+    const beliefNorm = sanitizeTweetText(belief).toLowerCase();
+    const conceptLine = conceptNorm && openerNorm.includes(conceptNorm) ? "" : concept;
+    const beliefLine = beliefNorm && openerNorm.includes(beliefNorm) ? "" : belief;
     const patterns = [
       `${opener}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${belief}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${concept}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${belief}. ${concept}. ${action}. ${invalidation}.`,
-      `${opener}. ${action}. ${evidence}. ${invalidation}.`,
-      `${belief}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${beliefLine}. ${action}. ${invalidation}. ${evidence}.`,
+      `${opener}. ${conceptLine}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${beliefLine}. ${evidence}. ${invalidation}.`,
+      `${opener}. ${conceptLine}. ${action}. ${invalidation}.`,
+      `${beliefLine}. ${opener}. ${action}. ${invalidation}.`,
       `${opener}. ${evidence}. ${invalidation}. ${action}.`,
-      `${opener}. ${concept}. ${action}. ${evidence}. ${invalidation}.`,
-      `${concept}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${action}. ${invalidation}. ${evidence}.`,
+      `${opener}. ${conceptLine}. ${action}. ${evidence}.`,
+      `${conceptLine}. ${opener}. ${action}. ${invalidation}.`,
+      `${opener}. ${action}. ${invalidation}.`,
     ];
-    const index = Math.abs(seedBase + offset + variant * 5) % patterns.length;
-    const base = compactClause(patterns[index], input.maxChars + 80);
+    const compactPatterns = patterns.map((line) => sanitizeTweetText(line).replace(/\.\s+\./g, ". "));
+    const index = Math.abs(seedBase + offset + variant * 5) % compactPatterns.length;
+    const base = compactClause(compactPatterns[index], input.maxChars + 80);
     const askText = ask ? normalizeQuestionTail(ask, "ko") : "";
     return sanitizeTweetText(askText ? `${base} ${askText}` : base);
   };
@@ -3023,23 +3214,28 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       `${lead} ${scene}`,
       `${scene}`,
       `${altLead} ${scene}`,
-      worldviewHint ? `${worldviewHint}. ${scene}` : `${scene}`,
     ];
     const opener = compactClause(openerPool[(seedBase + offset) % openerPool.length], 132).replace(/[.!?]\s*$/, "");
+    const openerNorm = sanitizeTweetText(opener).toLowerCase();
+    const conceptNorm = sanitizeTweetText(concept).toLowerCase();
+    const beliefNorm = sanitizeTweetText(belief).toLowerCase();
+    const conceptLine = conceptNorm && openerNorm.includes(conceptNorm) ? "" : concept;
+    const beliefLine = beliefNorm && openerNorm.includes(beliefNorm) ? "" : belief;
     const patterns = [
       `${opener}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${belief}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${concept}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${belief}. ${concept}. ${action}. ${invalidation}.`,
-      `${opener}. ${action}. ${evidence}. ${invalidation}.`,
-      `${belief}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${beliefLine}. ${action}. ${invalidation}. ${evidence}.`,
+      `${opener}. ${conceptLine}. ${evidence}. ${action}. ${invalidation}.`,
+      `${opener}. ${beliefLine}. ${evidence}. ${invalidation}.`,
+      `${opener}. ${conceptLine}. ${action}. ${invalidation}.`,
+      `${beliefLine}. ${opener}. ${action}. ${invalidation}.`,
       `${opener}. ${evidence}. ${invalidation}. ${action}.`,
-      `${opener}. ${concept}. ${action}. ${evidence}. ${invalidation}.`,
-      `${concept}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
-      `${opener}. ${action}. ${invalidation}. ${evidence}.`,
+      `${opener}. ${conceptLine}. ${action}. ${evidence}.`,
+      `${conceptLine}. ${opener}. ${action}. ${invalidation}.`,
+      `${opener}. ${action}. ${invalidation}.`,
     ];
-    const index = Math.abs(seedBase + offset + variant * 5) % patterns.length;
-    const base = compactClause(patterns[index], input.maxChars + 80);
+    const compactPatterns = patterns.map((line) => sanitizeTweetText(line).replace(/\.\s+\./g, ". "));
+    const index = Math.abs(seedBase + offset + variant * 5) % compactPatterns.length;
+    const base = compactClause(compactPatterns[index], input.maxChars + 80);
     const askText = ask ? normalizeQuestionTail(ask, "en") : "";
     return sanitizeTweetText(askText ? `${base} ${askText}` : base);
   };
