@@ -1871,6 +1871,7 @@ Rules:
 
     if (TEST_NO_EXTERNAL_CALLS && lastFallbackTarget) {
       const emergencyQuote = buildEmergencyLocalQuoteComment({
+        targetText: lastFallbackTarget.text,
         lane: lastFallbackTarget.lane,
         anchors: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
         recentReflection: memory.getLatestDigestReflectionMemo()?.text,
@@ -1977,6 +1978,7 @@ function buildLocalQuoteComment(params: {
 }
 
 function buildEmergencyLocalQuoteComment(params: {
+  targetText?: string;
   lane: TrendLane;
   anchors: string[];
   recentReflection?: string;
@@ -1986,18 +1988,21 @@ function buildEmergencyLocalQuoteComment(params: {
   const a = sanitizeTweetText(params.anchors[0] || "핵심 단서").slice(0, 28);
   const b = sanitizeTweetText(params.anchors[1] || "추가 단서").slice(0, 28);
   const memo = sanitizeTweetText(params.recentReflection || "").slice(0, 42);
+  const scene = sanitizeTweetText(params.targetText || "").slice(0, 72).replace(/\.$/, "");
   if (params.language === "ko") {
     return finalizeNarrativeSurface(
       memo
-        ? `${memo}. 그래도 ${a}와 ${b}의 순서가 어긋나는지만 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`
-        : `${a}와 ${b}의 순서가 어긋나는지만 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`,
+        ? `${scene || memo}. 그래도 이 장면에선 ${a}와 ${b}의 순서가 어긋나는지부터 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`
+        : `${scene || `${a}와 ${b}의 순서`}. 이 장면에선 ${a}와 ${b}가 어긋나는지부터 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`,
       "ko",
       params.maxChars,
       "quote"
     );
   }
   return finalizeNarrativeSurface(
-    `I would first check whether ${a} and ${b} still point the same way. If they drift apart, I drop this read.`,
+    scene
+      ? `${scene}. I would first check whether ${a} and ${b} still point the same way. If they drift apart, I drop this read.`
+      : `I would first check whether ${a} and ${b} still point the same way. If they drift apart, I drop this read.`,
     "en",
     params.maxChars,
     "quote"
