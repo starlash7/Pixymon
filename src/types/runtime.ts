@@ -44,6 +44,9 @@ export interface AnthropicCostRuntimeSettings {
   dailyRequestLimit: number;
   degradeAtUtilization: number;
   localOnlyAtUtilization: number;
+  promptCachingEnabled: boolean;
+  cacheWriteMultiplier: number;
+  cacheReadMultiplier: number;
   primaryInputCostPerMillionUsd: number;
   primaryOutputCostPerMillionUsd: number;
   researchInputCostPerMillionUsd: number;

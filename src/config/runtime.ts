@@ -43,6 +43,9 @@ const DEFAULT_ANTHROPIC_DAILY_MAX_USD = 0.4;
 const DEFAULT_ANTHROPIC_DAILY_REQUEST_LIMIT = 40;
 const DEFAULT_ANTHROPIC_DEGRADE_AT_UTILIZATION = 0.7;
 const DEFAULT_ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION = 0.85;
+const DEFAULT_ANTHROPIC_PROMPT_CACHING_ENABLED = true;
+const DEFAULT_ANTHROPIC_CACHE_WRITE_MULTIPLIER = 1.25;
+const DEFAULT_ANTHROPIC_CACHE_READ_MULTIPLIER = 0.1;
 const DEFAULT_ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD = 3;
 const DEFAULT_ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD = 15;
 const DEFAULT_ANTHROPIC_RESEARCH_INPUT_COST_PER_MILLION_USD = 0.8;
@@ -117,6 +120,9 @@ export const DEFAULT_ANTHROPIC_COST_SETTINGS: AnthropicCostRuntimeSettings = {
   dailyRequestLimit: DEFAULT_ANTHROPIC_DAILY_REQUEST_LIMIT,
   degradeAtUtilization: DEFAULT_ANTHROPIC_DEGRADE_AT_UTILIZATION,
   localOnlyAtUtilization: DEFAULT_ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION,
+  promptCachingEnabled: DEFAULT_ANTHROPIC_PROMPT_CACHING_ENABLED,
+  cacheWriteMultiplier: DEFAULT_ANTHROPIC_CACHE_WRITE_MULTIPLIER,
+  cacheReadMultiplier: DEFAULT_ANTHROPIC_CACHE_READ_MULTIPLIER,
   primaryInputCostPerMillionUsd: DEFAULT_ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD,
   primaryOutputCostPerMillionUsd: DEFAULT_ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD,
   researchInputCostPerMillionUsd: DEFAULT_ANTHROPIC_RESEARCH_INPUT_COST_PER_MILLION_USD,
@@ -434,6 +440,22 @@ export function loadRuntimeConfig(): RuntimeConfig {
     ),
     degradeAtUtilization: anthropicDegradeAtUtilization,
     localOnlyAtUtilization: anthropicLocalOnlyAtUtilization,
+    promptCachingEnabled: parseBoolean(
+      process.env.ANTHROPIC_PROMPT_CACHING_ENABLED,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.promptCachingEnabled
+    ),
+    cacheWriteMultiplier: parseFloatInRange(
+      process.env.ANTHROPIC_CACHE_WRITE_MULTIPLIER,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.cacheWriteMultiplier,
+      1,
+      4
+    ),
+    cacheReadMultiplier: parseFloatInRange(
+      process.env.ANTHROPIC_CACHE_READ_MULTIPLIER,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.cacheReadMultiplier,
+      0.01,
+      1
+    ),
     primaryInputCostPerMillionUsd: parseFloatInRange(
       process.env.ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD,
       DEFAULT_ANTHROPIC_COST_SETTINGS.primaryInputCostPerMillionUsd,

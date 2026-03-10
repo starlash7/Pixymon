@@ -64,6 +64,9 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       ANTHROPIC_DAILY_REQUEST_LIMIT: "28",
       ANTHROPIC_DEGRADE_AT_UTILIZATION: "0.72",
       ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION: "0.88",
+      ANTHROPIC_PROMPT_CACHING_ENABLED: "false",
+      ANTHROPIC_CACHE_WRITE_MULTIPLIER: "1.4",
+      ANTHROPIC_CACHE_READ_MULTIPLIER: "0.15",
       ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD: "3.2",
       ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD: "16",
       ANTHROPIC_RESEARCH_INPUT_COST_PER_MILLION_USD: "0.9",
@@ -115,6 +118,9 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.anthropicCost.dailyRequestLimit, 28);
       assert.equal(config.anthropicCost.degradeAtUtilization, 0.72);
       assert.equal(config.anthropicCost.localOnlyAtUtilization, 0.88);
+      assert.equal(config.anthropicCost.promptCachingEnabled, false);
+      assert.equal(config.anthropicCost.cacheWriteMultiplier, 1.4);
+      assert.equal(config.anthropicCost.cacheReadMultiplier, 0.15);
       assert.equal(config.anthropicCost.primaryInputCostPerMillionUsd, 3.2);
       assert.equal(config.anthropicCost.primaryOutputCostPerMillionUsd, 16);
       assert.equal(config.anthropicCost.researchInputCostPerMillionUsd, 0.9);
@@ -159,6 +165,9 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       ANTHROPIC_DAILY_REQUEST_LIMIT: "invalid",
       ANTHROPIC_DEGRADE_AT_UTILIZATION: "invalid",
       ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION: "invalid",
+      ANTHROPIC_PROMPT_CACHING_ENABLED: "invalid",
+      ANTHROPIC_CACHE_WRITE_MULTIPLIER: "invalid",
+      ANTHROPIC_CACHE_READ_MULTIPLIER: "invalid",
       ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD: "invalid",
       ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD: "invalid",
       ANTHROPIC_RESEARCH_INPUT_COST_PER_MILLION_USD: "invalid",
@@ -202,6 +211,9 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.anthropicCost.dailyRequestLimit, 40);
       assert.equal(config.anthropicCost.degradeAtUtilization, 0.7);
       assert.equal(config.anthropicCost.localOnlyAtUtilization, 0.85);
+      assert.equal(config.anthropicCost.promptCachingEnabled, true);
+      assert.equal(config.anthropicCost.cacheWriteMultiplier, 1.25);
+      assert.equal(config.anthropicCost.cacheReadMultiplier, 0.1);
       assert.equal(config.anthropicCost.primaryInputCostPerMillionUsd, 3);
       assert.equal(config.anthropicCost.primaryOutputCostPerMillionUsd, 15);
       assert.equal(config.anthropicCost.researchInputCostPerMillionUsd, 0.8);

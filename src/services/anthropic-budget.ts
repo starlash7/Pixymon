@@ -13,6 +13,8 @@ interface AnthropicUsageBucket {
   requestCount: number;
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
   estimatedTotalCostUsd: number;
   byKind: Record<string, number>;
   updatedAt: string;
@@ -28,6 +30,8 @@ export interface AnthropicUsageSnapshot {
   requestCount: number;
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
   estimatedTotalCostUsd: number;
   byKind: Record<string, number>;
 }
@@ -302,23 +306,37 @@ export class AnthropicBudgetService {
     model: string;
     inputTokens: number;
     outputTokens: number;
+    cacheCreationInputTokens?: number;
+    cacheReadInputTokens?: number;
     estimatedCostUsd?: number;
     pricing: AnthropicCostRuntimeSettings;
   }): AnthropicUsageSnapshot {
     const timezone = normalizeTimezone(input.timezone);
     const bucket = this.ensureBucket(getDateKey(this.now(), timezone));
     const modelPricing = resolveAnthropicModelPricing(input.model, input.pricing);
+    const totalInputTokens = Math.max(0, Math.floor(input.inputTokens));
+    const cacheCreationInputTokens = Math.max(0, Math.floor(input.cacheCreationInputTokens || 0));
+    const cacheReadInputTokens = Math.max(0, Math.floor(input.cacheReadInputTokens || 0));
+    const directInputTokens = Math.max(0, totalInputTokens - cacheCreationInputTokens - cacheReadInputTokens);
     const estimatedCostUsd =
       typeof input.estimatedCostUsd === "number" && Number.isFinite(input.estimatedCostUsd)
         ? Math.max(0, input.estimatedCostUsd)
         : roundUsd(
-            (Math.max(0, input.inputTokens) / 1_000_000) * modelPricing.inputCostPerMillionUsd +
+            (directInputTokens / 1_000_000) * modelPricing.inputCostPerMillionUsd +
+            (cacheCreationInputTokens / 1_000_000) *
+              modelPricing.inputCostPerMillionUsd *
+              input.pricing.cacheWriteMultiplier +
+            (cacheReadInputTokens / 1_000_000) *
+              modelPricing.inputCostPerMillionUsd *
+              input.pricing.cacheReadMultiplier +
             (Math.max(0, input.outputTokens) / 1_000_000) * modelPricing.outputCostPerMillionUsd
           );
     const kind = normalizeKind(input.kind);
     bucket.requestCount += 1;
-    bucket.estimatedInputTokens += Math.max(0, Math.floor(input.inputTokens));
+    bucket.estimatedInputTokens += totalInputTokens;
     bucket.estimatedOutputTokens += Math.max(0, Math.floor(input.outputTokens));
+    bucket.cacheCreationInputTokens += cacheCreationInputTokens;
+    bucket.cacheReadInputTokens += cacheReadInputTokens;
     bucket.estimatedTotalCostUsd = roundUsd(bucket.estimatedTotalCostUsd + estimatedCostUsd);
     bucket.byKind[kind] = (bucket.byKind[kind] || 0) + 1;
     bucket.updatedAt = this.now().toISOString();
@@ -330,6 +348,8 @@ export class AnthropicBudgetService {
       requestCount: bucket.requestCount,
       estimatedInputTokens: bucket.estimatedInputTokens,
       estimatedOutputTokens: bucket.estimatedOutputTokens,
+      cacheCreationInputTokens: bucket.cacheCreationInputTokens,
+      cacheReadInputTokens: bucket.cacheReadInputTokens,
       estimatedTotalCostUsd: bucket.estimatedTotalCostUsd,
       byKind: { ...bucket.byKind },
     };
@@ -342,6 +362,8 @@ export class AnthropicBudgetService {
       requestCount: bucket.requestCount,
       estimatedInputTokens: bucket.estimatedInputTokens,
       estimatedOutputTokens: bucket.estimatedOutputTokens,
+      cacheCreationInputTokens: bucket.cacheCreationInputTokens,
+      cacheReadInputTokens: bucket.cacheReadInputTokens,
       estimatedTotalCostUsd: bucket.estimatedTotalCostUsd,
       byKind: { ...bucket.byKind },
     };
@@ -359,6 +381,8 @@ export class AnthropicBudgetService {
         requestCount: 0,
         estimatedInputTokens: 0,
         estimatedOutputTokens: 0,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
         estimatedTotalCostUsd: 0,
         byKind: {},
         updatedAt: this.now().toISOString(),
@@ -413,6 +437,8 @@ export class AnthropicBudgetService {
         requestCount: clampInt(row.requestCount, 0, 1_000_000, 0),
         estimatedInputTokens: clampInt(row.estimatedInputTokens, 0, 1_000_000_000, 0),
         estimatedOutputTokens: clampInt(row.estimatedOutputTokens, 0, 1_000_000_000, 0),
+        cacheCreationInputTokens: clampInt(row.cacheCreationInputTokens, 0, 1_000_000_000, 0),
+        cacheReadInputTokens: clampInt(row.cacheReadInputTokens, 0, 1_000_000_000, 0),
         estimatedTotalCostUsd: clampNumber(row.estimatedTotalCostUsd, 0, 100_000, 0),
         byKind: normalizeByKind(row.byKind),
         updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),

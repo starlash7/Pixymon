@@ -15,6 +15,7 @@ export const CLAUDE_RESEARCH_MODEL = process.env.ANTHROPIC_RESEARCH_MODEL || "cl
 export type ReplyToneMode = "signal" | "personal";
 export const REPLY_TONE_MODE = resolveReplyToneMode(process.env.REPLY_TONE_MODE);
 const TOOL_CALL_STRICT_VALIDATE = String(process.env.TOOL_CALL_STRICT_VALIDATE || "true").trim().toLowerCase() === "true";
+type PromptCachingClaudeMessageCreateParams = Parameters<Anthropic["beta"]["promptCaching"]["messages"]["create"]>[0];
 
 function resolveReplyToneMode(raw?: string): ReplyToneMode {
   if (typeof raw !== "string") return "signal";
@@ -125,6 +126,8 @@ export interface ClaudeMessageResponse {
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
   };
 }
 
@@ -132,6 +135,57 @@ export interface BudgetedClaudeMessageResult {
   message: ClaudeMessageResponse;
   model: string;
   mode: "full" | "degrade";
+}
+
+export function resolveClaudeModelForKind(
+  kind: string,
+  requestedModel: string,
+  allowResearchModel: boolean = true
+): string {
+  const normalizedKind = String(kind || "").trim().toLowerCase();
+  const baseModel = String(requestedModel || CLAUDE_MODEL);
+  if (!allowResearchModel) {
+    return baseModel;
+  }
+  if (
+    normalizedKind.startsWith("reply:") ||
+    normalizedKind.startsWith("rewrite:") ||
+    normalizedKind === "post:quote-generate"
+  ) {
+    return CLAUDE_RESEARCH_MODEL;
+  }
+  return baseModel;
+}
+
+export function shouldUsePromptCaching(
+  params: ClaudeMessageCreateParams,
+  promptCachingEnabled: boolean
+): boolean {
+  if (!promptCachingEnabled) return false;
+  if (params.stream === true) return false;
+  if (!params.system) return false;
+  if (typeof params.system === "string") {
+    return params.system.trim().length > 0;
+  }
+  return Array.isArray(params.system) && params.system.length > 0;
+}
+
+export function buildPromptCachingParams(
+  params: ClaudeMessageCreateParams
+): PromptCachingClaudeMessageCreateParams {
+  const system = buildPromptCachingSystemBlocks(params.system);
+  const messages = Array.isArray(params.messages)
+    ? params.messages.map((message) => ({
+        ...message,
+        content: normalizePromptCachingContentBlocks(message.content),
+      }))
+    : [];
+
+  return {
+    ...(params as unknown as Record<string, unknown>),
+    system,
+    messages,
+  } as unknown as PromptCachingClaudeMessageCreateParams;
 }
 
 export function extractTextFromClaude(content: ClaudeTextLikeBlock[]): string {
@@ -189,8 +243,11 @@ export async function requestBudgetedClaudeMessage(
   const timezone = typeof options.timezone === "string" && options.timezone.trim().length > 0
     ? options.timezone.trim()
     : runtimeConfig.dailyTimezone;
+  const allowResearchModel = options.allowResearchModel !== false;
+  const requestedModel = String(params.model || CLAUDE_MODEL);
+  const routedModel = resolveClaudeModelForKind(options.kind, requestedModel, allowResearchModel);
   const estimatedPrimaryCost = estimateAnthropicMessageCost({
-    model: String(params.model || CLAUDE_MODEL),
+    model: routedModel,
     system: typeof params.system === "string" ? params.system : "",
     messages: Array.isArray(params.messages) ? (params.messages as Array<{ content?: unknown }>) : [],
     maxTokens: params.max_tokens,
@@ -214,11 +271,10 @@ export async function requestBudgetedClaudeMessage(
     return null;
   }
 
-  const allowResearchModel = options.allowResearchModel !== false;
   const selectedModel =
-    budgetMode.mode === "degrade" && allowResearchModel && String(params.model || "") === CLAUDE_MODEL
+    budgetMode.mode === "degrade" && allowResearchModel && routedModel === CLAUDE_MODEL
       ? CLAUDE_RESEARCH_MODEL
-      : String(params.model || CLAUDE_MODEL);
+      : routedModel;
 
   const estimatedCost = estimateAnthropicMessageCost({
     model: selectedModel,
@@ -227,11 +283,16 @@ export async function requestBudgetedClaudeMessage(
     maxTokens: params.max_tokens,
     pricing: runtimeConfig.anthropicCost,
   });
-
-  const message = await claude.messages.create({
+  const usePromptCaching = shouldUsePromptCaching(params, runtimeConfig.anthropicCost.promptCachingEnabled);
+  const requestParams = {
     ...params,
     model: selectedModel,
-  }) as ClaudeMessageResponse;
+  };
+  const message = usePromptCaching
+    ? await claude.beta.promptCaching.messages.create(
+        buildPromptCachingParams(requestParams)
+      ) as ClaudeMessageResponse
+    : await claude.messages.create(requestParams) as ClaudeMessageResponse;
   const usage = message.usage;
   const recorded = anthropicBudget.recordUsage({
     timezone,
@@ -239,11 +300,13 @@ export async function requestBudgetedClaudeMessage(
     model: selectedModel,
     inputTokens: usage?.input_tokens ?? estimatedCost.inputTokens,
     outputTokens: usage?.output_tokens ?? estimatedCost.outputTokens,
+    cacheCreationInputTokens: usage?.cache_creation_input_tokens ?? 0,
+    cacheReadInputTokens: usage?.cache_read_input_tokens ?? 0,
     pricing: runtimeConfig.anthropicCost,
   });
 
   console.log(
-    `[LLM-BUDGET] ${options.kind} mode=${budgetMode.mode} model=${selectedModel} req=${recorded.requestCount}/${runtimeConfig.anthropicCost.dailyRequestLimit} anthropic=$${recorded.estimatedTotalCostUsd.toFixed(3)}/$${runtimeConfig.anthropicCost.dailyMaxUsd.toFixed(2)} total~$${(recorded.estimatedTotalCostUsd + todayXCost).toFixed(3)}/$${runtimeConfig.totalCost.dailyMaxUsd.toFixed(2)}`
+    `[LLM-BUDGET] ${options.kind} mode=${budgetMode.mode} model=${selectedModel} cache=${usePromptCaching ? "on" : "off"} req=${recorded.requestCount}/${runtimeConfig.anthropicCost.dailyRequestLimit} anthropic=$${recorded.estimatedTotalCostUsd.toFixed(3)}/$${runtimeConfig.anthropicCost.dailyMaxUsd.toFixed(2)} total~$${(recorded.estimatedTotalCostUsd + todayXCost).toFixed(3)}/$${runtimeConfig.totalCost.dailyMaxUsd.toFixed(2)}`
   );
 
   return {
@@ -263,4 +326,62 @@ function disableAnthropicDebugLogs(): void {
     .map((item) => item.trim())
     .filter((item) => item.length > 0 && !/anthropic/i.test(item));
   process.env.DEBUG = filtered.join(",");
+}
+
+function buildPromptCachingSystemBlocks(system: ClaudeMessageCreateParams["system"]): Array<Record<string, unknown>> | undefined {
+  if (typeof system === "string") {
+    const trimmed = system.trim();
+    if (!trimmed) return undefined;
+    return [
+      {
+        type: "text",
+        text: trimmed,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+  }
+  if (!Array.isArray(system) || system.length === 0) {
+    return undefined;
+  }
+  const blocks = system.map((block) => normalizePromptCachingBlock(block));
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    if (blocks[index].type === "text" && typeof blocks[index].text === "string") {
+      blocks[index] = {
+        ...blocks[index],
+        cache_control: { type: "ephemeral" },
+      };
+      break;
+    }
+  }
+  return blocks;
+}
+
+function normalizePromptCachingContentBlocks(content: unknown): Array<Record<string, unknown>> {
+  if (typeof content === "string") {
+    return [{ type: "text", text: content }];
+  }
+  if (Array.isArray(content)) {
+    return content.map((block) => normalizePromptCachingBlock(block));
+  }
+  if (content && typeof content === "object") {
+    return [normalizePromptCachingBlock(content)];
+  }
+  return [{ type: "text", text: String(content ?? "") }];
+}
+
+function normalizePromptCachingBlock(block: unknown): Record<string, unknown> {
+  if (typeof block === "string") {
+    return { type: "text", text: block };
+  }
+  if (!block || typeof block !== "object") {
+    return { type: "text", text: String(block ?? "") };
+  }
+  const row = block as Record<string, unknown>;
+  if (row.type === "text") {
+    return {
+      ...row,
+      text: typeof row.text === "string" ? row.text : String(row.text ?? ""),
+    };
+  }
+  return { ...row };
 }

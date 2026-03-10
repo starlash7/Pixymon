@@ -163,3 +163,37 @@ test("anthropic budget tracks requests and blocks when daily usd cap is exceeded
     ctx.cleanup();
   }
 });
+
+test("anthropic budget records prompt caching read and write tokens with discounted pricing", () => {
+  const ctx = createServiceWithClock("2026-03-10T00:00:00.000Z");
+  try {
+    const usage = ctx.service.recordUsage({
+      timezone: "UTC",
+      kind: "reply:engagement-generate",
+      model: "claude-3-5-haiku-latest",
+      inputTokens: 1000,
+      outputTokens: 200,
+      cacheCreationInputTokens: 300,
+      cacheReadInputTokens: 500,
+      pricing: DEFAULT_ANTHROPIC_COST_SETTINGS,
+    });
+
+    assert.equal(usage.requestCount, 1);
+    assert.equal(usage.estimatedInputTokens, 1000);
+    assert.equal(usage.cacheCreationInputTokens, 300);
+    assert.equal(usage.cacheReadInputTokens, 500);
+
+    const expectedCost =
+      (200 / 1_000_000) * DEFAULT_ANTHROPIC_COST_SETTINGS.researchInputCostPerMillionUsd +
+      (300 / 1_000_000) *
+        DEFAULT_ANTHROPIC_COST_SETTINGS.researchInputCostPerMillionUsd *
+        DEFAULT_ANTHROPIC_COST_SETTINGS.cacheWriteMultiplier +
+      (500 / 1_000_000) *
+        DEFAULT_ANTHROPIC_COST_SETTINGS.researchInputCostPerMillionUsd *
+        DEFAULT_ANTHROPIC_COST_SETTINGS.cacheReadMultiplier +
+      (200 / 1_000_000) * DEFAULT_ANTHROPIC_COST_SETTINGS.researchOutputCostPerMillionUsd;
+    assert.equal(usage.estimatedTotalCostUsd, Number(expectedCost.toFixed(3)));
+  } finally {
+    ctx.cleanup();
+  }
+});

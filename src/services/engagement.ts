@@ -1840,7 +1840,7 @@ function buildLocalQuoteTargets(trend: TrendContext): Array<{ id: string; text: 
     ...nutrientScenes,
     ...syntheticScenes,
     sanitizeTweetText(`${trend.summary} 이 흐름은 그냥 지나치기 어렵다`),
-  ].filter((item) => item.length >= 18);
+  ].filter((item) => isUsableLocalQuoteTarget(item));
   const dedup = [...new Set(raw)].slice(0, 16);
   return dedup.map((text, index) => ({ id: `local_quote_${index + 1}`, text }));
 }
@@ -1864,7 +1864,7 @@ function buildLocalQuoteComment(params: {
     const pool = [
       `그 장면은 나도 그냥 못 넘기겠다. 지금은 ${a}와 ${b}가 정말 같은 쪽을 가리키는지부터 본다.`,
       `${scene}. ${a}와 ${b} 중 뭐가 먼저 움직였는지부터 다시 짚게 된다.`,
-      `원문을 그대로 옮기기보다 ${a}와 ${b}가 어디서 어긋나는지부터 확인하는 편이 낫다.`,
+      `지금은 말을 보태기보다 ${a}와 ${b}가 어디서 어긋나는지부터 확인하는 편이 낫다.`,
       `${scene}. ${a}와 ${b}가 끝까지 같은 말을 하지 않으면 이 읽기는 바로 바꾼다.`,
       `지금은 결론보다 ${a}와 ${b}의 순서가 더 중요해 보인다. 그래서 한 번 더 되짚어 보게 된다.`,
       `${scene}. 나는 ${a}와 ${b} 중 먼저 흔들리는 쪽부터 다시 본다.`,
@@ -1879,6 +1879,15 @@ function buildLocalQuoteComment(params: {
     `I would not restate the post. I would first test the gap between ${a} and ${b}.`,
   ];
   return finalizeNarrativeSurface(pool[seed % pool.length], "en", params.maxChars, "quote");
+}
+
+function isUsableLocalQuoteTarget(text: string): boolean {
+  const normalized = sanitizeTweetText(text);
+  if (normalized.length < 18) return false;
+  if (/로컬 테스트 모드|외부 호출 없음|먹기\s*→\s*소화\s*→\s*진화|주제\s*\d+\s*:|서사 품질/i.test(normalized)) {
+    return false;
+  }
+  return true;
 }
 
 function formatEvidenceToken(label: string, value: string, maxChars: number): string {
