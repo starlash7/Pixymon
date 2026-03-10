@@ -304,6 +304,7 @@ export async function replyToMention(
       ? `\n(이 사람은 ${follower.mentionCount}번째 멘션, 친근하게)`
       : "";
     const toneGuide = getReplyToneGuide(lang);
+    const recentReflection = sanitizeTweetText(memory.getLatestDigestReflectionMemo()?.text || "").slice(0, 100);
 
     const maxChars = 160;
     const shouldEndWithQuestion = /\?$|질문|어떻게|왜|is it|what|how|why/i.test(cleanedMentionText);
@@ -331,6 +332,7 @@ ${toneGuide}
 - 단정적 투자 표현 금지
 - 마지막 문장 ${shouldEndWithQuestion ? "질문형" : "관찰형"}
 - 해시태그 X, 이모지 X${followerContext}
+- 최근 소화 메모: ${recentReflection || (isEnglish ? "none" : "없음")}
 
 멘션 내용:
 ${mention.text}`,
