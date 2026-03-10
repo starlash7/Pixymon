@@ -98,9 +98,24 @@ interface CachedTrendTweets {
   data: any[];
 }
 
+interface SharedRunContext {
+  key: string;
+  narrativeAnchors: string[];
+  evidenceTextKo: string;
+  evidenceTextEn: string;
+  sharedPromptKo: string;
+  sharedPromptEn: string;
+}
+
+interface CachedRunContext {
+  key: string;
+  data: SharedRunContext;
+}
+
 interface EngagementCycleCache {
   trendContext?: CachedTrendContext;
   trendTweets?: CachedTrendTweets;
+  runContext?: CachedRunContext;
   cacheMetrics: CycleCacheMetrics;
 }
 
@@ -218,6 +233,7 @@ export async function proactiveEngagement(
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
+    const runContext = getOrCreateRunContext(cache, trend);
 
     const candidates = await getOrSearchTrendTweets(
       twitter,
@@ -286,7 +302,7 @@ export async function proactiveEngagement(
           ? `아래 컨텍스트로 답글 1개 작성.
 
 오늘 트렌드 요약:
-${trend.summary}
+${runContext.evidenceTextKo}
 
 타겟 트윗:
 \"${text}\"
@@ -305,7 +321,7 @@ ${toneGuide}
           : `Write one concise reply using this context.
 
 Trend summary:
-${trend.summary}
+${runContext.evidenceTextEn}
 
 Target tweet:
 \"${text}\"
@@ -327,11 +343,18 @@ ${toneGuide}
           model: CLAUDE_MODEL,
           max_tokens: 220,
           system: systemPrompt,
-          messages: [{ role: "user", content: userPrompt }],
+          messages: [
+            {
+              role: "user",
+              content: lang === "ko" ? runContext.sharedPromptKo : runContext.sharedPromptEn,
+            },
+            { role: "user", content: userPrompt },
+          ],
         },
         {
           kind: "reply:engagement-generate",
           timezone,
+          cacheSharedPrefix: true,
         }
       );
       if (!llmResult) continue;
@@ -444,6 +467,7 @@ export async function postTrendUpdate(
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
+    const runContext = getOrCreateRunContext(cache, trend);
 
     const recentBriefingPosts = memory
       .getRecentTweets(140)
@@ -487,7 +511,8 @@ export async function postTrendUpdate(
     if (!eventPlan) {
       if (TEST_MODE) {
         const previewHeadline = trend.headlines[0] || "오늘은 단일 이벤트 확정이 어려운 장세";
-        const previewAnchors = buildNarrativeEvidenceText(trend, runtimeSettings.postLanguage);
+        const previewAnchors =
+          runtimeSettings.postLanguage === "ko" ? runContext.evidenceTextKo : runContext.evidenceTextEn;
         const previewCandidates = buildPreviewFallbackCandidates({
           headline: previewHeadline,
           anchors: previewAnchors,
@@ -971,7 +996,7 @@ ${eventPlan.event.headline}
 엔딩 가이드: ${narrativePlan.endingDirective}
 
 트렌드 요약:
-${trend.summary}
+${runContext.evidenceTextKo}
 
 이벤트 키워드:
 ${focusTokensLine}
@@ -1039,7 +1064,7 @@ Body directive: ${narrativePlan.bodyDirective}
 Ending directive: ${narrativePlan.endingDirective}
 
 Trend summary:
-${trend.summary}
+${runContext.evidenceTextEn}
 
 Event tokens:
 ${focusTokensLine}
@@ -1089,11 +1114,20 @@ Rules:
 - 스토리텔링은 허용하지만 수치/사실은 입력 근거에서만 사용.
 - 문장 반복, 클리셰 오프너, 포맷 복붙을 피한다.
 - 오늘은 lane과 mode를 따라 글 톤을 바꾼다.`,
-            messages: [{ role: "user", content: userPrompt }],
+            messages: [
+              {
+                role: "user",
+                content: runtimeSettings.postLanguage === "ko"
+                  ? runContext.sharedPromptKo
+                  : runContext.sharedPromptEn,
+              },
+              { role: "user", content: userPrompt },
+            ],
           },
           {
             kind: "post:trend-generate",
             timezone,
+            cacheSharedPrefix: true,
           }
         );
         if (!llmResult) {
@@ -1599,6 +1633,7 @@ export async function postTrendQuote(
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
+    const runContext = getOrCreateRunContext(cache, trend);
     const candidates = TEST_NO_EXTERNAL_CALLS
       ? buildLocalQuoteTargets(trend)
       : await getOrSearchTrendTweets(
@@ -1632,7 +1667,7 @@ export async function postTrendQuote(
       sentimentMaxRatio24h: runtimeSettings.sentimentMaxRatio24h,
       topicBlockConsecutiveTag: runtimeSettings.topicBlockConsecutiveTag,
     });
-    const narrativeAnchors = collectNarrativeAnchors(trend, 2);
+    const narrativeAnchors = runContext.narrativeAnchors.slice(0, 2);
 
     for (const target of candidates) {
       const targetId = String(target.id || "").trim();
@@ -1659,7 +1694,7 @@ export async function postTrendQuote(
 ${seed}
 
 트렌드 요약:
-${trend.summary}
+${runContext.evidenceTextKo}
 
 규칙:
 - ${runtimeSettings.postMaxChars}자 이내
@@ -1681,7 +1716,7 @@ Seed:
 ${seed}
 
 Trend summary:
-${trend.summary}
+${runContext.evidenceTextEn}
 
 Rules:
 - Max ${runtimeSettings.postMaxChars} chars
@@ -1711,11 +1746,18 @@ Rules:
             model: CLAUDE_MODEL,
             max_tokens: 280,
             system: PIXYMON_SYSTEM_PROMPT,
-            messages: [{ role: "user", content: userPrompt }],
+            messages: [
+              {
+                role: "user",
+                content: quoteLanguage === "ko" ? runContext.sharedPromptKo : runContext.sharedPromptEn,
+              },
+              { role: "user", content: userPrompt },
+            ],
           },
           {
             kind: "post:quote-generate",
             timezone,
+            cacheSharedPrefix: true,
           }
         );
         if (!llmResult) {
@@ -2725,6 +2767,33 @@ async function getOrCreateTrendContext(
   return created;
 }
 
+function getOrCreateRunContext(
+  cache: EngagementCycleCache | undefined,
+  trend: TrendContext
+): SharedRunContext {
+  const key = buildRunContextKey(trend);
+  if (cache?.runContext?.key === key) {
+    cache.cacheMetrics.runContextHits += 1;
+    return cache.runContext.data;
+  }
+  if (cache) {
+    cache.cacheMetrics.runContextMisses += 1;
+  }
+  const anchors = collectNarrativeAnchors(trend, 3);
+  const data: SharedRunContext = {
+    key,
+    narrativeAnchors: anchors,
+    evidenceTextKo: buildNarrativeEvidenceTextFromAnchors(anchors, "ko"),
+    evidenceTextEn: buildNarrativeEvidenceTextFromAnchors(anchors, "en"),
+    sharedPromptKo: buildSharedRunContextPrompt(trend, anchors, "ko"),
+    sharedPromptEn: buildSharedRunContextPrompt(trend, anchors, "en"),
+  };
+  if (cache) {
+    cache.runContext = { key, data };
+  }
+  return data;
+}
+
 async function getOrSearchTrendTweets(
   twitter: TwitterApi,
   keywords: string[],
@@ -2826,14 +2895,26 @@ function logCacheMetrics(cache?: EngagementCycleCache): void {
   if (!cache) return;
   const metrics = cache.cacheMetrics;
   const total =
+    metrics.runContextHits +
+    metrics.runContextMisses +
     metrics.trendContextHits +
     metrics.trendContextMisses +
     metrics.trendTweetsHits +
     metrics.trendTweetsMisses;
   if (total === 0) return;
   console.log(
-    `[CACHE] trendCtx ${metrics.trendContextHits}/${metrics.trendContextMisses} | trendTweets ${metrics.trendTweetsHits}/${metrics.trendTweetsMisses}`
+    `[CACHE] runCtx ${metrics.runContextHits}/${metrics.runContextMisses} | trendCtx ${metrics.trendContextHits}/${metrics.trendContextMisses} | trendTweets ${metrics.trendTweetsHits}/${metrics.trendTweetsMisses}`
   );
+}
+
+function buildRunContextKey(trend: TrendContext): string {
+  return [
+    sanitizeTweetText(trend.summary).slice(0, 120),
+    ...trend.events.slice(0, 3).map((event) => sanitizeTweetText(event.headline).slice(0, 80)),
+    ...trend.nutrients.slice(0, 3).map((item) => sanitizeTweetText(`${item.label} ${item.value}`).slice(0, 48)),
+  ]
+    .filter(Boolean)
+    .join("|");
 }
 
 function collectNarrativeAnchors(trend: TrendContext, maxItems: number = 2): string[] {
@@ -2856,12 +2937,43 @@ function buildNarrativeEvidenceText(
   language: "ko" | "en"
 ): string {
   const anchors = collectNarrativeAnchors(trend, 3);
+  return buildNarrativeEvidenceTextFromAnchors(anchors, language);
+}
+
+function buildNarrativeEvidenceTextFromAnchors(
+  anchors: string[],
+  language: "ko" | "en"
+): string {
   if (anchors.length === 0) {
     return language === "ko"
       ? "근거가 부족해 결론 대신 질문을 남긴다"
       : "Evidence is sparse, so I keep this as an open question";
   }
   return anchors.join(" | ");
+}
+
+function buildSharedRunContextPrompt(
+  trend: TrendContext,
+  anchors: string[],
+  language: "ko" | "en"
+): string {
+  const summary = sanitizeTweetText(trend.summary).slice(0, 220);
+  const topEvents = trend.events
+    .slice(0, 2)
+    .map((event) => sanitizeTweetText(event.headline))
+    .filter((item) => item.length >= 12)
+    .slice(0, 2);
+  const anchorText = buildNarrativeEvidenceTextFromAnchors(anchors, language);
+  if (language === "ko") {
+    return `공용 컨텍스트
+- 오늘 흐름: ${summary || "단일 흐름 확정 전"}
+- 먼저 붙잡는 장면: ${topEvents.join(" | ") || "핵심 장면 압축 필요"}
+- 반복 확인 단서: ${anchorText}`;
+  }
+  return `Shared context
+- Today flow: ${summary || "single flow still forming"}
+- Scenes to hold first: ${topEvents.join(" | ") || "condense the main scene first"}
+- Evidence to revisit: ${anchorText}`;
 }
 
 const TREND_TOKEN_STOP_WORDS = new Set([

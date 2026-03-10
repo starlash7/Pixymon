@@ -71,3 +71,22 @@ test("buildPromptCachingParams marks system prompt cacheable and normalizes user
   assert.equal(firstBlock?.type, "text");
   assert.equal(firstBlock?.text, "hello world");
 });
+
+test("buildPromptCachingParams can mark first shared user prefix as cacheable", () => {
+  const params = buildPromptCachingParams(
+    {
+      model: CLAUDE_MODEL,
+      max_tokens: 160,
+      system: "stable system prompt",
+      messages: [
+        { role: "user", content: "shared context block" },
+        { role: "user", content: "task-specific prompt" },
+      ],
+    },
+    { cacheSharedPrefix: true }
+  );
+
+  const sharedBlock = params.messages?.[0]?.content?.[0];
+  assert.equal(sharedBlock?.type, "text");
+  assert.equal(sharedBlock?.cache_control?.type, "ephemeral");
+});

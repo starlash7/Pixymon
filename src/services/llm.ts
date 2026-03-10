@@ -172,7 +172,8 @@ export function shouldUsePromptCaching(
 }
 
 export function buildPromptCachingParams(
-  params: ClaudeMessageCreateParams
+  params: ClaudeMessageCreateParams,
+  options: { cacheSharedPrefix?: boolean } = {}
 ): PromptCachingClaudeMessageCreateParams {
   const system = buildPromptCachingSystemBlocks(params.system);
   const messages = Array.isArray(params.messages)
@@ -181,6 +182,9 @@ export function buildPromptCachingParams(
         content: normalizePromptCachingContentBlocks(message.content),
       }))
     : [];
+  if (options.cacheSharedPrefix) {
+    markFirstUserMessageCacheable(messages);
+  }
 
   return {
     ...(params as unknown as Record<string, unknown>),
@@ -238,6 +242,7 @@ export async function requestBudgetedClaudeMessage(
     kind: string;
     timezone?: string;
     allowResearchModel?: boolean;
+    cacheSharedPrefix?: boolean;
   }
 ): Promise<BudgetedClaudeMessageResult | null> {
   const runtimeConfig = loadRuntimeConfig();
@@ -306,7 +311,9 @@ export async function requestBudgetedClaudeMessage(
   };
   const message = usePromptCaching
     ? await claude.beta.promptCaching.messages.create(
-        buildPromptCachingParams(requestParams)
+        buildPromptCachingParams(requestParams, {
+          cacheSharedPrefix: options.cacheSharedPrefix,
+        })
       ) as ClaudeMessageResponse
     : await claude.messages.create(requestParams) as ClaudeMessageResponse;
   const usage = message.usage;
@@ -400,4 +407,19 @@ function normalizePromptCachingBlock(block: unknown): Record<string, unknown> {
     };
   }
   return { ...row };
+}
+
+function markFirstUserMessageCacheable(messages: Array<{ role: string; content: Array<Record<string, unknown>> }>): void {
+  const firstUserIndex = messages.findIndex((message) => message.role === "user" && message.content.length > 0);
+  if (firstUserIndex < 0) return;
+  const blocks = messages[firstUserIndex].content;
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    if (blocks[index].type === "text" && typeof blocks[index].text === "string") {
+      blocks[index] = {
+        ...blocks[index],
+        cache_control: { type: "ephemeral" },
+      };
+      return;
+    }
+  }
 }
