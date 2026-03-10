@@ -32,4 +32,6 @@ test("recordNarrativeObservation writes ndjson and summary artifacts", async () 
   assert.equal(summary.bySurface.post, 1);
   assert.ok(summary.byLabel["hedge-positioning"] >= 1);
   assert.ok(summary.byLabel["templated-closing"] >= 1);
+  assert.ok(Array.isArray(summary.examplesByLabel["hedge-positioning"]));
+  assert.ok(summary.examplesByLabel["hedge-positioning"][0].includes("헤지 포지셔닝 변화"));
 });

@@ -30,6 +30,7 @@ interface NarrativeObservationSummary {
   total: number;
   bySurface: Record<NarrativeSurfaceKind, number>;
   byLabel: Record<string, number>;
+  examplesByLabel: Record<string, string[]>;
   latestHits: Array<{
     timestamp: string;
     surface: NarrativeSurfaceKind;
@@ -79,6 +80,13 @@ function updateSummary(filePath: string, event: NarrativeObservationEvent): void
   summary.bySurface[event.surface] = (summary.bySurface[event.surface] || 0) + 1;
   for (const hit of event.hits) {
     summary.byLabel[hit.label] = (summary.byLabel[hit.label] || 0) + 1;
+    const currentExamples = summary.examplesByLabel[hit.label] || [];
+    const nextExample = sanitizeTweetText(event.text).slice(0, 220);
+    if (nextExample && !currentExamples.includes(nextExample)) {
+      summary.examplesByLabel[hit.label] = [nextExample, ...currentExamples].slice(0, 3);
+    } else {
+      summary.examplesByLabel[hit.label] = currentExamples;
+    }
     summary.latestHits.unshift({
       timestamp: event.timestamp,
       surface: event.surface,
@@ -108,6 +116,17 @@ function readSummary(filePath: string): NarrativeObservationSummary {
         reply: Number(parsed.bySurface?.reply || 0),
       },
       byLabel: parsed.byLabel && typeof parsed.byLabel === "object" ? { ...parsed.byLabel } : {},
+      examplesByLabel:
+        parsed.examplesByLabel && typeof parsed.examplesByLabel === "object"
+          ? Object.fromEntries(
+              Object.entries(parsed.examplesByLabel).map(([label, examples]) => [
+                label,
+                Array.isArray(examples)
+                  ? examples.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3)
+                  : [],
+              ])
+            )
+          : {},
       latestHits: Array.isArray(parsed.latestHits) ? parsed.latestHits.slice(0, 50) as NarrativeObservationSummary["latestHits"] : [],
     };
   } catch {
@@ -115,6 +134,7 @@ function readSummary(filePath: string): NarrativeObservationSummary {
       total: 0,
       bySurface: { post: 0, quote: 0, reply: 0 },
       byLabel: {},
+      examplesByLabel: {},
       latestHits: [],
     };
   }
