@@ -66,6 +66,8 @@ import {
   stableSeedForPrelude,
   truncateAtWordBoundary,
 } from "./engagement/text-finalize.js";
+import { buildDigestReflectionJob, buildLanguageRewriteJob } from "./llm-batch.js";
+import type { BatchReadyClaudeJob } from "./llm-batch.js";
 import {
   AdaptivePolicy,
   CycleCacheMetrics,
@@ -127,6 +129,7 @@ interface FeedDigestSummary {
   evolvedCount: number;
   rejectReasonsTop: Array<{ reason: string; count: number }>;
   acceptedNutrients: OnchainNutrient[];
+  reflectionJob?: BatchReadyClaudeJob;
 }
 
 const onchainDataService = new OnchainDataService();
@@ -2058,6 +2061,29 @@ async function runFeedDigestEvolve(
       .map(([reason, count]) => ({ reason, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 3);
+    const acceptedNutrients = digested.records
+      .filter((row) => row.accepted)
+      .map((row) => ({
+        ...row.nutrient,
+        metadata: {
+          ...(row.nutrient.metadata || {}),
+          digestScore: row.digest.total,
+        },
+      }));
+    const reflectionJob = buildDigestReflectionJob({
+      language: runtimeSettings.postLanguage,
+      lane: trend.events[0]?.lane || "onchain",
+      summary: trend.summary,
+      acceptedNutrients: acceptedNutrients.slice(0, 4).map((item) => ({
+        label: item.label,
+        value: item.value,
+        source: item.source,
+      })),
+      rejectReasons: rejectReasonsTop.map((item) => item.reason),
+      xpGainTotal: digested.xpGainTotal,
+      evolvedCount,
+      maxChars: 220,
+    });
 
     return {
       intakeCount: digested.intakeCount,
@@ -2066,15 +2092,8 @@ async function runFeedDigestEvolve(
       xpGainTotal: digested.xpGainTotal,
       evolvedCount,
       rejectReasonsTop,
-      acceptedNutrients: digested.records
-        .filter((row) => row.accepted)
-        .map((row) => ({
-          ...row.nutrient,
-          metadata: {
-            ...(row.nutrient.metadata || {}),
-            digestScore: row.digest.total,
-          },
-        })),
+      acceptedNutrients,
+      reflectionJob,
     };
   } catch (error) {
     console.log(`[FEED] nutrient loop 실패: ${(error as Error).message}`);
@@ -2154,6 +2173,9 @@ export async function runDailyQuotaCycle(
   console.log(
     `[FEED] nutrient=${feedDigest.intakeCount} accepted=${feedDigest.acceptedCount} avgDigest=${feedDigest.avgDigestScore.toFixed(2)} xpGain=${feedDigest.xpGainTotal}`
   );
+  if (feedDigest.reflectionJob) {
+    console.log(`[BATCH] digest reflection ready: ${feedDigest.reflectionJob.customId}`);
+  }
   if (feedDigest.rejectReasonsTop.length > 0) {
     const topReject = feedDigest.rejectReasonsTop.map((item) => `${item.reason}:${item.count}`).join(", ");
     console.log(`[DIGEST] rejectTop=${topReject}`);
@@ -2353,37 +2375,17 @@ async function rewriteByLanguage(
   }
 
   try {
-    const prompt =
-      lang === "ko"
-        ? `아래 문장을 자연스러운 한국어 한 줄로 다시 써줘.
-
-원문:\n${text}
-
-규칙:
-- ${maxChars}자 이내
-- 의미 유지
-- 해시태그/이모지 금지
-- 최종 문장만 출력`
-        : `Rewrite the text in natural English, one line.
-
-Original:\n${text}
-
-Rules:
-- Max ${maxChars} chars
-- Keep meaning
-- No hashtags or emoji
-- Output only the final sentence`;
+    const job = buildLanguageRewriteJob({
+      text,
+      language: lang,
+      maxChars,
+    });
 
     const llmResult = await requestBudgetedClaudeMessage(
       claude,
+      job.request,
       {
-        model: CLAUDE_MODEL,
-        max_tokens: 220,
-        system: PIXYMON_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: prompt }],
-      },
-      {
-        kind: "rewrite:language",
+        kind: job.execution.kind,
         timezone,
       }
     );

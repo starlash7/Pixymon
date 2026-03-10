@@ -15,6 +15,7 @@ import { detectLanguage } from "../utils/mood.js";
 import { evaluateTrendCandidate } from "./content-guard.js";
 import { TrendTweetSearchRules } from "./engagement/types.js";
 import { finalizeNarrativeSurface } from "./engagement/text-finalize.js";
+import { buildReplyRewriteJob } from "./llm-batch.js";
 import { XApiCostRuntimeSettings } from "../types/runtime.js";
 import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
@@ -418,39 +419,17 @@ async function rewriteReplyByLanguage(
   timezone: string = "Asia/Seoul"
 ): Promise<string | null> {
   try {
-    const prompt =
-      lang === "ko"
-        ? `아래 문장을 한국어 한 줄 답글로 다시 써줘.
-
-원문:
-${text}
-
-규칙:
-- ${maxChars}자 이내
-- 의미 유지
-- 해시태그/이모지 금지
-- 문장만 출력`
-        : `Rewrite this as a one-line English reply.
-
-Original:
-${text}
-
-Rules:
-- Max ${maxChars} chars
-- Keep meaning
-- No hashtags or emoji
-- Output sentence only`;
+    const job = buildReplyRewriteJob({
+      text,
+      language: lang,
+      maxChars,
+    });
 
     const llmResult = await requestBudgetedClaudeMessage(
       claude,
+      job.request,
       {
-        model: CLAUDE_MODEL,
-        max_tokens: 220,
-        system: PIXYMON_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: prompt }],
-      },
-      {
-        kind: "rewrite:reply-language",
+        kind: job.execution.kind,
         timezone,
       }
     );
