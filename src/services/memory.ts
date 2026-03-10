@@ -2196,6 +2196,26 @@ export class MemoryService {
     ].join("\n");
   }
 
+  getLatestDigestReflectionMemo(): {
+    customId: string;
+    lane: TrendLane;
+    summary: string;
+    text: string;
+    batchId?: string;
+    appliedAt: string;
+  } | null {
+    const latest = this.data.qualityTelemetry.reflectionMemos.slice(-1)[0];
+    if (!latest) return null;
+    return {
+      customId: latest.customId,
+      lane: latest.lane,
+      summary: latest.summary,
+      text: latest.text,
+      batchId: latest.batchId,
+      appliedAt: latest.appliedAt,
+    };
+  }
+
   recordCognitiveActivity(type: CognitiveActivityType, amount: number = 1): AgentState {
     const state = this.data.agentState;
     const gain = this.clampInt(amount, 1, 10, 1);

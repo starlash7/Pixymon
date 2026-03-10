@@ -502,6 +502,7 @@ export async function postTrendUpdate(
 
     const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
     let soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage);
+    const recentReflection = memory.getLatestDigestReflectionMemo();
     const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
     const eventPlan = planEventEvidenceAct({
       events: trend.events,
@@ -525,6 +526,7 @@ export async function postTrendUpdate(
           anchors: previewAnchors,
           language: runtimeSettings.postLanguage,
           recentPosts: recentBriefingPosts,
+          recentReflection: recentReflection?.text,
           intentLine: soulIntent.intentLine,
           activeQuestion: soulIntent.activeQuestion,
           interactionMission: soulIntent.interactionMission,
@@ -663,6 +665,7 @@ export async function postTrendUpdate(
         anchors: localAnchors,
         language: runtimeSettings.postLanguage,
         recentPosts: recentBriefingPosts,
+        recentReflection: recentReflection?.text,
         intentLine: soulIntent.intentLine,
         activeQuestion: soulIntent.activeQuestion,
         interactionMission: soulIntent.interactionMission,
@@ -2876,13 +2879,14 @@ function getOrCreateRunContext(
     cache.cacheMetrics.runContextMisses += 1;
   }
   const anchors = collectNarrativeAnchors(trend, 3);
+  const recentReflection = memory.getLatestDigestReflectionMemo();
   const data: SharedRunContext = {
     key,
     narrativeAnchors: anchors,
     evidenceTextKo: buildNarrativeEvidenceTextFromAnchors(anchors, "ko"),
     evidenceTextEn: buildNarrativeEvidenceTextFromAnchors(anchors, "en"),
-    sharedPromptKo: buildSharedRunContextPrompt(trend, anchors, "ko"),
-    sharedPromptEn: buildSharedRunContextPrompt(trend, anchors, "en"),
+    sharedPromptKo: buildSharedRunContextPrompt(trend, anchors, "ko", recentReflection?.text),
+    sharedPromptEn: buildSharedRunContextPrompt(trend, anchors, "en", recentReflection?.text),
   };
   if (cache) {
     cache.runContext = { key, data };
@@ -3051,7 +3055,8 @@ function buildNarrativeEvidenceTextFromAnchors(
 function buildSharedRunContextPrompt(
   trend: TrendContext,
   anchors: string[],
-  language: "ko" | "en"
+  language: "ko" | "en",
+  recentReflection?: string
 ): string {
   const summary = sanitizeTweetText(trend.summary).slice(0, 220);
   const topEvents = trend.events
@@ -3060,16 +3065,19 @@ function buildSharedRunContextPrompt(
     .filter((item) => item.length >= 12)
     .slice(0, 2);
   const anchorText = buildNarrativeEvidenceTextFromAnchors(anchors, language);
+  const reflectionLine = sanitizeTweetText(recentReflection || "").slice(0, 180);
   if (language === "ko") {
     return `공용 컨텍스트
 - 오늘 흐름: ${summary || "단일 흐름 확정 전"}
 - 먼저 붙잡는 장면: ${topEvents.join(" | ") || "핵심 장면 압축 필요"}
-- 반복 확인 단서: ${anchorText}`;
+- 반복 확인 단서: ${anchorText}
+- 직전 소화 메모: ${reflectionLine || "아직 batch reflection 없음"}`;
   }
   return `Shared context
 - Today flow: ${summary || "single flow still forming"}
 - Scenes to hold first: ${topEvents.join(" | ") || "condense the main scene first"}
-- Evidence to revisit: ${anchorText}`;
+- Evidence to revisit: ${anchorText}
+- Latest digest memo: ${reflectionLine || "no batch reflection yet"}`;
 }
 
 const TREND_TOKEN_STOP_WORDS = new Set([
@@ -3367,6 +3375,7 @@ interface BuildPreviewFallbackCandidatesInput {
   anchors: string;
   language: "ko" | "en";
   recentPosts: Array<{ content: string }>;
+  recentReflection?: string;
   intentLine?: string;
   activeQuestion?: string;
   interactionMission?: string;
@@ -3462,56 +3471,57 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   };
   const activeQuestion = compactClause(input.activeQuestion || "", 96);
   const interactionMission = compactClause(input.interactionMission || "", 96);
-    const philosophyFrame = cleanSoulHint(input.philosophyFrame || "", 58);
-    const bookFragment = cleanSoulHint(input.bookFragment || "", 52);
-    const selfNarrative = cleanSoulHint(input.selfNarrative || "", 54);
-    const signatureBelief = cleanSoulHint(input.signatureBelief || "", 54);
-    const worldviewHint = compactThought(
-      philosophyFrame || signatureBelief || selfNarrative || intentLine || "",
-      58
-    );
-    const normalizeKoConceptToken = (token: string): string => {
-      const base = token.replace(/(이|가|은|는|을|를|와|과|보다|에서|으로|로|의|도|만|까지|부터)$/u, "");
-      const alias: Record<string, string> = {
-        인센티브: "보상",
-        토큰: "보상",
-        토큰보상: "보상",
-        커뮤니티설계: "커뮤니티",
-        관계설계: "관계",
-        사용자행동: "행동",
-        행동방식: "행동",
-        내러티브: "서사",
-        설명가능한합의: "합의",
-      };
-      return alias[base] || base;
+  const recentReflectionHint = cleanSoulHint(input.recentReflection || "", 64);
+  const philosophyFrame = cleanSoulHint(input.philosophyFrame || "", 58);
+  const bookFragment = cleanSoulHint(input.bookFragment || "", 52);
+  const selfNarrative = cleanSoulHint(input.selfNarrative || "", 54);
+  const signatureBelief = cleanSoulHint(input.signatureBelief || "", 54);
+  const worldviewHint = compactThought(
+    recentReflectionHint || philosophyFrame || signatureBelief || selfNarrative || intentLine || "",
+    58
+  );
+  const normalizeKoConceptToken = (token: string): string => {
+    const base = token.replace(/(이|가|은|는|을|를|와|과|보다|에서|으로|로|의|도|만|까지|부터)$/u, "");
+    const alias: Record<string, string> = {
+      인센티브: "보상",
+      토큰: "보상",
+      토큰보상: "보상",
+      커뮤니티설계: "커뮤니티",
+      관계설계: "관계",
+      사용자행동: "행동",
+      행동방식: "행동",
+      내러티브: "서사",
+      설명가능한합의: "합의",
     };
-    const extractKoConceptTokens = (text: string): string[] =>
-      sanitizeTweetText(text)
-        .replace(/[.!?,]/g, " ")
-        .split(/\s+/)
-        .map((item) => item.replace(/[^가-힣A-Za-z0-9]/g, ""))
-        .map((item) => normalizeKoConceptToken(item))
-        .filter((item) => item.length >= 2)
-        .slice(0, 10);
-    const sharesKoConceptFrame = (a: string, b: string): boolean => {
-      if (!a || !b) return false;
-      const aTokens = extractKoConceptTokens(a);
-      const bTokens = extractKoConceptTokens(b);
-      if (aTokens.length === 0 || bTokens.length === 0) return false;
-      const overlapCount = aTokens.filter((token) => bTokens.includes(token)).length;
-      const aHasComparator = /(보다|먼저|길다|오래|중요|버티)/.test(a);
-      const bHasComparator = /(보다|먼저|길다|오래|중요|버티)/.test(b);
-      return overlapCount >= 2 || (overlapCount >= 1 && aHasComparator && bHasComparator);
-    };
-    const worldviewLine =
-      worldviewHint && !sharesKoConceptFrame(worldviewHint, headlineBase) ? worldviewHint : "";
-    const signatureLine =
-      signatureBelief && !sharesKoConceptFrame(signatureBelief, headlineBase) ? signatureBelief : "";
-    const philosophyLine =
-      philosophyFrame && !sharesKoConceptFrame(philosophyFrame, headlineBase) ? philosophyFrame : "";
-    const bookLine =
-      bookFragment && !sharesKoConceptFrame(bookFragment, headlineBase) ? bookFragment : "";
-    const lane = inferTrendLaneFromText(headlineBase);
+    return alias[base] || base;
+  };
+  const extractKoConceptTokens = (text: string): string[] =>
+    sanitizeTweetText(text)
+      .replace(/[.!?,]/g, " ")
+      .split(/\s+/)
+      .map((item) => item.replace(/[^가-힣A-Za-z0-9]/g, ""))
+      .map((item) => normalizeKoConceptToken(item))
+      .filter((item) => item.length >= 2)
+      .slice(0, 10);
+  const sharesKoConceptFrame = (a: string, b: string): boolean => {
+    if (!a || !b) return false;
+    const aTokens = extractKoConceptTokens(a);
+    const bTokens = extractKoConceptTokens(b);
+    if (aTokens.length === 0 || bTokens.length === 0) return false;
+    const overlapCount = aTokens.filter((token) => bTokens.includes(token)).length;
+    const aHasComparator = /(보다|먼저|길다|오래|중요|버티)/.test(a);
+    const bHasComparator = /(보다|먼저|길다|오래|중요|버티)/.test(b);
+    return overlapCount >= 2 || (overlapCount >= 1 && aHasComparator && bHasComparator);
+  };
+  const worldviewLine =
+    worldviewHint && !sharesKoConceptFrame(worldviewHint, headlineBase) ? worldviewHint : "";
+  const signatureLine =
+    signatureBelief && !sharesKoConceptFrame(signatureBelief, headlineBase) ? signatureBelief : "";
+  const philosophyLine =
+    philosophyFrame && !sharesKoConceptFrame(philosophyFrame, headlineBase) ? philosophyFrame : "";
+  const bookLine =
+    bookFragment && !sharesKoConceptFrame(bookFragment, headlineBase) ? bookFragment : "";
+  const lane = inferTrendLaneFromText(headlineBase);
   const recentOpeningCounts = buildOpeningCountMap(
     input.recentPosts.map((post) => post.content),
     input.language
