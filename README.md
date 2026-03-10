@@ -8,8 +8,16 @@
 
 ## 현재 상태
 
-현재 코드는 `근거 기반 분석 + 품질/비용 가드`에 강하지만, 캐릭터 자율성은 아직 제한적입니다.  
-다음 목표는 “분석 봇”에서 “욕망과 기억을 가진 자율 캐릭터 에이전트”로 구조 전환입니다.
+현재 메인 브랜치 기준 Pixymon은 아래를 갖춘 상태입니다.
+
+- `feed -> digest -> evolve -> plan -> act -> reflect` 루프
+- 한국어 중심 narrative post / quote / reply surface
+- X API / Anthropic / 총합 비용 가드
+- Anthropic prompt caching + surface별 모델 라우팅
+- batch reflection queue / sync / soul state 반영
+- narrative audit 로그와 금지어/치환어 사전
+
+지금 단계의 핵심은 `문장 튜닝을 더 크게 하는 것`이 아니라, `저속 운영 -> 이상 문장 수집 -> 사전 보강` 루프로 넘어가는 것입니다.
 
 기준 문서:
 
@@ -24,7 +32,7 @@ Pixymon의 목표는 다음 두 가지를 동시에 만족하는 것입니다.
 1. 사실 기반: 온체인/시장/뉴스 신호를 왜곡 없이 소화
 2. 캐릭터 기반: 욕망/기분/퀘스트를 가진 서사형 행동
 
-## 아키텍처 방향 (vNext)
+## 현재 아키텍처
 
 핵심 루프:
 
@@ -36,19 +44,31 @@ Pixymon의 목표는 다음 두 가지를 동시에 만족하는 것입니다.
 6. `Act`: 발행
 7. `Reflect`: 반응/중복/비용/정확도 기반 정책 갱신
 
-## 무엇을 유지하고, 무엇을 바꾸는가
+운영 보조 루프:
 
-유지:
+1. `Budget`: X / LLM / TOTAL 일일 비용 가드
+2. `Cache`: shared context + prompt caching
+3. `Batch`: 비긴급 digest reflection 비동기 처리
+4. `Audit`: 실제 발행 문장을 `narrative-observation`으로 기록
+5. `Lexicon`: 상위 hit 라벨만 `src/services/narrative-lexicon.ts`에서 보강
 
-- 비용/요청량 가드 (`src/services/x-api-budget.ts`)
-- 안전 차단(법적/리스크/TOS) (`src/services/autonomy-governor.ts`)
-- 숫자 왜곡 방지
+## 핵심 구현
 
-변경:
-
-- 과도한 하드 품질 차단 -> 소프트 점수 기반 선호
-- 단일 템플릿 반복 -> 퀘스트/기분 기반 서사 변화
-- 쿼터 중심 행동 -> 목표/욕망 중심 행동
+- 비용/요청량 가드
+  - `src/services/x-api-budget.ts`
+  - `src/services/anthropic-budget.ts`
+  - `src/services/anthropic-admin-usage.ts`
+- narrative 생성 / 후처리
+  - `src/services/engagement.ts`
+  - `src/services/engagement/text-finalize.ts`
+- batch reflection
+  - `src/services/llm-batch-queue.ts`
+  - `src/services/llm-batch-runner.ts`
+  - `src/services/llm-batch-runs.ts`
+- narrative audit
+  - `src/services/narrative-lexicon.ts`
+  - `src/services/narrative-observer.ts`
+  - `scripts/narrative-audit-report.mjs`
 
 ## 실행
 
@@ -64,10 +84,15 @@ npm ci
 TEST_MODE=true SCHEDULER_MODE=false npm run dev
 ```
 
-24/7 실행:
+저속 실운영(권장 시작값):
 
 ```bash
-TEST_MODE=false SCHEDULER_MODE=true DAILY_ACTIVITY_TARGET=20 DAILY_TARGET_TIMEZONE=Asia/Seoul npm run dev
+TEST_MODE=false \
+SCHEDULER_MODE=true \
+DAILY_ACTIVITY_TARGET=4 \
+DAILY_TARGET_TIMEZONE=Asia/Seoul \
+POST_MIN_INTERVAL_MINUTES=180 \
+npm run dev
 ```
 
 로컬 리허설(게시글/말투 확인, 실제 발행 없음):
@@ -86,12 +111,20 @@ npm run dev
 - `data/STATE.md`
 - `data/operational-state.json`
 - `data/memory.json`
+- `data/narrative-observation.ndjson`
+- `data/narrative-phrase-audit.json`
 
 빌드/테스트:
 
 ```bash
 npm run build
 npm test
+```
+
+narrative audit 리포트:
+
+```bash
+npm run audit:narrative
 ```
 
 ## 권장 기본 설정
@@ -105,16 +138,27 @@ X_API_COST_GUARD_ENABLED=true
 X_API_DAILY_MAX_USD=0.10
 X_API_DAILY_READ_REQUEST_LIMIT=8
 X_API_DAILY_CREATE_REQUEST_LIMIT=10
+
+ANTHROPIC_COST_GUARD_ENABLED=true
+ANTHROPIC_DAILY_MAX_USD=0.40
+TOTAL_COST_GUARD_ENABLED=true
+TOTAL_DAILY_MAX_USD=0.50
+
+ANTHROPIC_PROMPT_CACHING_ENABLED=true
+ANTHROPIC_USAGE_API_ENABLED=false
+
+NARRATIVE_AUDIT_ENABLED=true
+NARRATIVE_AUDIT_LOG_PATH=data/narrative-observation.ndjson
+NARRATIVE_AUDIT_SUMMARY_PATH=data/narrative-phrase-audit.json
 ```
 
-## 현재 로드맵
+## 현재 운영 루프
 
 상세는 `docs/plan.md`를 기준으로 합니다.
 
-상위 단계:
+지금 우선순위:
 
-1. Soul Architecture 기초 타입/메모리 추가
-2. Desire + Quest + Mood 엔진 추가
-3. 행동 선택기(Action policy) 재구성
-4. 프롬프트/게이트를 캐릭터 중심으로 재설계
-5. 관측성/회고 루프로 자동 개선
+1. 저속 실운영 2~3일
+2. `npm run audit:narrative`와 `data/narrative-phrase-audit.json` 확인
+3. hit 상위 라벨만 `src/services/narrative-lexicon.ts` 보강
+4. reply / mention 실전 품질 개선으로 이동
