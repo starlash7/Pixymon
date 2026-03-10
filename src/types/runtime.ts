@@ -47,6 +47,8 @@ export interface AnthropicCostRuntimeSettings {
   promptCachingEnabled: boolean;
   cacheWriteMultiplier: number;
   cacheReadMultiplier: number;
+  usageApiEnabled: boolean;
+  usageApiMinSyncMinutes: number;
   primaryInputCostPerMillionUsd: number;
   primaryOutputCostPerMillionUsd: number;
   researchInputCostPerMillionUsd: number;

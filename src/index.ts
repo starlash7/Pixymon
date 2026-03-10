@@ -6,6 +6,7 @@ import { loadRuntimeConfig } from "./config/runtime.js";
 import { printStartupBanner, runOneShotMode, runSchedulerMode } from "./services/runtime.js";
 import { operationalState } from "./services/operational-state.js";
 import { anthropicBudget } from "./services/anthropic-budget.js";
+import { anthropicAdminUsage } from "./services/anthropic-admin-usage.js";
 import { acquireRuntimeLock, registerRuntimeLockCleanup } from "./services/process-lock.js";
 import { xApiBudget } from "./services/x-api-budget.js";
 
@@ -36,6 +37,11 @@ function commitShutdown(reason: string): void {
   }
   try {
     anthropicBudget.flushNow();
+  } catch {
+    // no-op
+  }
+  try {
+    anthropicAdminUsage.flushNow();
   } catch {
     // no-op
   }

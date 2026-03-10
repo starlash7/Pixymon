@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import pixymonCharacter from "../character.js";
 import { loadRuntimeConfig } from "../config/runtime.js";
 import { anthropicBudget, estimateAnthropicMessageCost, resolveAnthropicBudgetMode } from "./anthropic-budget.js";
+import { anthropicAdminUsage, mergeAnthropicUsageSnapshots } from "./anthropic-admin-usage.js";
 import { quarantineCorruptFile } from "./quarantine.js";
 import { xApiBudget } from "./x-api-budget.js";
 
@@ -254,7 +255,22 @@ export async function requestBudgetedClaudeMessage(
     pricing: runtimeConfig.anthropicCost,
   });
   const todayXCost = xApiBudget.getTodayUsage(timezone).estimatedTotalCostUsd;
-  const todayAnthropic = anthropicBudget.getTodayUsage(timezone);
+  let syncedAnthropic = null;
+  if (runtimeConfig.anthropicCost.usageApiEnabled) {
+    try {
+      syncedAnthropic = await anthropicAdminUsage.maybeSyncToday({
+        enabled: runtimeConfig.anthropicCost.usageApiEnabled,
+        timezone,
+        minSyncMinutes: runtimeConfig.anthropicCost.usageApiMinSyncMinutes,
+      });
+    } catch (error) {
+      console.warn("[LLM-BUDGET] Anthropic usage sync 실패:", error);
+    }
+  }
+  const todayAnthropic = mergeAnthropicUsageSnapshots(
+    anthropicBudget.getTodayUsage(timezone),
+    syncedAnthropic
+  );
   const budgetMode = resolveAnthropicBudgetMode({
     estimatedRequestCostUsd: estimatedPrimaryCost.estimatedTotalCostUsd,
     timezone,
