@@ -5,6 +5,7 @@ import { validateEnvironment, initTwitterClient, TEST_NO_EXTERNAL_CALLS } from "
 import { loadRuntimeConfig } from "./config/runtime.js";
 import { printStartupBanner, runOneShotMode, runSchedulerMode } from "./services/runtime.js";
 import { operationalState } from "./services/operational-state.js";
+import { anthropicBudget } from "./services/anthropic-budget.js";
 import { acquireRuntimeLock, registerRuntimeLockCleanup } from "./services/process-lock.js";
 import { xApiBudget } from "./services/x-api-budget.js";
 
@@ -30,6 +31,11 @@ function commitShutdown(reason: string): void {
   }
   try {
     xApiBudget.flushNow();
+  } catch {
+    // no-op
+  }
+  try {
+    anthropicBudget.flushNow();
   } catch {
     // no-op
   }

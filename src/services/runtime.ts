@@ -26,6 +26,9 @@ export function printStartupBanner(config: RuntimeConfig): void {
   console.log(
     `  [SAFE] action=${config.operational.actionMode} | reconcile=${config.operational.stateReconcileOnBoot ? "on" : "off"} | 2pc=${config.operational.actionTwoPhaseCommit ? "on" : "off"}`
   );
+  console.log(
+    `  [BUDGET] X=$${config.xApiCost.dailyMaxUsd.toFixed(2)}/day | LLM=$${config.anthropicCost.dailyMaxUsd.toFixed(2)}/day | TOTAL=$${config.totalCost.dailyMaxUsd.toFixed(2)}/day`
+  );
   console.log("=====================================\n");
 }
 

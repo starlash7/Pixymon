@@ -8,6 +8,7 @@ import {
   PIXYMON_SYSTEM_PROMPT,
   extractTextFromClaude,
   getReplyToneGuide,
+  requestBudgetedClaudeMessage,
 } from "./llm.js";
 import {
   getMentions,
@@ -320,18 +321,26 @@ ${toneGuide}
 - Do not invent numbers
 - Output reply text only`;
 
-      const message = await claude.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: 220,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      });
+      const llmResult = await requestBudgetedClaudeMessage(
+        claude,
+        {
+          model: CLAUDE_MODEL,
+          max_tokens: 220,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+        },
+        {
+          kind: "reply:engagement-generate",
+          timezone,
+        }
+      );
+      if (!llmResult) continue;
 
-      let replyText = finalizeNarrativeSurface(extractTextFromClaude(message.content), lang, 180, "reply");
+      let replyText = finalizeNarrativeSurface(extractTextFromClaude(llmResult.message.content), lang, 180, "reply");
       if (!replyText || replyText.length < 5) continue;
 
       if (detectLanguage(replyText) !== lang) {
-        const rewritten = await rewriteByLanguage(claude, replyText, lang, 180);
+        const rewritten = await rewriteByLanguage(claude, replyText, lang, 180, timezone);
         if (rewritten) {
           replyText = finalizeNarrativeSurface(rewritten, lang, 180, "reply");
         }
@@ -1069,20 +1078,31 @@ Rules:
 - ${postDiversityGuard.ruleLineEn}
 - Output tweet text only`;
 
-        const message = await claude.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: 340,
-        system: `${PIXYMON_SYSTEM_PROMPT}
+        const llmResult = await requestBudgetedClaudeMessage(
+          claude,
+          {
+            model: CLAUDE_MODEL,
+            max_tokens: 340,
+            system: `${PIXYMON_SYSTEM_PROMPT}
 
 추가 운영 규칙:
 - 스토리텔링은 허용하지만 수치/사실은 입력 근거에서만 사용.
 - 문장 반복, 클리셰 오프너, 포맷 복붙을 피한다.
 - 오늘은 lane과 mode를 따라 글 톤을 바꾼다.`,
-        messages: [{ role: "user", content: userPrompt }],
-      });
+            messages: [{ role: "user", content: userPrompt }],
+          },
+          {
+            kind: "post:trend-generate",
+            timezone,
+          }
+        );
+        if (!llmResult) {
+          rejectionFeedback = "llm budget local-only";
+          continue;
+        }
 
         let candidate = finalizeGeneratedText(
-          extractTextFromClaude(message.content),
+          extractTextFromClaude(llmResult.message.content),
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
@@ -1106,7 +1126,8 @@ Rules:
             claude,
             candidate,
             runtimeSettings.postLanguage,
-            runtimeSettings.postMaxChars
+            runtimeSettings.postMaxChars,
+            timezone
           );
           if (rewritten) {
             candidate = finalizeGeneratedText(rewritten, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
@@ -1266,7 +1287,8 @@ Rules:
           claude,
           fallbackPost,
           runtimeSettings.postLanguage,
-          runtimeSettings.postMaxChars
+          runtimeSettings.postMaxChars,
+          timezone
         );
         if (rewrittenFallback) {
           fallbackPost = finalizeGeneratedText(
@@ -1683,15 +1705,25 @@ Rules:
         : "";
 
       if (!TEST_NO_EXTERNAL_CALLS) {
-        const message = await claude.messages.create({
-          model: CLAUDE_MODEL,
-          max_tokens: 280,
-          system: PIXYMON_SYSTEM_PROMPT,
-          messages: [{ role: "user", content: userPrompt }],
-        });
+        const llmResult = await requestBudgetedClaudeMessage(
+          claude,
+          {
+            model: CLAUDE_MODEL,
+            max_tokens: 280,
+            system: PIXYMON_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: userPrompt }],
+          },
+          {
+            kind: "post:quote-generate",
+            timezone,
+          }
+        );
+        if (!llmResult) {
+          continue;
+        }
 
         quoteText = finalizeNarrativeSurface(
-          extractTextFromClaude(message.content),
+          extractTextFromClaude(llmResult.message.content),
           quoteLanguage,
           runtimeSettings.postMaxChars,
           "quote"
@@ -1704,7 +1736,8 @@ Rules:
           claude,
           quoteText,
           quoteLanguage,
-          runtimeSettings.postMaxChars
+          runtimeSettings.postMaxChars,
+          timezone
         );
         if (rewritten) {
           quoteText = finalizeNarrativeSurface(rewritten, quoteLanguage, runtimeSettings.postMaxChars, "quote");
@@ -2200,7 +2233,8 @@ async function rewriteByLanguage(
   claude: Anthropic,
   text: string,
   lang: ContentLanguage,
-  maxChars: number
+  maxChars: number,
+  timezone: string = DEFAULT_TIMEZONE
 ): Promise<string | null> {
   if (TEST_NO_EXTERNAL_CALLS) {
     const normalized = finalizeGeneratedText(text, lang, maxChars);
@@ -2230,14 +2264,22 @@ Rules:
 - No hashtags or emoji
 - Output only the final sentence`;
 
-    const message = await claude.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 220,
-      system: PIXYMON_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const llmResult = await requestBudgetedClaudeMessage(
+      claude,
+      {
+        model: CLAUDE_MODEL,
+        max_tokens: 220,
+        system: PIXYMON_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: prompt }],
+      },
+      {
+        kind: "rewrite:language",
+        timezone,
+      }
+    );
+    if (!llmResult) return null;
 
-    const rewritten = finalizeGeneratedText(extractTextFromClaude(message.content), lang, maxChars);
+    const rewritten = finalizeGeneratedText(extractTextFromClaude(llmResult.message.content), lang, maxChars);
     if (!rewritten) return null;
     return rewritten.slice(0, maxChars);
   } catch {

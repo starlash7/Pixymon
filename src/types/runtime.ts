@@ -38,6 +38,23 @@ export interface XApiCostRuntimeSettings {
   createMinIntervalMinutes: number;
 }
 
+export interface AnthropicCostRuntimeSettings {
+  enabled: boolean;
+  dailyMaxUsd: number;
+  dailyRequestLimit: number;
+  degradeAtUtilization: number;
+  localOnlyAtUtilization: number;
+  primaryInputCostPerMillionUsd: number;
+  primaryOutputCostPerMillionUsd: number;
+  researchInputCostPerMillionUsd: number;
+  researchOutputCostPerMillionUsd: number;
+}
+
+export interface TotalCostRuntimeSettings {
+  enabled: boolean;
+  dailyMaxUsd: number;
+}
+
 export interface ObservabilityRuntimeSettings {
   enabled: boolean;
   stdoutJson: boolean;

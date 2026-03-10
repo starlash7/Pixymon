@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import pixymonCharacter from "../character.js";
+import { loadRuntimeConfig } from "../config/runtime.js";
+import { anthropicBudget, estimateAnthropicMessageCost, resolveAnthropicBudgetMode } from "./anthropic-budget.js";
 import { quarantineCorruptFile } from "./quarantine.js";
+import { xApiBudget } from "./x-api-budget.js";
 
 export interface ClaudeTextLikeBlock {
   type: string;
@@ -116,6 +119,20 @@ ${autonomyCreativityRules}
 
 // Pixymon 캐릭터 시스템 프롬프트 (character.ts 기반)
 export const PIXYMON_SYSTEM_PROMPT = buildSystemPrompt();
+export type ClaudeMessageCreateParams = Parameters<Anthropic["messages"]["create"]>[0];
+export interface ClaudeMessageResponse {
+  content: ClaudeTextLikeBlock[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+}
+
+export interface BudgetedClaudeMessageResult {
+  message: ClaudeMessageResponse;
+  model: string;
+  mode: "full" | "degrade";
+}
 
 export function extractTextFromClaude(content: ClaudeTextLikeBlock[]): string {
   const textBlock = content.find((block) => block.type === "text");
@@ -157,6 +174,83 @@ export function initClaudeClient(): Anthropic {
   return new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY!,
   });
+}
+
+export async function requestBudgetedClaudeMessage(
+  claude: Anthropic,
+  params: ClaudeMessageCreateParams,
+  options: {
+    kind: string;
+    timezone?: string;
+    allowResearchModel?: boolean;
+  }
+): Promise<BudgetedClaudeMessageResult | null> {
+  const runtimeConfig = loadRuntimeConfig();
+  const timezone = typeof options.timezone === "string" && options.timezone.trim().length > 0
+    ? options.timezone.trim()
+    : runtimeConfig.dailyTimezone;
+  const estimatedPrimaryCost = estimateAnthropicMessageCost({
+    model: String(params.model || CLAUDE_MODEL),
+    system: typeof params.system === "string" ? params.system : "",
+    messages: Array.isArray(params.messages) ? (params.messages as Array<{ content?: unknown }>) : [],
+    maxTokens: params.max_tokens,
+    pricing: runtimeConfig.anthropicCost,
+  });
+  const todayXCost = xApiBudget.getTodayUsage(timezone).estimatedTotalCostUsd;
+  const todayAnthropic = anthropicBudget.getTodayUsage(timezone);
+  const budgetMode = resolveAnthropicBudgetMode({
+    estimatedRequestCostUsd: estimatedPrimaryCost.estimatedTotalCostUsd,
+    timezone,
+    anthropicCostSettings: runtimeConfig.anthropicCost,
+    totalCostSettings: runtimeConfig.totalCost,
+    xApiEstimatedCostUsd: todayXCost,
+    currentAnthropicUsage: todayAnthropic,
+  });
+
+  if (budgetMode.mode === "local-only") {
+    console.log(
+      `[LLM-BUDGET] ${options.kind} 스킵: mode=local-only reason=${budgetMode.reason || "budget"} anthropic=$${budgetMode.projectedAnthropicCostUsd.toFixed(3)} total=$${budgetMode.projectedTotalCostUsd.toFixed(3)}`
+    );
+    return null;
+  }
+
+  const allowResearchModel = options.allowResearchModel !== false;
+  const selectedModel =
+    budgetMode.mode === "degrade" && allowResearchModel && String(params.model || "") === CLAUDE_MODEL
+      ? CLAUDE_RESEARCH_MODEL
+      : String(params.model || CLAUDE_MODEL);
+
+  const estimatedCost = estimateAnthropicMessageCost({
+    model: selectedModel,
+    system: typeof params.system === "string" ? params.system : "",
+    messages: Array.isArray(params.messages) ? (params.messages as Array<{ content?: unknown }>) : [],
+    maxTokens: params.max_tokens,
+    pricing: runtimeConfig.anthropicCost,
+  });
+
+  const message = await claude.messages.create({
+    ...params,
+    model: selectedModel,
+  }) as ClaudeMessageResponse;
+  const usage = message.usage;
+  const recorded = anthropicBudget.recordUsage({
+    timezone,
+    kind: options.kind,
+    model: selectedModel,
+    inputTokens: usage?.input_tokens ?? estimatedCost.inputTokens,
+    outputTokens: usage?.output_tokens ?? estimatedCost.outputTokens,
+    pricing: runtimeConfig.anthropicCost,
+  });
+
+  console.log(
+    `[LLM-BUDGET] ${options.kind} mode=${budgetMode.mode} model=${selectedModel} req=${recorded.requestCount}/${runtimeConfig.anthropicCost.dailyRequestLimit} anthropic=$${recorded.estimatedTotalCostUsd.toFixed(3)}/$${runtimeConfig.anthropicCost.dailyMaxUsd.toFixed(2)} total~$${(recorded.estimatedTotalCostUsd + todayXCost).toFixed(3)}/$${runtimeConfig.totalCost.dailyMaxUsd.toFixed(2)}`
+  );
+
+  return {
+    message,
+    model: selectedModel,
+    mode: budgetMode.mode,
+  };
 }
 
 function disableAnthropicDebugLogs(): void {

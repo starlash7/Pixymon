@@ -8,6 +8,7 @@ import {
   PIXYMON_SYSTEM_PROMPT,
   extractTextFromClaude,
   getReplyToneGuide,
+  requestBudgetedClaudeMessage,
 } from "./llm.js";
 import { TrendLane } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
@@ -300,14 +301,16 @@ export async function replyToMention(
     const maxChars = 160;
     const shouldEndWithQuestion = /\?$|질문|어떻게|왜|is it|what|how|why/i.test(cleanedMentionText);
 
-    const message = await claude.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 260,
-      system: PIXYMON_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `멘션에 답글 작성.
+    const llmResult = await requestBudgetedClaudeMessage(
+      claude,
+      {
+        model: CLAUDE_MODEL,
+        max_tokens: 260,
+        system: PIXYMON_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `멘션에 답글 작성.
 
 - ${maxChars}자 이내
 - ${isEnglish ? '영어로 답변' : '한국어로 답변'}
@@ -324,16 +327,24 @@ ${toneGuide}
 
 멘션 내용:
 ${mention.text}`,
-        },
-      ],
-    });
+          },
+        ],
+      },
+      {
+        kind: "reply:mention-generate",
+        timezone,
+      }
+    );
+    if (!llmResult) {
+      return false;
+    }
 
-    let replyText = extractTextFromClaude(message.content);
+    let replyText = extractTextFromClaude(llmResult.message.content);
 
     if (!replyText) return false;
 
     if (detectLanguage(replyText) !== lang) {
-      const rewritten = await rewriteReplyByLanguage(claude, replyText, lang, maxChars);
+      const rewritten = await rewriteReplyByLanguage(claude, replyText, lang, maxChars, timezone);
       if (rewritten) {
         replyText = rewritten;
       }
@@ -403,7 +414,8 @@ async function rewriteReplyByLanguage(
   claude: Anthropic,
   text: string,
   lang: "ko" | "en",
-  maxChars: number
+  maxChars: number,
+  timezone: string = "Asia/Seoul"
 ): Promise<string | null> {
   try {
     const prompt =
@@ -429,14 +441,22 @@ Rules:
 - No hashtags or emoji
 - Output sentence only`;
 
-    const message = await claude.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 220,
-      system: PIXYMON_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const llmResult = await requestBudgetedClaudeMessage(
+      claude,
+      {
+        model: CLAUDE_MODEL,
+        max_tokens: 220,
+        system: PIXYMON_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: prompt }],
+      },
+      {
+        kind: "rewrite:reply-language",
+        timezone,
+      }
+    );
+    if (!llmResult) return null;
 
-    const rewritten = finalizeNarrativeSurface(extractTextFromClaude(message.content), lang, maxChars, "reply").trim();
+    const rewritten = finalizeNarrativeSurface(extractTextFromClaude(llmResult.message.content), lang, maxChars, "reply").trim();
     if (!rewritten) return null;
     return rewritten.slice(0, maxChars);
   } catch {

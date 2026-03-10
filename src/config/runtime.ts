@@ -1,11 +1,13 @@
 import {
   ActionMode,
+  AnthropicCostRuntimeSettings,
   ContentLanguage,
   EngagementRuntimeSettings,
   ObservabilityRuntimeSettings,
   OperationalRuntimeSettings,
   ReplyLanguageMode,
   SoulRuntimeSettings,
+  TotalCostRuntimeSettings,
   XApiCostRuntimeSettings,
 } from "../types/runtime.js";
 
@@ -18,6 +20,8 @@ export interface RuntimeConfig {
   maxLoopMinutes: number;
   engagement: EngagementRuntimeSettings;
   xApiCost: XApiCostRuntimeSettings;
+  anthropicCost: AnthropicCostRuntimeSettings;
+  totalCost: TotalCostRuntimeSettings;
   observability: ObservabilityRuntimeSettings;
   soul: SoulRuntimeSettings;
   operational: OperationalRuntimeSettings;
@@ -35,6 +39,15 @@ const DEFAULT_X_API_ESTIMATED_CREATE_COST_USD = 0.01;
 const DEFAULT_X_API_MENTION_MIN_INTERVAL_MINUTES = 120;
 const DEFAULT_X_API_TREND_MIN_INTERVAL_MINUTES = 180;
 const DEFAULT_X_API_CREATE_MIN_INTERVAL_MINUTES = 20;
+const DEFAULT_ANTHROPIC_DAILY_MAX_USD = 0.4;
+const DEFAULT_ANTHROPIC_DAILY_REQUEST_LIMIT = 40;
+const DEFAULT_ANTHROPIC_DEGRADE_AT_UTILIZATION = 0.7;
+const DEFAULT_ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION = 0.85;
+const DEFAULT_ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD = 3;
+const DEFAULT_ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD = 15;
+const DEFAULT_ANTHROPIC_RESEARCH_INPUT_COST_PER_MILLION_USD = 0.8;
+const DEFAULT_ANTHROPIC_RESEARCH_OUTPUT_COST_PER_MILLION_USD = 4;
+const DEFAULT_TOTAL_DAILY_MAX_USD = DEFAULT_X_API_DAILY_MAX_USD + DEFAULT_ANTHROPIC_DAILY_MAX_USD;
 
 const getDefaultDailyReadRequestLimit = (): number =>
   Math.max(1, Math.floor(DEFAULT_X_API_DAILY_MAX_USD / DEFAULT_X_API_ESTIMATED_READ_COST_USD));
@@ -96,6 +109,23 @@ export const DEFAULT_X_API_COST_SETTINGS: XApiCostRuntimeSettings = {
   mentionReadMinIntervalMinutes: DEFAULT_X_API_MENTION_MIN_INTERVAL_MINUTES,
   trendReadMinIntervalMinutes: DEFAULT_X_API_TREND_MIN_INTERVAL_MINUTES,
   createMinIntervalMinutes: DEFAULT_X_API_CREATE_MIN_INTERVAL_MINUTES,
+};
+
+export const DEFAULT_ANTHROPIC_COST_SETTINGS: AnthropicCostRuntimeSettings = {
+  enabled: true,
+  dailyMaxUsd: DEFAULT_ANTHROPIC_DAILY_MAX_USD,
+  dailyRequestLimit: DEFAULT_ANTHROPIC_DAILY_REQUEST_LIMIT,
+  degradeAtUtilization: DEFAULT_ANTHROPIC_DEGRADE_AT_UTILIZATION,
+  localOnlyAtUtilization: DEFAULT_ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION,
+  primaryInputCostPerMillionUsd: DEFAULT_ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD,
+  primaryOutputCostPerMillionUsd: DEFAULT_ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD,
+  researchInputCostPerMillionUsd: DEFAULT_ANTHROPIC_RESEARCH_INPUT_COST_PER_MILLION_USD,
+  researchOutputCostPerMillionUsd: DEFAULT_ANTHROPIC_RESEARCH_OUTPUT_COST_PER_MILLION_USD,
+};
+
+export const DEFAULT_TOTAL_COST_SETTINGS: TotalCostRuntimeSettings = {
+  enabled: true,
+  dailyMaxUsd: DEFAULT_TOTAL_DAILY_MAX_USD,
 };
 
 function parseIntInRange(
@@ -226,6 +256,24 @@ export function loadRuntimeConfig(): RuntimeConfig {
   const xApiDailyCreateRequestLimit = typeof explicitCreateLimit === "number"
     ? Math.min(1000, Math.max(1, explicitCreateLimit))
     : derivedDailyCreateLimit;
+  const anthropicDailyMaxUsd = parseFloatInRange(
+    process.env.ANTHROPIC_DAILY_MAX_USD,
+    DEFAULT_ANTHROPIC_COST_SETTINGS.dailyMaxUsd,
+    0.01,
+    100
+  );
+  const anthropicDegradeAtUtilization = parseFloatInRange(
+    process.env.ANTHROPIC_DEGRADE_AT_UTILIZATION,
+    DEFAULT_ANTHROPIC_COST_SETTINGS.degradeAtUtilization,
+    0.5,
+    0.95
+  );
+  const anthropicLocalOnlyAtUtilization = parseFloatInRange(
+    process.env.ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION,
+    DEFAULT_ANTHROPIC_COST_SETTINGS.localOnlyAtUtilization,
+    anthropicDegradeAtUtilization,
+    1
+  );
 
   const engagement: EngagementRuntimeSettings = {
     postGenerationMaxAttempts: parseIntInRange(
@@ -372,6 +420,57 @@ export function loadRuntimeConfig(): RuntimeConfig {
       1440
     ),
   };
+  const anthropicCost: AnthropicCostRuntimeSettings = {
+    enabled: parseBoolean(
+      process.env.ANTHROPIC_COST_GUARD_ENABLED,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.enabled
+    ),
+    dailyMaxUsd: anthropicDailyMaxUsd,
+    dailyRequestLimit: parseIntInRange(
+      process.env.ANTHROPIC_DAILY_REQUEST_LIMIT,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.dailyRequestLimit,
+      1,
+      1000
+    ),
+    degradeAtUtilization: anthropicDegradeAtUtilization,
+    localOnlyAtUtilization: anthropicLocalOnlyAtUtilization,
+    primaryInputCostPerMillionUsd: parseFloatInRange(
+      process.env.ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.primaryInputCostPerMillionUsd,
+      0.01,
+      100
+    ),
+    primaryOutputCostPerMillionUsd: parseFloatInRange(
+      process.env.ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.primaryOutputCostPerMillionUsd,
+      0.01,
+      200
+    ),
+    researchInputCostPerMillionUsd: parseFloatInRange(
+      process.env.ANTHROPIC_RESEARCH_INPUT_COST_PER_MILLION_USD,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.researchInputCostPerMillionUsd,
+      0.01,
+      100
+    ),
+    researchOutputCostPerMillionUsd: parseFloatInRange(
+      process.env.ANTHROPIC_RESEARCH_OUTPUT_COST_PER_MILLION_USD,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.researchOutputCostPerMillionUsd,
+      0.01,
+      200
+    ),
+  };
+  const totalCost: TotalCostRuntimeSettings = {
+    enabled: parseBoolean(
+      process.env.TOTAL_COST_GUARD_ENABLED,
+      DEFAULT_TOTAL_COST_SETTINGS.enabled
+    ),
+    dailyMaxUsd: parseFloatInRange(
+      process.env.TOTAL_DAILY_MAX_USD,
+      DEFAULT_TOTAL_COST_SETTINGS.dailyMaxUsd,
+      0.02,
+      200
+    ),
+  };
   const observability: ObservabilityRuntimeSettings = {
     enabled: parseBoolean(
       process.env.OBSERVABILITY_ENABLED,
@@ -425,6 +524,8 @@ export function loadRuntimeConfig(): RuntimeConfig {
     maxLoopMinutes,
     engagement,
     xApiCost,
+    anthropicCost,
+    totalCost,
     observability,
     soul,
     operational,
