@@ -85,6 +85,14 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
       },
       evolutionEvent: 1,
     },
+    llm: {
+      requestCount: 7,
+      estimatedInputTokens: 1400,
+      estimatedOutputTokens: 320,
+      cacheCreationInputTokens: 180,
+      cacheReadInputTokens: 420,
+      estimatedTotalCostUsd: 0.087,
+    },
   });
 
   assert.equal(event.type, "quota_cycle");
@@ -104,4 +112,8 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
   assert.equal(event.nutrition.evolution_event, 1);
   assert.equal(event.planning.dominant_lane_24h, "macro");
   assert.equal(event.planning.onchain_ratio_24h, 0.333);
+  assert.equal(event.llmBudget.request_count, 7);
+  assert.equal(event.llmBudget.cache_read_input_tokens, 420);
+  assert.equal(event.llmBudget.cache_read_ratio, 0.21);
+  assert.equal(event.llmBudget.estimated_total_cost_usd, 0.087);
 });

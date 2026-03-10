@@ -1628,6 +1628,7 @@ export async function postTrendQuote(
   const runtimeSettings = resolveEngagementSettings(settings);
   const quoteLanguage: ContentLanguage =
     runtimeSettings.enforceKoreanPosts ? "ko" : runtimeSettings.postLanguage;
+  let lastFallbackTarget: { id: string; text: string; lane: TrendLane } | null = null;
 
   try {
     const trend = await getOrCreateTrendContext(cache, {
@@ -1673,6 +1674,13 @@ export async function postTrendQuote(
       const targetId = String(target.id || "").trim();
       const targetText = sanitizeTweetText(String(target.text || ""));
       if (!targetId || targetText.length < 25) continue;
+      if (!lastFallbackTarget) {
+        lastFallbackTarget = {
+          id: targetId,
+          text: targetText,
+          lane: inferTrendLaneFromText(targetText),
+        };
+      }
       if (memory.hasRepliedTo(targetId)) continue;
 
       const lane = inferTrendLaneFromText(targetText);
@@ -1849,6 +1857,33 @@ Rules:
       return true;
     }
 
+    if (TEST_NO_EXTERNAL_CALLS && lastFallbackTarget) {
+      const emergencyQuote = buildEmergencyLocalQuoteComment({
+        lane: lastFallbackTarget.lane,
+        anchors: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
+        language: quoteLanguage,
+        maxChars: runtimeSettings.postMaxChars,
+      });
+      const tweetId = await postTweet(twitter, emergencyQuote, "quote", {
+        timezone,
+        xApiCostSettings,
+        createKind: "post:quote",
+        quoteTweetId: lastFallbackTarget.id,
+        metadata: {
+          lane: lastFallbackTarget.lane,
+          eventId: `quote:${lastFallbackTarget.id}:emergency`,
+          eventHeadline: lastFallbackTarget.text.slice(0, 180),
+          quoteTweetId: lastFallbackTarget.id,
+          narrativeMode: "quote",
+        },
+      });
+      if (tweetId) {
+        memory.saveRepliedTweet(lastFallbackTarget.id);
+        console.log("[QUOTE] local emergency fallback 사용");
+        return true;
+      }
+    }
+
     console.log("[QUOTE] 품질 기준을 만족하는 인용 글 생성 실패");
     return false;
   } catch (error) {
@@ -1921,6 +1956,30 @@ function buildLocalQuoteComment(params: {
     `I would not restate the post. I would first test the gap between ${a} and ${b}.`,
   ];
   return finalizeNarrativeSurface(pool[seed % pool.length], "en", params.maxChars, "quote");
+}
+
+function buildEmergencyLocalQuoteComment(params: {
+  lane: TrendLane;
+  anchors: string[];
+  language: "ko" | "en";
+  maxChars: number;
+}): string {
+  const a = sanitizeTweetText(params.anchors[0] || "핵심 단서").slice(0, 28);
+  const b = sanitizeTweetText(params.anchors[1] || "추가 단서").slice(0, 28);
+  if (params.language === "ko") {
+    return finalizeNarrativeSurface(
+      `${a}와 ${b}의 순서가 어긋나는지만 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`,
+      "ko",
+      params.maxChars,
+      "quote"
+    );
+  }
+  return finalizeNarrativeSurface(
+    `I would first check whether ${a} and ${b} still point the same way. If they drift apart, I drop this read.`,
+    "en",
+    params.maxChars,
+    "quote"
+  );
 }
 
 function isUsableLocalQuoteTarget(text: string): boolean {

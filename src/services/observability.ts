@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { memory } from "./memory.js";
+import { anthropicBudget } from "./anthropic-budget.js";
 import { AdaptivePolicy, CycleCacheMetrics } from "./engagement/types.js";
 import { EngagementRuntimeSettings, ObservabilityRuntimeSettings } from "../types/runtime.js";
 import { TrendLane } from "../types/agent.js";
@@ -32,6 +33,14 @@ interface ObservabilitySnapshot {
       news: number;
     };
     evolutionEvent: number;
+  };
+  llm: {
+    requestCount: number;
+    estimatedInputTokens: number;
+    estimatedOutputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    estimatedTotalCostUsd: number;
   };
 }
 
@@ -112,6 +121,15 @@ export interface CycleObservabilityEvent {
     dominant_lane_24h: TrendLane | "none";
     onchain_ratio_24h: number;
   };
+  llmBudget: {
+    request_count: number;
+    estimated_input_tokens: number;
+    estimated_output_tokens: number;
+    cache_creation_input_tokens: number;
+    cache_read_input_tokens: number;
+    cache_read_ratio: number;
+    estimated_total_cost_usd: number;
+  };
   cache?: CycleCacheMetrics;
 }
 
@@ -128,6 +146,7 @@ export function emitCycleObservability(
     postGeneration: memory.getTodayPostGenerationMetrics(input.timezone),
     laneUsage24h: memory.getRecentBriefingLaneUsage(24),
     nutrient: memory.getTodayNutrientMetrics(input.timezone),
+    llm: anthropicBudget.getTodayUsage(input.timezone),
   };
 
   const event = buildCycleObservabilityEvent(input, snapshot);
@@ -148,6 +167,13 @@ export function buildCycleObservabilityEvent(
   const dominantLane = dominantLaneEntry && dominantLaneEntry[1] > 0 ? dominantLaneEntry[0] : "none";
   const laneTotal = laneEntries.reduce((sum, [, count]) => sum + count, 0);
   const onchainRatio = laneTotal > 0 ? laneUsageRecord.onchain / laneTotal : 0;
+  const totalInputTokens =
+    snapshot.llm.estimatedInputTokens +
+    snapshot.llm.cacheCreationInputTokens +
+    snapshot.llm.cacheReadInputTokens;
+  const cacheReadRatio = totalInputTokens > 0
+    ? snapshot.llm.cacheReadInputTokens / totalInputTokens
+    : 0;
   return {
     type: "quota_cycle",
     timestamp: new Date().toISOString(),
@@ -210,6 +236,15 @@ export function buildCycleObservabilityEvent(
       lane_usage_24h: laneUsageRecord,
       dominant_lane_24h: dominantLane,
       onchain_ratio_24h: round(onchainRatio, 3),
+    },
+    llmBudget: {
+      request_count: snapshot.llm.requestCount,
+      estimated_input_tokens: snapshot.llm.estimatedInputTokens,
+      estimated_output_tokens: snapshot.llm.estimatedOutputTokens,
+      cache_creation_input_tokens: snapshot.llm.cacheCreationInputTokens,
+      cache_read_input_tokens: snapshot.llm.cacheReadInputTokens,
+      cache_read_ratio: round(cacheReadRatio, 3),
+      estimated_total_cost_usd: snapshot.llm.estimatedTotalCostUsd,
     },
     cache: input.cacheMetrics,
   };
