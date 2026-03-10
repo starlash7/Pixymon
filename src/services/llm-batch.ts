@@ -177,6 +177,7 @@ Rules:
       lane: input.lane,
       maxChars: input.maxChars,
       nutrientCount: input.acceptedNutrients.length,
+      summarySnippet: input.summary.slice(0, 80),
     },
   };
 }

@@ -336,6 +336,17 @@ interface EvolutionHistoryRecord {
   capturedAt: string;
 }
 
+interface DigestReflectionMemoRecord {
+  id: string;
+  customId: string;
+  lane: TrendLane;
+  summary: string;
+  text: string;
+  batchId?: string;
+  capturedAt: string;
+  appliedAt: string;
+}
+
 interface XpGainBySourceRecord {
   dateKey: string;
   onchain: number;
@@ -353,6 +364,7 @@ interface QualityTelemetry {
   nutrientLedger: NutrientLedgerEntry[];
   xpGainBySource: Record<string, XpGainBySourceRecord>;
   evolutionHistory: EvolutionHistoryRecord[];
+  reflectionMemos: DigestReflectionMemoRecord[];
 }
 
 interface MemoryData {
@@ -398,6 +410,7 @@ function createEmptyQualityTelemetry(): QualityTelemetry {
     nutrientLedger: [],
     xpGainBySource: {},
     evolutionHistory: [],
+    reflectionMemos: [],
   };
 }
 
@@ -538,8 +551,8 @@ export class MemoryService {
   private saveTimer: NodeJS.Timeout | null = null;
   private repliedTweetSet = new Set<string>();
 
-  constructor() {
-    this.dataPath = path.join(DATA_DIR, "memory.json");
+  constructor(options?: { dataPath?: string }) {
+    this.dataPath = options?.dataPath || path.join(DATA_DIR, "memory.json");
     this.data = this.load();
     this.sanitizeSoulArtifacts();
     this.repliedTweetSet = new Set(this.data.repliedTweets || []);
@@ -551,9 +564,10 @@ export class MemoryService {
   // 데이터 로드
   private load(): MemoryData {
     try {
+      const dataDir = path.dirname(this.dataPath);
       // 디렉토리 없으면 생성
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
         console.log("[MEMORY] 데이터 디렉토리 생성됨");
       }
 
@@ -615,6 +629,7 @@ export class MemoryService {
         this.saveTimer = null;
       }
       this.data.lastUpdated = new Date().toISOString();
+      fs.mkdirSync(path.dirname(this.dataPath), { recursive: true });
       fs.writeFileSync(this.dataPath, JSON.stringify(this.data, null, 2));
     } catch (error) {
       console.error("[MEMORY] 저장 실패:", error);
@@ -1112,6 +1127,7 @@ export class MemoryService {
     const nutrientLedger = this.normalizeNutrientLedger(telemetry.nutrientLedger);
     const xpGainBySource = this.normalizeXpGainBySource(telemetry.xpGainBySource);
     const evolutionHistory = this.normalizeEvolutionHistory(telemetry.evolutionHistory);
+    const reflectionMemos = this.normalizeDigestReflectionMemos(telemetry.reflectionMemos);
 
     return {
       postGenerationByDate,
@@ -1121,6 +1137,7 @@ export class MemoryService {
       nutrientLedger,
       xpGainBySource,
       evolutionHistory,
+      reflectionMemos,
     };
   }
 
@@ -1303,6 +1320,32 @@ export class MemoryService {
     return output
       .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime())
       .slice(-300);
+  }
+
+  private normalizeDigestReflectionMemos(raw: unknown): DigestReflectionMemoRecord[] {
+    if (!Array.isArray(raw)) return [];
+    const now = new Date().toISOString();
+    const output: DigestReflectionMemoRecord[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Partial<DigestReflectionMemoRecord>;
+      const customId = typeof row.customId === "string" ? row.customId.trim().slice(0, 120) : "";
+      const text = this.normalizeTextField(typeof row.text === "string" ? row.text : "", "", 280);
+      if (!customId || !text) continue;
+      output.push({
+        id: typeof row.id === "string" && row.id.trim() ? row.id.trim() : `digest_reflection_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        customId,
+        lane: this.normalizeTrendLane(row.lane) || "onchain",
+        summary: this.normalizeTextField(typeof row.summary === "string" ? row.summary : "", text.slice(0, 140), 180),
+        text,
+        batchId: typeof row.batchId === "string" && row.batchId.trim() ? row.batchId.trim().slice(0, 120) : undefined,
+        capturedAt: typeof row.capturedAt === "string" && row.capturedAt.trim() ? row.capturedAt : now,
+        appliedAt: typeof row.appliedAt === "string" && row.appliedAt.trim() ? row.appliedAt : now,
+      });
+    }
+    return output
+      .sort((a, b) => new Date(a.appliedAt).getTime() - new Date(b.appliedAt).getTime())
+      .slice(-160);
   }
 
   private normalizeAbilityUnlocks(raw: unknown): AbilityUnlock[] {
@@ -1801,6 +1844,7 @@ export class MemoryService {
       .slice(-3)
       .reverse();
     const activeQuestion = soul.curiosity.openQuestions[0] || "";
+    const latestReflection = this.data.qualityTelemetry.reflectionMemos.slice(-1)[0];
 
     if (language === "en") {
       const lines: string[] = ["### Soul State"];
@@ -1819,6 +1863,12 @@ export class MemoryService {
         `- Voice DNA: rhythm=${soul.style.rhythm}, metaphor=${Math.round(soul.style.metaphorDensity * 100)}, humor=${Math.round(soul.style.humorTemperature * 100)}`
       );
       lines.push(`- Arc: ${soul.arc.arcStage} (${soul.arc.activeArcId})`);
+      if (soul.arc.lastTurnSummary) {
+        lines.push(`- Arc memo: ${soul.arc.lastTurnSummary}`);
+      }
+      if (latestReflection?.text) {
+        lines.push(`- Recent digest memo: ${latestReflection.text}`);
+      }
       if (activeQuestion) {
         lines.push(`- Open question: ${activeQuestion}`);
       }
@@ -1857,6 +1907,12 @@ export class MemoryService {
       `- Voice DNA: rhythm=${soul.style.rhythm}, 비유=${Math.round(soul.style.metaphorDensity * 100)}, 유머=${Math.round(soul.style.humorTemperature * 100)}`
     );
     lines.push(`- Arc: ${soul.arc.arcStage} (${soul.arc.activeArcId})`);
+    if (soul.arc.lastTurnSummary) {
+      lines.push(`- 최근 소화 메모: ${soul.arc.lastTurnSummary}`);
+    }
+    if (latestReflection?.text) {
+      lines.push(`- 최근 digest memo: ${latestReflection.text}`);
+    }
     if (activeQuestion) {
       lines.push(`- 열린 질문: ${activeQuestion}`);
     }
@@ -2215,6 +2271,95 @@ export class MemoryService {
     this.compactEvolutionHistory(300, 120);
     this.save();
     return outcomes;
+  }
+
+  recordDigestReflectionMemo(input: {
+    customId: string;
+    lane?: TrendLane;
+    summary?: string;
+    text: string;
+    batchId?: string;
+  }): void {
+    const customId = String(input.customId || "").trim().slice(0, 120);
+    const text = this.normalizeTextField(String(input.text || ""), "", 280);
+    if (!customId || !text) return;
+
+    const lane = this.normalizeTrendLane(input.lane) || "onchain";
+    const summary = this.normalizeTextField(String(input.summary || ""), text.slice(0, 140), 180);
+    const now = new Date().toISOString();
+    const existing = this.data.qualityTelemetry.reflectionMemos.find((item) => item.customId === customId);
+
+    if (existing) {
+      existing.lane = lane;
+      existing.summary = summary;
+      existing.text = text;
+      existing.batchId = typeof input.batchId === "string" && input.batchId.trim()
+        ? input.batchId.trim().slice(0, 120)
+        : existing.batchId;
+      existing.appliedAt = now;
+    } else {
+      this.data.qualityTelemetry.reflectionMemos.push({
+        id: `digest_reflection_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        customId,
+        lane,
+        summary,
+        text,
+        batchId: typeof input.batchId === "string" && input.batchId.trim()
+          ? input.batchId.trim().slice(0, 120)
+          : undefined,
+        capturedAt: now,
+        appliedAt: now,
+      });
+    }
+
+    const soul = this.data.soulState;
+    const question = this.normalizeSoulSnippet(
+      this.extractQuestionFromText(text) || this.pickGeneratedQuestion(lane, "ko"),
+      140
+    );
+    const reflectiveLine = this.normalizeSoulSnippet(this.extractReflectiveLine(text) || text, 140);
+
+    if (question) {
+      soul.curiosity.openQuestions = [question, ...soul.curiosity.openQuestions]
+        .map((item) => this.normalizeSoulSnippet(item, 140))
+        .filter(Boolean)
+        .filter((item, index, arr) => arr.indexOf(item) === index)
+        .slice(0, 8);
+      soul.curiosity.updatedAt = now;
+      soul.worldview.interactionMissions = [question, ...soul.worldview.interactionMissions]
+        .map((item) => this.normalizeSoulSnippet(item, 140))
+        .filter(Boolean)
+        .filter((item, index, arr) => arr.indexOf(item) === index)
+        .slice(0, 8);
+    }
+    if (reflectiveLine && !this.isTemplateLikeSoulLine(reflectiveLine)) {
+      soul.worldview.philosophyNotes = [reflectiveLine, ...soul.worldview.philosophyNotes]
+        .map((item) => this.normalizeSoulSnippet(item, 140))
+        .filter(Boolean)
+        .filter((item, index, arr) => arr.indexOf(item) === index)
+        .slice(0, 8);
+      soul.worldview.updatedAt = now;
+    }
+
+    soul.arc.arcStage = "reflection";
+    soul.arc.lastTurnSummary = summary;
+    soul.arc.updatedAt = now;
+    soul.mood.energy = this.clamp(soul.mood.energy + 0.01, 0, 1);
+    soul.mood.confidence = this.clamp(soul.mood.confidence + 0.02, 0, 1);
+    soul.mood.tone = /모르|보류|다시|확인/.test(text) ? "cautious" : "focused";
+    soul.mood.updatedAt = now;
+
+    this.data.agentState.reasoningXp += 1;
+    this.data.agentState.readiness = this.calculateReadiness(
+      this.data.agentState.signalXp,
+      this.data.agentState.socialXp,
+      this.data.agentState.reasoningXp
+    );
+    this.data.agentState.lastUpdated = now;
+
+    this.compactOpenQuestions();
+    this.compactDigestReflectionMemos(160, 30);
+    this.commitSoulState();
   }
 
   private applyNutrientIntake(params: {
@@ -3365,6 +3510,19 @@ export class MemoryService {
       })
       .sort((a, b) => new Date(a.capturedAt).getTime() - new Date(b.capturedAt).getTime());
     this.data.qualityTelemetry.evolutionHistory = filtered.slice(-Math.max(1, keepItems));
+  }
+
+  private compactDigestReflectionMemos(keepItems: number, keepDays: number): void {
+    const now = Date.now();
+    const keepMs = Math.max(1, keepDays) * 24 * 60 * 60 * 1000;
+    const filtered = this.data.qualityTelemetry.reflectionMemos
+      .filter((row) => {
+        const ts = new Date(row.appliedAt || row.capturedAt).getTime();
+        if (!Number.isFinite(ts)) return false;
+        return now - ts <= keepMs;
+      })
+      .sort((a, b) => new Date(a.appliedAt).getTime() - new Date(b.appliedAt).getTime());
+    this.data.qualityTelemetry.reflectionMemos = filtered.slice(-Math.max(1, keepItems));
   }
 
   private compactSoulQuests(): void {

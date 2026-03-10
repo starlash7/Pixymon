@@ -1,8 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { TrendLane } from "../types/agent.js";
 import { LlmBatchRuntimeSettings } from "../types/runtime.js";
 import { LlmBatchQueueService, llmBatchQueue } from "./llm-batch-queue.js";
 import { LlmBatchRunsService, llmBatchRuns, RemoteBatchLike } from "./llm-batch-runs.js";
+import { memory } from "./memory.js";
 import { TEST_NO_EXTERNAL_CALLS } from "./twitter.js";
+
+interface BatchRunnerMemoryLike {
+  recordDigestReflectionMemo(input: {
+    customId: string;
+    lane?: TrendLane;
+    summary?: string;
+    text: string;
+    batchId?: string;
+  }): void;
+}
 
 export interface LlmBatchSubmitReport {
   status: "disabled" | "local-skip" | "empty" | "submitted" | "error";
@@ -25,6 +37,7 @@ export async function submitPendingLlmBatch(
   deps: {
     queue?: LlmBatchQueueService;
     runs?: LlmBatchRunsService;
+    memoryService?: BatchRunnerMemoryLike;
   } = {}
 ): Promise<LlmBatchSubmitReport> {
   if (!settings.enabled) {
@@ -71,6 +84,7 @@ export async function syncLlmBatchRuns(
   deps: {
     queue?: LlmBatchQueueService;
     runs?: LlmBatchRunsService;
+    memoryService?: BatchRunnerMemoryLike;
   } = {}
 ): Promise<LlmBatchSyncReport> {
   if (!settings.enabled) {
@@ -82,6 +96,7 @@ export async function syncLlmBatchRuns(
 
   const queue = deps.queue || llmBatchQueue;
   const runs = deps.runs || llmBatchRuns;
+  const memoryService = deps.memoryService || memory;
   const candidates = runs.getSyncCandidates(settings.minSyncMinutes, settings.maxSyncBatchesPerRun);
   if (candidates.length === 0) {
     return { status: "empty", syncedBatches: 0, completedJobs: 0, failedJobs: 0 };
@@ -108,6 +123,22 @@ export async function syncLlmBatchRuns(
         if (!customId) continue;
         const resultType = typeof entry?.result?.type === "string" ? entry.result.type : "unknown";
         if (resultType === "succeeded") {
+          const queueEntry = queue.getEntry(customId);
+          if (queueEntry?.job.kind === "digest:reflection") {
+            const reflectionText = extractBatchMessageText(entry?.result?.message?.content);
+            if (reflectionText) {
+              memoryService.recordDigestReflectionMemo({
+                customId,
+                lane: typeof queueEntry.job.metadata?.lane === "string" ? queueEntry.job.metadata.lane as TrendLane : undefined,
+                summary:
+                  typeof queueEntry.job.metadata?.summarySnippet === "string"
+                    ? queueEntry.job.metadata.summarySnippet
+                    : undefined,
+                text: reflectionText,
+                batchId: candidate.batchId,
+              });
+            }
+          }
           if (queue.markCompleted(customId, `batch:${candidate.batchId}:succeeded`)) {
             completedJobs += 1;
           }
@@ -161,4 +192,18 @@ function toRemoteBatchLike(batch: any): RemoteBatchLike {
       expired: typeof batch?.request_counts?.expired === "number" ? batch.request_counts.expired : 0,
     },
   };
+}
+
+function extractBatchMessageText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((block) => {
+      if (!block || typeof block !== "object") return "";
+      const row = block as Record<string, unknown>;
+      return row.type === "text" && typeof row.text === "string" ? row.text.trim() : "";
+    })
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .slice(0, 280);
 }

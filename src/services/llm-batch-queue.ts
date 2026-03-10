@@ -133,6 +133,10 @@ export class LlmBatchQueueService {
       .map((entry) => entry.job);
   }
 
+  getEntry(customId: string): LlmBatchQueueEntry | null {
+    return this.findEntry(customId);
+  }
+
   markSubmitted(customIds: string[], batchId?: string): number {
     const ids = new Set(
       customIds

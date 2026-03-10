@@ -35,6 +35,11 @@ function withTempBatchState(
 
 test("submitPendingLlmBatch submits queued jobs and records batch state", async () => {
   await withTempBatchState(async (queue, runs, jobCustomId) => {
+    const memoryService = {
+      recordDigestReflectionMemo() {
+        // no-op
+      },
+    };
     const fakeClaude = {
       beta: {
         messages: {
@@ -67,7 +72,7 @@ test("submitPendingLlmBatch submits queued jobs and records batch state", async 
         maxSyncBatchesPerRun: 3,
         minSyncMinutes: 0,
       },
-      { queue, runs }
+      { queue, runs, memoryService }
     );
 
     assert.equal(report.status, "submitted");
@@ -92,6 +97,12 @@ test("submitPendingLlmBatch submits queued jobs and records batch state", async 
 
 test("syncLlmBatchRuns applies succeeded and failed results back into queue", async () => {
   await withTempBatchState(async (queue, runs, jobCustomId) => {
+    const recorded: Array<{ customId: string; text: string }> = [];
+    const memoryService = {
+      recordDigestReflectionMemo(input: { customId: string; text: string }) {
+        recorded.push({ customId: input.customId, text: input.text });
+      },
+    };
     runs.recordSubmittedBatch(
       {
         id: "msgbatch_sync_001",
@@ -154,7 +165,7 @@ test("syncLlmBatchRuns applies succeeded and failed results back into queue", as
         maxSyncBatchesPerRun: 3,
         minSyncMinutes: 0,
       },
-      { queue, runs }
+      { queue, runs, memoryService }
     );
 
     assert.equal(report.status, "synced");
@@ -174,5 +185,6 @@ test("syncLlmBatchRuns applies succeeded and failed results back into queue", as
       endedApplied: 1,
       total: 1,
     });
+    assert.deepEqual(recorded, [{ customId: jobCustomId, text: "reflection memo" }]);
   });
 });
