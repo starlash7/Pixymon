@@ -9,6 +9,7 @@ import { anthropicBudget } from "./services/anthropic-budget.js";
 import { anthropicAdminUsage } from "./services/anthropic-admin-usage.js";
 import { acquireRuntimeLock, registerRuntimeLockCleanup } from "./services/process-lock.js";
 import { xApiBudget } from "./services/x-api-budget.js";
+import { llmBatchRuns } from "./services/llm-batch-runs.js";
 
 /**
  * Pixymon AI Agent - 메인 진입점
@@ -42,6 +43,11 @@ function commitShutdown(reason: string): void {
   }
   try {
     anthropicAdminUsage.flushNow();
+  } catch {
+    // no-op
+  }
+  try {
+    llmBatchRuns.flushNow();
   } catch {
     // no-op
   }

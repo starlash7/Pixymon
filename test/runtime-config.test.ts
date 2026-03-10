@@ -75,6 +75,10 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       ANTHROPIC_RESEARCH_OUTPUT_COST_PER_MILLION_USD: "4.5",
       TOTAL_COST_GUARD_ENABLED: "true",
       TOTAL_DAILY_MAX_USD: "0.6",
+      ANTHROPIC_BATCH_ENABLED: "true",
+      ANTHROPIC_BATCH_MAX_REQUESTS: "12",
+      ANTHROPIC_BATCH_MAX_SYNC_BATCHES: "4",
+      ANTHROPIC_BATCH_MIN_SYNC_MINUTES: "15",
       OBSERVABILITY_ENABLED: "true",
       OBSERVABILITY_STDOUT_JSON: "false",
       OBSERVABILITY_EVENT_LOG_PATH: "data/custom-observability.ndjson",
@@ -131,6 +135,10 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.anthropicCost.researchOutputCostPerMillionUsd, 4.5);
       assert.equal(config.totalCost.enabled, true);
       assert.equal(config.totalCost.dailyMaxUsd, 0.6);
+      assert.equal(config.batch.enabled, true);
+      assert.equal(config.batch.maxRequestsPerBatch, 12);
+      assert.equal(config.batch.maxSyncBatchesPerRun, 4);
+      assert.equal(config.batch.minSyncMinutes, 15);
       assert.equal(config.observability.enabled, true);
       assert.equal(config.observability.stdoutJson, false);
       assert.equal(config.observability.eventLogPath, "data/custom-observability.ndjson");
@@ -180,6 +188,10 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       ANTHROPIC_RESEARCH_OUTPUT_COST_PER_MILLION_USD: "invalid",
       TOTAL_COST_GUARD_ENABLED: "invalid",
       TOTAL_DAILY_MAX_USD: "invalid",
+      ANTHROPIC_BATCH_ENABLED: "invalid",
+      ANTHROPIC_BATCH_MAX_REQUESTS: "invalid",
+      ANTHROPIC_BATCH_MAX_SYNC_BATCHES: "invalid",
+      ANTHROPIC_BATCH_MIN_SYNC_MINUTES: "invalid",
       SOUL_MODE: "invalid",
       SOFT_GATE_MODE: "invalid",
       QUEST_MODE: "invalid",
@@ -228,6 +240,10 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.anthropicCost.researchOutputCostPerMillionUsd, 4);
       assert.equal(config.totalCost.enabled, true);
       assert.equal(config.totalCost.dailyMaxUsd, 0.5);
+      assert.equal(config.batch.enabled, false);
+      assert.equal(config.batch.maxRequestsPerBatch, 8);
+      assert.equal(config.batch.maxSyncBatchesPerRun, 3);
+      assert.equal(config.batch.minSyncMinutes, 10);
       assert.equal(config.soul.soulMode, true);
       assert.equal(config.soul.softGateMode, false);
       assert.equal(config.soul.questMode, true);

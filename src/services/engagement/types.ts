@@ -2,6 +2,7 @@ import { MarketData } from "../blockchain-news.js";
 import { OnchainEvidence, OnchainNutrient, TrendEvent, TrendLane } from "../../types/agent.js";
 import {
   EngagementRuntimeSettings,
+  LlmBatchRuntimeSettings,
   ObservabilityRuntimeSettings,
   XApiCostRuntimeSettings,
 } from "../../types/runtime.js";
@@ -14,6 +15,7 @@ export interface DailyQuotaOptions {
   maxLoopMinutes?: number;
   engagement?: Partial<EngagementRuntimeSettings>;
   xApiCost?: Partial<XApiCostRuntimeSettings>;
+  batch?: Partial<LlmBatchRuntimeSettings>;
   observability?: Partial<ObservabilityRuntimeSettings>;
 }
 

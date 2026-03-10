@@ -60,6 +60,13 @@ export interface TotalCostRuntimeSettings {
   dailyMaxUsd: number;
 }
 
+export interface LlmBatchRuntimeSettings {
+  enabled: boolean;
+  maxRequestsPerBatch: number;
+  maxSyncBatchesPerRun: number;
+  minSyncMinutes: number;
+}
+
 export interface ObservabilityRuntimeSettings {
   enabled: boolean;
   stdoutJson: boolean;

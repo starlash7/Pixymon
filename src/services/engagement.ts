@@ -22,12 +22,14 @@ import {
 import { detectLanguage } from "../utils/mood.js";
 import {
   DEFAULT_ENGAGEMENT_SETTINGS,
+  DEFAULT_LLM_BATCH_SETTINGS,
   DEFAULT_OBSERVABILITY_SETTINGS,
   DEFAULT_X_API_COST_SETTINGS,
 } from "../config/runtime.js";
 import {
   ContentLanguage,
   EngagementRuntimeSettings,
+  LlmBatchRuntimeSettings,
   ObservabilityRuntimeSettings,
   XApiCostRuntimeSettings,
 } from "../types/runtime.js";
@@ -86,6 +88,7 @@ import {
 } from "./narrative-os.js";
 import { evaluateAutonomyGovernor } from "./autonomy-governor.js";
 import { buildQuoteReplySeed } from "./creative-studio.js";
+import { submitPendingLlmBatch, syncLlmBatchRuns } from "./llm-batch-runner.js";
 
 const DEFAULT_TIMEZONE = "Asia/Seoul";
 const DEFAULT_MIN_LOOP_MINUTES = 25;
@@ -2348,15 +2351,42 @@ export async function runDailyQuotaLoop(
   const maxLoop = clamp(options.maxLoopMinutes ?? DEFAULT_MAX_LOOP_MINUTES, minLoop, 240);
   const runtimeSettings = resolveEngagementSettings(options.engagement);
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCost);
+  const batchSettings = resolveLlmBatchSettings(options.batch);
 
   console.log(`[LOOP] 고정 시간 스케줄 없이 자율 루프 실행 (${minLoop}~${maxLoop}분 간격)`);
   console.log(`[LOOP] 언어 설정: post=${runtimeSettings.postLanguage}, reply=${runtimeSettings.replyLanguageMode}`);
   console.log(
     `[LOOP] X budget: $${xApiCostSettings.dailyMaxUsd.toFixed(2)}/day, read=${xApiCostSettings.dailyReadRequestLimit}, create=${xApiCostSettings.dailyCreateRequestLimit}, mention>=${xApiCostSettings.mentionReadMinIntervalMinutes}m, trend>=${xApiCostSettings.trendReadMinIntervalMinutes}m, create>=${xApiCostSettings.createMinIntervalMinutes}m`
   );
+  console.log(
+    `[LOOP] batch: ${batchSettings.enabled ? `on submit<=${batchSettings.maxRequestsPerBatch} sync<=${batchSettings.maxSyncBatchesPerRun}` : "off"}`
+  );
 
   while (true) {
+    const preSync = await syncLlmBatchRuns(claude, batchSettings);
+    if (preSync.status === "synced") {
+      console.log(
+        `[BATCH] sync batches=${preSync.syncedBatches} completed=${preSync.completedJobs} failed=${preSync.failedJobs}`
+      );
+    } else if (preSync.status === "error") {
+      console.log(`[BATCH] sync 실패: ${preSync.error}`);
+    }
+
     const result = await runDailyQuotaCycle(twitter, claude, options);
+    const submit = await submitPendingLlmBatch(claude, batchSettings);
+    if (submit.status === "submitted") {
+      console.log(`[BATCH] submit batch=${submit.batchId} requests=${submit.requestCount}`);
+    } else if (submit.status === "error") {
+      console.log(`[BATCH] submit 실패: ${submit.error}`);
+    }
+    const postSync = await syncLlmBatchRuns(claude, batchSettings);
+    if (postSync.status === "synced") {
+      console.log(
+        `[BATCH] post-sync batches=${postSync.syncedBatches} completed=${postSync.completedJobs} failed=${postSync.failedJobs}`
+      );
+    } else if (postSync.status === "error") {
+      console.log(`[BATCH] post-sync 실패: ${postSync.error}`);
+    }
     const now = new Date().toLocaleString("ko-KR", { timeZone: timezone });
     console.log(`[LOOP] ${now} | 이번 사이클 ${result.executed}개 생성 | 남은 목표 ${result.remaining}개`);
 
@@ -5063,6 +5093,35 @@ function resolveObservabilitySettings(
       typeof settings.eventLogPath === "string" && settings.eventLogPath.trim().length > 0
         ? settings.eventLogPath.trim()
         : DEFAULT_OBSERVABILITY_SETTINGS.eventLogPath,
+  };
+}
+
+function resolveLlmBatchSettings(
+  settings: Partial<LlmBatchRuntimeSettings> = {}
+): LlmBatchRuntimeSettings {
+  return {
+    enabled:
+      typeof settings.enabled === "boolean"
+        ? settings.enabled
+        : DEFAULT_LLM_BATCH_SETTINGS.enabled,
+    maxRequestsPerBatch: clampInt(
+      settings.maxRequestsPerBatch,
+      1,
+      100,
+      DEFAULT_LLM_BATCH_SETTINGS.maxRequestsPerBatch
+    ),
+    maxSyncBatchesPerRun: clampInt(
+      settings.maxSyncBatchesPerRun,
+      1,
+      50,
+      DEFAULT_LLM_BATCH_SETTINGS.maxSyncBatchesPerRun
+    ),
+    minSyncMinutes: clampInt(
+      settings.minSyncMinutes,
+      1,
+      1440,
+      DEFAULT_LLM_BATCH_SETTINGS.minSyncMinutes
+    ),
   };
 }
 

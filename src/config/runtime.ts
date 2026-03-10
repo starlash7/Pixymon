@@ -3,6 +3,7 @@ import {
   AnthropicCostRuntimeSettings,
   ContentLanguage,
   EngagementRuntimeSettings,
+  LlmBatchRuntimeSettings,
   ObservabilityRuntimeSettings,
   OperationalRuntimeSettings,
   ReplyLanguageMode,
@@ -22,6 +23,7 @@ export interface RuntimeConfig {
   xApiCost: XApiCostRuntimeSettings;
   anthropicCost: AnthropicCostRuntimeSettings;
   totalCost: TotalCostRuntimeSettings;
+  batch: LlmBatchRuntimeSettings;
   observability: ObservabilityRuntimeSettings;
   soul: SoulRuntimeSettings;
   operational: OperationalRuntimeSettings;
@@ -53,6 +55,10 @@ const DEFAULT_ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD = 15;
 const DEFAULT_ANTHROPIC_RESEARCH_INPUT_COST_PER_MILLION_USD = 0.8;
 const DEFAULT_ANTHROPIC_RESEARCH_OUTPUT_COST_PER_MILLION_USD = 4;
 const DEFAULT_TOTAL_DAILY_MAX_USD = DEFAULT_X_API_DAILY_MAX_USD + DEFAULT_ANTHROPIC_DAILY_MAX_USD;
+const DEFAULT_BATCH_ENABLED = false;
+const DEFAULT_BATCH_MAX_REQUESTS_PER_BATCH = 8;
+const DEFAULT_BATCH_MAX_SYNC_BATCHES_PER_RUN = 3;
+const DEFAULT_BATCH_MIN_SYNC_MINUTES = 10;
 
 const getDefaultDailyReadRequestLimit = (): number =>
   Math.max(1, Math.floor(DEFAULT_X_API_DAILY_MAX_USD / DEFAULT_X_API_ESTIMATED_READ_COST_USD));
@@ -136,6 +142,13 @@ export const DEFAULT_ANTHROPIC_COST_SETTINGS: AnthropicCostRuntimeSettings = {
 export const DEFAULT_TOTAL_COST_SETTINGS: TotalCostRuntimeSettings = {
   enabled: true,
   dailyMaxUsd: DEFAULT_TOTAL_DAILY_MAX_USD,
+};
+
+export const DEFAULT_LLM_BATCH_SETTINGS: LlmBatchRuntimeSettings = {
+  enabled: DEFAULT_BATCH_ENABLED,
+  maxRequestsPerBatch: DEFAULT_BATCH_MAX_REQUESTS_PER_BATCH,
+  maxSyncBatchesPerRun: DEFAULT_BATCH_MAX_SYNC_BATCHES_PER_RUN,
+  minSyncMinutes: DEFAULT_BATCH_MIN_SYNC_MINUTES,
 };
 
 function parseIntInRange(
@@ -507,6 +520,30 @@ export function loadRuntimeConfig(): RuntimeConfig {
       200
     ),
   };
+  const batch: LlmBatchRuntimeSettings = {
+    enabled: parseBoolean(
+      process.env.ANTHROPIC_BATCH_ENABLED,
+      DEFAULT_LLM_BATCH_SETTINGS.enabled
+    ),
+    maxRequestsPerBatch: parseIntInRange(
+      process.env.ANTHROPIC_BATCH_MAX_REQUESTS,
+      DEFAULT_LLM_BATCH_SETTINGS.maxRequestsPerBatch,
+      1,
+      100
+    ),
+    maxSyncBatchesPerRun: parseIntInRange(
+      process.env.ANTHROPIC_BATCH_MAX_SYNC_BATCHES,
+      DEFAULT_LLM_BATCH_SETTINGS.maxSyncBatchesPerRun,
+      1,
+      50
+    ),
+    minSyncMinutes: parseIntInRange(
+      process.env.ANTHROPIC_BATCH_MIN_SYNC_MINUTES,
+      DEFAULT_LLM_BATCH_SETTINGS.minSyncMinutes,
+      1,
+      1440
+    ),
+  };
   const observability: ObservabilityRuntimeSettings = {
     enabled: parseBoolean(
       process.env.OBSERVABILITY_ENABLED,
@@ -562,6 +599,7 @@ export function loadRuntimeConfig(): RuntimeConfig {
     xApiCost,
     anthropicCost,
     totalCost,
+    batch,
     observability,
     soul,
     operational,

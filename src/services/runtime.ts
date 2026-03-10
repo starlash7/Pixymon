@@ -6,6 +6,7 @@ import { postTrendUpdate, runDailyQuotaCycle, runDailyQuotaLoop } from "./engage
 import { TEST_MODE, TEST_NO_EXTERNAL_CALLS, getMentions } from "./twitter.js";
 import { operationalState } from "./operational-state.js";
 import { xApiBudget } from "./x-api-budget.js";
+import { submitPendingLlmBatch, syncLlmBatchRuns } from "./llm-batch-runner.js";
 
 export function printStartupBanner(config: RuntimeConfig): void {
   console.log("▶ Pixymon 온라인.");
@@ -28,6 +29,9 @@ export function printStartupBanner(config: RuntimeConfig): void {
   );
   console.log(
     `  [BUDGET] X=$${config.xApiCost.dailyMaxUsd.toFixed(2)}/day | LLM=$${config.anthropicCost.dailyMaxUsd.toFixed(2)}/day | TOTAL=$${config.totalCost.dailyMaxUsd.toFixed(2)}/day | cache=${config.anthropicCost.promptCachingEnabled ? "on" : "off"} | usage-api=${config.anthropicCost.usageApiEnabled ? "on" : "off"}`
+  );
+  console.log(
+    `  [BATCH] enabled=${config.batch.enabled ? "on" : "off"} | submit<=${config.batch.maxRequestsPerBatch} | sync<=${config.batch.maxSyncBatchesPerRun}/${config.batch.minSyncMinutes}m`
   );
   console.log("=====================================\n");
 }
@@ -102,6 +106,7 @@ export async function runSchedulerMode(
     maxLoopMinutes: config.maxLoopMinutes,
     engagement: config.engagement,
     xApiCost: config.xApiCost,
+    batch: config.batch,
     observability: config.observability,
   });
 }
@@ -119,14 +124,40 @@ export async function runOneShotMode(
   console.log("=====================================\n");
 
   if (twitter) {
+    const preSync = await syncLlmBatchRuns(claude, config.batch);
+    if (preSync.status === "synced") {
+      console.log(
+        `[BATCH] pre-sync batches=${preSync.syncedBatches} completed=${preSync.completedJobs} failed=${preSync.failedJobs}`
+      );
+    } else if (preSync.status === "error") {
+      console.log(`[BATCH] pre-sync 실패: ${preSync.error}`);
+    }
+
     await runDailyQuotaCycle(twitter, claude, {
       dailyTarget: config.dailyActivityTarget,
       timezone: config.dailyTimezone,
       maxActionsPerCycle: config.maxActionsPerCycle,
       engagement: config.engagement,
       xApiCost: config.xApiCost,
+      batch: config.batch,
       observability: config.observability,
     });
+
+    const submit = await submitPendingLlmBatch(claude, config.batch);
+    if (submit.status === "submitted") {
+      console.log(`[BATCH] submit batch=${submit.batchId} requests=${submit.requestCount}`);
+    } else if (submit.status === "error") {
+      console.log(`[BATCH] submit 실패: ${submit.error}`);
+    }
+
+    const postSync = await syncLlmBatchRuns(claude, config.batch);
+    if (postSync.status === "synced") {
+      console.log(
+        `[BATCH] post-sync batches=${postSync.syncedBatches} completed=${postSync.completedJobs} failed=${postSync.failedJobs}`
+      );
+    } else if (postSync.status === "error") {
+      console.log(`[BATCH] post-sync 실패: ${postSync.error}`);
+    }
     operationalState.recordCheckpoint(config, "one-shot-complete");
   } else {
     if (TEST_MODE) {
