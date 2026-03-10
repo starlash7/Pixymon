@@ -2103,7 +2103,7 @@ function buildNutritionNarrativeHint(params: {
     params.acceptedNutrients[0];
   const nutrientLabel = sanitizeTweetText(keyNutrient?.label || "").slice(0, 34);
   const seed = stableSeedForPrelude(
-    `${params.language}|${params.lane}|${metrics.acceptedCount}|${metrics.xpGain}|${nutrientLabel}|${stage}`
+    `${params.language}|${params.lane}|${metrics.acceptedCount}|${metrics.xpGain}|${nutrientLabel}|${keyNutrient?.id || ""}|${keyNutrient?.capturedAt || ""}|${stage}`
   );
 
   if (params.language === "en") {
@@ -3976,8 +3976,14 @@ function buildEmergencyContractPost(
     return finalizeGeneratedText(base, language, maxChars);
   }
 
-  const base = `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 오래 버티는 단서만 다음 문장에 남긴다.`;
-  return finalizeGeneratedText(base, language, maxChars);
+  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|${eventPlan.lane}`);
+  const pool = [
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 오래 버티는 단서만 다음 문장에 남긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 남는 단서만 문장으로 옮긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 버티는 단서만 다음 말로 넘긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 흔들리는 쪽을 본다. 먼저 움직인 축이 예상과 다르면 이 읽기는 버린다. 살아남는 단서만 다음 문장에 남긴다.`,
+  ];
+  return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
 
 interface PostDiversityGuard {
