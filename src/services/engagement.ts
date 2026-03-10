@@ -1780,6 +1780,10 @@ function buildLocalQuoteTargets(trend: TrendContext): Array<{ id: string; text: 
   const raw = [
     ...trend.events.slice(0, 6).map((event) => sanitizeTweetText(event.headline)),
     ...trend.headlines.slice(0, 6).map((headline) => sanitizeTweetText(headline)),
+    ...trend.nutrients.slice(0, 6).map((item) =>
+      sanitizeTweetText(`${item.label} ${item.value}가 먼저 움직인 장면`)
+    ),
+    sanitizeTweetText(`${trend.summary} 이 흐름은 그냥 넘기기 어렵다`),
   ].filter((item) => item.length >= 25);
   const dedup = [...new Set(raw)].slice(0, 8);
   return dedup.map((text, index) => ({ id: `local_quote_${index + 1}`, text }));
@@ -2872,6 +2876,7 @@ function buildTrendTokenClause(tokens: string[], language: "ko" | "en", body: st
     normalized = normalized
       .map((token) => toKoTrendToken(token))
       .filter((token) => token.length >= 2)
+      .filter((token, index, array) => array.indexOf(token) === index)
       .slice(0, 2);
     if (normalized.length === 0) return "";
     if (normalized.length === 1) {
@@ -4055,8 +4060,24 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     const openerNorm = sanitizeTweetText(opener).toLowerCase();
     const conceptNorm = sanitizeTweetText(concept).toLowerCase();
     const beliefNorm = sanitizeTweetText(belief).toLowerCase();
-    const conceptLine = conceptNorm && openerNorm.includes(conceptNorm) ? "" : concept;
-    const beliefLine = beliefNorm && openerNorm.includes(beliefNorm) ? "" : belief;
+    let conceptLine = conceptNorm && openerNorm.includes(conceptNorm) ? "" : concept;
+    let beliefLine = beliefNorm && openerNorm.includes(beliefNorm) ? "" : belief;
+    if (beliefLine && sharesKoConceptFrame(sceneCore, beliefLine)) {
+      beliefLine = "";
+    }
+    if (conceptLine && sharesKoConceptFrame(sceneCore, conceptLine)) {
+      conceptLine = "";
+    }
+    if (beliefLine && conceptLine && sharesKoConceptFrame(beliefLine, conceptLine)) {
+      if (mode === "philosophy-note" || mode === "meta-reflection" || sceneIsSelfContained) {
+        conceptLine = "";
+      } else {
+        beliefLine = "";
+      }
+    }
+    if (sceneIsSelfContained && beliefLine && conceptLine) {
+      conceptLine = "";
+    }
     const patterns = buildKoPatterns(
       mode,
       opener,
