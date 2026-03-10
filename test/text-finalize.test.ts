@@ -57,3 +57,24 @@ test("finalizeGeneratedText softens explicit pixymon self-reference in korean", 
   const output = finalizeGeneratedText(input, "ko", 220);
   assert.equal(output, "나는 신호를 바로 믿지 않는다. 내 메모는 오래 버티는 근거만 남긴다.");
 });
+
+test("finalizeGeneratedText corrects broken korean particles in generated fallback text", () => {
+  const input =
+    "정책 문장는 짧게 지나가도 시장 행동의 지연 시간는 생각보다 오래 남는다. 문장를 급히 닫지 않는다.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(output, "정책 문장은 짧게 지나가도 시장 행동의 지연 시간은 생각보다 오래 남는다. 문장을 급히 닫지 않는다.");
+});
+
+test("finalizeGeneratedText removes dangling thesis tails like 기대는 순간", () => {
+  const input =
+    "내가 자주 틀리는 건 예쁘게 맞아 보이는 숫자 하나에 기대는 순간이다. 맞았던 기억에 기대는 순간.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(output, "내가 자주 틀리는 건 예쁘게 맞아 보이는 숫자 하나에 기대는 순간이다.");
+});
+
+test("finalizeGeneratedText removes dangling command tails like 넘기지", () => {
+  const input =
+    "좋은 해석은 버티는 근거 하나에서 나온다. 단서를 급히 넘기지.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(output, "좋은 해석은 버티는 근거 하나에서 나온다.");
+});

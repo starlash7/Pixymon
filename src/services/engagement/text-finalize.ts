@@ -13,7 +13,8 @@ export function finalizeGeneratedText(text: string, language: "ko" | "en", maxCh
   const laneAdjusted = language === "ko" ? reduceLaneAnchorEcho(deRepeated) : deRepeated;
   const varied = language === "ko" ? diversifyKoTransitions(laneAdjusted) : laneAdjusted;
   const selfSoftened = language === "ko" ? softenExplicitSelfReferenceKo(varied) : varied;
-  const cleaned = cleanupDanglingTail(trimTrailingFragment(pruneIncompleteSentences(selfSoftened, language), language), language);
+  const particleAdjusted = language === "ko" ? correctKoParticles(selfSoftened) : selfSoftened;
+  const cleaned = cleanupDanglingTail(trimTrailingFragment(pruneIncompleteSentences(particleAdjusted, language), language), language);
   const punctuated = ensureTerminalPunctuation(cleaned, maxChars);
   return punctuated.length <= maxChars ? punctuated : truncateAtWordBoundary(punctuated, maxChars);
 }
@@ -86,7 +87,7 @@ function cleanupDanglingTail(text: string, language: "ko" | "en"): string {
   if (language === "ko") {
     output = output
       .replace(/\s+(?:반증|조건|근거|근거는|단서|단서는|그리고|하지만|또|또는)$/g, "")
-      .replace(/\s+(?:않으면|아니면|라면|가면|되면|놓지|놓고|않고|보고|한\s*번\s*더)$/g, "")
+      .replace(/\s+(?:않으면|아니면|라면|가면|되면|놓지|놓고|않고|보고|넘기지|한\s*번\s*더)$/g, "")
       .replace(/\s+[이가은는을를의로와과도]$/g, "")
       .replace(/\s*[,:;]\s*$/g, "")
       .trim();
@@ -105,6 +106,32 @@ function softenExplicitSelfReferenceKo(text: string): string {
     .replace(/픽시몬의/g, "내")
     .replace(/픽시몬 기준으로/g, "내 기준으로")
     .replace(/픽시몬 메모/g, "내 메모");
+}
+
+function correctKoParticles(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  const pickParticle = (word: string, consonantForm: string, vowelForm: string): string => {
+    const last = word[word.length - 1];
+    const code = last?.charCodeAt(0) ?? 0;
+    const isHangulSyllable = code >= 0xac00 && code <= 0xd7a3;
+    if (!isHangulSyllable) {
+      return vowelForm;
+    }
+    const hasBatchim = (code - 0xac00) % 28 !== 0;
+    return hasBatchim ? consonantForm : vowelForm;
+  };
+
+  return normalized.replace(/([가-힣]+)([은는이가을를와과])(?=(?:\s|[.!?,]|$))/g, (_match, word: string, particle: string) => {
+    const resolved =
+      particle === "은" || particle === "는"
+        ? pickParticle(word, "은", "는")
+        : particle === "이" || particle === "가"
+          ? pickParticle(word, "이", "가")
+          : particle === "을" || particle === "를"
+            ? pickParticle(word, "을", "를")
+            : pickParticle(word, "과", "와");
+    return `${word}${resolved}`;
+  });
 }
 
 function ensureTerminalPunctuation(text: string, maxChars: number): string {
@@ -261,7 +288,9 @@ function trimTrailingFragment(text: string, language: "ko" | "en"): string {
       /(근거는|단서는|기준은|포인트는|현시점에서는|이번에는|지금은|우선|먼저|이어서|다음으로|않으면|아니면|라면|가면|되면|놓지|놓고|않고|보고|한\s*번\s*더)/.test(core);
     const truncatedThesisTail =
       !looksComplete &&
-      /(?:못하면|처음으로|여기서|이\s*해석은|이\s*문장은|이\s*생각은|오늘\s*결론은)$/.test(core);
+      /(?:못하면|처음으로|여기서|이\s*해석은|이\s*문장은|이\s*생각은|오늘\s*결론은|기대는\s*순간|믿는\s*순간|매달리는\s*순간|급히\s*넘기지)$/.test(
+        core
+      );
     if (
       (looksDangling && core.length <= 24) ||
       (core.length <= 8 && !looksComplete) ||

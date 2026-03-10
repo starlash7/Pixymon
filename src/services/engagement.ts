@@ -2996,6 +2996,20 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       .map((post) => sanitizeTweetText(post.content).slice(0, 24).toLowerCase())
       .filter(Boolean)
   );
+  const extractEndingKey = (text: string): string => {
+    const parts = sanitizeTweetText(text)
+      .split(/(?<=[.!?])/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const tail = parts[parts.length - 1] || sanitizeTweetText(text);
+    return tail.toLowerCase().slice(-32);
+  };
+  const recentEndings = new Set(
+    input.recentPosts
+      .slice(-8)
+      .map((post) => extractEndingKey(post.content))
+      .filter((item) => item.length >= 14)
+  );
   const seedBase = stableSeedForPrelude(`${headlineBase}|${anchors}|${worldviewHint}|${Date.now()}`);
   const pick = (pool: string[], offset: number): string => pool[(seedBase + offset) % pool.length];
   const hasKoPredicateEnding = (text: string): boolean =>
@@ -3016,11 +3030,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     if (/생각$/.test(cleaned)) return `${cleaned}`;
     if (/다$/.test(cleaned)) return `${cleaned.slice(0, -1)}다는 말`;
     if (!/(다|요|까)$/.test(cleaned) && cleaned.length >= 12) {
-      const nounish =
-        /(?:방식|구조|책임|신뢰|보상|설계|합의|질문|의미|속도|습관|행동|지도|모델|순서|관계|문장|패턴|장면|사실)$/.test(
-          cleaned
-        );
-      return nounish ? `${cleaned}이라는 감각` : `${cleaned}라는 감각`;
+      return cleaned;
     }
     return cleaned;
   };
@@ -3050,6 +3060,123 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       (hasKoPredicateEnding(cleaned) || /^[가-힣0-9A-Za-z].{12,}$/.test(cleaned))
     ) {
       return cleaned;
+    }
+
+    const rewriteVariant = (...pool: string[]): string =>
+      pool[(stableSeedForPrelude(`${cleaned}|${mode}|${laneHint}|${offset}`) + offset) % pool.length];
+    const exactRewriteMap: Record<string, string[]> = {
+      "달러가 흔들릴 때 내러티브의 수명이 먼저 길어진다": [
+        "달러가 흔들리는 날엔 숫자보다 이야기가 더 오래 남는다",
+        "달러 쪽이 출렁이면 사람들은 가격보다 이야기에 더 오래 붙는다",
+        "달러가 흔들리기 시작하면 차트보다 서사가 더 길게 버틴다",
+      ],
+      "자유는 느림이 아니라 설명 가능한 합의라는 생각": [
+        "자유라는 말은 결국 속도보다 설명 가능한 합의 쪽에서 더 또렷해진다",
+        "요즘은 자유가 빠름보다 설명 가능한 합의에 더 가까워 보인다",
+        "자유를 말할 때 끝에 남는 건 속도보다 설명 가능한 합의 쪽이다",
+      ],
+      "규제를 핑계로 삼는 순간 제품은 멈춘다": [
+        "규제를 이유로 움직임을 멈추는 순간 제품은 금방 굳어 버린다",
+        "규제를 핑계로 멈춰 서는 순간 제품은 더 이상 자라지 못한다",
+        "규제를 앞세워 멈추는 순간 제품은 생각보다 빨리 굳는다",
+      ],
+      "업그레이드 속도보다 중요한 건 롤백 없이 신뢰를 유지하는 방식": [
+        "요즘은 업그레이드 속도보다 롤백 없이 신뢰를 버티게 하는 방식이 더 눈에 들어온다",
+        "이번엔 빨리 바꾸는 일보다 롤백 없이 신뢰를 유지하는 방식이 더 중요해 보인다",
+        "결국 중요한 건 속도보다 롤백 없이 신뢰를 지켜 내는 방식 쪽이다",
+      ],
+    };
+    const exactPool = exactRewriteMap[cleaned];
+    if (exactPool?.length) {
+      return rewriteVariant(...exactPool);
+    }
+
+    const rewriteKoAbstractPattern = (input: string): string | null => {
+      const importantMatch = input.match(/^(.+?)보다\s+중요한\s+건\s+(.+)$/);
+      if (importantMatch) {
+        const left = importantMatch[1].trim();
+        const right = importantMatch[2].trim();
+        if (mode === "philosophy-note") {
+          return rewriteVariant(
+            `${left}보다 ${right} 쪽이 오늘은 더 또렷하게 보인다`,
+            `오늘은 ${left}보다 ${right} 쪽이 더 중요하다는 생각으로 기운다`,
+            `이 장면에선 ${left}보다 ${right} 쪽이 더 크게 남는다`
+          );
+        }
+        if (mode === "meta-reflection") {
+          return rewriteVariant(
+            `예전보다 ${left}보다 ${right} 쪽을 더 오래 붙들게 된다`,
+            `나는 자꾸 ${left}보다 ${right} 쪽에서 더 많이 틀렸다는 걸 떠올리게 된다`,
+            `이번엔 ${left}보다 ${right} 쪽을 먼저 의심하게 된다`
+          );
+        }
+        return rewriteVariant(
+          `요즘은 ${left}보다 ${right} 쪽이 더 중요하게 느껴진다`,
+          `결국 ${left}보다 ${right} 쪽에서 이야기가 갈린다는 생각이 남는다`,
+          `이번엔 ${left}보다 ${right} 쪽을 먼저 붙잡게 된다`
+        );
+      }
+
+      const retentionQuestionMatch = input.match(/^(.+?)[은는]\s+(.+?)보다\s+오래\s+남는가$/);
+      if (retentionQuestionMatch) {
+        const left = retentionQuestionMatch[1].trim();
+        const right = retentionQuestionMatch[2].trim();
+        return rewriteVariant(
+          `요즘은 ${left}가 ${right}보다 오래 남는지부터 다시 보게 된다`,
+          `결국 ${left}가 ${right}보다 오래 버티는지만 확인하게 된다`,
+          `이번엔 ${left}가 ${right}보다 오래 남는 쪽인지부터 본다`
+        );
+      }
+
+      const decideMatch = input.match(/^(.+?)[은는]\s+(.+?)에서\s+먼저\s+결정된다$/);
+      if (decideMatch) {
+        const left = decideMatch[1].trim();
+        const right = decideMatch[2].trim();
+        return rewriteVariant(
+          `결국 ${left}는 ${right}에서 먼저 갈린다고 보게 된다`,
+          `요즘은 ${left}가 ${right}에서 먼저 정해지는 장면으로 읽힌다`,
+          `이번엔 ${left}가 ${right}에서 먼저 갈리는지만 보게 된다`
+        );
+      }
+
+      const revealMatch = input.match(/^(.+?)[은는]\s+(.+?)에서\s+먼저\s+드러난다$/);
+      if (revealMatch) {
+        const left = revealMatch[1].trim();
+        const right = revealMatch[2].trim();
+        return rewriteVariant(
+          `${left}는 결국 ${right}에서 먼저 새어 나온다`,
+          `가만히 보면 ${left}는 ${right}에서 먼저 티가 난다`,
+          `이번 장면에선 ${left}가 ${right}에서 먼저 모습을 드러낸다`
+        );
+      }
+
+      const lagMatch = input.match(/^(.+?)[은는]\s+짧아도\s+(.+?)[은는]\s+길다$/);
+      if (lagMatch) {
+        const left = lagMatch[1].trim();
+        const right = lagMatch[2].trim();
+        return rewriteVariant(
+          `${left}는 금방 끝나는데 ${right}는 꼭 더 늦게 따라온다`,
+          `${left}는 짧게 지나가도 ${right}는 생각보다 오래 남는다`,
+          `${left}는 스쳐 가도 ${right}는 한참 뒤까지 끌고 간다`
+        );
+      }
+
+      const stateMatch = input.match(/^(.+?)[은는]\s+(.+?)이다$/);
+      if (stateMatch) {
+        const left = stateMatch[1].trim();
+        const right = stateMatch[2].trim();
+        return rewriteVariant(
+          `가만히 보고 있으면 ${left}는 결국 ${right}에 더 가깝다`,
+          `요즘은 ${left}를 ${right} 쪽으로 읽게 된다`,
+          `${left}를 보고 있으면 결국 ${right}라는 쪽에 손이 간다`
+        );
+      }
+
+      return null;
+    };
+    const rewrittenPattern = rewriteKoAbstractPattern(cleaned);
+    if (rewrittenPattern) {
+      return rewrittenPattern;
     }
 
     const seed = stableSeedForPrelude(`${mode}|${laneHint}|${cleaned}|${offset}`);
@@ -3661,6 +3788,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       );
     const sceneIsSelfContained =
       hasKoPredicateEnding(sceneCore) ||
+      /(?:보다\s+중요한\s+건|보다\s+오래\s+남는지|에서\s+먼저\s+결정된|에서\s+먼저\s+드러난|은\s+짧아도\s+.+은\s+길다|는\s+짧게\s+지나가도|라는\s+말은\s+결국)/.test(
+        sceneCore
+      ) ||
       /^(?:오늘|예전|조금|멀리서|가끔|문득|내가|요즘|시장|규제|커뮤니티|주소|체인|정책)/.test(sceneCore);
     const modeLeadPool = resolveKoLeadSource(mode);
     const lead = modeLeadPool[(seedBase + offset) % modeLeadPool.length];
@@ -3830,13 +3960,21 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const rotated = rawCandidates.slice(rotation).concat(rawCandidates.slice(0, rotation));
   const deduped: PreviewFallbackCandidate[] = [];
   const seenOpenings = new Set<string>();
+  const seenEndings = new Set<string>();
   for (const candidate of rotated) {
     const text = truncateAtWordBoundary(sanitizeTweetText(candidate.text), input.maxChars);
     const openingKey = sanitizeTweetText(text).toLowerCase().slice(0, 30);
+    const endingKey = extractEndingKey(text);
     if (openingKey && seenOpenings.has(openingKey)) {
       continue;
     }
+    if (endingKey.length >= 16 && seenEndings.has(endingKey)) {
+      continue;
+    }
     seenOpenings.add(openingKey);
+    if (endingKey.length >= 16) {
+      seenEndings.add(endingKey);
+    }
     deduped.push({ ...candidate, text });
   }
 
@@ -3856,6 +3994,11 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       const aSeen = recentOpeners.has(a.text.slice(0, 24).toLowerCase()) ? 1 : 0;
       const bSeen = recentOpeners.has(b.text.slice(0, 24).toLowerCase()) ? 1 : 0;
       return aSeen - bSeen;
+    })
+    .sort((a, b) => {
+      const aSeen = recentEndings.has(extractEndingKey(a.text)) ? 1 : 0;
+      const bSeen = recentEndings.has(extractEndingKey(b.text)) ? 1 : 0;
+      return aSeen - bSeen;
     });
 }
 
@@ -3869,7 +4012,7 @@ function applySoulPreludeToFallback(
   return truncateAtWordBoundary(stripNarrativeControlTags(text), maxChars);
 }
 
-function normalizeKoContractHeadline(text: string): string {
+function normalizeKoContractHeadline(text: string, seedHint: string = ""): string {
   const cleaned = sanitizeTweetText(text || "")
     .replace(
       /^(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*(?:맥락|포인트|이슈)\s*[:：]\s*/u,
@@ -3880,6 +4023,86 @@ function normalizeKoContractHeadline(text: string): string {
   if (!cleaned) {
     return "오늘은 이 장면부터 다시 본다";
   }
+  const exactRewriteMap: Record<string, string[]> = {
+    "달러가 흔들릴 때 내러티브의 수명이 먼저 길어진다": [
+      "달러가 흔들리는 날엔 숫자보다 이야기가 더 오래 남는다",
+      "달러 쪽이 출렁이면 가격보다 서사가 오래 버틴다",
+      "달러가 흔들리기 시작하면 차트보다 이야기가 더 길게 남는다",
+    ],
+    "자유는 느림이 아니라 설명 가능한 합의라는 생각": [
+      "자유라는 말은 결국 속도보다 설명 가능한 합의 쪽에서 더 또렷해진다",
+      "요즘은 자유가 빠름보다 설명 가능한 합의에 더 가까워 보인다",
+      "자유를 말할 때 끝에 남는 건 속도보다 설명 가능한 합의 쪽이다",
+    ],
+    "규제를 핑계로 삼는 순간 제품은 멈춘다": [
+      "규제를 핑계로 멈춰 서는 순간 제품은 더 이상 자라지 못한다",
+      "규제를 이유로 움직임을 멈추는 순간 제품은 금방 굳어 버린다",
+      "규제를 앞세워 멈추는 순간 제품은 생각보다 빨리 굳는다",
+    ],
+  };
+  const seedKey = `${cleaned}|contract|${seedHint}`;
+  const exactPool = exactRewriteMap[cleaned];
+  if (exactPool?.length) {
+    return exactPool[stableSeedForPrelude(seedKey) % exactPool.length];
+  }
+
+  const importantMatch = cleaned.match(/^(.+?)보다\s+중요한\s+건\s+(.+)$/);
+  if (importantMatch) {
+    const left = importantMatch[1].trim();
+    const right = importantMatch[2].trim();
+    const pool = [
+      `${left}보다 ${right} 쪽이 더 중요하게 느껴진다`,
+      `이번엔 ${left}보다 ${right} 쪽을 먼저 붙잡게 된다`,
+      `결국 ${left}보다 ${right} 쪽에서 이야기가 갈린다는 생각이 남는다`,
+    ];
+    return pool[stableSeedForPrelude(`${cleaned}|important|${seedHint}`) % pool.length];
+  }
+
+  const decideMatch = cleaned.match(/^(.+?)[은는]\s+(.+?)에서\s+먼저\s+결정된다$/);
+  if (decideMatch) {
+    const left = decideMatch[1].trim();
+    const right = decideMatch[2].trim();
+    const pool = [
+      `${left}는 결국 ${right}에서 먼저 갈린다`,
+      `요즘은 ${left}가 ${right}에서 먼저 정해지는 장면으로 읽힌다`,
+      `이번엔 ${left}가 ${right}에서 먼저 갈리는지만 보게 된다`,
+    ];
+    return pool[stableSeedForPrelude(`${cleaned}|decide|${seedHint}`) % pool.length];
+  }
+
+  const retentionQuestionMatch = cleaned.match(/^(.+?)[은는]\s+(.+?)보다\s+오래\s+남는가$/);
+  if (retentionQuestionMatch) {
+    const left = retentionQuestionMatch[1].trim();
+    const right = retentionQuestionMatch[2].trim();
+    const pool = [
+      `요즘은 ${left}가 ${right}보다 오래 남는지부터 다시 보게 된다`,
+      `결국 ${left}가 ${right}보다 오래 버티는지만 확인하게 된다`,
+      `이번엔 ${left}가 ${right}보다 오래 남는 쪽인지부터 본다`,
+    ];
+    return pool[stableSeedForPrelude(`${cleaned}|retain|${seedHint}`) % pool.length];
+  }
+
+  const lagMatch = cleaned.match(/^(.+?)[은는]\s+짧아도\s+(.+?)[은는]\s+길다$/);
+  if (lagMatch) {
+    const left = lagMatch[1].trim();
+    const right = lagMatch[2].trim();
+    const pool = [
+      `${left}는 금방 끝나는데 ${right}는 꼭 더 늦게 따라온다`,
+      `${left}는 짧게 지나가도 ${right}는 생각보다 오래 남는다`,
+      `${left}는 스쳐 가도 ${right}는 한참 뒤까지 끌고 간다`,
+    ];
+    return pool[stableSeedForPrelude(`${cleaned}|lag|${seedHint}`) % pool.length];
+  }
+
+  if (/생각$/.test(cleaned)) {
+    const pool = [
+      `${cleaned}이 오늘 유독 오래 남는다`,
+      `오늘은 ${cleaned} 쪽으로 자꾸 다시 돌아오게 된다`,
+      `${cleaned}이 생각보다 오래 머문다`,
+    ];
+    return pool[stableSeedForPrelude(`${cleaned}|thought|${seedHint}`) % pool.length];
+  }
+
   return cleaned;
 }
 
@@ -3895,11 +4118,11 @@ function buildHardContractPost(
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
 
-  const headline = language === "ko"
-    ? normalizeKoContractHeadline(eventPlan.event.headline)
-    : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
   const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 26);
   const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 26);
+  const headline = language === "ko"
+    ? normalizeKoContractHeadline(eventPlan.event.headline, `${aToken}|${bToken}|${eventPlan.lane}|hard`)
+    : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "en") {
     const laneLead: Record<TrendLane, string> = {
@@ -3914,8 +4137,13 @@ function buildHardContractPost(
     return finalizeGeneratedText(base, language, maxChars);
   }
 
-  const base = `${headline}. ${aToken}, ${bToken}, 이 두 단서를 나란히 놓고 본다. 오늘은 누가 먼저 움직였는지부터 가린다. 둘이 서로 딴소리를 하면 이 읽기는 바로 접는다. 먹은 단서가 끝까지 버티는지만 보고 다음 문장으로 넘긴다.`;
-  return finalizeGeneratedText(base, language, maxChars);
+  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|hard|${eventPlan.lane}`);
+  const pool = [
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 나란히 놓고 본다. 오늘은 누가 먼저 움직였는지부터 가린다. 둘이 서로 딴소리를 하면 이 읽기는 바로 접는다. 끝까지 버티는 단서만 다음 판단으로 넘긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 먼저 반응 순서를 맞춰 보고 어긋나면 여기서 해석을 접는다. 살아남는 근거만 다음 문장에 남긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 사이에서 먼저 흔들리는 쪽을 본다. 예상과 다른 축이 먼저 움직이면 이 읽기는 바로 버린다. 남는 흔적만 다시 적어 둔다.`,
+  ];
+  return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
 
 function buildRescueContractPost(
@@ -3930,11 +4158,11 @@ function buildRescueContractPost(
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
 
-  const headline = language === "ko"
-    ? normalizeKoContractHeadline(eventPlan.event.headline)
-    : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
   const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 24);
   const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 24);
+  const headline = language === "ko"
+    ? normalizeKoContractHeadline(eventPlan.event.headline, `${aToken}|${bToken}|${eventPlan.lane}|rescue`)
+    : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "en") {
     const laneLead: Record<TrendLane, string> = {
@@ -3949,8 +4177,13 @@ function buildRescueContractPost(
     return finalizeGeneratedText(base, language, maxChars);
   }
 
-  const base = `${headline}. ${aToken}, ${bToken}, 이 두 단서를 먼저 붙여 놓는다. 오늘은 누가 먼저 움직였는지만 본다. 흐름이 어긋나면 이 읽기는 접는다. 먹은 단서가 남는지까지 보고 말한다.`;
-  return finalizeGeneratedText(base, language, maxChars);
+  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|rescue|${eventPlan.lane}`);
+  const pool = [
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 먼저 붙여 놓는다. 오늘은 누가 먼저 움직였는지만 본다. 흐름이 어긋나면 이 읽기는 접는다. 끝까지 남는 단서가 아니면 말도 아낀다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같은 줄에 둔다. 반응 순서가 예상과 다르면 여기서 바로 생각을 바꾼다. 오래 버틴 근거만 남겨 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 기울어지는 쪽을 본다. 전제가 흔들리면 이 읽기는 더 밀지 않는다. 버티는 흔적만 다시 문장으로 옮긴다.`,
+  ];
+  return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
 
 function buildEmergencyContractPost(
@@ -3965,11 +4198,11 @@ function buildEmergencyContractPost(
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
 
-  const headline = language === "ko"
-    ? normalizeKoContractHeadline(eventPlan.event.headline)
-    : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
   const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 22);
   const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 22);
+  const headline = language === "ko"
+    ? normalizeKoContractHeadline(eventPlan.event.headline, `${aToken}|${bToken}|${eventPlan.lane}|emergency`)
+    : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "en") {
     const base = `${headline}. I keep ${aToken} and ${bToken} together first. I check reaction order, and I drop this read if the path breaks.`;
@@ -3982,6 +4215,10 @@ function buildEmergencyContractPost(
     `${headline}. ${aToken}, ${bToken}, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 남는 단서만 문장으로 옮긴다.`,
     `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 버티는 단서만 다음 말로 넘긴다.`,
     `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 흔들리는 쪽을 본다. 먼저 움직인 축이 예상과 다르면 이 읽기는 버린다. 살아남는 단서만 다음 문장에 남긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 겹쳐 놓고 어디서 먼저 틈이 나는지 본다. 순서가 틀리면 지금 생각은 접는다. 근거가 버티는지 확인한 뒤에야 다음 문장을 고른다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 붙여 놓고 먼저 반응 속도부터 잰다. 예상보다 다른 축이 빠르면 바로 다시 읽는다. 오래 남는 흔적만 다음 판단으로 넘긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘이 끝까지 같은 쪽을 보는지부터 확인한다. 흐름이 갈라지면 여기서 생각을 바꾼다. 남는 단서만 다시 문장으로 세운다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 어느 쪽이 먼저 무너지는지 본다. 전제가 어긋나면 이 읽기는 미련 없이 버린다. 살아남은 근거만 끝에 남긴다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }

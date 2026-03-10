@@ -345,11 +345,74 @@ export function buildEventEvidenceFallbackPost(
     const cleaned = stripKoHeadlinePrefix(sanitizeTweetText(text || "").replace(/[.!?]+$/g, "")).trim();
     if (!cleaned) return "오늘은 이 장면부터 다시 본다";
     if (/[A-Za-z]{5,}/.test(cleaned)) return cleaned;
+    const rewriteVariant = (...pool: string[]): string => pool[stableSeed(`${cleaned}|ko-event`) % pool.length];
+    const exactRewriteMap: Record<string, string[]> = {
+      "달러가 흔들릴 때 내러티브의 수명이 먼저 길어진다": [
+        "달러가 흔들리는 날엔 숫자보다 이야기가 더 오래 남는다",
+        "달러 쪽이 출렁이면 가격보다 서사가 오래 버틴다",
+      ],
+      "자유는 느림이 아니라 설명 가능한 합의라는 생각": [
+        "자유라는 말은 결국 속도보다 설명 가능한 합의 쪽에서 더 또렷해진다",
+        "요즘은 자유가 빠름보다 설명 가능한 합의에 더 가까워 보인다",
+      ],
+      "규제를 핑계로 삼는 순간 제품은 멈춘다": [
+        "규제를 핑계로 멈춰 서는 순간 제품은 더 이상 자라지 못한다",
+        "규제를 이유로 움직임을 멈추는 순간 제품은 금방 굳어 버린다",
+      ],
+    };
+    const exactPool = exactRewriteMap[cleaned];
+    if (exactPool?.length) return rewriteVariant(...exactPool);
+    const importantMatch = cleaned.match(/^(.+?)보다\s+중요한\s+건\s+(.+)$/);
+    if (importantMatch) {
+      const left = importantMatch[1].trim();
+      const right = importantMatch[2].trim();
+      return rewriteVariant(
+        `${left}보다 ${right} 쪽이 더 중요하게 느껴진다`,
+        `이번엔 ${left}보다 ${right} 쪽을 먼저 붙잡게 된다`
+      );
+    }
+    const retentionQuestionMatch = cleaned.match(/^(.+?)[은는]\s+(.+?)보다\s+오래\s+남는가$/);
+    if (retentionQuestionMatch) {
+      const left = retentionQuestionMatch[1].trim();
+      const right = retentionQuestionMatch[2].trim();
+      return rewriteVariant(
+        `요즘은 ${left}가 ${right}보다 오래 남는지부터 다시 보게 된다`,
+        `이번엔 ${left}가 ${right}보다 오래 남는 쪽인지부터 본다`
+      );
+    }
     if (/는가$/.test(cleaned)) return `${cleaned.replace(/는가$/, "는지가 계속 남는다")}`;
     if (/(인가|일까|될까|할까)$/.test(cleaned)) return `${cleaned} 하는 쪽이 계속 걸린다`;
-    if (/생각$/.test(cleaned)) return `${cleaned}이 자꾸 남는다`;
+    if (/생각$/.test(cleaned)) {
+      return rewriteVariant(
+        `${cleaned}이 오늘 유독 오래 남는다`,
+        `오늘은 ${cleaned} 쪽으로 자꾸 다시 돌아오게 된다`
+      );
+    }
+    const decideMatch = cleaned.match(/^(.+?)[은는]\s+(.+?)에서\s+먼저\s+결정된다$/);
+    if (decideMatch) {
+      const left = decideMatch[1].trim();
+      const right = decideMatch[2].trim();
+      return rewriteVariant(
+        `${left}는 결국 ${right}에서 먼저 갈린다`,
+        `요즘은 ${left}가 ${right}에서 먼저 정해지는 장면으로 읽힌다`
+      );
+    }
+    const lagMatch = cleaned.match(/^(.+?)[은는]\s+짧아도\s+(.+?)[은는]\s+길다$/);
+    if (lagMatch) {
+      const left = lagMatch[1].trim();
+      const right = lagMatch[2].trim();
+      return rewriteVariant(
+        `${left}는 금방 끝나는데 ${right}는 꼭 더 늦게 따라온다`,
+        `${left}는 짧게 지나가도 ${right}는 생각보다 오래 남는다`
+      );
+    }
     if (/다$/.test(cleaned)) return cleaned;
-    if (cleaned.length >= 12) return `${cleaned}이라는 감각이 남는다`;
+    if (cleaned.length >= 12) {
+      return rewriteVariant(
+        `${cleaned} 쪽이 오늘 유독 오래 남는다`,
+        `오늘은 ${cleaned}부터 다시 적어 두게 된다`
+      );
+    }
     return cleaned;
   };
 
@@ -371,7 +434,7 @@ export function buildEventEvidenceFallbackPost(
     ],
     "interaction-experiment": [
       `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 보면 어디서부터 말이 갈릴까? 너라면 첫 의심을 어디에 둘지 궁금하다. 전제가 흔들리면 나는 이 읽기를 바로 접는다.`,
-      `오늘은 ${eventHeadline} 앞에 ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 본다. 이 장면을 가장 먼저 뒤집을 신호가 뭐라고 보는지 듣고 싶다. 흐름이 엇갈리면 나는 생각을 바꾼다.`,
+      `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 먼저 같이 놓고 본다. 이 장면을 가장 먼저 뒤집을 신호가 뭐라고 보는지 듣고 싶다. 흐름이 엇갈리면 나는 생각을 바꾼다.`,
     ],
     "meta-reflection": [
       `내가 늘 경계하는 건 신호 하나에 기대는 습관이다. 오늘 장면은 ${eventHeadline}. 그래서 ${evidenceA}, ${evidenceB}, 이 두 단서를 함께 놓고 본다. 오래 버티는 쪽이 아니면 이 해석은 접는다.`,
