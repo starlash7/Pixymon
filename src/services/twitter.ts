@@ -13,6 +13,7 @@ import { TrendLane } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
 import { evaluateTrendCandidate } from "./content-guard.js";
 import { TrendTweetSearchRules } from "./engagement/types.js";
+import { finalizeNarrativeSurface } from "./engagement/text-finalize.js";
 import { XApiCostRuntimeSettings } from "../types/runtime.js";
 import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
@@ -250,14 +251,17 @@ export async function replyToMention(
     if (TEST_NO_EXTERNAL_CALLS) {
       const mentionText = String(mention?.text || "").replace(/@\w+/g, "").trim();
       const lang = detectLanguage(mentionText);
-      const localReply = (
+      const localReply = finalizeNarrativeSurface(
         lang === "en"
           ? /\?$/.test(mentionText)
             ? "That is a fair question. I would watch the onchain trail before pretending the answer is obvious."
             : "That part caught me too. I would rather check the onchain trail once more than force a conclusion."
           : /\?$|어떻게|왜|뭐|무엇|어디/.test(mentionText)
             ? "그 질문은 괜찮다. 나도 방향 단정보다 먼저 움직인 흔적부터 다시 볼 것 같다."
-            : "그 장면은 나도 걸렸다. 섣불리 결론 내리기보다 먼저 움직인 단서부터 더 볼 것 같다."
+            : "그 장면은 나도 걸렸다. 섣불리 결론 내리기보다 먼저 움직인 단서부터 더 볼 것 같다.",
+        lang,
+        160,
+        "reply"
       ).slice(0, 160);
       console.log(`🧪 [테스트-로컬] 멘션 답글 시뮬레이션: ${localReply}`);
       memory.saveTweet(`mention_test_${Date.now()}`, localReply, "reply");
@@ -334,7 +338,7 @@ ${mention.text}`,
         replyText = rewritten;
       }
     }
-    replyText = replyText.slice(0, maxChars);
+    replyText = finalizeNarrativeSurface(replyText, lang, maxChars, "reply").slice(0, maxChars);
 
     if (TEST_MODE) {
       console.log(`🧪 [테스트] 멘션 답글 시뮬레이션: ${replyText}`);
@@ -432,7 +436,7 @@ Rules:
       messages: [{ role: "user", content: prompt }],
     });
 
-    const rewritten = extractTextFromClaude(message.content).trim();
+    const rewritten = finalizeNarrativeSurface(extractTextFromClaude(message.content), lang, maxChars, "reply").trim();
     if (!rewritten) return null;
     return rewritten.slice(0, maxChars);
   } catch {

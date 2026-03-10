@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyNarrativeLayout,
+  finalizeNarrativeSurface,
   finalizeGeneratedText,
   normalizeQuestionTail,
   truncateAtWordBoundary,
@@ -42,6 +43,22 @@ test("applyNarrativeLayout inserts breathable blank lines for multi-sentence kor
   const output = applyNarrativeLayout(input, "ko", 220);
   assert.match(output, /\n\n|\n/);
   assert.ok(output.includes("먼저 거래소 대응 속도를 다시 본다."));
+});
+
+test("finalizeNarrativeSurface gives quote text optional breathing layout", () => {
+  const input =
+    "규제를 핑계로 삼는 순간 제품은 멈춘다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다.";
+  const output = finalizeNarrativeSurface(input, "ko", 220, "quote");
+  assert.ok(output.length <= 220);
+  assert.match(output, /규제를 핑계로 삼[은는] 순간 제품은 멈춘다\./);
+});
+
+test("finalizeNarrativeSurface keeps reply tone compact but can vary cadence", () => {
+  const input =
+    "그 장면은 나도 걸렸다. 섣불리 결론 내리기보다 먼저 움직인 단서부터 더 볼 것 같다.";
+  const output = finalizeNarrativeSurface(input, "ko", 160, "reply");
+  assert.ok(output.length <= 160);
+  assert.ok(output.includes("그 장면은 나도 걸렸다."));
 });
 
 test("finalizeGeneratedText removes incomplete middle sentence fragments", () => {

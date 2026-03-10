@@ -4,6 +4,8 @@ import {
   stripNarrativeControlTags,
 } from "./quality.js";
 
+export type NarrativeSurface = "post" | "quote" | "reply";
+
 export function finalizeGeneratedText(text: string, language: "ko" | "en", maxChars: number): string {
   const stripped = stripNarrativeControlTags(text);
   const polished = polishTweetText(stripped, language);
@@ -17,6 +19,23 @@ export function finalizeGeneratedText(text: string, language: "ko" | "en", maxCh
   const cleaned = cleanupDanglingTail(trimTrailingFragment(pruneIncompleteSentences(particleAdjusted, language), language), language);
   const punctuated = ensureTerminalPunctuation(cleaned, maxChars);
   return punctuated.length <= maxChars ? punctuated : truncateAtWordBoundary(punctuated, maxChars);
+}
+
+export function finalizeNarrativeSurface(
+  text: string,
+  language: "ko" | "en",
+  maxChars: number,
+  surface: NarrativeSurface
+): string {
+  let finalized = finalizeGeneratedText(text, language, maxChars);
+  if (!finalized) return finalized;
+
+  if (language === "ko") {
+    finalized = applySurfaceCadence(finalized, language, maxChars, surface);
+    finalized = finalizeGeneratedText(finalized, language, maxChars);
+  }
+
+  return finalized.length <= maxChars ? finalized : truncateAtWordBoundary(finalized, maxChars);
 }
 
 export function applyNarrativeLayout(text: string, language: "ko" | "en", maxChars: number): string {
@@ -40,6 +59,57 @@ export function applyNarrativeLayout(text: string, language: "ko" | "en", maxCha
     const cleaned = candidate.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
     if (cleaned && cleaned.length <= maxChars && cleaned !== normalized) {
       return cleaned;
+    }
+  }
+
+  return normalized;
+}
+
+function applySurfaceCadence(
+  text: string,
+  language: "ko" | "en",
+  maxChars: number,
+  surface: NarrativeSurface
+): string {
+  const normalized = sanitizeTweetText(String(text || ""));
+  if (!normalized || language !== "ko") return normalized;
+
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  if (parts.length < 2) {
+    return normalized;
+  }
+
+  const seed = stableSeedForPrelude(`${surface}|${normalized}`);
+  const candidates: string[] = [];
+
+  if (surface === "post") {
+    candidates.push(applyNarrativeLayout(normalized, language, maxChars));
+  }
+
+  if (surface === "quote") {
+    candidates.push(applyNarrativeLayout(normalized, language, maxChars));
+    if (parts.length >= 2) {
+      candidates.push(`${parts[0]}\n${parts.slice(1).join(" ")}`);
+      candidates.push(`${parts[0]}\n\n${parts.slice(1).join(" ")}`);
+    }
+  }
+
+  if (surface === "reply" && parts.length === 2 && normalized.length >= 52) {
+    candidates.push(`${parts[0]}\n${parts[1]}`);
+    candidates.push(`${parts[0]}\n\n${parts[1]}`);
+  }
+
+  for (let i = 0; i < candidates.length; i += 1) {
+    const candidate = candidates[(seed + i) % candidates.length]
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    if (candidate && candidate !== normalized && candidate.length <= maxChars) {
+      return candidate;
     }
   }
 

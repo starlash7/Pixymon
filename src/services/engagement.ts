@@ -59,6 +59,7 @@ import {
 } from "./engagement/quality.js";
 import {
   applyNarrativeLayout,
+  finalizeNarrativeSurface,
   finalizeGeneratedText,
   normalizeQuestionTail,
   stableSeedForPrelude,
@@ -326,15 +327,24 @@ ${toneGuide}
         messages: [{ role: "user", content: userPrompt }],
       });
 
-      let replyText = finalizeGeneratedText(extractTextFromClaude(message.content), lang, 180);
+      let replyText = finalizeNarrativeSurface(extractTextFromClaude(message.content), lang, 180, "reply");
       if (!replyText || replyText.length < 5) continue;
 
       if (detectLanguage(replyText) !== lang) {
         const rewritten = await rewriteByLanguage(claude, replyText, lang, 180);
         if (rewritten) {
-          replyText = finalizeGeneratedText(rewritten, lang, 180);
+          replyText = finalizeNarrativeSurface(rewritten, lang, 180, "reply");
         }
       }
+
+      replyText = deconflictOpening(
+        replyText,
+        recentReplyTexts,
+        lang,
+        180,
+        `reply:${tweet.id}:${sourceKey}`,
+        "reply"
+      );
 
       const quality = evaluateReplyQuality(replyText, trend.marketData, recentReplyTexts, policy);
       if (!quality.ok) {
@@ -664,6 +674,13 @@ export async function postTrendUpdate(
         localPost = ensureLeadIssueAnchor(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars, eventPlan.lane);
         localPost = ensureEventEvidenceAnchors(localPost, eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+        localPost = deconflictOpening(
+          localPost,
+          recentBriefingPosts.map((post) => post.content),
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          `${eventPlan.event.id}|test-local|${candidate.mode}`
+        );
         const blockedPhrase = findBlockedPhrase(localPost, clicheBlocklist);
         if (blockedPhrase) {
           latestFailReason = `quality:blocked-phrase(${blockedPhrase})`;
@@ -761,6 +778,13 @@ export async function postTrendUpdate(
             runtimeSettings.postMaxChars
           );
           localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+          localPost = deconflictOpening(
+            localPost,
+            recentBriefingPosts.map((post) => post.content),
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            `${eventPlan.event.id}|test-local-fallback|${narrativePlan.mode}`
+          );
           const localContract = validateEventEvidenceContract(localPost, eventPlan);
           const localNovelty = validateNarrativeNovelty(
             localPost,
@@ -804,8 +828,15 @@ export async function postTrendUpdate(
         latestFailReason = latestFailReason || "local-fallback-empty";
         const hardFallback = buildHardContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         if (hardFallback) {
-          const hardQuality = evaluatePostQuality(
+          const deconflictedHardFallback = deconflictOpening(
             hardFallback,
+            recentBriefingPosts.map((post) => post.content),
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            `${eventPlan.event.id}|test-local-hard`
+          );
+          const hardQuality = evaluatePostQuality(
+            deconflictedHardFallback,
             trend.marketData,
             recentBriefingPosts,
             policy,
@@ -821,7 +852,7 @@ export async function postTrendUpdate(
             }
           );
           if (hardQuality.ok) {
-            postText = hardFallback;
+            postText = deconflictedHardFallback;
             usedFallback = true;
             generationAttempts = 1;
             console.log("[POST] TEST-LOCAL hard fallback 사용");
@@ -834,8 +865,15 @@ export async function postTrendUpdate(
       if (!postText) {
         const rescueFallback = buildRescueContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         if (rescueFallback) {
-          const rescueQuality = evaluatePostQuality(
+          const deconflictedRescueFallback = deconflictOpening(
             rescueFallback,
+            recentBriefingPosts.map((post) => post.content),
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            `${eventPlan.event.id}|test-local-rescue`
+          );
+          const rescueQuality = evaluatePostQuality(
+            deconflictedRescueFallback,
             trend.marketData,
             recentBriefingPosts,
             policy,
@@ -856,7 +894,7 @@ export async function postTrendUpdate(
             contractOk: true,
           });
           if (rescueQuality.ok || rescueSoftPass) {
-            postText = rescueFallback;
+            postText = deconflictedRescueFallback;
             usedFallback = true;
             generationAttempts = 1;
             console.log("[POST] TEST-LOCAL rescue fallback 사용");
@@ -873,7 +911,13 @@ export async function postTrendUpdate(
           runtimeSettings.postMaxChars
         );
         if (emergencyFallback) {
-          postText = emergencyFallback;
+          postText = deconflictOpening(
+            emergencyFallback,
+            recentBriefingPosts.map((post) => post.content),
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            `${eventPlan.event.id}|test-local-emergency`
+          );
           usedFallback = true;
           generationAttempts = 1;
           console.log("[POST] TEST-LOCAL emergency fallback 사용");
@@ -1100,6 +1144,13 @@ Rules:
           runtimeSettings.postMaxChars
         );
         candidate = finalizeGeneratedText(candidate, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+        candidate = deconflictOpening(
+          candidate,
+          recentBriefingPosts.map((post) => post.content),
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          `${eventPlan.event.id}|candidate|${attempt}`
+        );
 
         if (startsWithFearGreedTemplate(candidate)) {
           rejectionFeedback = "금지된 오프너(FGI/극공포 시작)";
@@ -1274,6 +1325,13 @@ Rules:
           fallbackPost,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
+        );
+        fallbackPost = deconflictOpening(
+          fallbackPost,
+          recentBriefingPosts.map((post) => post.content),
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          `${eventPlan.event.id}|fallback|${narrativePlan.mode}`
         );
         const fallbackContract = validateEventEvidenceContract(fallbackPost, eventPlan);
         if (!fallbackContract.ok) {
@@ -1519,19 +1577,21 @@ export async function postTrendQuote(
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
-    const candidates = await getOrSearchTrendTweets(
-      twitter,
-      trend.keywords,
-      24,
-      {
-        minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
-        minScore: runtimeSettings.minTrendTweetScore,
-        minEngagement: runtimeSettings.minTrendTweetEngagement,
-      },
-      timezone,
-      xApiCostSettings,
-      cache
-    );
+    const candidates = TEST_NO_EXTERNAL_CALLS
+      ? buildLocalQuoteTargets(trend)
+      : await getOrSearchTrendTweets(
+          twitter,
+          trend.keywords,
+          24,
+          {
+            minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
+            minScore: runtimeSettings.minTrendTweetScore,
+            minEngagement: runtimeSettings.minTrendTweetEngagement,
+          },
+          timezone,
+          xApiCostSettings,
+          cache
+        );
 
     if (candidates.length === 0) {
       console.log("[QUOTE] 인용 대상 트윗 없음");
@@ -1612,18 +1672,31 @@ Rules:
 - No hashtags or emoji
 - Output quote text only`;
 
-      const message = await claude.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: 280,
-        system: PIXYMON_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
-      });
+      let quoteText = TEST_NO_EXTERNAL_CALLS
+        ? buildLocalQuoteComment({
+            targetText,
+            lane,
+            anchors: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
+            language: quoteLanguage,
+            maxChars: runtimeSettings.postMaxChars,
+          })
+        : "";
 
-      let quoteText = finalizeGeneratedText(
-        extractTextFromClaude(message.content),
-        quoteLanguage,
-        runtimeSettings.postMaxChars
-      );
+      if (!TEST_NO_EXTERNAL_CALLS) {
+        const message = await claude.messages.create({
+          model: CLAUDE_MODEL,
+          max_tokens: 280,
+          system: PIXYMON_SYSTEM_PROMPT,
+          messages: [{ role: "user", content: userPrompt }],
+        });
+
+        quoteText = finalizeNarrativeSurface(
+          extractTextFromClaude(message.content),
+          quoteLanguage,
+          runtimeSettings.postMaxChars,
+          "quote"
+        );
+      }
       if (!quoteText || quoteText.length < runtimeSettings.postMinLength) continue;
 
       if (detectLanguage(quoteText) !== quoteLanguage) {
@@ -1634,10 +1707,18 @@ Rules:
           runtimeSettings.postMaxChars
         );
         if (rewritten) {
-          quoteText = finalizeGeneratedText(rewritten, quoteLanguage, runtimeSettings.postMaxChars);
+          quoteText = finalizeNarrativeSurface(rewritten, quoteLanguage, runtimeSettings.postMaxChars, "quote");
         }
       }
-      quoteText = finalizeGeneratedText(quoteText, quoteLanguage, runtimeSettings.postMaxChars);
+      quoteText = finalizeNarrativeSurface(quoteText, quoteLanguage, runtimeSettings.postMaxChars, "quote");
+      quoteText = deconflictOpening(
+        quoteText,
+        recentPosts.map((post) => post.content),
+        quoteLanguage,
+        runtimeSettings.postMaxChars,
+        `quote:${targetId}:${lane}`,
+        "quote"
+      );
 
       if (startsWithFearGreedTemplate(quoteText)) {
         continue;
@@ -1693,6 +1774,48 @@ Rules:
     console.error("[ERROR] 인용 글 작성 실패:", error);
     return false;
   }
+}
+
+function buildLocalQuoteTargets(trend: TrendContext): Array<{ id: string; text: string }> {
+  const raw = [
+    ...trend.events.slice(0, 6).map((event) => sanitizeTweetText(event.headline)),
+    ...trend.headlines.slice(0, 6).map((headline) => sanitizeTweetText(headline)),
+  ].filter((item) => item.length >= 25);
+  const dedup = [...new Set(raw)].slice(0, 8);
+  return dedup.map((text, index) => ({ id: `local_quote_${index + 1}`, text }));
+}
+
+function buildLocalQuoteComment(params: {
+  targetText: string;
+  lane: TrendLane;
+  anchors: string[];
+  language: "ko" | "en";
+  maxChars: number;
+}): string {
+  const a = sanitizeTweetText(params.anchors[0] || "핵심 단서").slice(0, 28);
+  const b = sanitizeTweetText(params.anchors[1] || "추가 단서").slice(0, 28);
+  const scene =
+    params.language === "ko"
+      ? normalizeKoContractHeadline(params.targetText, `quote|${params.lane}|${a}|${b}`)
+      : sanitizeTweetText(params.targetText).replace(/\.$/, "");
+  const seed = stableSeedForPrelude(`${scene}|${a}|${b}|${params.language}|${params.lane}`);
+
+  if (params.language === "ko") {
+    const pool = [
+      `그 장면은 나도 그냥 못 넘기겠다. ${a}와 ${b}, 이 두 단서를 같은 화면에 두고 순서부터 다시 보게 된다.`,
+      `${scene}. 지금은 ${a}와 ${b}가 끝까지 같은 말을 하는지부터 보고 싶다.`,
+      `원문을 다시 옮기기보다 ${a}와 ${b}의 엇갈림부터 확인하는 편이 낫다. 지금은 반응보다 흐름이 먼저다.`,
+      `${scene}. ${a}와 ${b}, 이 둘이 딴소리를 하면 이 해석은 바로 바꾼다.`,
+    ];
+    return finalizeNarrativeSurface(pool[seed % pool.length], "ko", params.maxChars, "quote");
+  }
+
+  const pool = [
+    `That scene catches me too. I would rather watch ${a} and ${b} on the same screen before forcing a take.`,
+    `${scene}. I want to see whether ${a} and ${b} still point in the same direction.`,
+    `I would not restate the post. I would first test the gap between ${a} and ${b}.`,
+  ];
+  return finalizeNarrativeSurface(pool[seed % pool.length], "en", params.maxChars, "quote");
 }
 
 async function runFeedDigestEvolve(
@@ -2222,6 +2345,9 @@ function injectInlineConceptKo(text: string): string {
     "단서를 급히 넘기지 않고 끝까지 소화해 본다.",
     "신호를 한 번 더 씹어 보고 남는 것만 말한다.",
     "근거가 버티는지 확인한 뒤에야 다음 문장을 고른다.",
+    "이 장면을 통과한 근거만 다음 판단에 남긴다.",
+    "지금은 맞은 문장보다 버틴 단서를 더 믿는다.",
+    "끝까지 살아남은 근거만 조용히 적어 둔다.",
   ];
   const tail = conceptTailPool[stableSeedForPrelude(normalized) % conceptTailPool.length];
   if (/^(?:오늘\s*핵심\s*장면은|이번\s*사이클의\s*출발점은|지금\s*먼저\s*확인할\s*쟁점은|핵심만\s*먼저\s*말하면|한\s*줄\s*요지는|먼저\s*짚을\s*포인트는|지금\s*시장이\s*묻는\s*질문은|내가\s*지금\s*붙잡는\s*장면은)/.test(normalized)) {
@@ -2381,19 +2507,15 @@ function deconflictOpening(
   recentPosts: string[],
   language: "ko" | "en",
   maxChars: number,
-  seedHint: string
+  seedHint: string,
+  surface: "post" | "quote" | "reply" = language === "ko" && maxChars <= 180 ? "reply" : "post"
 ): string {
-  const normalized = finalizeGeneratedText(text, language, maxChars);
+  const normalized = finalizeNarrativeSurface(text, language, maxChars, surface);
   if (!normalized) return normalized;
 
-  const recentPrefixes = new Set(
-    (recentPosts || [])
-      .slice(-16)
-      .map((post) => sanitizeTweetText(post).toLowerCase().slice(0, 24))
-      .filter((prefix) => prefix.length >= 12)
-  );
-  const currentPrefix = sanitizeTweetText(normalized).toLowerCase().slice(0, 24);
-  if (!currentPrefix || !recentPrefixes.has(currentPrefix)) {
+  const recentOpeningCounts = buildOpeningCountMap(recentPosts || [], language);
+  const currentPrefix = extractOpeningKey(normalized, language);
+  if (!currentPrefix || (recentOpeningCounts.get(currentPrefix) || 0) < 2) {
     return normalized;
   }
 
@@ -2412,7 +2534,7 @@ function deconflictOpening(
     "I anchor this line on this moment",
   ];
   const leadPool = language === "ko" ? koLeads : enLeads;
-  const seed = stableSeedForPrelude(`${seedHint}|${normalized}|${Date.now()}`);
+  const seed = stableSeedForPrelude(`${seedHint}|${normalized}|${currentPrefix}`);
   const escapedLeads = leadPool.map((lead) => lead.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const leadPattern = new RegExp(`^(?:${escapedLeads.join("|")})(?:[.!?]\\s+|\\s+)`, "i");
   const baseBody = normalized.replace(leadPattern, "").trim();
@@ -2422,13 +2544,14 @@ function deconflictOpening(
     .filter(Boolean);
 
   if (sentences.length >= 2) {
-    const rotatedBody = finalizeGeneratedText(
+    const rotatedBody = finalizeNarrativeSurface(
       `${sentences[1]} ${sentences[0]} ${sentences.slice(2).join(" ")}`,
       language,
-      maxChars
+      maxChars,
+      surface
     );
-    const rotatedPrefix = sanitizeTweetText(rotatedBody).toLowerCase().slice(0, 24);
-    if (rotatedPrefix && !recentPrefixes.has(rotatedPrefix)) {
+    const rotatedPrefix = extractOpeningKey(rotatedBody, language);
+    if (rotatedPrefix && (recentOpeningCounts.get(rotatedPrefix) || 0) < 2) {
       return rotatedBody;
     }
   }
@@ -2442,14 +2565,60 @@ function deconflictOpening(
     ) {
       continue;
     }
-    const candidate = finalizeGeneratedText(`${lead}. ${baseBody}`, language, maxChars);
-    const candidatePrefix = sanitizeTweetText(candidate).toLowerCase().slice(0, 24);
-    if (!recentPrefixes.has(candidatePrefix)) {
+    const candidate = finalizeNarrativeSurface(
+      `${lead}. ${baseBody}`,
+      language,
+      maxChars,
+      surface
+    );
+    const candidatePrefix = extractOpeningKey(candidate, language);
+    if ((recentOpeningCounts.get(candidatePrefix) || 0) < 2) {
       return candidate;
     }
   }
 
   return normalized;
+}
+
+function extractOpeningKey(text: string, language: "ko" | "en"): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return "";
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const head = parts[0] || normalized;
+  const stripped =
+    language === "ko"
+      ? head
+          .replace(
+            /^(?:이번에는\s*장면을\s*조금\s*다르게\s*연다|오늘\s*메모는\s*여기서\s*출발한다|지금\s*포착한\s*단서부터\s*적는다|먼저\s*이\s*장면을\s*붙잡고\s*시작한다|소음\s*대신\s*이\s*장면부터\s*기록한다|이번\s*줄은\s*이\s*단서에서\s*시작한다)\.?\s*/i,
+            ""
+          )
+          .replace(
+            /^(?:오늘\s*유독\s*걸리는\s*장면은|이상하게\s*계속\s*남는\s*건|계속\s*머리에\s*맴도는\s*건|지금\s*먼저\s*적어\s*두고\s*싶은\s*건|숫자보다\s*먼저\s*마음에\s*걸린\s*건|조금\s*더\s*들여다보고\s*싶은\s*건|이번\s*흐름에서\s*자꾸\s*손이\s*가는\s*건|한\s*발\s*물러서서\s*보면\s*먼저\s*보이는\s*건|계산보다\s*먼저\s*걸린\s*건|오늘은\s*이\s*장면부터\s*붙잡는다|오늘\s*먼저\s*붙잡을\s*장면은|오늘\s*끝까지\s*붙들고\s*싶은\s*건|한참\s*마음에\s*남아\s*있는\s*건|지금\s*내\s*메모의\s*첫\s*줄은|괜히\s*오래\s*남는\s*건|요즘은|이번엔)\s*/i,
+            ""
+          )
+      : head.replace(/^(?:i\s+think|i\s+keep\s+coming\s+back\s+to|i\s+start\s+from)\s+/i, "");
+
+  return stripped
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 48);
+}
+
+function buildOpeningCountMap(recentPosts: string[], language: "ko" | "en"): Map<string, number> {
+  const counts = new Map<string, number>();
+  (recentPosts || [])
+    .slice(-48)
+    .map((post) => extractOpeningKey(post, language))
+    .filter((key) => key.length >= 12)
+    .forEach((key) => {
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+  return counts;
 }
 async function getOrCreateTrendContext(
   cache: EngagementCycleCache | undefined,
@@ -2998,20 +3167,59 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   };
   const activeQuestion = compactClause(input.activeQuestion || "", 96);
   const interactionMission = compactClause(input.interactionMission || "", 96);
-  const philosophyFrame = cleanSoulHint(input.philosophyFrame || "", 58);
-  const bookFragment = cleanSoulHint(input.bookFragment || "", 52);
-  const selfNarrative = cleanSoulHint(input.selfNarrative || "", 54);
-  const signatureBelief = cleanSoulHint(input.signatureBelief || "", 54);
-  const worldviewHint = compactThought(
-    philosophyFrame || signatureBelief || selfNarrative || intentLine || "",
-    58
-  );
-  const lane = inferTrendLaneFromText(headlineBase);
-  const recentOpeners = new Set(
-    input.recentPosts
-      .slice(-6)
-      .map((post) => sanitizeTweetText(post.content).slice(0, 24).toLowerCase())
-      .filter(Boolean)
+    const philosophyFrame = cleanSoulHint(input.philosophyFrame || "", 58);
+    const bookFragment = cleanSoulHint(input.bookFragment || "", 52);
+    const selfNarrative = cleanSoulHint(input.selfNarrative || "", 54);
+    const signatureBelief = cleanSoulHint(input.signatureBelief || "", 54);
+    const worldviewHint = compactThought(
+      philosophyFrame || signatureBelief || selfNarrative || intentLine || "",
+      58
+    );
+    const normalizeKoConceptToken = (token: string): string => {
+      const base = token.replace(/(이|가|은|는|을|를|와|과|보다|에서|으로|로|의|도|만|까지|부터)$/u, "");
+      const alias: Record<string, string> = {
+        인센티브: "보상",
+        토큰: "보상",
+        토큰보상: "보상",
+        커뮤니티설계: "커뮤니티",
+        관계설계: "관계",
+        사용자행동: "행동",
+        행동방식: "행동",
+        내러티브: "서사",
+        설명가능한합의: "합의",
+      };
+      return alias[base] || base;
+    };
+    const extractKoConceptTokens = (text: string): string[] =>
+      sanitizeTweetText(text)
+        .replace(/[.!?,]/g, " ")
+        .split(/\s+/)
+        .map((item) => item.replace(/[^가-힣A-Za-z0-9]/g, ""))
+        .map((item) => normalizeKoConceptToken(item))
+        .filter((item) => item.length >= 2)
+        .slice(0, 10);
+    const sharesKoConceptFrame = (a: string, b: string): boolean => {
+      if (!a || !b) return false;
+      const aTokens = extractKoConceptTokens(a);
+      const bTokens = extractKoConceptTokens(b);
+      if (aTokens.length === 0 || bTokens.length === 0) return false;
+      const overlapCount = aTokens.filter((token) => bTokens.includes(token)).length;
+      const aHasComparator = /(보다|먼저|길다|오래|중요|버티)/.test(a);
+      const bHasComparator = /(보다|먼저|길다|오래|중요|버티)/.test(b);
+      return overlapCount >= 2 || (overlapCount >= 1 && aHasComparator && bHasComparator);
+    };
+    const worldviewLine =
+      worldviewHint && !sharesKoConceptFrame(worldviewHint, headlineBase) ? worldviewHint : "";
+    const signatureLine =
+      signatureBelief && !sharesKoConceptFrame(signatureBelief, headlineBase) ? signatureBelief : "";
+    const philosophyLine =
+      philosophyFrame && !sharesKoConceptFrame(philosophyFrame, headlineBase) ? philosophyFrame : "";
+    const bookLine =
+      bookFragment && !sharesKoConceptFrame(bookFragment, headlineBase) ? bookFragment : "";
+    const lane = inferTrendLaneFromText(headlineBase);
+  const recentOpeningCounts = buildOpeningCountMap(
+    input.recentPosts.map((post) => post.content),
+    input.language
   );
   const extractEndingKey = (text: string): string => {
     const parts = sanitizeTweetText(text)
@@ -3045,7 +3253,18 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     if (/(인가|일까|될까|할까)$/.test(cleaned)) return `${cleaned} 하는 쪽`;
     if (/(인지|일지)$/.test(cleaned)) return cleaned;
     if (/생각$/.test(cleaned)) return `${cleaned}`;
-    if (/다$/.test(cleaned)) return `${cleaned.slice(0, -1)}다는 말`;
+    if (/이다$/.test(cleaned)) return `${cleaned.slice(0, -2)}이라는 말`;
+    if (/다$/.test(cleaned)) {
+      const stem = cleaned.slice(0, -1);
+      const nounPredicateLike =
+        /(지도|합의|프레임|인터페이스|원인|구조|질서|설계|관계|질문|보상|행동|문장|장식|기술|태도|습관|진실|서사|의미|책임|설명|단서|신호|복구|방식)$/.test(
+          stem
+        );
+      if (nounPredicateLike) {
+        return `${stem}라는 말`;
+      }
+      return `${stem}다는 말`;
+    }
     if (!/(다|요|까)$/.test(cleaned) && cleaned.length >= 12) {
       return cleaned;
     }
@@ -3210,7 +3429,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
           `${thoughtStem}이 오늘 메모 첫 줄에 남는다`,
           `오늘은 ${thoughtStem}이 유난히 몸에 남는다`,
           `${thoughtStem}이 이상하게 오래 붙어 있다`,
-          `오늘 메모는 결국 ${thoughtStem}에서 시작된다`,
+          `오늘은 결국 ${thoughtStem} 얘기부터 꺼내게 된다`,
         ];
     const philosophyPool = isQuestionThought
       ? [
@@ -3432,9 +3651,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   ];
 
   const koBeliefPool = [
-    worldviewHint || "나는 가격보다 행동 변화의 이유를 먼저 본다",
-    signatureBelief || "강한 주장보다 검증 가능한 가설을 우선한다",
-    philosophyFrame || "노이즈보다 구조를 먼저 읽는다",
+    worldviewLine || "나는 가격보다 행동 변화의 이유를 먼저 본다",
+    signatureLine || "강한 주장보다 검증 가능한 가설을 우선한다",
+    philosophyLine || "노이즈보다 구조를 먼저 읽는다",
     "좋은 해석은 세게 말하는 데서가 아니라, 틀렸을 때 빨리 고치는 데서 나온다고 본다",
     "가격보다 먼저 바뀌는 건 대개 사람들의 행동 방식이라고 본다",
     "지금은 결론보다 해석의 순서를 바로 세우는 편이 더 중요해 보인다",
@@ -3450,7 +3669,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     "진짜 변화는 늘 설명보다 먼저 몸짓으로 새어 나온다고 믿는다",
   ];
   const koIdentityBeliefPool = [
-    signatureBelief || worldviewHint || "나는 큰 소리보다 오래 남는 흔적을 더 믿는 편이다",
+    signatureLine || worldviewLine || "나는 큰 소리보다 오래 남는 흔적을 더 믿는 편이다",
     "가격이 아니라 사람들의 습관이 바뀌는 순간에 더 눈이 간다",
     "확신은 늦게 가져가도 되지만 단서는 일찍 붙잡아야 한다고 본다",
     "나는 차트보다 손놀림이 달라지는 지점을 먼저 본다",
@@ -3458,11 +3677,11 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     "강한 결론보다 오래 버티는 단서 하나가 더 믿을 만하다고 느낀다",
   ];
   const koPhilosophyBeliefPool = [
-    philosophyFrame || "노이즈보다 구조를 먼저 읽는다",
-    bookFragment
-      ? `${paraphraseKoBookFragment(bookFragment)}는 쪽으로 오늘 장면이 읽힌다`
+    philosophyLine || "노이즈보다 구조를 먼저 읽는다",
+    bookLine
+      ? `${paraphraseKoBookFragment(bookLine)}는 쪽으로 오늘 장면이 읽힌다`
       : "단정 대신 재현 가능한 설명을 먼저 고른다",
-    signatureBelief || "강한 주장보다 검증 가능한 가설을 우선한다",
+    signatureLine || "강한 주장보다 검증 가능한 가설을 우선한다",
     "서사는 숫자를 꾸미는 장식보다 행동의 순서를 드러내는 틀에 가깝다고 본다",
     "좋은 해석은 사실 하나보다 순서 하나를 제대로 잡는 데서 나온다고 믿는다",
     "정답보다 어떤 근거가 오래 버티는지가 더 중요할 때가 많다",
@@ -3980,9 +4199,12 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const seenEndings = new Set<string>();
   for (const candidate of rotated) {
     const text = truncateAtWordBoundary(sanitizeTweetText(candidate.text), input.maxChars);
-    const openingKey = sanitizeTweetText(text).toLowerCase().slice(0, 30);
+    const openingKey = extractOpeningKey(text, input.language);
     const endingKey = extractEndingKey(text);
     if (openingKey && seenOpenings.has(openingKey)) {
+      continue;
+    }
+    if ((recentOpeningCounts.get(openingKey) || 0) >= 2) {
       continue;
     }
     if (endingKey.length >= 16 && seenEndings.has(endingKey)) {
@@ -4008,8 +4230,8 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       return 0;
     })
     .sort((a, b) => {
-      const aSeen = recentOpeners.has(a.text.slice(0, 24).toLowerCase()) ? 1 : 0;
-      const bSeen = recentOpeners.has(b.text.slice(0, 24).toLowerCase()) ? 1 : 0;
+      const aSeen = recentOpeningCounts.get(extractOpeningKey(a.text, input.language)) || 0;
+      const bSeen = recentOpeningCounts.get(extractOpeningKey(b.text, input.language)) || 0;
       return aSeen - bSeen;
     })
     .sort((a, b) => {
@@ -4156,9 +4378,9 @@ function buildHardContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|hard|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 나란히 놓고 본다. 오늘은 누가 먼저 움직였는지부터 가린다. 둘이 서로 딴소리를 하면 이 읽기는 바로 접는다. 끝까지 버티는 단서만 다음 판단으로 넘긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 먼저 반응 순서를 맞춰 보고 어긋나면 여기서 해석을 접는다. 살아남는 근거만 다음 문장에 남긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 사이에서 먼저 흔들리는 쪽을 본다. 예상과 다른 축이 먼저 움직이면 이 읽기는 바로 버린다. 남는 흔적만 다시 적어 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 나란히 놓고 본다. 오늘은 누가 먼저 움직였는지부터 가린다. 둘이 서로 딴소리를 하면 이 읽기는 바로 접는다. 끝까지 버틴 근거만 다음 판단으로 넘긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 먼저 반응 순서를 맞춰 보고 어긋나면 여기서 해석을 접는다. 마지막까지 살아남은 쪽만 메모에 남긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 사이에서 먼저 흔들리는 쪽을 본다. 예상과 다른 축이 먼저 움직이면 이 읽기는 바로 버린다. 지금은 버틴 단서만 짧게 적어 둔다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4196,9 +4418,9 @@ function buildRescueContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|rescue|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 먼저 붙여 놓는다. 오늘은 누가 먼저 움직였는지만 본다. 흐름이 어긋나면 이 읽기는 접는다. 끝까지 남는 단서가 아니면 말도 아낀다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같은 줄에 둔다. 반응 순서가 예상과 다르면 여기서 바로 생각을 바꾼다. 오래 버틴 근거만 남겨 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 기울어지는 쪽을 본다. 전제가 흔들리면 이 읽기는 더 밀지 않는다. 버티는 흔적만 다시 문장으로 옮긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 먼저 붙여 놓는다. 오늘은 누가 먼저 움직였는지만 본다. 흐름이 어긋나면 이 읽기는 접는다. 끝까지 남는 쪽이 아니면 말도 아낀다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같은 줄에 둔다. 반응 순서가 예상과 다르면 여기서 바로 생각을 바꾼다. 오래 버틴 근거만 따로 남겨 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 기울어지는 쪽을 본다. 전제가 흔들리면 이 읽기는 더 밀지 않는다. 버틴 단서만 다음 문장으로 옮긴다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4228,14 +4450,14 @@ function buildEmergencyContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 오래 버티는 단서만 다음 문장에 남긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 남는 단서만 문장으로 옮긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 버티는 단서만 다음 말로 넘긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 흔들리는 쪽을 본다. 먼저 움직인 축이 예상과 다르면 이 읽기는 버린다. 살아남는 단서만 다음 문장에 남긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 오래 버틴 쪽만 다음 문장에 남긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 살아남은 근거만 메모로 옮긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 버틴 단서만 다음 말로 넘긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 흔들리는 쪽을 본다. 먼저 움직인 축이 예상과 다르면 이 읽기는 버린다. 이 장면을 통과한 근거만 다시 적는다.`,
     `${headline}. ${aToken}, ${bToken}, 이 둘을 겹쳐 놓고 어디서 먼저 틈이 나는지 본다. 순서가 틀리면 지금 생각은 접는다. 근거가 버티는지 확인한 뒤에야 다음 문장을 고른다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 붙여 놓고 먼저 반응 속도부터 잰다. 예상보다 다른 축이 빠르면 바로 다시 읽는다. 오래 남는 흔적만 다음 판단으로 넘긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘이 끝까지 같은 쪽을 보는지부터 확인한다. 흐름이 갈라지면 여기서 생각을 바꾼다. 남는 단서만 다시 문장으로 세운다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 어느 쪽이 먼저 무너지는지 본다. 전제가 어긋나면 이 읽기는 미련 없이 버린다. 살아남은 근거만 끝에 남긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 붙여 놓고 먼저 반응 속도부터 잰다. 예상보다 다른 축이 빠르면 바로 다시 읽는다. 오래 남은 쪽만 다음 판단으로 넘긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘이 끝까지 같은 쪽을 보는지부터 확인한다. 흐름이 갈라지면 여기서 생각을 바꾼다. 남는 근거만 다시 문장으로 세운다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 어느 쪽이 먼저 무너지는지 본다. 전제가 어긋나면 여기서 처음부터 다시 읽는다. 끝까지 남은 근거만 마지막에 적는다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
