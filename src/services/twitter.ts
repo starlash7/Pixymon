@@ -20,6 +20,7 @@ import { buildReplyRewriteJob } from "./llm-batch.js";
 import { XApiCostRuntimeSettings } from "../types/runtime.js";
 import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
+import { recordNarrativeObservation } from "./narrative-observer.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
 export const TEST_NO_EXTERNAL_CALLS =
@@ -368,6 +369,12 @@ ${mention.text}`,
     if (TEST_MODE) {
       console.log(`🧪 [테스트] 멘션 답글 시뮬레이션: ${replyText}`);
       memory.saveTweet(`mention_test_${Date.now()}`, replyText, "reply");
+      recordNarrativeObservation({
+        surface: "reply",
+        text: replyText,
+        language: lang,
+        fallbackKind: "mention:test",
+      });
       return true;
     }
 
@@ -401,6 +408,12 @@ ${mention.text}`,
 
     // 답글도 메모리에 저장
     memory.saveTweet(reply.data.id, replyText, "reply");
+    recordNarrativeObservation({
+      surface: "reply",
+      text: replyText,
+      language: lang,
+      fallbackKind: "mention:live",
+    });
     memory.recordCognitiveActivity("social", 2);
     return true;
   } catch (error: any) {
@@ -755,6 +768,14 @@ export async function postTweet(
     // 테스트 모드에서도 메모리에 저장
     const testId = `test_${Date.now()}`;
     memory.saveTweet(testId, content, type, options.metadata);
+    recordNarrativeObservation({
+      surface: type === "quote" ? "quote" : "post",
+      text: content,
+      language: detectLanguage(content),
+      lane: options.metadata?.lane,
+      narrativeMode: options.metadata?.narrativeMode,
+      fallbackKind: TEST_MODE ? "post:test" : "post:no-twitter",
+    });
     return testId;
   }
 
@@ -832,6 +853,14 @@ export async function postTweet(
         memory.saveTweet(tweet.data.id, content, type, {
           ...(options.metadata || {}),
           ...(quoteTweetId ? { quoteTweetId } : {}),
+        });
+        recordNarrativeObservation({
+          surface: type === "quote" ? "quote" : "post",
+          text: content,
+          language: detectLanguage(content),
+          lane: options.metadata?.lane,
+          narrativeMode: options.metadata?.narrativeMode,
+          fallbackKind: createKind,
         });
         if (type === "briefing") {
           persistPostDispatchState(content);
