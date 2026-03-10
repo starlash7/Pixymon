@@ -95,3 +95,10 @@ test("finalizeGeneratedText removes dangling command tails like 넘기지", () =
   const output = finalizeGeneratedText(input, "ko", 220);
   assert.equal(output, "좋은 해석은 버티는 근거 하나에서 나온다.");
 });
+
+test("finalizeGeneratedText removes dangling tail like 다음", () => {
+  const input =
+    "좋은 해석은 결국 버티는 근거에서 나온다. 근거가 버티는지 확인한 뒤에야 다음.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(output, "좋은 해석은 결국 버티는 근거에서 나온다.");
+});

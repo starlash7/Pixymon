@@ -155,9 +155,20 @@ function cleanupDanglingTail(text: string, language: "ko" | "en"): string {
   let output = sanitizeTweetText(text);
   if (!output) return output;
   if (language === "ko") {
+    const parts = output
+      .split(/(?<=[.!?])/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const core = last.replace(/[.!?]+$/g, "").trim();
+      if (shouldDropKoTrailingSentence(core)) {
+        output = sanitizeTweetText(parts.slice(0, -1).join(" "));
+      }
+    }
     output = output
       .replace(/\s+(?:반증|조건|근거|근거는|단서|단서는|그리고|하지만|또|또는)$/g, "")
-      .replace(/\s+(?:않으면|아니면|라면|가면|되면|놓지|놓고|않고|보고|넘기지|한\s*번\s*더)$/g, "")
+      .replace(/\s+(?:않으면|아니면|라면|가면|되면|놓지|놓고|않고|보고|넘기지|한\s*번\s*더|다음)$/g, "")
       .replace(/\s+[이가은는을를의로와과도]$/g, "")
       .replace(/\s*[,:;]\s*$/g, "")
       .trim();
@@ -362,6 +373,7 @@ function trimTrailingFragment(text: string, language: "ko" | "en"): string {
         core
       );
     if (
+      shouldDropKoTrailingSentence(core) ||
       (looksDangling && core.length <= 24) ||
       (core.length <= 8 && !looksComplete) ||
       danglingEvidenceList ||
@@ -493,5 +505,17 @@ function buildNarrativeLayouts(parts: string[], language: "ko" | "en"): string[]
 function hasKoPredicateEnding(text: string): boolean {
   return /(다|요|까|자|함|됨|한다|했다|싶다|없다|있다|보인다|남는다|움직인다|이어진다|읽힌다|달린다|가깝다|중이다|좋다|나쁘다|맞다|틀리다|늦춘다|바꾼다|접는다|철회한다|보류한다|흐려진다|멈춘다|남긴다|고른다|시작된다|보탠다|가리킨다|비교한다|대조한다|확인한다|짚어본다|붙어\s*있다|적어\s*둔다|붙들고\s*간다)$/.test(
     text
+  );
+}
+
+function shouldDropKoTrailingSentence(core: string): boolean {
+  const normalized = sanitizeTweetText(core).replace(/[.!?]+$/g, "").trim();
+  if (!normalized || hasKoPredicateEnding(normalized) || /[?؟]$/.test(normalized)) {
+    return false;
+  }
+
+  return (
+    /(?:뒤에야|그제야|끝에야)\s*(?:다음|그다음)$/.test(normalized) ||
+    /(?:다음|그다음)$/.test(normalized)
   );
 }

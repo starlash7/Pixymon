@@ -1719,6 +1719,12 @@ Rules:
         `quote:${targetId}:${lane}`,
         "quote"
       );
+      quoteText = ensureTrendTokens(
+        quoteText,
+        extractFocusTokens(targetText),
+        quoteLanguage,
+        runtimeSettings.postMaxChars
+      );
 
       if (startsWithFearGreedTemplate(quoteText)) {
         continue;
@@ -1777,15 +1783,32 @@ Rules:
 }
 
 function buildLocalQuoteTargets(trend: TrendContext): Array<{ id: string; text: string }> {
+  const nutrientScenes = trend.nutrients.slice(0, 8).map((item) =>
+    sanitizeTweetText(`${formatEvidenceToken(item.label, item.value, 32)}가 먼저 움직인 장면`)
+  );
+  const syntheticScenes = [
+    trend.nutrients[0] && trend.nutrients[1]
+      ? sanitizeTweetText(
+          `${formatEvidenceToken(trend.nutrients[0].label, trend.nutrients[0].value, 22)}와 ${formatEvidenceToken(
+            trend.nutrients[1].label,
+            trend.nutrients[1].value,
+            22
+          )}의 속도가 갈린 장면`
+        )
+      : "",
+    trend.keywords.slice(0, 3).length >= 2
+      ? sanitizeTweetText(`${trend.keywords.slice(0, 3).join(", ")} 흐름이 한 화면에 겹친 장면`)
+      : "",
+    trend.summary ? sanitizeTweetText(`${trend.summary} 그런데 먼저 흔들린 건 어디였을까`) : "",
+  ].filter(Boolean);
   const raw = [
-    ...trend.events.slice(0, 6).map((event) => sanitizeTweetText(event.headline)),
-    ...trend.headlines.slice(0, 6).map((headline) => sanitizeTweetText(headline)),
-    ...trend.nutrients.slice(0, 6).map((item) =>
-      sanitizeTweetText(`${item.label} ${item.value}가 먼저 움직인 장면`)
-    ),
-    sanitizeTweetText(`${trend.summary} 이 흐름은 그냥 넘기기 어렵다`),
-  ].filter((item) => item.length >= 25);
-  const dedup = [...new Set(raw)].slice(0, 8);
+    ...trend.events.slice(0, 8).map((event) => sanitizeTweetText(event.headline)),
+    ...trend.headlines.slice(0, 8).map((headline) => sanitizeTweetText(headline)),
+    ...nutrientScenes,
+    ...syntheticScenes,
+    sanitizeTweetText(`${trend.summary} 이 흐름은 그냥 지나치기 어렵다`),
+  ].filter((item) => item.length >= 18);
+  const dedup = [...new Set(raw)].slice(0, 16);
   return dedup.map((text, index) => ({ id: `local_quote_${index + 1}`, text }));
 }
 
@@ -1806,10 +1829,13 @@ function buildLocalQuoteComment(params: {
 
   if (params.language === "ko") {
     const pool = [
-      `그 장면은 나도 그냥 못 넘기겠다. ${a}와 ${b}, 이 두 단서를 같은 화면에 두고 순서부터 다시 보게 된다.`,
-      `${scene}. 지금은 ${a}와 ${b}가 끝까지 같은 말을 하는지부터 보고 싶다.`,
-      `원문을 다시 옮기기보다 ${a}와 ${b}의 엇갈림부터 확인하는 편이 낫다. 지금은 반응보다 흐름이 먼저다.`,
-      `${scene}. ${a}와 ${b}, 이 둘이 딴소리를 하면 이 해석은 바로 바꾼다.`,
+      `그 장면은 나도 그냥 못 넘기겠다. 지금은 ${a}와 ${b}가 정말 같은 쪽을 가리키는지부터 본다.`,
+      `${scene}. ${a}와 ${b} 중 뭐가 먼저 움직였는지부터 다시 짚게 된다.`,
+      `원문을 그대로 옮기기보다 ${a}와 ${b}가 어디서 어긋나는지부터 확인하는 편이 낫다.`,
+      `${scene}. ${a}와 ${b}가 끝까지 같은 말을 하지 않으면 이 읽기는 바로 바꾼다.`,
+      `지금은 결론보다 ${a}와 ${b}의 순서가 더 중요해 보인다. 그래서 한 번 더 되짚어 보게 된다.`,
+      `${scene}. 나는 ${a}와 ${b} 중 먼저 흔들리는 쪽부터 다시 본다.`,
+      `${a}와 ${b}가 같은 말을 오래 하지 않으면 이 장면은 다시 읽게 된다.`,
     ];
     return finalizeNarrativeSurface(pool[seed % pool.length], "ko", params.maxChars, "quote");
   }
@@ -1820,6 +1846,11 @@ function buildLocalQuoteComment(params: {
     `I would not restate the post. I would first test the gap between ${a} and ${b}.`,
   ];
   return finalizeNarrativeSurface(pool[seed % pool.length], "en", params.maxChars, "quote");
+}
+
+function formatEvidenceToken(label: string, value: string, maxChars: number): string {
+  const normalized = sanitizeTweetText([label, value].map((item) => String(item || "").trim()).filter(Boolean).join(" "));
+  return normalized.slice(0, maxChars).trim();
 }
 
 async function runFeedDigestEvolve(
@@ -2470,8 +2501,8 @@ function ensureEventEvidenceAnchors(
   if (!normalized) return normalized;
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return truncateAtWordBoundary(normalized, maxChars);
-  const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 28);
-  const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 28);
+  const aToken = formatEvidenceToken(a.label, a.value, 28);
+  const bToken = formatEvidenceToken(b.label, b.value, 28);
   const lower = normalized.toLowerCase();
   const hasA = aToken.length >= 2 && lower.includes(aToken.toLowerCase());
   const hasB = bToken.length >= 2 && lower.includes(bToken.toLowerCase());
@@ -3935,10 +3966,10 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
         ];
       case "philosophy-note":
         return [
-          `${beliefLine}. ${opener}. ${evidence}. ${action}. ${invalidation}.`,
-          `${opener}. ${beliefLine}. ${evidence}. ${invalidation}.`,
-          `${beliefLine}. ${opener}. ${conceptLine}. ${invalidation}.`,
-          `${opener}. ${beliefLine}. ${action}. ${invalidation}.`,
+          `${opener}. ${evidence}. ${action}. ${invalidation}.`,
+          `${beliefLine}. ${evidence}. ${action}. ${invalidation}.`,
+          `${opener}. ${beliefLine}. ${invalidation}.`,
+          `${opener}. ${action}. ${invalidation}.`,
           `${beliefLine}. ${evidence}. ${invalidation}.`,
         ];
       case "meta-reflection":
@@ -4087,6 +4118,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       } else {
         beliefLine = "";
       }
+    }
+    if (sceneIsSelfContained && mode === "philosophy-note") {
+      beliefLine = "";
     }
     if (sceneIsSelfContained && beliefLine && conceptLine) {
       conceptLine = "";
@@ -4391,8 +4425,8 @@ function buildHardContractPost(
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
 
-  const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 26);
-  const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 26);
+  const aToken = formatEvidenceToken(a.label, a.value, 26);
+  const bToken = formatEvidenceToken(b.label, b.value, 26);
   const headline = language === "ko"
     ? normalizeKoContractHeadline(eventPlan.event.headline, `${aToken}|${bToken}|${eventPlan.lane}|hard`)
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
@@ -4413,8 +4447,8 @@ function buildHardContractPost(
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|hard|${eventPlan.lane}`);
   const pool = [
     `${headline}. ${aToken}, ${bToken}, 이 두 단서를 나란히 놓고 본다. 오늘은 누가 먼저 움직였는지부터 가린다. 둘이 서로 딴소리를 하면 이 읽기는 바로 접는다. 끝까지 버틴 근거만 다음 판단으로 넘긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 먼저 반응 순서를 맞춰 보고 어긋나면 여기서 해석을 접는다. 마지막까지 살아남은 쪽만 메모에 남긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 사이에서 먼저 흔들리는 쪽을 본다. 예상과 다른 축이 먼저 움직이면 이 읽기는 바로 버린다. 지금은 버틴 단서만 짧게 적어 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 먼저 반응 순서를 맞춰 보고 어긋나면 여기서 해석을 접는다. 마지막까지 살아남은 쪽만 조용히 남겨 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 사이에서 먼저 흔들리는 쪽을 본다. 예상과 다른 축이 먼저 움직이면 이 읽기는 바로 버린다. 지금은 버틴 단서 하나만 짧게 적어 둔다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4431,8 +4465,8 @@ function buildRescueContractPost(
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
 
-  const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 24);
-  const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 24);
+  const aToken = formatEvidenceToken(a.label, a.value, 24);
+  const bToken = formatEvidenceToken(b.label, b.value, 24);
   const headline = language === "ko"
     ? normalizeKoContractHeadline(eventPlan.event.headline, `${aToken}|${bToken}|${eventPlan.lane}|rescue`)
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
@@ -4454,7 +4488,7 @@ function buildRescueContractPost(
   const pool = [
     `${headline}. ${aToken}, ${bToken}, 이 두 단서를 먼저 붙여 놓는다. 오늘은 누가 먼저 움직였는지만 본다. 흐름이 어긋나면 이 읽기는 접는다. 끝까지 남는 쪽이 아니면 말도 아낀다.`,
     `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같은 줄에 둔다. 반응 순서가 예상과 다르면 여기서 바로 생각을 바꾼다. 오래 버틴 근거만 따로 남겨 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 기울어지는 쪽을 본다. 전제가 흔들리면 이 읽기는 더 밀지 않는다. 버틴 단서만 다음 문장으로 옮긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 기울어지는 쪽을 본다. 전제가 흔들리면 이 읽기는 더 밀지 않는다. 오래 남는 단서 하나만 다음 문장으로 옮긴다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4471,8 +4505,8 @@ function buildEmergencyContractPost(
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
 
-  const aToken = sanitizeTweetText(`${a.label} ${a.value}`).trim().slice(0, 22);
-  const bToken = sanitizeTweetText(`${b.label} ${b.value}`).trim().slice(0, 22);
+  const aToken = formatEvidenceToken(a.label, a.value, 22);
+  const bToken = formatEvidenceToken(b.label, b.value, 22);
   const headline = language === "ko"
     ? normalizeKoContractHeadline(eventPlan.event.headline, `${aToken}|${bToken}|${eventPlan.lane}|emergency`)
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
@@ -4484,14 +4518,14 @@ function buildEmergencyContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 오래 버틴 쪽만 다음 문장에 남긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 살아남은 근거만 메모로 옮긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 버틴 단서만 다음 말로 넘긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 흔들리는 쪽을 본다. 먼저 움직인 축이 예상과 다르면 이 읽기는 버린다. 이 장면을 통과한 근거만 다시 적는다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 겹쳐 놓고 어디서 먼저 틈이 나는지 본다. 순서가 틀리면 지금 생각은 접는다. 근거가 버티는지 확인한 뒤에야 다음 문장을 고른다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 붙여 놓고 먼저 반응 속도부터 잰다. 예상보다 다른 축이 빠르면 바로 다시 읽는다. 오래 남은 쪽만 다음 판단으로 넘긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘이 끝까지 같은 쪽을 보는지부터 확인한다. 흐름이 갈라지면 여기서 생각을 바꾼다. 남는 근거만 다시 문장으로 세운다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 어느 쪽이 먼저 무너지는지 본다. 전제가 어긋나면 여기서 처음부터 다시 읽는다. 끝까지 남은 근거만 마지막에 적는다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 오래 버틴 쪽만 다음 판단으로 넘긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 살아남은 근거만 따로 메모해 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 버틴 단서 하나만 남겨 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 흔들리는 쪽을 본다. 먼저 움직인 축이 예상과 다르면 이 읽기는 버린다. 그 뒤에도 남는 근거만 다시 적는다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 겹쳐 놓고 어디서 먼저 틈이 나는지 본다. 순서가 틀리면 지금 생각은 접는다. 근거가 끝까지 버티는지 확인해 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 붙여 놓고 먼저 반응 속도부터 잰다. 예상보다 다른 축이 빠르면 바로 다시 읽는다. 오래 남은 쪽만 조심스럽게 이어 간다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘이 끝까지 같은 쪽을 보는지부터 확인한다. 흐름이 갈라지면 여기서 생각을 바꾼다. 남는 근거만 짧게 남겨 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 어느 쪽이 먼저 무너지는지 본다. 전제가 어긋나면 여기서 처음부터 다시 읽는다. 끝까지 남은 근거 하나만 붙잡는다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
