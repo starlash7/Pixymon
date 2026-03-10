@@ -2004,11 +2004,18 @@ function buildEmergencyLocalQuoteComment(params: {
   const b = sanitizeTweetText(params.anchors[1] || "추가 단서").slice(0, 28);
   const memo = sanitizeTweetText(params.recentReflection || "").slice(0, 42);
   const scene = sanitizeTweetText(params.targetText || "").slice(0, 72).replace(/\.$/, "");
+  const seed = stableSeedForPrelude(`${scene}|${a}|${b}|${memo}|${params.language}`);
   if (params.language === "ko") {
+    const closePool = [
+      "끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.",
+      "먼저 흔들린 쪽이 예상과 다르면 여기서 읽기를 바꾼다.",
+      "둘이 오래 같은 말을 못 하면 이 장면은 다시 읽는다.",
+    ];
+    const pairLine = `${a}, ${b}, 이 둘 중 뭐가 먼저 흔들리는지부터 본다.`;
     return finalizeNarrativeSurface(
       memo
-        ? `${scene || memo}. 그래도 이 장면에선 ${a}와 ${b}의 순서가 어긋나는지부터 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`
-        : `${scene || `${a}와 ${b}의 순서`}. 이 장면에선 ${a}와 ${b}가 어긋나는지부터 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`,
+        ? `${scene || memo}. 그래도 ${pairLine} ${closePool[seed % closePool.length]}`
+        : `${scene || `${a}와 ${b}`}. ${pairLine} ${closePool[seed % closePool.length]}`,
       "ko",
       params.maxChars,
       "quote"

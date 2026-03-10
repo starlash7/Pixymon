@@ -102,3 +102,13 @@ test("finalizeGeneratedText removes dangling tail like 다음", () => {
   const output = finalizeGeneratedText(input, "ko", 220);
   assert.equal(output, "좋은 해석은 결국 버티는 근거에서 나온다.");
 });
+
+test("finalizeGeneratedText rewrites analyst jargon into natural korean", () => {
+  const input =
+    "지갑 군집 변화와 거래 목적지 집중도, 클라이언트 다양성을 같이 본다.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(
+    output,
+    "비슷한 지갑이 한쪽으로 몰리는 모습과 자금이 어느 쪽으로 몰리는지, 구현체가 한쪽에만 쏠리는지를 같이 본다."
+  );
+});
