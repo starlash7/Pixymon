@@ -1930,14 +1930,22 @@ function buildLocalQuoteTargets(trend: TrendContext): Array<{ id: string; text: 
     trend.keywords.slice(0, 3).length >= 2
       ? sanitizeTweetText(`${trend.keywords.slice(0, 3).join(", ")} 흐름이 한 화면에 겹친 장면`)
       : "",
-    trend.summary ? sanitizeTweetText(`${trend.summary} 그런데 먼저 흔들린 건 어디였을까`) : "",
+    trend.summary
+      ? sanitizeTweetText(
+          `${normalizeKoContractHeadline(trend.summary, "local-quote-summary-scene")} 그런데 먼저 흔들린 건 어디였을까`
+        )
+      : "",
   ].filter(Boolean);
   const raw = [
-    ...trend.events.slice(0, 8).map((event) => sanitizeTweetText(event.headline)),
-    ...trend.headlines.slice(0, 8).map((headline) => sanitizeTweetText(headline)),
+    ...trend.events
+      .slice(0, 8)
+      .map((event, index) => normalizeKoContractHeadline(event.headline, `local-quote-event|${index}|${event.id || ""}`)),
+    ...trend.headlines
+      .slice(0, 8)
+      .map((headline, index) => normalizeKoContractHeadline(headline, `local-quote-headline|${index}`)),
     ...nutrientScenes,
     ...syntheticScenes,
-    sanitizeTweetText(`${trend.summary} 이 흐름은 그냥 지나치기 어렵다`),
+    sanitizeTweetText(`${normalizeKoContractHeadline(trend.summary, "local-quote-summary")} 이 흐름은 그냥 지나치기 어렵다`),
   ].filter((item) => isUsableLocalQuoteTarget(item));
   const dedup = [...new Set(raw)].slice(0, 16);
   return dedup.map((text, index) => ({ id: `local_quote_${index + 1}`, text }));
