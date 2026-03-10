@@ -252,8 +252,12 @@ export async function replyToMention(
       const lang = detectLanguage(mentionText);
       const localReply = (
         lang === "en"
-          ? "I see your point. I will keep watching the onchain evidence before claiming direction."
-          : "좋은 포인트야. 방향성 단정은 보류하고 온체인 근거를 더 확인해볼게."
+          ? /\?$/.test(mentionText)
+            ? "That is a fair question. I would watch the onchain trail before pretending the answer is obvious."
+            : "That part caught me too. I would rather check the onchain trail once more than force a conclusion."
+          : /\?$|어떻게|왜|뭐|무엇|어디/.test(mentionText)
+            ? "그 질문은 괜찮다. 나도 방향 단정보다 먼저 움직인 흔적부터 다시 볼 것 같다."
+            : "그 장면은 나도 걸렸다. 섣불리 결론 내리기보다 먼저 움직인 단서부터 더 볼 것 같다."
       ).slice(0, 160);
       console.log(`🧪 [테스트-로컬] 멘션 답글 시뮬레이션: ${localReply}`);
       memory.saveTweet(`mention_test_${Date.now()}`, localReply, "reply");
@@ -306,6 +310,10 @@ export async function replyToMention(
 - 질문이면 답변, 아니면 짧은 리액션
 - 톤 가이드:
 ${toneGuide}
+- 원문을 그대로 다시 요약하지 말 것
+- 길어도 2문장
+- 첫 문장은 반응/관찰/짧은 답변으로 시작
+- 한국어면 말하듯 자연스럽게
 - 단정적 투자 표현 금지
 - 마지막 문장 ${shouldEndWithQuestion ? "질문형" : "관찰형"}
 - 해시태그 X, 이모지 X${followerContext}

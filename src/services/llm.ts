@@ -25,7 +25,9 @@ export function getReplyToneGuide(language: "ko" | "en"): string {
       ? `톤 모드: personal
 - 단정 대신 공감 + 맥락 중심
 - 강한 반박보다 대화 유도 우선
-- 데이터는 1개만 짧게 언급`
+- 데이터는 1개만 짧게 언급
+- 원문을 그대로 되풀이하지 말 것
+- 길어도 2문장, 말하듯 자연스럽게`
       : `Tone mode: personal
 - Empathy + context first
 - Invite discussion over hard confrontation
@@ -36,7 +38,9 @@ export function getReplyToneGuide(language: "ko" | "en"): string {
     ? `톤 모드: signal
 - 핵심 주장 명확히
 - 근거 데이터/논리 우선
-- 필요 시 반론을 짧게 제시`
+- 필요 시 반론을 짧게 제시
+- 원문을 그대로 요약 반복하지 말 것
+- 길어도 2문장, 첫 문장은 관찰/반응으로 시작`
     : `Tone mode: signal
 - Clear claim first
 - Data and logic first

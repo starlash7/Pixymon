@@ -274,7 +274,10 @@ export async function proactiveEngagement(
 추가 운영 규칙:
 - 상대 트윗 핵심 주장 1개만 잡고 반응한다.
 - 칭찬/감탄사보다 정보 밀도가 높은 답변 우선.
-- 확신이 낮으면 질문형으로 끝낸다.`;
+- 확신이 낮으면 질문형으로 끝낸다.
+- 원문을 그대로 다시 요약하지 않는다.
+- 1~2문장으로 끝낸다.
+- 첫 문장은 반응/관찰/질문 중 하나로 시작한다.`;
 
       const userPrompt =
         lang === "ko"
@@ -290,6 +293,10 @@ ${trend.summary}
 - 180자 이내
 - 톤 가이드:
 ${toneGuide}
+- 원문 표현을 그대로 반복 요약하지 말 것
+- 길어도 2문장
+- 첫 문장은 반응이나 관찰로 시작
+- 한국어면 말하듯 자연스럽게
 - 해시태그/이모지 금지
 - 숫자 왜곡 금지
 - 본문만 출력`
@@ -305,6 +312,9 @@ Rules:
 - Max 180 chars
 - Tone guide:
 ${toneGuide}
+- Do not paraphrase the target tweet line by line
+- Keep it to 1-2 sentences
+- Start with a reaction, observation, or question
 - No hashtags or emoji
 - Do not invent numbers
 - Output reply text only`;
@@ -1572,6 +1582,10 @@ ${trend.summary}
 규칙:
 - ${runtimeSettings.postMaxChars}자 이내
 - 한국어
+- 원문을 그대로 요약하지 말 것
+- 길어도 2문장
+- 첫 문장은 반응/관찰/짧은 해석으로 시작
+- 한국어 문장은 말하듯 자연스럽게
 - 사실/숫자는 제공 근거 범위 내에서만 사용
 - 과장/투자확정 표현 금지
 - 해시태그/이모지 금지
@@ -1590,6 +1604,9 @@ ${trend.summary}
 Rules:
 - Max ${runtimeSettings.postMaxChars} chars
 - English only
+- Do not restate the target tweet line by line
+- Keep it to 1-2 sentences
+- Start with a reaction, observation, or twist
 - Do not fabricate numbers/facts
 - No certainty investment claims
 - No hashtags or emoji

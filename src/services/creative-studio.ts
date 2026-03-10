@@ -27,7 +27,7 @@ export function buildQuoteReplySeed(input: QuoteSeedInput): string {
   const evidence = (input.evidence || []).slice(0, 2).map((item) => compact(item, 64));
   if (input.language === "ko") {
     return compact(
-      `${headline}. 근거 ${evidence[0] || "데이터 확인 중"}, ${evidence[1] || "추가 근거 수집 중"}. 이 흐름을 인용으로 짧게 해석해보면?`,
+      `장면: ${headline}. 근거: ${evidence[0] || "데이터 확인 중"}, ${evidence[1] || "추가 근거 수집 중"}. 원문을 요약하지 말고, 이 장면을 보고 바로 남길 짧은 인용 코멘트를 잡는다.`,
       220
     );
   }
