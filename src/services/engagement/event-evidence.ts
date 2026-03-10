@@ -341,9 +341,20 @@ export function buildEventEvidenceFallbackPost(
     }
     return output;
   };
+  const humanizeKoEventHeadline = (text: string): string => {
+    const cleaned = stripKoHeadlinePrefix(sanitizeTweetText(text || "").replace(/[.!?]+$/g, "")).trim();
+    if (!cleaned) return "오늘은 이 장면부터 다시 본다";
+    if (/[A-Za-z]{5,}/.test(cleaned)) return cleaned;
+    if (/는가$/.test(cleaned)) return `${cleaned.replace(/는가$/, "는지가 계속 남는다")}`;
+    if (/(인가|일까|될까|할까)$/.test(cleaned)) return `${cleaned} 하는 쪽이 계속 걸린다`;
+    if (/생각$/.test(cleaned)) return `${cleaned}이 자꾸 남는다`;
+    if (/다$/.test(cleaned)) return cleaned;
+    if (cleaned.length >= 12) return `${cleaned}이라는 감각이 남는다`;
+    return cleaned;
+  };
 
   const eventHeadlineRaw = sanitizeTweetText(plan.event.headline).replace(/\.$/, "");
-  const eventHeadline = language === "ko" ? stripKoHeadlinePrefix(eventHeadlineRaw) : eventHeadlineRaw;
+  const eventHeadline = language === "ko" ? humanizeKoEventHeadline(eventHeadlineRaw) : eventHeadlineRaw;
   const evidenceA = formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = formatEvidenceAnchor(plan.evidence[1], language);
   const narrativeMode = mode || inferNarrativeModeFromHeadline(eventHeadline);
@@ -351,24 +362,24 @@ export function buildEventEvidenceFallbackPost(
 
   const koTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `지금 계속 마음에 남는 건 ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 붙여 놓고 본다. 둘이 같은 쪽을 오래 가리킬 때만 말을 보탠다.`,
-      `오늘은 이 장면을 다시 본다. ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 보다 보면 전제 하나만 흔들려도 이 읽기는 곧바로 접게 된다.`,
+      `오늘 계속 걸리는 건 ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 붙여 놓고 본다. 둘이 같은 쪽을 오래 가리킬 때만 말을 보탠다.`,
+      `내 메모는 ${eventHeadline}에서 시작된다. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 보다 보면 전제 하나만 흔들려도 이 읽기는 곧바로 접게 된다.`,
     ],
     "philosophy-note": [
-      `한 걸음 물러서서 보면 ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 나란히 두면 말보다 순서가 먼저 보인다. 흐름이 엇갈리기 시작하면 나는 처음부터 다시 읽는다.`,
-      `지금은 ${eventHeadline}를 크게 말할 때가 아니라 ${evidenceA}, ${evidenceB} 사이의 시간차를 보는 쪽이 낫다. 둘이 딴소리를 하면 이 해석은 버린다.`,
+      `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 나란히 두면 말보다 순서가 먼저 보인다. 흐름이 엇갈리기 시작하면 나는 처음부터 다시 읽는다.`,
+      `조금 떨어져서 보면 ${eventHeadline}. 지금은 ${evidenceA}, ${evidenceB} 사이의 시간차를 보는 쪽이 낫다. 둘이 딴소리를 하면 이 해석은 버린다.`,
     ],
     "interaction-experiment": [
       `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 보면 어디서부터 말이 갈릴까? 너라면 첫 의심을 어디에 둘지 궁금하다. 전제가 흔들리면 나는 이 읽기를 바로 접는다.`,
-      `오늘은 ${eventHeadline}를 두고 ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 본다. 이 장면을 가장 먼저 뒤집을 신호가 뭐라고 보는지 듣고 싶다. 흐름이 엇갈리면 나는 생각을 바꾼다.`,
+      `오늘은 ${eventHeadline} 앞에 ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 본다. 이 장면을 가장 먼저 뒤집을 신호가 뭐라고 보는지 듣고 싶다. 흐름이 엇갈리면 나는 생각을 바꾼다.`,
     ],
     "meta-reflection": [
-      `내가 늘 경계하는 건 신호 하나에 기대는 습관이다. ${eventHeadline}. 그래서 ${evidenceA}, ${evidenceB}, 이 두 단서를 함께 놓고 본다. 오래 버티는 쪽이 아니면 이 해석은 접는다.`,
+      `내가 늘 경계하는 건 신호 하나에 기대는 습관이다. 오늘 장면은 ${eventHeadline}. 그래서 ${evidenceA}, ${evidenceB}, 이 두 단서를 함께 놓고 본다. 오래 버티는 쪽이 아니면 이 해석은 접는다.`,
       `${eventHeadline}. 예쁘게 맞아 보이는 숫자 하나보다 ${evidenceA}, ${evidenceB}, 이 두 단서가 더 중요하다. 둘이 갈라지면 이 문장은 여기서 멈춘다.`,
     ],
     "fable-essay": [
       `시장이 시끄러울수록 나는 더 조용한 흔적을 찾게 된다. ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 천천히 소화해 보고 둘이 갈라지면 이야기도 여기서 바꾼다.`,
-      `짧게 남기면 ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 씹어 본 뒤에도 맛이 같을 때만 다음 문장으로 넘긴다. 다르면 이 읽기는 바로 접는다.`,
+      `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 씹어 본 뒤에도 맛이 같을 때만 다음 문장으로 넘긴다. 다르면 이 읽기는 바로 접는다.`,
     ],
   };
 
