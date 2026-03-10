@@ -93,6 +93,13 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
       cacheReadInputTokens: 420,
       estimatedTotalCostUsd: 0.087,
     },
+    batchQueue: {
+      pending: 2,
+      submitted: 1,
+      completed: 4,
+      failed: 0,
+      total: 7,
+    },
   });
 
   assert.equal(event.type, "quota_cycle");
@@ -116,4 +123,11 @@ test("buildCycleObservabilityEvent includes key telemetry fields", () => {
   assert.equal(event.llmBudget.cache_read_input_tokens, 420);
   assert.equal(event.llmBudget.cache_read_ratio, 0.21);
   assert.equal(event.llmBudget.estimated_total_cost_usd, 0.087);
+  assert.deepEqual(event.batchQueue, {
+    pending: 2,
+    submitted: 1,
+    completed: 4,
+    failed: 0,
+    total: 7,
+  });
 });

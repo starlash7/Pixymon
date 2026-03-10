@@ -68,6 +68,7 @@ import {
 } from "./engagement/text-finalize.js";
 import { buildDigestReflectionJob, buildLanguageRewriteJob } from "./llm-batch.js";
 import type { BatchReadyClaudeJob } from "./llm-batch.js";
+import { llmBatchQueue } from "./llm-batch-queue.js";
 import {
   AdaptivePolicy,
   CycleCacheMetrics,
@@ -2174,7 +2175,11 @@ export async function runDailyQuotaCycle(
     `[FEED] nutrient=${feedDigest.intakeCount} accepted=${feedDigest.acceptedCount} avgDigest=${feedDigest.avgDigestScore.toFixed(2)} xpGain=${feedDigest.xpGainTotal}`
   );
   if (feedDigest.reflectionJob) {
-    console.log(`[BATCH] digest reflection ready: ${feedDigest.reflectionJob.customId}`);
+    const queueResult = llmBatchQueue.enqueue(feedDigest.reflectionJob);
+    const queueStats = llmBatchQueue.getQueueStats();
+    console.log(
+      `[BATCH] digest reflection ${queueResult.status === "queued" ? "queued" : "duplicate"}: ${feedDigest.reflectionJob.customId} | pending=${queueStats.pending} submitted=${queueStats.submitted}`
+    );
   }
   if (feedDigest.rejectReasonsTop.length > 0) {
     const topReject = feedDigest.rejectReasonsTop.map((item) => `${item.reason}:${item.count}`).join(", ");

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { memory } from "./memory.js";
 import { anthropicBudget } from "./anthropic-budget.js";
+import { llmBatchQueue } from "./llm-batch-queue.js";
 import { AdaptivePolicy, CycleCacheMetrics } from "./engagement/types.js";
 import { EngagementRuntimeSettings, ObservabilityRuntimeSettings } from "../types/runtime.js";
 import { TrendLane } from "../types/agent.js";
@@ -41,6 +42,13 @@ interface ObservabilitySnapshot {
     cacheCreationInputTokens: number;
     cacheReadInputTokens: number;
     estimatedTotalCostUsd: number;
+  };
+  batchQueue: {
+    pending: number;
+    submitted: number;
+    completed: number;
+    failed: number;
+    total: number;
   };
 }
 
@@ -130,6 +138,13 @@ export interface CycleObservabilityEvent {
     cache_read_ratio: number;
     estimated_total_cost_usd: number;
   };
+  batchQueue: {
+    pending: number;
+    submitted: number;
+    completed: number;
+    failed: number;
+    total: number;
+  };
   cache?: CycleCacheMetrics;
 }
 
@@ -147,6 +162,7 @@ export function emitCycleObservability(
     laneUsage24h: memory.getRecentBriefingLaneUsage(24),
     nutrient: memory.getTodayNutrientMetrics(input.timezone),
     llm: anthropicBudget.getTodayUsage(input.timezone),
+    batchQueue: llmBatchQueue.getQueueStats(),
   };
 
   const event = buildCycleObservabilityEvent(input, snapshot);
@@ -245,6 +261,13 @@ export function buildCycleObservabilityEvent(
       cache_read_input_tokens: snapshot.llm.cacheReadInputTokens,
       cache_read_ratio: round(cacheReadRatio, 3),
       estimated_total_cost_usd: snapshot.llm.estimatedTotalCostUsd,
+    },
+    batchQueue: {
+      pending: snapshot.batchQueue.pending,
+      submitted: snapshot.batchQueue.submitted,
+      completed: snapshot.batchQueue.completed,
+      failed: snapshot.batchQueue.failed,
+      total: snapshot.batchQueue.total,
     },
     cache: input.cacheMetrics,
   };
