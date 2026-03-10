@@ -133,6 +133,7 @@ interface FeedDigestSummary {
   evolvedCount: number;
   rejectReasonsTop: Array<{ reason: string; count: number }>;
   acceptedNutrients: OnchainNutrient[];
+  pendingReflectionHint?: string;
   reflectionJob?: BatchReadyClaudeJob;
 }
 
@@ -143,7 +144,8 @@ export async function checkAndReplyMentions(
   claude: Anthropic,
   maxMentionsToProcess: number = 5,
   timezone: string = DEFAULT_TIMEZONE,
-  xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS
+  xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
+  recentReflectionHint?: string
 ): Promise<number> {
   const now = new Date().toLocaleString("ko-KR", { timeZone: timezone });
   console.log(`\n[${now}] 멘션 체크 중...`);
@@ -199,6 +201,7 @@ export async function checkAndReplyMentions(
       const replied = await replyToMention(twitter, claude, mention, {
         timezone,
         xApiCostSettings,
+        recentReflectionHint,
       });
 
       if (!replied) {
@@ -226,7 +229,8 @@ export async function proactiveEngagement(
   settings: Partial<EngagementRuntimeSettings> = {},
   timezone: string = DEFAULT_TIMEZONE,
   xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
-  cache?: EngagementCycleCache
+  cache?: EngagementCycleCache,
+  recentReflectionHint?: string
 ): Promise<number> {
   const goal = clamp(replyCount, 0, 20);
   if (goal === 0) return 0;
@@ -240,7 +244,7 @@ export async function proactiveEngagement(
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
-    const runContext = getOrCreateRunContext(cache, trend);
+    const runContext = getOrCreateRunContext(cache, trend, recentReflectionHint);
 
     const candidates = await getOrSearchTrendTweets(
       twitter,
@@ -465,7 +469,8 @@ export async function postTrendUpdate(
   settings: Partial<EngagementRuntimeSettings> = {},
   xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
   cache?: EngagementCycleCache,
-  feedNutrients: OnchainNutrient[] = []
+  feedNutrients: OnchainNutrient[] = [],
+  cycleReflectionHint?: string
 ): Promise<boolean> {
   console.log("\n[POST] 트렌드 요약 글 작성 시작...");
   const runtimeSettings = resolveEngagementSettings(settings);
@@ -474,7 +479,7 @@ export async function postTrendUpdate(
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
-    const runContext = getOrCreateRunContext(cache, trend);
+    const runContext = getOrCreateRunContext(cache, trend, cycleReflectionHint);
 
     const recentBriefingPosts = memory
       .getRecentTweets(140)
@@ -502,7 +507,7 @@ export async function postTrendUpdate(
 
     const recentBriefingTexts = recentBriefingPosts.map((tweet) => tweet.content);
     let soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage);
-    const recentReflection = memory.getLatestDigestReflectionMemo();
+    const recentReflectionText = cycleReflectionHint || memory.getLatestDigestReflectionMemo()?.text;
     const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
     const eventPlan = planEventEvidenceAct({
       events: trend.events,
@@ -526,7 +531,7 @@ export async function postTrendUpdate(
           anchors: previewAnchors,
           language: runtimeSettings.postLanguage,
           recentPosts: recentBriefingPosts,
-          recentReflection: recentReflection?.text,
+          recentReflection: recentReflectionText,
           intentLine: soulIntent.intentLine,
           activeQuestion: soulIntent.activeQuestion,
           interactionMission: soulIntent.interactionMission,
@@ -665,7 +670,7 @@ export async function postTrendUpdate(
         anchors: localAnchors,
         language: runtimeSettings.postLanguage,
         recentPosts: recentBriefingPosts,
-        recentReflection: recentReflection?.text,
+        recentReflection: recentReflectionText,
         intentLine: soulIntent.intentLine,
         activeQuestion: soulIntent.activeQuestion,
         interactionMission: soulIntent.interactionMission,
@@ -1632,7 +1637,8 @@ export async function postTrendQuote(
   settings: Partial<EngagementRuntimeSettings> = {},
   timezone: string = DEFAULT_TIMEZONE,
   xApiCostSettings: XApiCostRuntimeSettings = DEFAULT_X_API_COST_SETTINGS,
-  cache?: EngagementCycleCache
+  cache?: EngagementCycleCache,
+  cycleReflectionHint?: string
 ): Promise<boolean> {
   console.log("\n[QUOTE] 트렌드 인용 글 작성 시작...");
   const runtimeSettings = resolveEngagementSettings(settings);
@@ -1644,7 +1650,8 @@ export async function postTrendQuote(
     const trend = await getOrCreateTrendContext(cache, {
       minNewsSourceTrust: runtimeSettings.minNewsSourceTrust,
     });
-    const runContext = getOrCreateRunContext(cache, trend);
+    const runContext = getOrCreateRunContext(cache, trend, cycleReflectionHint);
+    const recentReflectionText = cycleReflectionHint || memory.getLatestDigestReflectionMemo()?.text;
     const candidates = TEST_NO_EXTERNAL_CALLS
       ? buildLocalQuoteTargets(trend)
       : await getOrSearchTrendTweets(
@@ -1699,7 +1706,7 @@ export async function postTrendQuote(
         eventHeadline: targetText,
         evidence: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
         language: quoteLanguage,
-        recentReflection: memory.getLatestDigestReflectionMemo()?.text,
+        recentReflection: recentReflectionText,
       });
 
       const userPrompt =
@@ -1753,7 +1760,7 @@ Rules:
             targetText,
             lane,
             anchors: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
-            recentReflection: memory.getLatestDigestReflectionMemo()?.text,
+            recentReflection: recentReflectionText,
             language: quoteLanguage,
             maxChars: runtimeSettings.postMaxChars,
           })
@@ -1874,7 +1881,7 @@ Rules:
         targetText: lastFallbackTarget.text,
         lane: lastFallbackTarget.lane,
         anchors: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
-        recentReflection: memory.getLatestDigestReflectionMemo()?.text,
+        recentReflection: recentReflectionText,
         language: quoteLanguage,
         maxChars: runtimeSettings.postMaxChars,
       });
@@ -2023,6 +2030,48 @@ function formatEvidenceToken(label: string, value: string, maxChars: number): st
   return normalized.slice(0, maxChars).trim();
 }
 
+function buildPendingDigestReflectionHint(
+  acceptedNutrients: OnchainNutrient[],
+  rejectReasons: Array<{ reason: string; count: number }>,
+  language: "ko" | "en"
+): string {
+  const anchors = acceptedNutrients
+    .slice(0, 2)
+    .map((item) => formatEvidenceToken(item.label, item.value, 26))
+    .filter(Boolean);
+  const rejectLine = rejectReasons[0]?.reason || "";
+
+  if (language === "ko") {
+    if (anchors.length >= 2) {
+      return sanitizeTweetText(
+        `${anchors[0]}와 ${anchors[1]}가 같은 말을 하는지부터 다시 본다${rejectLine ? `, ${rejectLine}는 이번엔 일단 뒤로 둔다` : ""}`
+      ).slice(0, 88);
+    }
+    if (anchors.length === 1) {
+      return sanitizeTweetText(
+        `${anchors[0]}가 버티는지부터 다시 본다${rejectLine ? `, ${rejectLine}는 아직 보류한다` : ""}`
+      ).slice(0, 88);
+    }
+    return rejectLine
+      ? sanitizeTweetText(`${rejectLine}를 서두르지 않고, 남은 신호부터 다시 맞춰 본다`).slice(0, 88)
+      : "";
+  }
+
+  if (anchors.length >= 2) {
+    return sanitizeTweetText(
+      `I would first check whether ${anchors[0]} and ${anchors[1]} still point the same way${rejectLine ? `, and keep ${rejectLine} as a caution flag` : ""}`
+    ).slice(0, 88);
+  }
+  if (anchors.length === 1) {
+    return sanitizeTweetText(
+      `I would first check whether ${anchors[0]} still holds${rejectLine ? `, while keeping ${rejectLine} in reserve` : ""}`
+    ).slice(0, 88);
+  }
+  return rejectLine
+    ? sanitizeTweetText(`I would slow down around ${rejectLine} and re-check the remaining signal first`).slice(0, 88)
+    : "";
+}
+
 async function runFeedDigestEvolve(
   cache: EngagementCycleCache,
   runtimeSettings: EngagementRuntimeSettings,
@@ -2117,6 +2166,11 @@ async function runFeedDigestEvolve(
       evolvedCount,
       rejectReasonsTop,
       acceptedNutrients,
+      pendingReflectionHint: buildPendingDigestReflectionHint(
+        acceptedNutrients,
+        rejectReasonsTop,
+        runtimeSettings.postLanguage
+      ),
       reflectionJob,
     };
   } catch (error) {
@@ -2129,6 +2183,7 @@ async function runFeedDigestEvolve(
       evolvedCount: 0,
       rejectReasonsTop: [{ reason: "feed-error", count: 1 }],
       acceptedNutrients: [],
+      pendingReflectionHint: "",
     };
   }
 }
@@ -2197,6 +2252,7 @@ export async function runDailyQuotaCycle(
   console.log(
     `[FEED] nutrient=${feedDigest.intakeCount} accepted=${feedDigest.acceptedCount} avgDigest=${feedDigest.avgDigestScore.toFixed(2)} xpGain=${feedDigest.xpGainTotal}`
   );
+  const cycleReflectionHint = sanitizeTweetText(feedDigest.pendingReflectionHint || "").trim();
   if (feedDigest.reflectionJob) {
     const queueResult = llmBatchQueue.enqueue(feedDigest.reflectionJob);
     const queueStats = llmBatchQueue.getQueueStats();
@@ -2239,7 +2295,8 @@ export async function runDailyQuotaCycle(
     claude,
     mentionBudget,
     timezone,
-    xApiCostSettings
+    xApiCostSettings,
+    cycleReflectionHint
   );
   executed += mentionProcessed;
 
@@ -2271,7 +2328,8 @@ export async function runDailyQuotaCycle(
         runtimeSettings,
         xApiCostSettings,
         cycleCache,
-        feedDigest.acceptedNutrients
+        feedDigest.acceptedNutrients,
+        cycleReflectionHint
       );
       if (posted) {
         executed += 1;
@@ -2285,7 +2343,8 @@ export async function runDailyQuotaCycle(
         runtimeSettings,
         timezone,
         xApiCostSettings,
-        cycleCache
+        cycleCache,
+        cycleReflectionHint
       );
       if (quoted) {
         executed += 1;
@@ -2315,7 +2374,8 @@ export async function runDailyQuotaCycle(
           runtimeSettings,
           timezone,
           xApiCostSettings,
-          cycleCache
+          cycleCache,
+          cycleReflectionHint
         );
         executed += fallbackReplies;
       } else if (canPostInCycle) {
@@ -2327,7 +2387,8 @@ export async function runDailyQuotaCycle(
           runtimeSettings,
           xApiCostSettings,
           cycleCache,
-          feedDigest.acceptedNutrients
+          feedDigest.acceptedNutrients,
+          cycleReflectionHint
         );
         if (fallbackPosted) {
           executed += 1;
@@ -2341,7 +2402,8 @@ export async function runDailyQuotaCycle(
           runtimeSettings,
           timezone,
           xApiCostSettings,
-          cycleCache
+          cycleCache,
+          cycleReflectionHint
         );
         if (fallbackQuote) {
           executed += 1;
@@ -2885,9 +2947,10 @@ async function getOrCreateTrendContext(
 
 function getOrCreateRunContext(
   cache: EngagementCycleCache | undefined,
-  trend: TrendContext
+  trend: TrendContext,
+  recentReflectionHint?: string
 ): SharedRunContext {
-  const key = buildRunContextKey(trend);
+  const key = buildRunContextKey(trend, recentReflectionHint);
   if (cache?.runContext?.key === key) {
     cache.cacheMetrics.runContextHits += 1;
     return cache.runContext.data;
@@ -2896,14 +2959,14 @@ function getOrCreateRunContext(
     cache.cacheMetrics.runContextMisses += 1;
   }
   const anchors = collectNarrativeAnchors(trend, 3);
-  const recentReflection = memory.getLatestDigestReflectionMemo();
+  const recentReflection = recentReflectionHint || memory.getLatestDigestReflectionMemo()?.text;
   const data: SharedRunContext = {
     key,
     narrativeAnchors: anchors,
     evidenceTextKo: buildNarrativeEvidenceTextFromAnchors(anchors, "ko"),
     evidenceTextEn: buildNarrativeEvidenceTextFromAnchors(anchors, "en"),
-    sharedPromptKo: buildSharedRunContextPrompt(trend, anchors, "ko", recentReflection?.text),
-    sharedPromptEn: buildSharedRunContextPrompt(trend, anchors, "en", recentReflection?.text),
+    sharedPromptKo: buildSharedRunContextPrompt(trend, anchors, "ko", recentReflection),
+    sharedPromptEn: buildSharedRunContextPrompt(trend, anchors, "en", recentReflection),
   };
   if (cache) {
     cache.runContext = { key, data };
@@ -3024,9 +3087,10 @@ function logCacheMetrics(cache?: EngagementCycleCache): void {
   );
 }
 
-function buildRunContextKey(trend: TrendContext): string {
+function buildRunContextKey(trend: TrendContext, recentReflectionHint?: string): string {
   return [
     sanitizeTweetText(trend.summary).slice(0, 120),
+    sanitizeTweetText(recentReflectionHint || "").slice(0, 80),
     ...trend.events.slice(0, 3).map((event) => sanitizeTweetText(event.headline).slice(0, 80)),
     ...trend.nutrients.slice(0, 3).map((item) => sanitizeTweetText(`${item.label} ${item.value}`).slice(0, 48)),
   ]

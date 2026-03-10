@@ -34,6 +34,7 @@ const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
 interface MentionReplyOptions {
   timezone?: string;
   xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
+  recentReflectionHint?: string;
 }
 
 interface PostTweetOptions {
@@ -254,7 +255,9 @@ export async function replyToMention(
     if (TEST_NO_EXTERNAL_CALLS) {
       const mentionText = String(mention?.text || "").replace(/@\w+/g, "").trim();
       const lang = detectLanguage(mentionText);
-      const recentReflection = sanitizeTweetText(memory.getLatestDigestReflectionMemo()?.text || "").slice(0, 60);
+      const recentReflection = sanitizeTweetText(
+        options?.recentReflectionHint || memory.getLatestDigestReflectionMemo()?.text || ""
+      ).slice(0, 60);
       const localReply = finalizeNarrativeSurface(
         lang === "en"
           ? /\?$/.test(mentionText)
@@ -304,7 +307,9 @@ export async function replyToMention(
       ? `\n(이 사람은 ${follower.mentionCount}번째 멘션, 친근하게)`
       : "";
     const toneGuide = getReplyToneGuide(lang);
-    const recentReflection = sanitizeTweetText(memory.getLatestDigestReflectionMemo()?.text || "").slice(0, 100);
+    const recentReflection = sanitizeTweetText(
+      options?.recentReflectionHint || memory.getLatestDigestReflectionMemo()?.text || ""
+    ).slice(0, 100);
 
     const maxChars = 160;
     const shouldEndWithQuestion = /\?$|질문|어떻게|왜|is it|what|how|why/i.test(cleanedMentionText);
