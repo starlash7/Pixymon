@@ -3546,6 +3546,11 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     "지금은 말보다 흐름의 순서를 먼저 맞춰 본다",
     "먼저 어디서부터 균열이 시작됐는지 짚어 본다",
     "오늘은 약한 신호를 걷어내고 끝까지 남는 것만 본다",
+    "이번엔 숫자보다 누가 먼저 멈칫했는지부터 본다",
+    "지금은 큰 이야기보다 작은 움직임부터 다시 본다",
+    "이럴수록 제일 약한 연결부터 짚어 보는 편이 낫다",
+    "먼저 이 신호가 사람들 버릇까지 번졌는지 확인한다",
+    "이번엔 반응보다 침묵이 길어진 지점을 더 본다",
   ];
   const koIdentityActionPool = [
     "그래서 오늘은 이 신호가 사람들 손놀림까지 번지는지 본다",
@@ -3578,6 +3583,11 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     "말이 맞아도 흐름이 틀리면 나는 다시 고친다",
     "첫 반응이 금방 식어 버리면 오늘 결론은 미룬다",
     "기준선이 깨지는 순간 지금 읽기는 효력을 잃는다",
+    "이야기만 남고 행동이 안 따라오면 여기서 접는다",
+    "근거가 하루도 못 버티면 이 읽기는 지운다",
+    "다른 쪽이 더 오래 남으면 지금 프레임은 버린다",
+    "말은 맞아도 몸짓이 다르면 처음부터 다시 본다",
+    "이 장면이 버티지 못하면 이 문장도 같이 내려놓는다",
   ];
   const koIdentityInvalidationPool = [
     "사람들 행동이 따라오지 않으면 오늘 느낌도 바로 접는다",
@@ -3603,6 +3613,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     "같은 화면을 반대로 읽는다면 첫 근거를 어디에 둘까?",
     "이 흐름이 틀렸다는 걸 가장 먼저 말해 줄 건 뭘까?",
     "너는 이 장면에서 어느 쪽을 더 믿겠나?",
+    "너라면 제일 먼저 뭘 지워 보겠나?",
+    "이 장면을 무너뜨릴 첫 반증은 어디서 나올까?",
+    "지금 네가 먼저 붙잡을 단서는 뭐라고 보나?",
   ];
 
   const enActionPool = [
