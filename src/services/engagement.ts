@@ -2007,7 +2007,7 @@ function buildEmergencyLocalQuoteComment(params: {
   const seed = stableSeedForPrelude(`${scene}|${a}|${b}|${memo}|${params.language}`);
   if (params.language === "ko") {
     const closePool = [
-      "끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.",
+      "둘이 끝까지 같은 쪽을 가리키지 않으면 여기서 해석을 접는다.",
       "먼저 흔들린 쪽이 예상과 다르면 여기서 읽기를 바꾼다.",
       "둘이 오래 같은 말을 못 하면 이 장면은 다시 읽는다.",
     ];
@@ -4851,9 +4851,9 @@ function buildRescueContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|rescue|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 먼저 붙여 놓는다. 오늘은 누가 먼저 움직였는지만 본다. 흐름이 어긋나면 이 읽기는 접는다. 끝까지 남는 쪽이 아니면 말도 아낀다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같은 줄에 둔다. 반응 순서가 예상과 다르면 여기서 바로 생각을 바꾼다. 오래 버틴 근거만 따로 남겨 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 기울어지는 쪽을 본다. 전제가 흔들리면 이 읽기는 더 밀지 않는다. 오래 남는 단서 하나만 다음 문장으로 옮긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 먼저 붙여 놓는다. 오늘은 누가 먼저 움직였는지만 본다. 흐름이 어긋나면 이 읽기는 접는다. 끝까지 버티는 근거가 아니면 여기선 더 말하지 않는다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같은 줄에 둔다. 반응 순서가 예상과 다르면 여기서 바로 생각을 바꾼다. 마지막까지 남는 근거만 따로 메모해 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 기울어지는 쪽을 본다. 전제가 흔들리면 이 읽기는 더 밀지 않는다. 마지막까지 버틴 단서만 다음 판단으로 넘긴다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4883,14 +4883,14 @@ function buildEmergencyContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 오래 버틴 쪽만 다음 판단으로 넘긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 마지막까지 남는 근거만 다음 판단으로 넘긴다.`,
     `${headline}. ${aToken}, ${bToken}, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 살아남은 근거만 따로 메모해 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 버틴 단서 하나만 남겨 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 마지막까지 버틴 단서만 남겨 둔다.`,
     `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 흔들리는 쪽을 본다. 먼저 움직인 축이 예상과 다르면 이 읽기는 버린다. 그 뒤에도 남는 근거만 다시 적는다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 겹쳐 놓고 어디서 먼저 틈이 나는지 본다. 순서가 틀리면 지금 생각은 접는다. 근거가 끝까지 버티는지 확인해 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 겹쳐 놓고 어디서 먼저 틈이 나는지 본다. 순서가 틀리면 지금 생각은 접는다. 하루를 넘겨도 남는 쪽만 다시 적는다.`,
     `${headline}. ${aToken}, ${bToken}, 이 두 단서를 붙여 놓고 먼저 반응 속도부터 잰다. 예상보다 다른 축이 빠르면 바로 다시 읽는다. 오래 남은 쪽만 조심스럽게 이어 간다.`,
     `${headline}. ${aToken}, ${bToken}, 이 둘이 끝까지 같은 쪽을 보는지부터 확인한다. 흐름이 갈라지면 여기서 생각을 바꾼다. 남는 근거만 짧게 남겨 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 어느 쪽이 먼저 무너지는지 본다. 전제가 어긋나면 여기서 처음부터 다시 읽는다. 끝까지 남은 근거 하나만 붙잡는다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 중 어느 쪽이 먼저 무너지는지 본다. 전제가 어긋나면 여기서 처음부터 다시 읽는다. 끝까지 남는 근거 하나만 붙들고 간다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }

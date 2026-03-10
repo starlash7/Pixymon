@@ -65,7 +65,7 @@ test("finalizeGeneratedText removes incomplete middle sentence fragments", () =>
   const input =
     "좋은 해석은 세게 말하는 데서 나오지 않는다. 급히 삼키면 말도. 지금은 거래소 대응 속도 쪽부터 다시 확인한다.";
   const output = finalizeGeneratedText(input, "ko", 220);
-  assert.equal(output, "좋은 해석은 세게 말하는 데서 나오지 않는다. 지금은 거래소 대응 속도 쪽부터 다시 확인한다.");
+  assert.equal(output, "좋은 해석은 세게 말하는 데서 나오지 않는다. 지금은 거래소가 얼마나 빨리 반응하는지부터 다시 확인한다.");
 });
 
 test("finalizeGeneratedText softens explicit pixymon self-reference in korean", () => {
@@ -105,10 +105,10 @@ test("finalizeGeneratedText removes dangling tail like 다음", () => {
 
 test("finalizeGeneratedText rewrites analyst jargon into natural korean", () => {
   const input =
-    "지갑 군집 변화와 거래 목적지 집중도, 클라이언트 다양성을 같이 본다.";
+    "지갑 군집 변화와 거래 목적지 집중도, 클라이언트 다양성, 헤지 포지셔닝 변화, 거래소 대응 속도를 같이 본다.";
   const output = finalizeGeneratedText(input, "ko", 220);
   assert.equal(
     output,
-    "비슷한 지갑이 한쪽으로 몰리는 모습과 자금이 어느 쪽으로 몰리는지, 구현체가 한쪽에만 쏠리는지를 같이 본다."
+    "비슷한 지갑이 한쪽으로 몰리는 모습과 자금이 어느 쪽으로 몰리는지, 구현체가 한쪽에만 쏠리는지, 방어 포지션이 얼마나 풀리는지, 거래소가 얼마나 빨리 반응하는지를 같이 본다."
   );
 });

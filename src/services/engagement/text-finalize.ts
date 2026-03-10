@@ -10,7 +10,8 @@ export function finalizeGeneratedText(text: string, language: "ko" | "en", maxCh
   const stripped = stripNarrativeControlTags(text);
   const polished = polishTweetText(stripped, language);
   const naturalized = language === "ko" ? replaceKoAnalystJargon(polished) : polished;
-  const truncated = truncateAtWordBoundary(naturalized, maxChars);
+  const anchorNormalized = language === "ko" ? normalizeKoAnchorSuffixes(naturalized) : naturalized;
+  const truncated = truncateAtWordBoundary(anchorNormalized, maxChars);
   const deduped = collapseImmediateSentenceRepeat(truncated, language);
   const deRepeated = removeRepeatedSentences(deduped);
   const laneAdjusted = language === "ko" ? reduceLaneAnchorEcho(deRepeated) : deRepeated;
@@ -200,10 +201,14 @@ function replaceKoAnalystJargon(text: string): string {
     [/거래 목적지 집중도/g, "자금이 어느 쪽으로 몰리는지"],
     [/클라이언트 다양성/g, "구현체가 한쪽에만 쏠리는지"],
     [/리스크 자산 민감도/g, "위험자산 반응이 얼마나 예민한지"],
+    [/리스크 선호 전환 신호/g, "사람들이 다시 위험을 감수하려는지"],
+    [/헤지 포지셔닝 변화/g, "방어 포지션이 얼마나 풀리는지"],
     [/검증자 합의 안정성/g, "검증자 합의가 얼마나 안정적인지"],
     [/복구 시간 분포/g, "장애 뒤 얼마나 빨리 복구되는지"],
     [/리스크 공개 원칙/g, "위험을 얼마나 솔직히 드러내는지"],
     [/투명성 보고 체계/g, "얼마나 투명하게 설명하는지"],
+    [/거래소 대응 속도/g, "거래소가 얼마나 빨리 반응하는지"],
+    [/트랜잭션 감사 로그/g, "거래 기록이 얼마나 투명하게 남는지"],
     [/체결 실패 패턴/g, "주문이 어디서 자꾸 미끄러지는지"],
     [/슬리피지 민감 구간/g, "주문 충격에 약한 구간"],
     [/호가 간격 안정성/g, "호가 간격이 얼마나 안정적인지"],
@@ -219,6 +224,31 @@ function replaceKoAnalystJargon(text: string): string {
     output = output.replace(pattern, replacement);
   }
   return sanitizeTweetText(output);
+}
+
+function normalizeKoAnchorSuffixes(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+
+  return sanitizeTweetText(
+    normalized
+      .replace(
+        /([가-힣A-Za-z0-9\s]+?(?:는지|모습|원칙|체계|과정|변동성|규칙|서사|속도|신호|수요\s*변화))\s+쪽부터/g,
+        "$1부터"
+      )
+      .replace(
+        /([가-힣A-Za-z0-9\s]+?(?:는지|모습|원칙|체계|과정|변동성|규칙|서사|속도|신호|수요\s*변화))\s+쪽을/g,
+        "$1을"
+      )
+      .replace(
+        /([가-힣A-Za-z0-9\s]+?(?:는지|모습|원칙|체계|과정|변동성|규칙|서사|속도|신호|수요\s*변화))\s+쪽이/g,
+        "$1이"
+      )
+      .replace(
+        /([가-힣A-Za-z0-9\s]+?(?:는지|모습|원칙|체계|과정|변동성|규칙|서사|속도|신호|수요\s*변화))\s+쪽만/g,
+        "$1만"
+      )
+  );
 }
 
 function correctKoParticles(text: string): string {
