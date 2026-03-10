@@ -12,9 +12,11 @@ test("buildQuoteReplySeed returns compact korean seed with evidence anchors", ()
     language: "ko",
     eventHeadline: "Solana Firedancer testnet milestone reached",
     evidence: ["Validator queue normalized", "Throughput benchmark +18%"],
+    recentReflection: "검증자 참여율이 먼저 흔들리는지 다시 본다",
   });
   assert.ok(seed.includes("근거"));
   assert.ok(seed.includes("Firedancer"));
+  assert.ok(seed.includes("직전 메모"));
   assert.ok(seed.length <= 220);
 });
 

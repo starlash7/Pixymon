@@ -11,6 +11,7 @@ interface CreativeBaseInput {
 
 export interface QuoteSeedInput extends CreativeBaseInput {
   language: "ko" | "en";
+  recentReflection?: string;
 }
 
 export interface ImageSeedInput extends CreativeBaseInput {
@@ -25,14 +26,15 @@ export interface StorySeedInput extends CreativeBaseInput {
 export function buildQuoteReplySeed(input: QuoteSeedInput): string {
   const headline = compact(input.eventHeadline, 120);
   const evidence = (input.evidence || []).slice(0, 2).map((item) => compact(item, 64));
+  const reflection = compact(input.recentReflection || "", 72);
   if (input.language === "ko") {
     return compact(
-      `장면: ${headline}. 근거: ${evidence[0] || "데이터 확인 중"}, ${evidence[1] || "추가 근거 수집 중"}. 원문을 요약하지 말고, 이 장면을 보고 바로 남길 짧은 인용 코멘트를 잡는다.`,
+      `장면: ${headline}. 근거: ${evidence[0] || "데이터 확인 중"}, ${evidence[1] || "추가 근거 수집 중"}.${reflection ? ` 직전 메모: ${reflection}.` : ""} 원문을 요약하지 말고, 이 장면을 보고 바로 남길 짧은 인용 코멘트를 잡는다.`,
       220
     );
   }
   return compact(
-    `${headline}. Evidence: ${evidence[0] || "data pending"}, ${evidence[1] || "more context loading"}. Draft a concise quote take.`,
+    `${headline}. Evidence: ${evidence[0] || "data pending"}, ${evidence[1] || "more context loading"}.${reflection ? ` Latest memo: ${reflection}.` : ""} Draft a concise quote take.`,
     220
   );
 }

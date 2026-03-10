@@ -14,6 +14,7 @@ import { TrendLane } from "../types/agent.js";
 import { detectLanguage } from "../utils/mood.js";
 import { evaluateTrendCandidate } from "./content-guard.js";
 import { TrendTweetSearchRules } from "./engagement/types.js";
+import { sanitizeTweetText } from "./engagement/quality.js";
 import { finalizeNarrativeSurface } from "./engagement/text-finalize.js";
 import { buildReplyRewriteJob } from "./llm-batch.js";
 import { XApiCostRuntimeSettings } from "../types/runtime.js";
@@ -253,14 +254,19 @@ export async function replyToMention(
     if (TEST_NO_EXTERNAL_CALLS) {
       const mentionText = String(mention?.text || "").replace(/@\w+/g, "").trim();
       const lang = detectLanguage(mentionText);
+      const recentReflection = sanitizeTweetText(memory.getLatestDigestReflectionMemo()?.text || "").slice(0, 60);
       const localReply = finalizeNarrativeSurface(
         lang === "en"
           ? /\?$/.test(mentionText)
             ? "That is a fair question. I would watch the onchain trail before pretending the answer is obvious."
             : "That part caught me too. I would rather check the onchain trail once more than force a conclusion."
           : /\?$|어떻게|왜|뭐|무엇|어디/.test(mentionText)
-            ? "그 질문은 괜찮다. 나도 방향 단정보다 먼저 움직인 흔적부터 다시 볼 것 같다."
-            : "그 장면은 나도 걸렸다. 섣불리 결론 내리기보다 먼저 움직인 단서부터 더 볼 것 같다.",
+            ? recentReflection
+              ? `${recentReflection}. 그래서 나도 방향 단정보다 먼저 움직인 흔적부터 다시 볼 것 같다.`
+              : "그 질문은 괜찮다. 나도 방향 단정보다 먼저 움직인 흔적부터 다시 볼 것 같다."
+            : recentReflection
+              ? `${recentReflection}. 그 장면도 섣불리 결론 내리기보다 먼저 움직인 단서부터 더 보게 된다.`
+              : "그 장면은 나도 걸렸다. 섣불리 결론 내리기보다 먼저 움직인 단서부터 더 볼 것 같다.",
         lang,
         160,
         "reply"

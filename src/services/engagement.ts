@@ -1699,6 +1699,7 @@ export async function postTrendQuote(
         eventHeadline: targetText,
         evidence: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
         language: quoteLanguage,
+        recentReflection: memory.getLatestDigestReflectionMemo()?.text,
       });
 
       const userPrompt =
@@ -1752,6 +1753,7 @@ Rules:
             targetText,
             lane,
             anchors: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
+            recentReflection: memory.getLatestDigestReflectionMemo()?.text,
             language: quoteLanguage,
             maxChars: runtimeSettings.postMaxChars,
           })
@@ -1871,6 +1873,7 @@ Rules:
       const emergencyQuote = buildEmergencyLocalQuoteComment({
         lane: lastFallbackTarget.lane,
         anchors: narrativeAnchors.length > 0 ? narrativeAnchors : [trend.summary.slice(0, 80)],
+        recentReflection: memory.getLatestDigestReflectionMemo()?.text,
         language: quoteLanguage,
         maxChars: runtimeSettings.postMaxChars,
       });
@@ -1936,11 +1939,13 @@ function buildLocalQuoteComment(params: {
   targetText: string;
   lane: TrendLane;
   anchors: string[];
+  recentReflection?: string;
   language: "ko" | "en";
   maxChars: number;
 }): string {
   const a = sanitizeTweetText(params.anchors[0] || "핵심 단서").slice(0, 28);
   const b = sanitizeTweetText(params.anchors[1] || "추가 단서").slice(0, 28);
+  const memo = sanitizeTweetText(params.recentReflection || "").slice(0, 44);
   const scene =
     params.language === "ko"
       ? normalizeKoContractHeadline(params.targetText, `quote|${params.lane}|${a}|${b}`)
@@ -1956,6 +1961,9 @@ function buildLocalQuoteComment(params: {
       `지금은 결론보다 ${a}와 ${b}의 순서가 더 중요해 보인다. 그래서 한 번 더 되짚어 보게 된다.`,
       `${scene}. 나는 ${a}와 ${b} 중 먼저 흔들리는 쪽부터 다시 본다.`,
       `${a}와 ${b}가 같은 말을 오래 하지 않으면 이 장면은 다시 읽게 된다.`,
+      memo
+        ? `${scene}. 방금 남은 메모도 결국 ${memo} 쪽이었어서, ${a}와 ${b}를 한 번 더 겹쳐 보게 된다.`
+        : `${scene}. ${a}와 ${b}가 끝까지 같은 말을 하지 않으면 이 읽기는 바로 바꾼다.`,
     ];
     return finalizeNarrativeSurface(pool[seed % pool.length], "ko", params.maxChars, "quote");
   }
@@ -1971,14 +1979,18 @@ function buildLocalQuoteComment(params: {
 function buildEmergencyLocalQuoteComment(params: {
   lane: TrendLane;
   anchors: string[];
+  recentReflection?: string;
   language: "ko" | "en";
   maxChars: number;
 }): string {
   const a = sanitizeTweetText(params.anchors[0] || "핵심 단서").slice(0, 28);
   const b = sanitizeTweetText(params.anchors[1] || "추가 단서").slice(0, 28);
+  const memo = sanitizeTweetText(params.recentReflection || "").slice(0, 42);
   if (params.language === "ko") {
     return finalizeNarrativeSurface(
-      `${a}와 ${b}의 순서가 어긋나는지만 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`,
+      memo
+        ? `${memo}. 그래도 ${a}와 ${b}의 순서가 어긋나는지만 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`
+        : `${a}와 ${b}의 순서가 어긋나는지만 먼저 본다. 끝까지 같은 말을 하지 않으면 이 해석은 바로 접는다.`,
       "ko",
       params.maxChars,
       "quote"
