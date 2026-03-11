@@ -77,6 +77,7 @@ import {
   DailyQuotaOptions,
   LaneUsageWindow,
   TrendContext,
+  TrendTweetSearchRules,
 } from "./engagement/types.js";
 import { OnchainNutrient, TrendLane } from "../types/agent.js";
 import { emitCycleObservability } from "./observability.js";
@@ -254,6 +255,9 @@ export async function proactiveEngagement(
         minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
         minScore: runtimeSettings.minTrendTweetScore,
         minEngagement: runtimeSettings.minTrendTweetEngagement,
+        maxAgeHours: runtimeSettings.trendTweetMaxAgeHours,
+        requireRootPost: runtimeSettings.trendTweetRequireRootPost,
+        blockSuspiciousPromo: runtimeSettings.trendTweetBlockSuspiciousPromo,
       },
       timezone,
       xApiCostSettings,
@@ -1662,6 +1666,9 @@ export async function postTrendQuote(
             minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
             minScore: runtimeSettings.minTrendTweetScore,
             minEngagement: runtimeSettings.minTrendTweetEngagement,
+            maxAgeHours: runtimeSettings.trendTweetMaxAgeHours,
+            requireRootPost: runtimeSettings.trendTweetRequireRootPost,
+            blockSuspiciousPromo: runtimeSettings.trendTweetBlockSuspiciousPromo,
           },
           timezone,
           xApiCostSettings,
@@ -2993,11 +3000,7 @@ async function getOrSearchTrendTweets(
   twitter: TwitterApi,
   keywords: string[],
   count: number,
-  rules: {
-    minSourceTrust: number;
-    minScore: number;
-    minEngagement: number;
-  },
+  rules: TrendTweetSearchRules,
   timezone: string,
   xApiCostSettings: XApiCostRuntimeSettings,
   cache?: EngagementCycleCache
@@ -3050,11 +3053,7 @@ async function getOrSearchTrendTweets(
 function buildTrendTweetCacheKey(
   keywords: string[],
   count: number,
-  rules: {
-    minSourceTrust: number;
-    minScore: number;
-    minEngagement: number;
-  }
+  rules: TrendTweetSearchRules
 ): string {
   const normalizedKeywords = [...keywords]
     .map((item) => String(item || "").trim().toLowerCase())
@@ -3066,7 +3065,10 @@ function buildTrendTweetCacheKey(
   const minSourceTrust = clampNumber(rules.minSourceTrust, 0.05, 0.9, 0.24).toFixed(2);
   const minScore = clampNumber(rules.minScore, 0.5, 12, 3.2).toFixed(2);
   const minEngagement = clampInt(rules.minEngagement, 1, 200, 6);
-  return `${normalizedCount}|${minSourceTrust}|${minScore}|${minEngagement}|${normalizedKeywords}`;
+  const maxAgeHours = clampInt(rules.maxAgeHours, 1, 168, 24);
+  const requireRootPost = rules.requireRootPost ? "root" : "thread";
+  const blockSuspiciousPromo = rules.blockSuspiciousPromo ? "clean" : "loose";
+  return `${normalizedCount}|${minSourceTrust}|${minScore}|${minEngagement}|${maxAgeHours}|${requireRootPost}|${blockSuspiciousPromo}|${normalizedKeywords}`;
 }
 
 function isClose(a: number, b: number): boolean {
@@ -5097,6 +5099,20 @@ function resolveEngagementSettings(
       200,
       DEFAULT_ENGAGEMENT_SETTINGS.minTrendTweetEngagement
     ),
+    trendTweetMaxAgeHours: clampInt(
+      settings.trendTweetMaxAgeHours,
+      1,
+      168,
+      DEFAULT_ENGAGEMENT_SETTINGS.trendTweetMaxAgeHours
+    ),
+    trendTweetRequireRootPost:
+      typeof settings.trendTweetRequireRootPost === "boolean"
+        ? settings.trendTweetRequireRootPost
+        : DEFAULT_ENGAGEMENT_SETTINGS.trendTweetRequireRootPost,
+    trendTweetBlockSuspiciousPromo:
+      typeof settings.trendTweetBlockSuspiciousPromo === "boolean"
+        ? settings.trendTweetBlockSuspiciousPromo
+        : DEFAULT_ENGAGEMENT_SETTINGS.trendTweetBlockSuspiciousPromo,
     topicMaxSameTag24h: clampInt(
       settings.topicMaxSameTag24h,
       1,

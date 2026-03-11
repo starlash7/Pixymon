@@ -30,6 +30,9 @@ const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
   minSourceTrust: 0.24,
   minScore: 3.2,
   minEngagement: 6,
+  maxAgeHours: 24,
+  requireRootPost: true,
+  blockSuspiciousPromo: true,
 };
 
 interface MentionReplyOptions {
@@ -162,6 +165,20 @@ export async function searchRecentTrendTweets(
       200,
       DEFAULT_TREND_TWEET_SEARCH_RULES.minEngagement
     );
+    const maxAgeHours = clampNumber(
+      rules.maxAgeHours,
+      1,
+      168,
+      DEFAULT_TREND_TWEET_SEARCH_RULES.maxAgeHours
+    );
+    const requireRootPost =
+      typeof rules.requireRootPost === "boolean"
+        ? rules.requireRootPost
+        : DEFAULT_TREND_TWEET_SEARCH_RULES.requireRootPost;
+    const blockSuspiciousPromo =
+      typeof rules.blockSuspiciousPromo === "boolean"
+        ? rules.blockSuspiciousPromo
+        : DEFAULT_TREND_TWEET_SEARCH_RULES.blockSuspiciousPromo;
     const cleaned = sanitizeTrendKeywords(keywords).slice(0, 12);
 
     const keywordQuery = cleaned.length > 0
@@ -173,8 +190,9 @@ export async function searchRecentTrendTweets(
 
     const result = await twitter.v2.search(query, {
       max_results: maxResults,
-      "tweet.fields": ["created_at", "text", "author_id", "lang", "public_metrics"],
-      "user.fields": ["username", "verified", "public_metrics"],
+      start_time: new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString(),
+      "tweet.fields": ["created_at", "text", "author_id", "lang", "public_metrics", "conversation_id", "referenced_tweets"],
+      "user.fields": ["username", "verified", "public_metrics", "description", "url"],
       expansions: ["author_id"],
     });
 
@@ -211,6 +229,18 @@ export async function searchRecentTrendTweets(
     for (const item of ranked) {
       const authorId = String(item.tweet.author_id || "");
       if (authorId && seenAuthors.has(authorId)) continue;
+      if (
+        !isPreferredTrendReplyTarget(item.tweet, item.user, item.evaluation, item.sourceTrust, {
+          minSourceTrust,
+          minScore,
+          minEngagement,
+          maxAgeHours,
+          requireRootPost,
+          blockSuspiciousPromo,
+        })
+      ) {
+        continue;
+      }
       if (item.evaluation.engagementRaw < minEngagement || item.evaluation.score < minScore) continue;
       selected.push({
         ...item.tweet,
@@ -219,6 +249,8 @@ export async function searchRecentTrendTweets(
         __sourceKey: item.sourceKey,
         __sourceTrustScore: item.sourceTrust,
         __authorFollowers: item.user?.public_metrics?.followers_count || 0,
+        __authorVerified: Boolean(item.user?.verified),
+        __authorUsername: String(item.user?.username || ""),
       });
       if (authorId) {
         seenAuthors.add(authorId);
@@ -226,23 +258,89 @@ export async function searchRecentTrendTweets(
       if (selected.length >= maxResults) break;
     }
 
-    if (selected.length > 0) {
-      return selected.slice(0, maxResults);
-    }
-
-    // 품질 필터가 너무 엄격해 후보가 없을 때는 저점수지만 스팸 아닌 순서로 fallback
-    return ranked.slice(0, Math.min(12, ranked.length)).map((item) => ({
-      ...item.tweet,
-      __trendScore: item.evaluation.score,
-      __trendEngagement: item.evaluation.engagementRaw,
-      __sourceKey: item.sourceKey,
-      __sourceTrustScore: item.sourceTrust,
-      __authorFollowers: item.user?.public_metrics?.followers_count || 0,
-    }));
+    return selected.slice(0, maxResults);
   } catch (error: any) {
     console.log(`[TREND] 검색 실패: ${error.message || "unknown"}`);
     return [];
   }
+}
+
+function isPreferredTrendReplyTarget(
+  tweet: {
+    id?: string;
+    text?: string;
+    created_at?: string;
+    conversation_id?: string;
+    referenced_tweets?: Array<{ type?: string }>;
+  },
+  user: {
+    verified?: boolean;
+    username?: string;
+    description?: string;
+    url?: string;
+    public_metrics?: { followers_count?: number };
+  } | undefined,
+  evaluation: { engagementRaw: number; score: number },
+  sourceTrust: number,
+  rules: TrendTweetSearchRules
+): boolean {
+  const text = String(tweet?.text || "").trim();
+  const createdAt = parseTweetDate(tweet?.created_at);
+  const rawFollowers = user?.public_metrics?.followers_count;
+  const followers =
+    typeof rawFollowers === "number" && Number.isFinite(rawFollowers)
+      ? Math.max(0, Math.floor(rawFollowers))
+      : 0;
+  const verified = Boolean(user?.verified);
+  const cashtagCount = (text.match(/\$[A-Za-z]{2,10}/g) || []).length;
+  const urlCount = (text.match(/https?:\/\//gi) || []).length;
+  const hardMinTrust = Math.max(rules.minSourceTrust, 0.55);
+  const hardMinEngagement = Math.max(rules.minEngagement, 18);
+  const hardMinScore = Math.max(rules.minScore, 3.2);
+  const maxAgeHours = Math.max(1, Math.min(168, Number.isFinite(rules.maxAgeHours) ? rules.maxAgeHours : 24));
+  const isRootPost = !tweet?.conversation_id || !tweet?.id || String(tweet.conversation_id) === String(tweet.id);
+  const isReferenced = Array.isArray(tweet?.referenced_tweets) && tweet.referenced_tweets.length > 0;
+
+  if (sourceTrust < hardMinTrust) return false;
+  if (evaluation.engagementRaw < hardMinEngagement) return false;
+  if (evaluation.score < hardMinScore) return false;
+  if (!createdAt || getTweetAgeHours(createdAt) > maxAgeHours) return false;
+  if (rules.requireRootPost && (!isRootPost || isReferenced)) return false;
+  if (text.length < 45) return false;
+  if (cashtagCount >= 3 || urlCount >= 1) return false;
+  if (rules.blockSuspiciousPromo && isSuspiciousTrendReplyTarget(tweet, user)) return false;
+  if (!verified && followers < 10000) return false;
+  if (verified && followers < 1000) return false;
+  return true;
+}
+
+function parseTweetDate(value: string | undefined): Date | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function getTweetAgeHours(createdAt: Date): number {
+  return Math.max(0, (Date.now() - createdAt.getTime()) / (60 * 60 * 1000));
+}
+
+function isSuspiciousTrendReplyTarget(
+  tweet: { text?: string },
+  user: { username?: string; description?: string; url?: string } | undefined
+): boolean {
+  const haystack = [
+    String(tweet?.text || ""),
+    String(user?.username || ""),
+    String(user?.description || ""),
+    String(user?.url || ""),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    /(t\.me|telegram|telegram\.me|discord\.gg|discord\.com\/invite|whatsapp|linktr\.ee|beacons\.ai)/i.test(haystack) ||
+    /(join (my|our) (telegram|discord|channel|group)|vip group|alpha group|free signal|dm me|check bio|link in bio)/i.test(haystack)
+  );
 }
 
 // 멘션에 답글 달기
@@ -749,6 +847,10 @@ export const __postDispatchTest = {
   persistPostDispatchState,
   readPostDispatchState,
   buildPostFingerprint,
+};
+
+export const __trendTargetTest = {
+  isPreferredTrendReplyTarget,
 };
 
 // 트윗 발행 (Twitter API v2 only)

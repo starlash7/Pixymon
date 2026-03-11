@@ -103,6 +103,9 @@ export interface TrendTweetSearchRules {
   minSourceTrust: number;
   minScore: number;
   minEngagement: number;
+  maxAgeHours: number;
+  requireRootPost: boolean;
+  blockSuspiciousPromo: boolean;
 }
 
 export interface CycleCacheMetrics {

@@ -82,9 +82,12 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   autonomyMaxBudgetUtilization: 0.92,
   autonomyRiskBlockScore: 7,
   minNewsSourceTrust: 0.28,
-  minTrendTweetSourceTrust: 0.24,
+  minTrendTweetSourceTrust: 0.55,
   minTrendTweetScore: 3.2,
-  minTrendTweetEngagement: 6,
+  minTrendTweetEngagement: 18,
+  trendTweetMaxAgeHours: 24,
+  trendTweetRequireRootPost: true,
+  trendTweetBlockSuspiciousPromo: true,
   topicMaxSameTag24h: 2,
   topicBlockConsecutiveTag: true,
 };
@@ -402,6 +405,20 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.minTrendTweetEngagement,
       1,
       200
+    ),
+    trendTweetMaxAgeHours: parseIntInRange(
+      process.env.TREND_TWEET_MAX_AGE_HOURS,
+      DEFAULT_ENGAGEMENT_SETTINGS.trendTweetMaxAgeHours,
+      1,
+      168
+    ),
+    trendTweetRequireRootPost: parseBoolean(
+      process.env.TREND_TWEET_REQUIRE_ROOT_POST,
+      DEFAULT_ENGAGEMENT_SETTINGS.trendTweetRequireRootPost
+    ),
+    trendTweetBlockSuspiciousPromo: parseBoolean(
+      process.env.TREND_TWEET_BLOCK_SUSPICIOUS_PROMO,
+      DEFAULT_ENGAGEMENT_SETTINGS.trendTweetBlockSuspiciousPromo
     ),
     topicMaxSameTag24h: parseIntInRange(
       process.env.TOPIC_MAX_SAME_TAG_24H,

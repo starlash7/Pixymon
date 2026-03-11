@@ -22,6 +22,9 @@ export interface EngagementRuntimeSettings {
   minTrendTweetSourceTrust: number;
   minTrendTweetScore: number;
   minTrendTweetEngagement: number;
+  trendTweetMaxAgeHours: number;
+  trendTweetRequireRootPost: boolean;
+  trendTweetBlockSuspiciousPromo: boolean;
   topicMaxSameTag24h: number;
   topicBlockConsecutiveTag: boolean;
 }
