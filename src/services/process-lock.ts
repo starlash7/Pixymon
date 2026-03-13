@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { resolveDataDir } from "./data-dir.js";
 
 export interface RuntimeLock {
   acquired: boolean;
@@ -16,7 +17,7 @@ interface LockMeta {
   host: string;
 }
 
-const DEFAULT_LOCK_PATH = path.join(process.cwd(), "data", "pixymon-runtime.lock");
+const DEFAULT_LOCK_PATH = path.join(resolveDataDir(), "pixymon-runtime.lock");
 
 export function acquireRuntimeLock(lockPath: string = DEFAULT_LOCK_PATH): RuntimeLock {
   const releaseNoop = () => {};

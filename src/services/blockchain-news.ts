@@ -44,6 +44,8 @@ interface CryptoCompareArticle {
 }
 
 interface CryptoCompareNewsResponse {
+  Response?: string;
+  Message?: string;
   Data?: CryptoCompareArticle[];
 }
 
@@ -83,6 +85,69 @@ interface FearGreedApiResponse {
 
 let lastKnownMarketData: MarketData[] = [];
 
+async function getTextResponse(url: string): Promise<string> {
+  const response = await fetch(url, {
+    headers: {
+      "user-agent": "Pixymon/1.0 (+https://github.com/starlash7/Pixymon)",
+      accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`rss-fetch-failed:${response.status}`);
+  }
+  return response.text();
+}
+
+function decodeHtmlEntities(text: string): string {
+  return String(text || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#x2F;/g, "/")
+    .replace(/&#8217;/g, "'")
+    .replace(/&#8220;/g, '"')
+    .replace(/&#8221;/g, '"')
+    .replace(/&#8230;/g, "...");
+}
+
+function stripHtmlExcerpt(text: string, maxChars: number = 140): string {
+  return decodeHtmlEntities(String(text || ""))
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, Math.max(40, Math.min(220, maxChars)));
+}
+
+function extractXmlTag(block: string, tag: string): string {
+  const match = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  return stripHtmlExcerpt(match?.[1] || "", tag === "description" ? 160 : 180);
+}
+
+function parseRssItems(xml: string, source: string, limit: number): NewsItem[] {
+  const items: Array<NewsItem | null> = Array.from(xml.matchAll(/<item\b[\s\S]*?<\/item>/gi))
+    .slice(0, Math.max(1, Math.min(30, limit)))
+    .map((match, index) => {
+      const block = match[0];
+      const title = extractXmlTag(block, "title");
+      const summary = extractXmlTag(block, "description");
+      const url = extractXmlTag(block, "link");
+      if (!title || title.length < 12) return null;
+      return {
+        title,
+        summary,
+        source,
+        category: "news",
+        importance: index < 3 ? "high" : "medium",
+        url: url || undefined,
+      } satisfies NewsItem;
+    });
+
+  return items.filter((item): item is NewsItem => item !== null);
+}
+
 /**
  * 블록체인 뉴스 수집 서비스
  * - CoinGecko API (트렌딩, 마켓 데이터)
@@ -98,17 +163,27 @@ export class BlockchainNewsService {
     console.log("[FETCH] 크립토 뉴스 수집 중...");
 
     try {
-      // CryptoCompare 무료 뉴스 API
-      const response = await fetch(
-        `https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=popular`
-      );
+      const apiKey = String(process.env.CRYPTOCOMPARE_API_KEY || "").trim();
+      const url = new URL("https://min-api.cryptocompare.com/data/v2/news/");
+      url.searchParams.set("lang", "EN");
+      url.searchParams.set("sortOrder", "popular");
+      if (apiKey) {
+        url.searchParams.set("api_key", apiKey);
+      }
+      const response = await fetch(url.toString());
 
       if (!response.ok) {
         throw new Error(`CryptoCompare API error: ${response.status}`);
       }
 
       const data = (await response.json()) as CryptoCompareNewsResponse;
+      if (String(data.Response || "").toLowerCase() === "error") {
+        throw new Error(data.Message || "cryptocompare-auth-required");
+      }
       const articles = data.Data?.slice(0, limit) || [];
+      if (articles.length === 0) {
+        throw new Error("cryptocompare-empty");
+      }
 
       return articles.map((article: any, index: number) => ({
         title: article.title,
@@ -119,8 +194,8 @@ export class BlockchainNewsService {
         url: article.url,
       }));
     } catch (error) {
-      console.error("[WARN] 크립토 뉴스 API 실패");
-      return [];
+      console.error(`[WARN] 크립토 뉴스 API 실패: ${(error as Error).message}`);
+      return this.getFallbackRssNews(limit);
     }
   }
 
@@ -128,48 +203,28 @@ export class BlockchainNewsService {
    * CoinGecko 트렌딩 코인 기반 핫이슈 생성
    */
   async getTodayHotNews(): Promise<NewsItem[]> {
-    console.log("[FETCH] 트렌딩 데이터 수집 중...");
+    console.log("[FETCH] 트렌딩 데이터는 뉴스 소스로 사용하지 않음");
+    return [];
+  }
 
-    try {
-      // CoinGecko 트렌딩 API (무료, 키 불필요)
-      const response = await fetch(
-        "https://api.coingecko.com/api/v3/search/trending"
-      );
-
-      if (!response.ok) {
-        throw new Error(`CoinGecko API error: ${response.status}`);
+  private async getFallbackRssNews(limit: number): Promise<NewsItem[]> {
+    console.log("[FETCH] RSS 뉴스 폴백 사용...");
+    const feeds = [
+      { url: "https://www.coindesk.com/arc/outboundfeeds/rss/", source: "CoinDesk RSS" },
+      { url: "https://cointelegraph.com/rss", source: "Cointelegraph RSS" },
+    ];
+    const settled = await Promise.allSettled(
+      feeds.map(async (feed) => parseRssItems(await getTextResponse(feed.url), feed.source, limit))
+    );
+    const merged = settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+    const dedup = new Map<string, NewsItem>();
+    for (const item of merged) {
+      const key = item.title.toLowerCase().replace(/[^a-z0-9가-힣]/g, "");
+      if (!dedup.has(key)) {
+        dedup.set(key, item);
       }
-
-      const data = (await response.json()) as CoinGeckoTrendingResponse;
-      const trendingCoins: TrendingCoin[] = data.coins?.slice(0, 5) || [];
-
-      // 트렌딩 코인을 뉴스 형식으로 변환
-      const news: NewsItem[] = trendingCoins.map((coin, index) => {
-        const change = coin.item.data?.price_change_percentage_24h?.usd || 0;
-        const direction = change >= 0 ? "상승" : "하락";
-        
-        return {
-          title: `${coin.item.name} (${coin.item.symbol.toUpperCase()}) 트렌딩 ${index + 1}위`,
-          summary: `24h ${direction} ${Math.abs(change).toFixed(1)}% | 시총 순위 #${coin.item.market_cap_rank || "N/A"}`,
-          source: "CoinGecko Trending",
-          category: "trending",
-          importance: index < 2 ? "high" : "medium",
-        };
-      });
-
-      // 글로벌 마켓 상태 추가
-      const globalNews = await this.getGlobalMarketNews();
-      if (globalNews) {
-        news.unshift(globalNews);
-      }
-
-      return news.slice(0, 5);
-    } catch (error) {
-      console.error("[WARN] 트렌딩 데이터 실패, 마켓 데이터만 사용");
-      
-      // 실패 시 마켓 데이터 기반 뉴스 생성
-      return this.getMarketBasedNews();
     }
+    return Array.from(dedup.values()).slice(0, Math.max(2, Math.min(12, limit)));
   }
 
   /**
@@ -378,3 +433,8 @@ export class BlockchainNewsService {
 }
 
 export default BlockchainNewsService;
+
+export const __newsFetchTest = {
+  parseRssItems,
+  stripHtmlExcerpt,
+};

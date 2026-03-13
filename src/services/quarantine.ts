@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
+import { resolveDataDir } from "./data-dir.js";
 
-const QUARANTINE_DIR = path.join(process.cwd(), "data", "quarantine");
+const QUARANTINE_DIR = path.join(resolveDataDir(), "quarantine");
 
 export function isQuarantineEnabled(): boolean {
   return String(process.env.SESSION_QUARANTINE_ON_PARSE_ERROR || "true").trim().toLowerCase() === "true";

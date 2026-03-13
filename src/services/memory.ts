@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { resolveDataDir } from "./data-dir.js";
 import {
   ArcStage,
   AutonomyBudgetState,
@@ -44,7 +45,7 @@ import { quarantineCorruptFile } from "./quarantine.js";
  */
 
 // 데이터 디렉토리
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = resolveDataDir();
 const DEFAULT_MEMORY_DATA_PATH = process.env.MEMORY_DATA_PATH || path.join(DATA_DIR, "memory.json");
 const MEMORY_SAVE_DEBOUNCE_MS = 250;
 const MAX_REPLIED_TWEETS = 500;

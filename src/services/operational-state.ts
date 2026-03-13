@@ -2,10 +2,11 @@ import fs from "fs";
 import path from "path";
 import { RuntimeConfig } from "../config/runtime.js";
 import { memory } from "./memory.js";
+import { resolveDataDir } from "./data-dir.js";
 import { TEST_MODE } from "./twitter.js";
 import { xApiBudget } from "./x-api-budget.js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = resolveDataDir();
 const STATE_PATH = path.join(DATA_DIR, "operational-state.json");
 const STATE_MD_PATH = path.join(DATA_DIR, "STATE.md");
 const MAX_EVENTS = 120;

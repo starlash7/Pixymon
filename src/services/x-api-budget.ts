@@ -1,8 +1,9 @@
 import fs from "fs";
 import path from "path";
+import { resolveDataDir } from "./data-dir.js";
 import { quarantineCorruptFile } from "./quarantine.js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = resolveDataDir();
 const DEFAULT_DATA_PATH = path.join(DATA_DIR, "x-api-budget.json");
 const KEEP_DAYS = 21;
 const COST_EPSILON = 1e-9;
