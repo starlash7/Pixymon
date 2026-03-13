@@ -524,3 +524,34 @@ test("buildTrendEvents filters low-quality ranking and prediction headlines", ()
   assert.equal(events.length, 1);
   assert.match(events[0].headline, /Validator upgrade coordination/i);
 });
+
+test("buildTrendEvents filters market snapshot headlines without structural signal", () => {
+  const events = buildTrendEvents({
+    createdAt: new Date().toISOString(),
+    newsRows: [
+      {
+        item: {
+          title: "크립토 시총 $2.51T | BTC 도미넌스 56.8%",
+          summary: "24h change snapshot without a distinct event.",
+          source: "Unknown",
+          category: "markets",
+        },
+        sourceKey: "news:unknown",
+        trust: 0.6,
+      },
+      {
+        item: {
+          title: "Court filing sharpens ETF review timeline for crypto issuers",
+          summary: "Regulatory path changed after a new filing update.",
+          source: "Reuters",
+          category: "regulatory",
+        },
+        sourceKey: "news:reuters",
+        trust: 0.76,
+      },
+    ],
+  });
+
+  assert.equal(events.length, 1);
+  assert.match(events[0].headline, /Court filing sharpens ETF review timeline/i);
+});

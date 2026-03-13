@@ -645,14 +645,16 @@ export function isLowQualityTrendHeadline(headline: string, summary: string = ""
     /(price prediction|could .* hit \$|will .* reach \$|is .* a buy|to the moon|100x|moonshot|매수\s*타이밍|지금\s*사야|얼마까지|상승\s*가능성)/.test(normalized);
   const farmSpam =
     /(airdrop|giveaway|tap to earn|mining app|referral|invite code|free mining)/.test(normalized);
+  const snapshotSpam =
+    /(crypto market cap|market cap|dominance|도미넌스|시총|24h 변동|24h change|fear greed|공포 지수|탐욕 지수)/.test(normalized);
   const lowSignalCoinSpam = /\bpi network\b|\bpi coin\b|\bmemecoin\b/.test(normalized);
   const hasStructuralAnchor =
     /(protocol|upgrade|validator|rollup|ecosystem|developer|regulation|policy|court|etf|compliance|liquidity|market structure|고래|온체인|업그레이드|규제|정책|생태계|개발자|유동성)/.test(
       normalized
     );
 
-  if ((rankingSpam || predictionSpam || farmSpam) && !hasStructuralAnchor) return true;
-  if (lowSignalCoinSpam && (rankingSpam || predictionSpam || farmSpam || !hasStructuralAnchor)) return true;
+  if ((rankingSpam || predictionSpam || farmSpam || snapshotSpam) && !hasStructuralAnchor) return true;
+  if (lowSignalCoinSpam && (rankingSpam || predictionSpam || farmSpam || snapshotSpam || !hasStructuralAnchor)) return true;
   return false;
 }
 
