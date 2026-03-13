@@ -183,6 +183,8 @@ export function buildStructuralFallbackEventsFromEvidence(
 
   const candidates = TREND_LANES.map((lane) => {
     const lanePool = cleaned.filter((item) => item.lane === lane);
+    if (lane === "onchain" && lanePool.length < 2) return null;
+    if (lane !== "onchain" && lanePool.length < 1) return null;
     const onchainSupport =
       lane === "onchain" ? [] : cleaned.filter((item) => item.source === "onchain" && item.lane === "onchain");
     const pool = dedupEvidence([...lanePool, ...onchainSupport]).filter((item) => !isLowSignalEvidenceForEvent(item));
@@ -275,12 +277,32 @@ export function planEventEvidenceAct(params: {
     structurallyRichEvents.length >= 1 && commodityEvents.length >= 1 ? structurallyRichEvents : events;
   const scored = candidateEvents
     .map((event) => {
-      const pair = selectEvidencePairForLane(event.lane, evidence, {
+      let pair = selectEvidencePairForLane(event.lane, evidence, {
         requireOnchainEvidence,
         requireCrossSourceEvidence,
       });
+      if (!pair && event.source === "evidence:structural-fallback" && event.lane === "onchain") {
+        pair = selectEvidencePairForLane(event.lane, evidence, {
+          requireOnchainEvidence,
+          requireCrossSourceEvidence: false,
+        });
+      }
       if (!pair) {
         return null;
+      }
+      if (
+        event.source === "evidence:structural-fallback" &&
+        event.lane === "onchain" &&
+        pair.hasCrossSourceEvidence &&
+        countPriceLikeEvidence(pair.evidence) > 0
+      ) {
+        const onchainOnlyPair = selectEvidencePairForLane(event.lane, evidence, {
+          requireOnchainEvidence,
+          requireCrossSourceEvidence: false,
+        });
+        if (onchainOnlyPair && countPriceLikeEvidence(onchainOnlyPair.evidence) < countPriceLikeEvidence(pair.evidence)) {
+          pair = onchainOnlyPair;
+        }
       }
       const projectedRatio = (laneUsage.byLane[event.lane] + 1) / Math.max(1, laneUsage.totalPosts + 1);
       const quotaLimited = projectedRatio > LANE_MAX_RATIO[event.lane];
@@ -625,6 +647,13 @@ function estimatePriceEvidencePenalty(pair: OnchainEvidence[], lane: TrendLane):
     return priceLikeCount >= 2 ? 0.08 : priceLikeCount === 1 ? 0.03 : 0;
   }
   return priceLikeCount >= 2 ? 0.16 : priceLikeCount === 1 ? 0.06 : 0;
+}
+
+function countPriceLikeEvidence(pair: OnchainEvidence[]): number {
+  return pair.filter((item) => {
+    const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+    return /(price|24h|pct|percent|market cap|dominance|시총|시세|변동|등락|도미넌스|공포|탐욕|fgi)/.test(normalized);
+  }).length;
 }
 
 function estimateNarrativeRichness(headline: string, lane: TrendLane): number {

@@ -637,3 +637,71 @@ test("buildStructuralFallbackEventsFromEvidence skips pure price snapshot eviden
   const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt);
   assert.equal(events.length, 0);
 });
+
+test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence pair", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:fallback:onchain:fees:mempool",
+        lane: "onchain",
+        headline: "체인 위가 실제로 붐비는지와 대기 거래가 얼마나 쌓이는지가 같은 방향으로 이어지는지부터 다시 본다",
+        summary: "가격 스냅샷보다 체인 혼잡 신호를 먼저 확인한다.",
+        source: "evidence:structural-fallback",
+        trust: 0.78,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["수수료", "멤풀"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n1",
+        source: "onchain",
+        category: "network-fee",
+        label: "BTC 네트워크 수수료",
+        value: "1 sat/vB",
+        evidence: "BTC network fees stayed low near 1 sat/vB",
+        trust: 0.83,
+        freshness: 0.94,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.8 },
+      },
+      {
+        id: "n2",
+        source: "onchain",
+        category: "mempool",
+        label: "BTC 멤풀 대기열",
+        value: "38,000 tx",
+        evidence: "Mempool backlog stayed near 38k transactions",
+        trust: 0.81,
+        freshness: 0.92,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.78 },
+      },
+      {
+        id: "n3",
+        source: "market",
+        category: "price-action",
+        label: "ETH 24h 변동",
+        value: "+4.3%",
+        evidence: "ETH moved 4.3% over 24 hours",
+        trust: 0.72,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.64 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.lane, "onchain");
+  assert.equal(plan?.hasCrossSourceEvidence, false);
+  assert.deepEqual(
+    plan?.evidence.map((item) => item.label),
+    ["BTC 네트워크 수수료", "BTC 멤풀 대기열"]
+  );
+});
