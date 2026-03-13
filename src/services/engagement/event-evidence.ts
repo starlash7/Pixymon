@@ -640,9 +640,9 @@ function isBtcCentricHeadline(text: string): boolean {
 export function isLowQualityTrendHeadline(headline: string, summary: string = ""): boolean {
   const normalized = sanitizeTweetText(`${headline} ${summary}`).toLowerCase();
   const rankingSpam =
-    /(trending\s*(no\.?\s*)?\d|trending\s*1|1위|2위|3위|top\s*\d+|top gainer|top loser|ranking)/.test(normalized);
+    /(trending|트렌딩|실시간\s*인기|인기\s*코인|순위|top\s*\d+|top gainer|top loser|ranking|\b\d+\s*위\b)/.test(normalized);
   const predictionSpam =
-    /(price prediction|could .* hit \$|will .* reach \$|is .* a buy|to the moon|100x|moonshot)/.test(normalized);
+    /(price prediction|could .* hit \$|will .* reach \$|is .* a buy|to the moon|100x|moonshot|매수\s*타이밍|지금\s*사야|얼마까지|상승\s*가능성)/.test(normalized);
   const farmSpam =
     /(airdrop|giveaway|tap to earn|mining app|referral|invite code|free mining)/.test(normalized);
   const lowSignalCoinSpam = /\bpi network\b|\bpi coin\b|\bmemecoin\b/.test(normalized);

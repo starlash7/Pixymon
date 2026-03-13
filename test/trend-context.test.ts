@@ -500,7 +500,7 @@ test("buildTrendEvents filters low-quality ranking and prediction headlines", ()
     newsRows: [
       {
         item: {
-          title: "Pi Network (PI) 트렌딩 1위, 지금이 매수 타이밍인가?",
+          title: "Artificial Superintelligence Alliance (FET) 트렌딩 4위, 지금이 매수 타이밍인가?",
           summary: "Price prediction and ranking style headline with no structural signal.",
           source: "Unknown",
           category: "markets",
