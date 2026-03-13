@@ -163,6 +163,82 @@ test("planEventEvidenceAct avoids onchain lane over-concentration when alternati
   assert.equal(plan?.lane, "macro");
 });
 
+test("planEventEvidenceAct deprioritizes btc price headlines when richer protocol event exists", () => {
+  const createdAt = new Date().toISOString();
+  const events = [
+    {
+      id: "event-btc-price",
+      lane: "macro" as const,
+      headline: "Bitcoin hovers just under $70k as risk appetite gets a bid",
+      summary: "BTC price rises 3% as sentiment improves.",
+      source: "news:markets",
+      trust: 0.86,
+      freshness: 0.92,
+      capturedAt: createdAt,
+      keywords: ["bitcoin", "$btc"],
+    },
+    {
+      id: "event-protocol",
+      lane: "protocol" as const,
+      headline: "Firedancer testnet milestone sharpens validator upgrade path",
+      summary: "Validator rollout and recovery design move back into focus.",
+      source: "news:coindesk",
+      trust: 0.79,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["firedancer", "validator", "upgrade"],
+    },
+  ];
+
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "validator",
+      label: "검증자가 얼마나 남아 있는지",
+      value: "안정",
+      evidence: "Validator participation stayed stable through the upgrade window",
+      trust: 0.83,
+      freshness: 0.94,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.79 },
+    },
+    {
+      id: "n2",
+      source: "news",
+      category: "protocol-news",
+      label: "업그레이드 합의 과정",
+      value: "정상화",
+      evidence: "Operator rollout notes point to orderly upgrade coordination",
+      trust: 0.8,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.74 },
+    },
+    {
+      id: "n3",
+      source: "market",
+      category: "price-action",
+      label: "BTC 24h 변동",
+      value: "+3.0%",
+      evidence: "Bitcoin price gained 3.0% over 24h",
+      trust: 0.74,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.68 },
+    },
+  ]);
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts: [],
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "event-protocol");
+});
+
 test("validateEventEvidenceContract enforces event + two evidence anchors", () => {
   const createdAt = new Date().toISOString();
   const plan = {

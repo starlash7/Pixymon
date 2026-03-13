@@ -101,16 +101,16 @@ export function buildTrendEvents(params: {
     if (headline.length < 12) return;
     const summary = sanitizeTweetText(row.item.summary || row.item.title || "").slice(0, 220);
     const lane = inferTrendLane([headline, row.item.category, row.item.summary].join(" "));
-    const priceActionOnly = isPriceActionHeadline(`${headline} ${summary}`);
+    const priceHeadlinePenalty = estimateHeadlineCommodityPenalty(headline, summary, lane);
     const richness = estimateNarrativeRichness(headline, lane);
     const freshness = clampNumber(
-      0.95 - index * 0.05 - (priceActionOnly ? 0.08 : 0) + richness * 0.06,
+      0.95 - index * 0.05 - priceHeadlinePenalty * 0.28 + richness * 0.06,
       0.3,
       0.98,
       0.7
     );
     const adjustedTrust = clampNumber(
-      row.trust - (priceActionOnly ? 0.1 : 0) + (richness - 0.5) * 0.16,
+      row.trust - priceHeadlinePenalty * 0.42 + (richness - 0.5) * 0.16,
       0.1,
       0.98,
       0.52
@@ -211,7 +211,15 @@ export function planEventEvidenceAct(params: {
 
   const laneUsage = params.laneUsage || computeLaneUsageWindow(params.recentPosts);
   const lastLane = inferLastLane(params.recentPosts);
-  const scored = events
+  const structurallyRichEvents = events.filter(
+    (event) => estimateHeadlineCommodityPenalty(event.headline, event.summary, event.lane) < 0.18
+  );
+  const commodityEvents = events.filter(
+    (event) => estimateHeadlineCommodityPenalty(event.headline, event.summary, event.lane) >= 0.18
+  );
+  const candidateEvents =
+    structurallyRichEvents.length >= 1 && commodityEvents.length >= 1 ? structurallyRichEvents : events;
+  const scored = candidateEvents
     .map((event) => {
       const pair = selectEvidencePairForLane(event.lane, evidence, {
         requireOnchainEvidence,
@@ -225,6 +233,7 @@ export function planEventEvidenceAct(params: {
       const laneScarcityBoost = calculateLaneScarcityBoost(event.lane, laneUsage);
       const novelty = calculateHeadlineNovelty(event.headline, params.recentPosts);
       const narrativeRichness = estimateNarrativeRichness(event.headline, event.lane);
+      const headlineCommodityPenalty = estimateHeadlineCommodityPenalty(event.headline, event.summary, event.lane);
       const evidenceStrength =
         pair.evidence.reduce((sum, item) => sum + item.trust * item.freshness, 0) / pair.evidence.length;
       const laneRepeatPenalty = lastLane && lastLane === event.lane ? 0.14 : 0;
@@ -237,6 +246,7 @@ export function planEventEvidenceAct(params: {
         evidenceStrength * 0.15 +
         narrativeRichness * 0.28 +
         laneScarcityBoost -
+        headlineCommodityPenalty * 1.25 -
         (quotaLimited ? 0.35 : 0) -
         laneRepeatPenalty -
         priceEvidencePenalty * 1.15 +
@@ -584,6 +594,31 @@ function estimateNarrativeRichness(headline: string, lane: TrendLane): number {
   return clampNumber(laneBase + conceptualHits * 0.08 - priceNoiseHits * 0.06, 0.12, 0.95, 0.5);
 }
 
+function estimateHeadlineCommodityPenalty(headline: string, summary: string, lane: TrendLane): number {
+  const normalized = sanitizeTweetText(`${headline} ${summary}`).toLowerCase();
+  const priceActionOnly = isPriceActionHeadline(normalized);
+  const btcCentric = isBtcCentricHeadline(normalized);
+  const tickerHeavy = (normalized.match(/\$[a-z]{2,10}\b/g) || []).length >= 2;
+  const conceptualAnchor =
+    /(protocol|governance|validator|compliance|regulation|community|ecosystem|adoption|incentive|coordination|upgrade|court|etf|policy|developer|철학|정체성|미션|상호작용|규제|정책|생태계|업그레이드|개발자)/.test(
+      normalized
+    );
+
+  if (priceActionOnly && btcCentric) {
+    return lane === "macro" ? 0.24 : 0.38;
+  }
+  if (priceActionOnly && !conceptualAnchor) {
+    return lane === "macro" ? 0.16 : 0.28;
+  }
+  if (btcCentric && !conceptualAnchor) {
+    return 0.18;
+  }
+  if (tickerHeavy && !conceptualAnchor) {
+    return 0.1;
+  }
+  return 0;
+}
+
 function isPriceActionHeadline(text: string): boolean {
   const normalized = sanitizeTweetText(text).toLowerCase();
   const hasPriceMove =
@@ -594,6 +629,11 @@ function isPriceActionHeadline(text: string): boolean {
       normalized
     );
   return hasPriceMove && hasNumericAnchor && !hasConceptualAnchor;
+}
+
+function isBtcCentricHeadline(text: string): boolean {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  return /(^|\s)(\$?btc|bitcoin|비트코인)(\s|$)|fear\s*greed|fgi|공포\s*지수|극공포/.test(normalized);
 }
 
 function selectEvidenceForLane(lane: TrendLane, evidence: OnchainEvidence[]): OnchainEvidence[] {
