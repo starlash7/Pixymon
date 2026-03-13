@@ -1,9 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
 process.env.TEST_MODE = "false";
+const testMemoryPath = path.join(process.cwd(), "data", "test-twitter-quote-memory.json");
+process.env.MEMORY_DATA_PATH = testMemoryPath;
+fs.rmSync(testMemoryPath, { force: true });
 
 const twitterModulePromise = import("../src/services/twitter.ts");
+
+test.after(() => {
+  fs.rmSync(testMemoryPath, { force: true });
+});
 
 test("postTweet sends quote payload when type is quote", async () => {
   const { postTweet } = await twitterModulePromise;

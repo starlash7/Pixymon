@@ -45,6 +45,7 @@ import { quarantineCorruptFile } from "./quarantine.js";
 
 // 데이터 디렉토리
 const DATA_DIR = path.join(process.cwd(), "data");
+const DEFAULT_MEMORY_DATA_PATH = process.env.MEMORY_DATA_PATH || path.join(DATA_DIR, "memory.json");
 const MEMORY_SAVE_DEBOUNCE_MS = 250;
 const MAX_REPLIED_TWEETS = 500;
 const MAX_SOUL_QUESTS = 120;
@@ -552,7 +553,7 @@ export class MemoryService {
   private repliedTweetSet = new Set<string>();
 
   constructor(options?: { dataPath?: string }) {
-    this.dataPath = options?.dataPath || path.join(DATA_DIR, "memory.json");
+    this.dataPath = options?.dataPath || DEFAULT_MEMORY_DATA_PATH;
     this.data = this.load();
     this.sanitizeSoulArtifacts();
     this.repliedTweetSet = new Set(this.data.repliedTweets || []);
@@ -3572,4 +3573,4 @@ export class MemoryService {
 }
 
 // 싱글톤 인스턴스
-export const memory = new MemoryService();
+export const memory = new MemoryService({ dataPath: DEFAULT_MEMORY_DATA_PATH });

@@ -374,7 +374,12 @@ export async function replyToMention(
         "reply"
       ).slice(0, 160);
       console.log(`🧪 [테스트-로컬] 멘션 답글 시뮬레이션: ${localReply}`);
-      memory.saveTweet(`mention_test_${Date.now()}`, localReply, "reply");
+      recordNarrativeObservation({
+        surface: "reply",
+        text: localReply,
+        language: lang,
+        fallbackKind: "mention:test-local",
+      });
       return true;
     }
 
@@ -466,7 +471,6 @@ ${mention.text}`,
 
     if (TEST_MODE) {
       console.log(`🧪 [테스트] 멘션 답글 시뮬레이션: ${replyText}`);
-      memory.saveTweet(`mention_test_${Date.now()}`, replyText, "reply");
       recordNarrativeObservation({
         surface: "reply",
         text: replyText,
@@ -867,9 +871,7 @@ export async function postTweet(
     console.log("─".repeat(40));
     console.log("✅ (실제 트윗은 발행되지 않음)\n");
 
-    // 테스트 모드에서도 메모리에 저장
     const testId = `test_${Date.now()}`;
-    memory.saveTweet(testId, content, type, options.metadata);
     recordNarrativeObservation({
       surface: type === "quote" ? "quote" : "post",
       text: content,

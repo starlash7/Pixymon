@@ -82,6 +82,7 @@ import {
 } from "./engagement/types.js";
 import { OnchainNutrient, TrendLane } from "../types/agent.js";
 import { emitCycleObservability } from "./observability.js";
+import { recordNarrativeObservation } from "./narrative-observer.js";
 import { XReadGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 import {
   buildNarrativePlan,
@@ -407,8 +408,14 @@ ${toneGuide}
 
       if (TEST_MODE) {
         console.log(`  🧪 [테스트] 댓글: ${replyText}`);
-        memory.saveRepliedTweet(tweet.id);
-        memory.saveTweet(`engage_test_${Date.now()}`, replyText, "reply");
+        recordNarrativeObservation({
+          surface: "reply",
+          text: replyText,
+          language: lang,
+          lane: inferTrendLaneFromText(text),
+          narrativeMode: "engagement-reply",
+          fallbackKind: "reply:engagement-test",
+        });
       } else {
         const createGuard = xApiBudget.checkCreateAllowance({
           enabled: xApiCostSettings.enabled,
