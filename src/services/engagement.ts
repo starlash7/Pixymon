@@ -40,6 +40,7 @@ import {
 import {
   buildEventEvidenceFallbackPost,
   buildOnchainEvidence,
+  buildStructuralFallbackEventsFromEvidence,
   computeLaneUsageWindow,
   planEventEvidenceAct,
   validateEventEvidenceContract,
@@ -513,14 +514,37 @@ export async function postTrendUpdate(
     let soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage);
     const recentReflectionText = cycleReflectionHint || memory.getLatestDigestReflectionMemo()?.text;
     const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
-    const eventPlan = planEventEvidenceAct({
-      events: trend.events,
-      evidence: buildOnchainEvidence([...feedNutrients, ...trend.nutrients], 16),
+    const eventEvidence = buildOnchainEvidence([...feedNutrients, ...trend.nutrients], 16);
+    let candidateEvents = trend.events;
+    let eventPlan = planEventEvidenceAct({
+      events: candidateEvents,
+      evidence: eventEvidence,
       recentPosts: recentBriefingPosts,
       laneUsage: laneUsageWindow,
       requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
       requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
     });
+    if (!eventPlan) {
+      const syntheticEvents = buildStructuralFallbackEventsFromEvidence(
+        eventEvidence,
+        trend.events[0]?.capturedAt || new Date().toISOString(),
+        4
+      );
+      if (syntheticEvents.length > 0) {
+        candidateEvents = syntheticEvents;
+        eventPlan = planEventEvidenceAct({
+          events: candidateEvents,
+          evidence: eventEvidence,
+          recentPosts: recentBriefingPosts,
+          laneUsage: laneUsageWindow,
+          requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
+          requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
+        });
+        if (eventPlan) {
+          console.log(`[PLAN] structural fallback events 사용: ${syntheticEvents.map((item) => item.headline).join(" | ")}`);
+        }
+      }
+    }
     if (eventPlan) {
       soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage, eventPlan.lane);
     }

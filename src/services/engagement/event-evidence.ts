@@ -2,6 +2,7 @@ import { NarrativeMode, OnchainEvidence, OnchainNutrient, TrendEvent, TrendLane 
 import { EventEvidencePlan, LaneUsageWindow, RecentPostRecord } from "./types.js";
 import { NewsItem } from "../blockchain-news.js";
 import { sanitizeTweetText } from "./quality.js";
+import { applyKoNarrativeLexicon } from "../narrative-lexicon.js";
 
 const TREND_LANES: TrendLane[] = [
   "protocol",
@@ -170,6 +171,58 @@ export function buildOnchainEvidence(
       return bScore - aScore;
     })
     .slice(0, Math.floor(limit));
+}
+
+export function buildStructuralFallbackEventsFromEvidence(
+  evidence: OnchainEvidence[],
+  createdAt: string,
+  maxItems: number = 4
+): TrendEvent[] {
+  const cleaned = dedupEvidence(evidence).filter((item) => !isLowSignalEvidenceForEvent(item));
+  if (cleaned.length < 2) return [];
+
+  const candidates = TREND_LANES.map((lane) => {
+    const lanePool = cleaned.filter((item) => item.lane === lane);
+    const onchainSupport =
+      lane === "onchain" ? [] : cleaned.filter((item) => item.source === "onchain" && item.lane === "onchain");
+    const pool = dedupEvidence([...lanePool, ...onchainSupport]).filter((item) => !isLowSignalEvidenceForEvent(item));
+    if (pool.length < 2) return null;
+
+    const primary = pool[0];
+    const secondary =
+      pool.find((item) => item.id !== primary.id && (item.source !== primary.source || item.lane !== primary.lane)) ||
+      pool[1];
+    if (!secondary) return null;
+
+    const trust = clampNumber((primary.trust + secondary.trust) / 2, 0.18, 0.96, 0.68);
+    const freshness = clampNumber((primary.freshness + secondary.freshness) / 2, 0.18, 0.98, 0.74);
+    const headline = buildStructuralHeadlineFromEvidence(lane, primary, secondary);
+    if (!headline || isLowQualityTrendHeadline(headline)) return null;
+    const summary = buildStructuralSummaryFromEvidence(lane, primary, secondary);
+    const keywords = [...extractHeadlineTokens(primary.label), ...extractHeadlineTokens(secondary.label)].slice(0, 6);
+
+    return {
+      id: `event:fallback:${lane}:${normalizeHeadlineKey(primary.label)}:${normalizeHeadlineKey(secondary.label)}:${createdAt}`,
+      lane,
+      headline,
+      summary,
+      source: "evidence:structural-fallback",
+      trust,
+      freshness,
+      capturedAt: createdAt,
+      keywords,
+      score:
+        (primary.digestScore ?? 0.58) * primary.trust * primary.freshness +
+        (secondary.digestScore ?? 0.58) * secondary.trust * secondary.freshness +
+        (primary.source === "onchain" || secondary.source === "onchain" ? 0.08 : 0),
+    };
+  })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.max(1, Math.min(8, maxItems)))
+    .map(({ score: _score, ...event }) => event);
+
+  return candidates;
 }
 
 export function computeLaneUsageWindow(recentPosts: RecentPostRecord[]): LaneUsageWindow {
@@ -656,6 +709,103 @@ export function isLowQualityTrendHeadline(headline: string, summary: string = ""
   if ((rankingSpam || predictionSpam || farmSpam || snapshotSpam) && !hasStructuralAnchor) return true;
   if (lowSignalCoinSpam && (rankingSpam || predictionSpam || farmSpam || snapshotSpam || !hasStructuralAnchor)) return true;
   return false;
+}
+
+function isLowSignalEvidenceForEvent(item: OnchainEvidence): boolean {
+  const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+  if (
+    /(24h 변동|24h change|price|시세|시장가|market cap|crypto market cap|dominance|도미넌스|시총|fear greed|공포 지수|탐욕 지수|fgi)/.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function buildStructuralHeadlineFromEvidence(
+  lane: TrendLane,
+  primary: OnchainEvidence,
+  secondary: OnchainEvidence
+): string {
+  const a = humanizeStructuralEvidenceLabel(primary.label);
+  const b = humanizeStructuralEvidenceLabel(secondary.label);
+  const seed = stableSeed(`${lane}|${a}|${b}|headline`);
+
+  const poolByLane: Record<TrendLane, string[]> = {
+    protocol: [
+      `${a}와 ${b}가 같은 방향으로 이어지는지부터 다시 본다`,
+      `${a}가 흔들릴 때 ${b}도 같이 움직이는지부터 확인한다`,
+    ],
+    ecosystem: [
+      `${a}가 실제 움직임으로 번지는지, ${b}부터 다시 본다`,
+      `${a} 뒤에서 ${b}가 따라오는지부터 다시 확인한다`,
+    ],
+    regulation: [
+      `${a} 뒤에서 ${b}가 같이 흔들리는지부터 본다`,
+      `${a}가 바뀔 때 ${b}도 따라 움직이는지부터 확인한다`,
+    ],
+    macro: [
+      `${a}가 흔들릴 때 ${b}가 어떻게 따라오는지부터 본다`,
+      `${a} 뒤에 ${b}가 붙는지부터 다시 확인한다`,
+    ],
+    onchain: [
+      `${a}와 ${b} 중 뭐가 먼저 움직였는지부터 다시 본다`,
+      `${a}와 ${b}가 같은 쪽을 오래 가리키는지부터 확인한다`,
+    ],
+    "market-structure": [
+      `${a}와 ${b}가 어디서 엇갈리는지부터 다시 본다`,
+      `${a} 뒤에서 ${b}가 실제로 받쳐 주는지부터 확인한다`,
+    ],
+  };
+
+  return sanitizeTweetText(poolByLane[lane][seed % poolByLane[lane].length]).slice(0, 140);
+}
+
+function buildStructuralSummaryFromEvidence(
+  lane: TrendLane,
+  primary: OnchainEvidence,
+  secondary: OnchainEvidence
+): string {
+  const a = humanizeStructuralEvidenceLabel(primary.label);
+  const b = humanizeStructuralEvidenceLabel(secondary.label);
+  const poolByLane: Record<TrendLane, string[]> = {
+    protocol: [`지금은 ${a}와 ${b}가 끝까지 같이 가는지부터 보는 편이 낫다.`],
+    ecosystem: [`가격보다 ${a}가 ${b}로 이어지는지부터 확인하는 편이 낫다.`],
+    regulation: [`정책 문장보다 ${a}와 ${b}의 순서를 먼저 확인한다.`],
+    macro: [`숫자보다 ${a}와 ${b}가 번지는 순서를 먼저 본다.`],
+    onchain: [`가격 스냅샷보다 ${a}와 ${b}가 남긴 흔적을 먼저 확인한다.`],
+    "market-structure": [`호가보다 ${a}와 ${b}가 실제로 받쳐 주는지부터 확인한다.`],
+  };
+
+  return sanitizeTweetText(poolByLane[lane][0]).slice(0, 180);
+}
+
+function humanizeStructuralEvidenceLabel(label: string): string {
+  const normalized = sanitizeTweetText(label).trim();
+  if (!normalized) return "남은 단서";
+
+  const exactMap: Array<[RegExp, string]> = [
+    [/^BTC 네트워크 수수료$/i, "체인 위가 실제로 붐비는지"],
+    [/^BTC 멤풀 대기열$/i, "대기 거래가 얼마나 쌓이는지"],
+    [/^거래소 순유입 프록시$/i, "거래소로 돈이 실제로 들어오는지"],
+    [/^고래\/대형주소 활동 프록시$/i, "큰손들이 실제로 움직이는지"],
+    [/^스테이블코인 총공급 플로우$/i, "대기 중인 유동성이 늘어나는지"],
+  ];
+
+  for (const [pattern, replacement] of exactMap) {
+    if (pattern.test(normalized)) {
+      return replacement;
+    }
+  }
+
+  return applyKoNarrativeLexicon(normalized)
+    .replace(/프록시/g, "흐름")
+    .replace(/총공급\s*플로우/g, "공급 흐름")
+    .replace(/네트워크\s*수수료/g, "체인 수수료")
+    .replace(/멤풀\s*대기열/g, "대기 거래")
+    .replace(/^\$?BTC\s*/i, "")
+    .trim();
 }
 
 function selectEvidenceForLane(lane: TrendLane, evidence: OnchainEvidence[]): OnchainEvidence[] {

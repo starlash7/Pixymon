@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildEventEvidenceFallbackPost,
   buildOnchainEvidence,
+  buildStructuralFallbackEventsFromEvidence,
   buildTrendEvents,
   planEventEvidenceAct,
   validateEventEvidenceContract,
@@ -554,4 +555,85 @@ test("buildTrendEvents filters market snapshot headlines without structural sign
 
   assert.equal(events.length, 1);
   assert.match(events[0].headline, /Court filing sharpens ETF review timeline/i);
+});
+
+test("buildStructuralFallbackEventsFromEvidence builds structural events from onchain evidence", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "whale-flow",
+      label: "고래/대형주소 활동 프록시",
+      value: "+18%",
+      evidence: "Large-holder activity picked up across major wallets.",
+      trust: 0.82,
+      freshness: 0.93,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.79 },
+    },
+    {
+      id: "n2",
+      source: "onchain",
+      category: "stablecoin-flow",
+      label: "스테이블코인 총공급 플로우",
+      value: "+$240M",
+      evidence: "Stablecoin supply expanded through the session.",
+      trust: 0.84,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.81 },
+    },
+    {
+      id: "n3",
+      source: "market",
+      category: "price-action",
+      label: "BTC 24h 변동",
+      value: "+1.1%",
+      evidence: "BTC price moved 1.1% in the last 24 hours.",
+      trust: 0.7,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.62 },
+    },
+  ]);
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt);
+
+  assert.ok(events.length >= 1);
+  assert.match(events[0].headline, /큰손들이 실제로 움직이는지|대기 중인 유동성이 늘어나는지/);
+  assert.doesNotMatch(events[0].headline, /24h 변동|도미넌스|시총|공포 지수/i);
+});
+
+test("buildStructuralFallbackEventsFromEvidence skips pure price snapshot evidence", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "market",
+      category: "price-action",
+      label: "BTC 24h 변동",
+      value: "+2.1%",
+      evidence: "BTC price gained 2.1% in the last 24 hours.",
+      trust: 0.72,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.63 },
+    },
+    {
+      id: "n2",
+      source: "market",
+      category: "market-snapshot",
+      label: "BTC 도미넌스",
+      value: "56.8%",
+      evidence: "BTC dominance stayed near 56.8%.",
+      trust: 0.7,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.61 },
+    },
+  ]);
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt);
+  assert.equal(events.length, 0);
 });
