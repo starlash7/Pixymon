@@ -493,3 +493,34 @@ test("buildTrendEvents maps news rows into lane-tagged events", () => {
   assert.equal(events.length, 1);
   assert.equal(events[0].lane, "regulation");
 });
+
+test("buildTrendEvents filters low-quality ranking and prediction headlines", () => {
+  const events = buildTrendEvents({
+    createdAt: new Date().toISOString(),
+    newsRows: [
+      {
+        item: {
+          title: "Pi Network (PI) 트렌딩 1위, 지금이 매수 타이밍인가?",
+          summary: "Price prediction and ranking style headline with no structural signal.",
+          source: "Unknown",
+          category: "markets",
+        },
+        sourceKey: "news:unknown",
+        trust: 0.6,
+      },
+      {
+        item: {
+          title: "Validator upgrade coordination sharpens ahead of Firedancer rollout",
+          summary: "Protocol operators aligned on upgrade path and recovery plan.",
+          source: "CoinDesk",
+          category: "protocol",
+        },
+        sourceKey: "news:coindesk",
+        trust: 0.74,
+      },
+    ],
+  });
+
+  assert.equal(events.length, 1);
+  assert.match(events[0].headline, /Validator upgrade coordination/i);
+});

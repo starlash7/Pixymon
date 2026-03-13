@@ -3,7 +3,7 @@ import { memory } from "../memory.js";
 import { OnchainNutrient } from "../../types/agent.js";
 import { sanitizeTweetText } from "./quality.js";
 import { RecentPostRecord, TrendContext, TrendContextOptions, TrendFocus } from "./types.js";
-import { buildTrendEvents, inferTrendLane } from "./event-evidence.js";
+import { buildTrendEvents, inferTrendLane, isLowQualityTrendHeadline } from "./event-evidence.js";
 
 const TEST_MODE = process.env.TEST_MODE === "true";
 const TEST_NO_EXTERNAL_CALLS =
@@ -431,6 +431,7 @@ function buildNarrativeBridgeEvents(params: {
   const topNews = params.newsRows
     .map((row) => sanitizeTweetText(row.item.title))
     .filter((title) => title.length >= 10)
+    .filter((title) => !isLowQualityTrendHeadline(title))
     .slice(0, 2);
   if (topNews.length === 0) return [];
 

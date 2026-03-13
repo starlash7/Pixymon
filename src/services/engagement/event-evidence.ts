@@ -100,6 +100,7 @@ export function buildTrendEvents(params: {
     const headline = sanitizeTweetText(row.item.title || "").slice(0, 160);
     if (headline.length < 12) return;
     const summary = sanitizeTweetText(row.item.summary || row.item.title || "").slice(0, 220);
+    if (isLowQualityTrendHeadline(headline, summary)) return;
     const lane = inferTrendLane([headline, row.item.category, row.item.summary].join(" "));
     const priceHeadlinePenalty = estimateHeadlineCommodityPenalty(headline, summary, lane);
     const richness = estimateNarrativeRichness(headline, lane);
@@ -634,6 +635,25 @@ function isPriceActionHeadline(text: string): boolean {
 function isBtcCentricHeadline(text: string): boolean {
   const normalized = sanitizeTweetText(text).toLowerCase();
   return /(^|\s)(\$?btc|bitcoin|비트코인)(\s|$)|fear\s*greed|fgi|공포\s*지수|극공포/.test(normalized);
+}
+
+export function isLowQualityTrendHeadline(headline: string, summary: string = ""): boolean {
+  const normalized = sanitizeTweetText(`${headline} ${summary}`).toLowerCase();
+  const rankingSpam =
+    /(trending\s*(no\.?\s*)?\d|trending\s*1|1위|2위|3위|top\s*\d+|top gainer|top loser|ranking)/.test(normalized);
+  const predictionSpam =
+    /(price prediction|could .* hit \$|will .* reach \$|is .* a buy|to the moon|100x|moonshot)/.test(normalized);
+  const farmSpam =
+    /(airdrop|giveaway|tap to earn|mining app|referral|invite code|free mining)/.test(normalized);
+  const lowSignalCoinSpam = /\bpi network\b|\bpi coin\b|\bmemecoin\b/.test(normalized);
+  const hasStructuralAnchor =
+    /(protocol|upgrade|validator|rollup|ecosystem|developer|regulation|policy|court|etf|compliance|liquidity|market structure|고래|온체인|업그레이드|규제|정책|생태계|개발자|유동성)/.test(
+      normalized
+    );
+
+  if ((rankingSpam || predictionSpam || farmSpam) && !hasStructuralAnchor) return true;
+  if (lowSignalCoinSpam && (rankingSpam || predictionSpam || farmSpam || !hasStructuralAnchor)) return true;
+  return false;
 }
 
 function selectEvidenceForLane(lane: TrendLane, evidence: OnchainEvidence[]): OnchainEvidence[] {
