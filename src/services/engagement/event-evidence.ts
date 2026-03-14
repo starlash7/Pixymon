@@ -98,11 +98,12 @@ export function buildTrendEvents(params: {
 }): TrendEvent[] {
   const dedup = new Map<string, TrendEvent>();
   params.newsRows.slice(0, 12).forEach((row, index) => {
-    const headline = sanitizeTweetText(row.item.title || "").slice(0, 160);
+    const rawHeadline = sanitizeTweetText(row.item.title || "").slice(0, 160);
+    const lane = inferTrendLane([rawHeadline, row.item.category, row.item.summary].join(" "));
+    const headline = localizeTrendHeadline(rawHeadline, lane, row.item.summary || "").slice(0, 160);
     if (headline.length < 12) return;
     const summary = sanitizeTweetText(row.item.summary || row.item.title || "").slice(0, 220);
     if (isLowQualityTrendHeadline(headline, summary)) return;
-    const lane = inferTrendLane([headline, row.item.category, row.item.summary].join(" "));
     const priceHeadlinePenalty = estimateHeadlineCommodityPenalty(headline, summary, lane);
     const richness = estimateNarrativeRichness(headline, lane);
     const freshness = clampNumber(
@@ -656,6 +657,88 @@ function countPriceLikeEvidence(pair: OnchainEvidence[]): number {
   }).length;
 }
 
+function containsKorean(text: string): boolean {
+  return /[가-힣]/.test(text);
+}
+
+function isEnglishHeavyHeadline(text: string): boolean {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized || containsKorean(normalized)) return false;
+  const letters = (normalized.match(/[A-Za-z]/g) || []).length;
+  const spaces = (normalized.match(/\s/g) || []).length;
+  return letters >= 18 && spaces >= 2;
+}
+
+function localizeTrendHeadline(headline: string, lane: TrendLane, summary: string): string {
+  const cleaned = sanitizeTweetText(headline).replace(/[.!?]+$/g, "").trim();
+  if (!cleaned) return cleaned;
+  if (!isEnglishHeavyHeadline(cleaned)) return cleaned;
+
+  const normalized = `${cleaned} ${sanitizeTweetText(summary)}`.toLowerCase();
+  const gapMatch = normalized.match(/gap between ([a-z0-9\s/-]+?) and ([a-z0-9\s/-]+?)(?:\s|$)/i);
+  if (gapMatch) {
+    const left = humanizeEnglishSignalPhrase(gapMatch[1]);
+    const right = humanizeEnglishSignalPhrase(gapMatch[2]);
+    return `${left}와 ${right}가 따로 움직이는지 다시 본다`;
+  }
+
+  const laneFallback: Record<TrendLane, string[]> = {
+    protocol: [
+      "업그레이드 이야기가 실제 사용 흔적으로 이어지는지 다시 본다",
+      "프로토콜 변화가 체인 위 행동으로 번지는지 다시 본다",
+    ],
+    ecosystem: [
+      "네트워크 사용과 토큰 서사가 같은 방향으로 가는지 다시 본다",
+      "생태계 이야기와 실제 사용 흔적이 맞물리는지 다시 본다",
+    ],
+    regulation: [
+      "규제 문장과 실제 반응이 어디서 갈리는지 다시 본다",
+      "정책 이야기보다 실제 행동이 어디서 달라지는지 다시 본다",
+    ],
+    macro: [
+      "거시 변수 변화가 체인 위 반응으로 번지는지 다시 본다",
+      "달러와 위험선호 변화가 실제 흐름을 바꾸는지 다시 본다",
+    ],
+    onchain: [
+      "체인 위 흐름이 실제로 달라지는 지점부터 다시 본다",
+      "온체인 흔적이 같은 방향으로 이어지는지 다시 본다",
+    ],
+    "market-structure": [
+      "유동성 이야기와 실제 체결이 같은 방향인지 다시 본다",
+      "시장 구조 변화가 실행 흔적으로 이어지는지 다시 본다",
+    ],
+  };
+
+  if (/court|lawsuit|sec|cftc|policy|compliance|etf|filing|review|approval/.test(normalized)) {
+    return laneFallback.regulation[stableSeed(`${cleaned}|reg`)% laneFallback.regulation.length];
+  }
+  if (/upgrade|mainnet|testnet|validator|rollup|fork|throughput|firedancer|consensus/.test(normalized)) {
+    return laneFallback.protocol[stableSeed(`${cleaned}|protocol`)% laneFallback.protocol.length];
+  }
+  if (/wallet|developer|community|adoption|network use|user|ecosystem|token value|xrp|app/.test(normalized)) {
+    return laneFallback.ecosystem[stableSeed(`${cleaned}|ecosystem`)% laneFallback.ecosystem.length];
+  }
+  if (/fed|ecb|cpi|inflation|rates|treasury|dxy|usd|eur/.test(normalized)) {
+    return laneFallback.macro[stableSeed(`${cleaned}|macro`)% laneFallback.macro.length];
+  }
+  if (/exchange|liquidity|volume|funding|open interest|market maker|orderbook/.test(normalized)) {
+    return laneFallback["market-structure"][stableSeed(`${cleaned}|ms`)% laneFallback["market-structure"].length];
+  }
+
+  return laneFallback[lane][stableSeed(`${cleaned}|${lane}`) % laneFallback[lane].length];
+}
+
+function humanizeEnglishSignalPhrase(input: string): string {
+  const value = sanitizeTweetText(input).toLowerCase().trim();
+  if (!value) return "흐름";
+  if (/network use|activity|usage/.test(value)) return "실제 사용 흔적";
+  if (/token value|valuation|price/.test(value)) return "토큰 가격 서사";
+  if (/liquidity/.test(value)) return "유동성";
+  if (/developer/.test(value)) return "개발자 흐름";
+  if (/community/.test(value)) return "커뮤니티 반응";
+  return value.replace(/[^a-z0-9\s/-]/g, "").trim() || "흐름";
+}
+
 function estimateNarrativeRichness(headline: string, lane: TrendLane): number {
   const normalized = sanitizeTweetText(headline).toLowerCase();
   const conceptualHits =
@@ -841,7 +924,14 @@ function selectEvidenceForLane(lane: TrendLane, evidence: OnchainEvidence[]): On
   const laneMatched = evidence.filter((item) => item.lane === lane);
   const onchainMatched = evidence.filter((item) => item.lane === "onchain" && item.lane !== lane);
   const others = evidence.filter((item) => item.lane !== lane && item.lane !== "onchain");
-  return dedupEvidence([...laneMatched, ...onchainMatched, ...others]);
+  return dedupEvidence([...laneMatched, ...onchainMatched, ...others]).sort((a, b) => {
+    const aPenalty = estimatePriceEvidencePenalty([a], lane);
+    const bPenalty = estimatePriceEvidencePenalty([b], lane);
+    if (aPenalty !== bPenalty) return aPenalty - bPenalty;
+    const aScore = (a.digestScore ?? 0.55) * a.trust * a.freshness;
+    const bScore = (b.digestScore ?? 0.55) * b.trust * b.freshness;
+    return bScore - aScore;
+  });
 }
 
 function selectEvidencePairForLane(
@@ -889,7 +979,8 @@ function selectEvidencePairForLane(
         baseScore +
         laneMatchCount * 0.08 +
         (hasOnchainEvidence ? 0.06 : 0) +
-        (hasCrossSourceEvidence ? 0.04 : 0);
+        (hasCrossSourceEvidence ? 0.04 : 0) -
+        estimatePriceEvidencePenalty(pair, lane) * 1.6;
       if (!best || score > best.score) {
         best = {
           evidence: pair,

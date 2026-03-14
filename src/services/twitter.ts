@@ -27,9 +27,9 @@ export const TEST_NO_EXTERNAL_CALLS =
   TEST_MODE && String(process.env.TEST_NO_EXTERNAL_CALLS ?? "true").trim().toLowerCase() !== "false";
 const ACTION_TWO_PHASE_COMMIT = String(process.env.ACTION_TWO_PHASE_COMMIT || "true").trim().toLowerCase() === "true";
 const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
-  minSourceTrust: 0.24,
+  minSourceTrust: 0.45,
   minScore: 3.2,
-  minEngagement: 6,
+  minEngagement: 12,
   maxAgeHours: 24,
   requireRootPost: true,
   blockSuspiciousPromo: true,
@@ -294,8 +294,8 @@ function isPreferredTrendReplyTarget(
   const verified = Boolean(user?.verified);
   const cashtagCount = (text.match(/\$[A-Za-z]{2,10}/g) || []).length;
   const urlCount = (text.match(/https?:\/\//gi) || []).length;
-  const hardMinTrust = Math.max(rules.minSourceTrust, 0.55);
-  const hardMinEngagement = Math.max(rules.minEngagement, 18);
+  const hardMinTrust = Math.max(rules.minSourceTrust, 0.45);
+  const hardMinEngagement = Math.max(rules.minEngagement, 12);
   const hardMinScore = Math.max(rules.minScore, 3.2);
   const maxAgeHours = Math.max(1, Math.min(168, Number.isFinite(rules.maxAgeHours) ? rules.maxAgeHours : 24));
   const isRootPost = !tweet?.conversation_id || !tweet?.id || String(tweet.conversation_id) === String(tweet.id);
@@ -306,11 +306,11 @@ function isPreferredTrendReplyTarget(
   if (evaluation.score < hardMinScore) return false;
   if (!createdAt || getTweetAgeHours(createdAt) > maxAgeHours) return false;
   if (rules.requireRootPost && (!isRootPost || isReferenced)) return false;
-  if (text.length < 45) return false;
+  if (text.length < 30) return false;
   if (cashtagCount >= 3 || urlCount >= 1) return false;
   if (rules.blockSuspiciousPromo && isSuspiciousTrendReplyTarget(tweet, user)) return false;
-  if (!verified && followers < 10000) return false;
-  if (verified && followers < 1000) return false;
+  if (!verified && followers < 3000) return false;
+  if (verified && followers < 500) return false;
   return true;
 }
 

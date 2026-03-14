@@ -13,9 +13,25 @@ test("isPreferredTrendReplyTarget rejects low-follower unverified account", () =
     { verified: false, public_metrics: { followers_count: 1200 } },
     { engagementRaw: 42, score: 5.2 },
     0.62,
-    { minSourceTrust: 0.55, minScore: 3.2, minEngagement: 18, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, false);
+});
+
+test("isPreferredTrendReplyTarget accepts solid unverified account above relaxed floor", () => {
+  const ok = __trendTargetTest.isPreferredTrendReplyTarget(
+    {
+      id: "1",
+      conversation_id: "1",
+      created_at: new Date().toISOString(),
+      text: "Protocol rollout note with enough context, a clear claim, and enough detail to look like a serious target for reply.",
+    },
+    { verified: false, public_metrics: { followers_count: 4200 } },
+    { engagementRaw: 24, score: 4.4 },
+    0.52,
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+  );
+  assert.equal(ok, true);
 });
 
 test("isPreferredTrendReplyTarget accepts verified credible account", () => {
@@ -29,7 +45,7 @@ test("isPreferredTrendReplyTarget accepts verified credible account", () => {
     { verified: true, public_metrics: { followers_count: 22000 } },
     { engagementRaw: 84, score: 6.1 },
     0.67,
-    { minSourceTrust: 0.55, minScore: 3.2, minEngagement: 18, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, true);
 });
@@ -46,7 +62,7 @@ test("isPreferredTrendReplyTarget rejects old tweets", () => {
     { verified: true, public_metrics: { followers_count: 50000 } },
     { engagementRaw: 400, score: 7.1 },
     0.81,
-    { minSourceTrust: 0.55, minScore: 3.2, minEngagement: 18, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, false);
 });
@@ -63,7 +79,7 @@ test("isPreferredTrendReplyTarget rejects replies and quoted posts", () => {
     { verified: true, public_metrics: { followers_count: 18000 } },
     { engagementRaw: 84, score: 6.1 },
     0.74,
-    { minSourceTrust: 0.55, minScore: 3.2, minEngagement: 18, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, false);
 });
@@ -85,7 +101,7 @@ test("isPreferredTrendReplyTarget rejects suspicious telegram or link promo acco
     },
     { engagementRaw: 84, score: 6.1 },
     0.67,
-    { minSourceTrust: 0.55, minScore: 3.2, minEngagement: 18, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, false);
 });

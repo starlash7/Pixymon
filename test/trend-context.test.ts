@@ -493,6 +493,7 @@ test("buildTrendEvents maps news rows into lane-tagged events", () => {
   });
   assert.equal(events.length, 1);
   assert.equal(events[0].lane, "regulation");
+  assert.match(events[0].headline, /규제|정책|반응/);
 });
 
 test("buildTrendEvents filters low-quality ranking and prediction headlines", () => {
@@ -523,7 +524,7 @@ test("buildTrendEvents filters low-quality ranking and prediction headlines", ()
   });
 
   assert.equal(events.length, 1);
-  assert.match(events[0].headline, /Validator upgrade coordination/i);
+  assert.match(events[0].headline, /업그레이드|프로토콜|다시 본다/);
 });
 
 test("buildTrendEvents filters market snapshot headlines without structural signal", () => {
@@ -554,7 +555,29 @@ test("buildTrendEvents filters market snapshot headlines without structural sign
   });
 
   assert.equal(events.length, 1);
-  assert.match(events[0].headline, /Court filing sharpens ETF review timeline/i);
+  assert.match(events[0].headline, /규제|정책|반응/);
+});
+
+test("buildTrendEvents localizes english-only ecosystem headlines into korean scene text", () => {
+  const events = buildTrendEvents({
+    createdAt: new Date().toISOString(),
+    newsRows: [
+      {
+        item: {
+          title: "A huge gap between network use and token value is the most important thing happening in XRP right now",
+          summary: "Network use and token value are diverging in XRP.",
+          source: "CoinDesk RSS",
+          category: "ecosystem",
+        },
+        sourceKey: "news:coindesk-rss",
+        trust: 0.74,
+      },
+    ],
+  });
+
+  assert.equal(events.length, 1);
+  assert.doesNotMatch(events[0].headline, /A huge gap between/i);
+  assert.match(events[0].headline, /실제 사용 흔적|토큰 가격 서사|다시 본다/);
 });
 
 test("buildStructuralFallbackEventsFromEvidence builds structural events from onchain evidence", () => {
@@ -703,5 +726,71 @@ test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence
   assert.deepEqual(
     plan?.evidence.map((item) => item.label),
     ["BTC 네트워크 수수료", "BTC 멤풀 대기열"]
+  );
+});
+
+test("planEventEvidenceAct avoids price-like evidence for ecosystem lane when structural pair exists", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:ecosystem:1",
+        lane: "ecosystem",
+        headline: "생태계 이야기와 실제 사용 흔적이 맞물리는지 다시 본다",
+        summary: "사용성 변화와 참여 흐름을 구조적으로 본다.",
+        source: "news:coindesk-rss",
+        trust: 0.72,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        keywords: ["생태계", "사용"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n1",
+        source: "onchain",
+        category: "whale-flow",
+        label: "고래/대형주소 활동 프록시",
+        value: "+12%",
+        evidence: "Large-holder activity picked up across major wallets.",
+        trust: 0.84,
+        freshness: 0.93,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.8 },
+      },
+      {
+        id: "n2",
+        source: "news",
+        category: "ecosystem",
+        label: "개발자 커뮤니티 반응",
+        value: "증가",
+        evidence: "Developer chatter rose around the ecosystem update.",
+        trust: 0.8,
+        freshness: 0.91,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.76 },
+      },
+      {
+        id: "n3",
+        source: "market",
+        category: "price-action",
+        label: "ETH 24h 변동",
+        value: "-0.64%",
+        evidence: "ETH moved lower over the last 24 hours.",
+        trust: 0.74,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.63 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  assert.deepEqual(
+    plan?.evidence.map((item) => item.label),
+    ["고래/대형주소 활동 프록시", "개발자 커뮤니티 반응"]
   );
 });
