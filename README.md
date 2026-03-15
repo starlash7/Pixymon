@@ -1,5 +1,11 @@
 # Pixymon
 
+<p align="center">
+  <img src="./docs/assets/pixymon-sprite.jpg" alt="Pixymon sprite sheet" width="680" />
+</p>
+
+## Pixymon
+
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Anthropic Claude](https://img.shields.io/badge/Anthropic-Claude-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
@@ -7,10 +13,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 A Korean character-driven X agent that "eats" onchain signals, digests them into narrative memory, and posts as a growing creature rather than a market-summary bot.
-
-<p align="center">
-  <img src="./docs/assets/pixymon-sprite.jpg" alt="Pixymon sprite sheet" width="680" />
-</p>
 
 ## What Pixymon Is
 
