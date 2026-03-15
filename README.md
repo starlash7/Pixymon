@@ -1,164 +1,265 @@
 # Pixymon
 
-온체인 데이터를 먹고 성장하는 캐릭터형 X 에이전트.
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Anthropic Claude](https://img.shields.io/badge/Anthropic-Claude-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![X API](https://img.shields.io/badge/X%20API-v2-111111?logo=x&logoColor=white)](https://developer.x.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
+A Korean character-driven X agent that "eats" onchain signals, digests them into narrative memory, and posts as a growing creature rather than a market-summary bot.
 
 <p align="center">
   <img src="./docs/assets/pixymon-sprite.jpg" alt="Pixymon sprite sheet" width="680" />
 </p>
 
-## 현재 상태
+## What Pixymon Is
 
-현재 메인 브랜치 기준 Pixymon은 아래를 갖춘 상태입니다.
+Pixymon is not meant to become a generic crypto posting bot.
 
-- `feed -> digest -> evolve -> plan -> act -> reflect` 루프
-- 한국어 중심 narrative post / quote / reply surface
-- X API / Anthropic / 총합 비용 가드
-- Anthropic prompt caching + surface별 모델 라우팅
-- batch reflection queue / sync / soul state 반영
-- narrative audit 로그와 금지어/치환어 사전
+The product goal is:
 
-지금 단계의 핵심은 `문장 튜닝을 더 크게 하는 것`이 아니라, `저속 운영 -> 이상 문장 수집 -> 사전 보강` 루프로 넘어가는 것입니다.
+- Pixymon becomes memorable enough to earn attention on its own
+- The operator behind Pixymon becomes known because the account itself becomes a recognizable IP
 
-기준 문서:
+That means Pixymon has to combine three things at once:
 
-- 실행/운영: `README.md`
-- 워크스페이스 규칙: `AGENTS.md`, `docs/agent-workflow.md`
-- 리라이트 계획: `docs/plan.md`
+- `AIXBT-like`: dense market and onchain interpretation
+- `Lobster-like`: human, characterful, worth following
+- `Pixymon-like`: an onchain creature that feeds, digests, evolves, acts, and reflects
 
-## 제품 정의
+The current product north star is documented in `concept.md`.
 
-Pixymon의 목표는 다음 두 가지를 동시에 만족하는 것입니다.
+## Current State
 
-1. 사실 기반: 온체인/시장/뉴스 신호를 왜곡 없이 소화
-2. 캐릭터 기반: 욕망/기분/퀘스트를 가진 서사형 행동
+As of `main`, Pixymon has:
 
-## 현재 아키텍처
+- a `feed -> digest -> evolve -> plan -> act -> reflect` loop
+- Korean-first post / quote / reply generation
+- onchain nutrient ingestion and digest scoring
+- shared context reuse across surfaces
+- Anthropic and X API budget guards
+- Anthropic prompt caching and surface-level model routing
+- narrative observation logs and phrase-audit summaries
+- batch-ready reflection jobs that can feed memory back into the character state
+- safer reply target selection for trend replies
+- structural fallback planning when direct news events are weak
 
-핵심 루프:
+The current phase is not "add more templates".
+It is:
 
-1. `Sense`: 온체인/시장/뉴스/소셜 입력 수집
-2. `Digest`: 품질 점수와 신뢰도 계산
-3. `Desire`: hunger(신호/주의/신선도) 상태 갱신
-4. `Quest`: 당일 추적할 스레드/가설 선택
-5. `Decide`: post/quote/reply/image 행동 포트폴리오 결정
-6. `Act`: 발행
-7. `Reflect`: 반응/중복/비용/정확도 기반 정책 갱신
+- run slowly in production
+- observe actual outputs
+- fix real failure modes from logs and audits
 
-운영 보조 루프:
+## Product Principles
 
-1. `Budget`: X / LLM / TOTAL 일일 비용 가드
-2. `Cache`: shared context + prompt caching
-3. `Batch`: 비긴급 digest reflection 비동기 처리
-4. `Audit`: 실제 발행 문장을 `narrative-observation`으로 기록
-5. `Lexicon`: 상위 hit 라벨만 `src/services/narrative-lexicon.ts`에서 보강
+Pixymon should move toward:
 
-## 핵심 구현
+- character + interpreter, not data bot
+- conversation gravity, not one-way posting
+- memorable worldview, not repetitive market commentary
+- recurring arc: feed, digest, evolve, fail, reflect
 
-- 비용/요청량 가드
-  - `src/services/x-api-budget.ts`
-  - `src/services/anthropic-budget.ts`
-  - `src/services/anthropic-admin-usage.ts`
-- narrative 생성 / 후처리
-  - `src/services/engagement.ts`
-  - `src/services/engagement/text-finalize.ts`
-- batch reflection
-  - `src/services/llm-batch-queue.ts`
-  - `src/services/llm-batch-runner.ts`
-  - `src/services/llm-batch-runs.ts`
-- narrative audit
-  - `src/services/narrative-lexicon.ts`
-  - `src/services/narrative-observer.ts`
-  - `scripts/narrative-audit-report.mjs`
+Pixymon should avoid:
 
-## 실행
+- price-only posts
+- market cap / dominance snapshot posts
+- fear-greed boilerplate
+- meaningless high-frequency output
+- over-safe, personality-free text
 
-설치:
+Every meaningful change should answer this question:
 
-```bash
-npm ci
+> Does this make Pixymon feel more human, more memorable, and more worth following?
+
+If the answer is no, it is probably just automation work, not product work.
+
+## Architecture
+
+### Core Loop
+
+1. `Feed`
+   - Collect onchain, market, news, and social signals
+   - Normalize them into nutrients and trend events
+
+2. `Digest`
+   - Score freshness, trust, consistency, and signal quality
+   - Convert accepted nutrients into XP and memory updates
+
+3. `Evolve`
+   - Update stage, soul state, and active abilities
+   - Track recurring reflections and internal narrative drift
+
+4. `Plan`
+   - Select a lane (`protocol`, `ecosystem`, `regulation`, `macro`, `onchain`, `market-structure`)
+   - Pair one event with evidence anchors
+   - Reject low-quality or low-signal plans
+
+5. `Act`
+   - Post, quote, or reply
+   - Enforce budget guardrails and duplicate checks
+
+6. `Reflect`
+   - Record narrative outputs
+   - Log phrase audit hits
+   - Feed reflection memos back into memory
+
+### Supporting Loops
+
+- `Budget`
+  - X API guard
+  - Anthropic guard
+  - total spend guard
+- `Caching`
+  - shared run context
+  - prompt caching for repeated prefixes
+- `Batch`
+  - queue / sync for non-urgent digest reflections
+- `Audit`
+  - narrative observation log
+  - suspicious phrase summary
+- `Lexicon`
+  - rewrite internal analyst jargon into natural Korean
+
+## Tech Stack
+
+### Core
+
+- Node.js 20+
+- TypeScript 5
+- `twitter-api-v2`
+- `@anthropic-ai/sdk`
+- `dotenv`
+- `tsx` for local development
+- Node built-in test runner for regression coverage
+
+### Internal Services
+
+- `src/services/engagement.ts`
+  - main planning and action loop
+- `src/services/engagement/event-evidence.ts`
+  - event selection, evidence pairing, structural fallback planning
+- `src/services/llm.ts`
+  - Claude requests, routing, caching hooks
+- `src/services/memory.ts`
+  - evolving state, soul prompt context, stored post memory
+- `src/services/twitter.ts`
+  - posting, reply search, trend-target filtering
+- `src/services/narrative-observer.ts`
+  - narrative event logging and audit summaries
+- `src/services/narrative-lexicon.ts`
+  - rewrite and suspicious-pattern rules
+- `src/services/x-api-budget.ts`
+  - X API budget tracking
+- `src/services/anthropic-budget.ts`
+  - Anthropic budget tracking
+- `src/services/anthropic-admin-usage.ts`
+  - optional usage sync from Anthropic admin endpoints
+
+## Runtime and Operations
+
+### Recommended Operating Mode
+
+Use slow production first.
+The goal is stable runtime, better posts, and clean audit logs, not brute-force volume.
+
+Recommended baseline:
+
+```env
+TEST_MODE=false
+SCHEDULER_MODE=true
+DAILY_ACTIVITY_TARGET=8
+POST_MIN_INTERVAL_MINUTES=60
+POST_LANGUAGE=ko
+REPLY_LANGUAGE_MODE=match
+
+X_API_DAILY_MAX_USD=0.50
+ANTHROPIC_DAILY_MAX_USD=0.50
+TOTAL_DAILY_MAX_USD=1.00
+
+TREND_TWEET_MIN_SOURCE_TRUST=0.45
+TREND_TWEET_MIN_ENGAGEMENT=12
 ```
 
-로컬 안전 실행(권장):
+### Language Policy
 
-```bash
-TEST_MODE=true SCHEDULER_MODE=false npm run dev
-```
+- Posts are Korean-first
+- Replies follow the incoming language when needed
+- Narrative lexicon and surface finalization are tuned primarily for Korean cadence
 
-저속 실운영(권장 시작값):
+### Observability
 
-```bash
-TEST_MODE=false \
-SCHEDULER_MODE=true \
-DAILY_ACTIVITY_TARGET=4 \
-DAILY_TARGET_TIMEZONE=Asia/Seoul \
-POST_MIN_INTERVAL_MINUTES=180 \
-npm run dev
-```
+Important files:
 
-로컬 리허설(게시글/말투 확인, 실제 발행 없음):
-
-```bash
-TEST_MODE=true \
-SCHEDULER_MODE=false \
-ACTION_MODE=paper \
-STATE_RECONCILE_ON_BOOT=true \
-ACTION_TWO_PHASE_COMMIT=true \
-npm run dev
-```
-
-리허설 결과 확인 파일:
-
-- `data/STATE.md`
-- `data/operational-state.json`
 - `data/memory.json`
+- `data/operational-state.json`
+- `data/metrics-events.ndjson`
 - `data/narrative-observation.ndjson`
 - `data/narrative-phrase-audit.json`
 
-빌드/테스트:
-
-```bash
-npm run build
-npm test
-```
-
-narrative audit 리포트:
+Narrative audit report:
 
 ```bash
 npm run audit:narrative
 ```
 
-## 권장 기본 설정
+## Development
 
-```env
-POST_LANGUAGE=ko
-REPLY_LANGUAGE_MODE=match
-ENFORCE_KOREAN_POSTS=true
+Install:
 
-X_API_COST_GUARD_ENABLED=true
-X_API_DAILY_MAX_USD=0.10
-X_API_DAILY_READ_REQUEST_LIMIT=8
-X_API_DAILY_CREATE_REQUEST_LIMIT=10
-
-ANTHROPIC_COST_GUARD_ENABLED=true
-ANTHROPIC_DAILY_MAX_USD=0.40
-TOTAL_COST_GUARD_ENABLED=true
-TOTAL_DAILY_MAX_USD=0.50
-
-ANTHROPIC_PROMPT_CACHING_ENABLED=true
-ANTHROPIC_USAGE_API_ENABLED=false
-
-NARRATIVE_AUDIT_ENABLED=true
-NARRATIVE_AUDIT_LOG_PATH=data/narrative-observation.ndjson
-NARRATIVE_AUDIT_SUMMARY_PATH=data/narrative-phrase-audit.json
+```bash
+npm ci
 ```
 
-## 현재 운영 루프
+Local safe rehearsal:
 
-상세는 `docs/plan.md`를 기준으로 합니다.
+```bash
+TEST_MODE=true SCHEDULER_MODE=false npm run dev
+```
 
-지금 우선순위:
+Build:
 
-1. 저속 실운영 2~3일
-2. `npm run audit:narrative`와 `data/narrative-phrase-audit.json` 확인
-3. hit 상위 라벨만 `src/services/narrative-lexicon.ts` 보강
-4. reply / mention 실전 품질 개선으로 이동
+```bash
+npm run build
+```
+
+Test:
+
+```bash
+npm test
+```
+
+Tests run with isolated `.test-data/` storage so local production memory and audit files are not mutated during CI-like checks.
+
+## Current Constraints
+
+Pixymon is still in a build-and-observe phase.
+
+The main remaining constraints are:
+
+- runtime reliability across long local sessions
+- reply volume staying low because target safety filters are strict
+- some fallback posts still being more functional than truly memorable
+- planner quality still needs tightening around event/evidence contracts under weak news conditions
+
+## Project Documents
+
+- `concept.md`
+  - product north star and decision filter
+- `AGENTS.md`
+  - workspace and integration rules
+- `docs/agent-workflow.md`
+  - operator / workspace workflow
+- `docs/plan.md`
+  - implementation roadmap and review overlay
+
+## Practical Direction
+
+The near-term path is simple:
+
+1. keep Pixymon running reliably
+2. observe 1-2 days of real outputs
+3. patch only what shows up in logs, memory, and narrative audits
+4. push Pixymon toward character gravity, not just automation throughput
+
+If Pixymon becomes a recognizable character IP, the operator behind it becomes legible too.
