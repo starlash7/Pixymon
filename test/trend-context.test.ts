@@ -729,6 +729,72 @@ test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence
   );
 });
 
+test("planEventEvidenceAct keeps generic onchain event on non-price evidence pair", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:onchain:1",
+        lane: "onchain",
+        headline: "체인 위 흐름이 실제로 달라지는 지점부터 다시 본다",
+        summary: "온체인 흐름을 가격보다 먼저 확인한다.",
+        source: "news:coindesk-rss",
+        trust: 0.74,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        keywords: ["온체인", "흐름"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n1",
+        source: "onchain",
+        category: "network-fee",
+        label: "BTC 네트워크 수수료",
+        value: "1 sat/vB",
+        evidence: "BTC network fees stayed low near 1 sat/vB",
+        trust: 0.83,
+        freshness: 0.94,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.8 },
+      },
+      {
+        id: "n2",
+        source: "onchain",
+        category: "mempool",
+        label: "BTC 멤풀 대기열",
+        value: "38,000 tx",
+        evidence: "Mempool backlog stayed near 38k transactions",
+        trust: 0.81,
+        freshness: 0.92,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.78 },
+      },
+      {
+        id: "n3",
+        source: "market",
+        category: "price-action",
+        label: "BTC 24h 변동",
+        value: "+0.41%",
+        evidence: "BTC moved 0.41% over 24 hours",
+        trust: 0.72,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.64 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  assert.deepEqual(
+    plan?.evidence.map((item) => item.label),
+    ["BTC 네트워크 수수료", "BTC 멤풀 대기열"]
+  );
+});
+
 test("planEventEvidenceAct avoids price-like evidence for ecosystem lane when structural pair exists", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({

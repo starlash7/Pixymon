@@ -207,7 +207,7 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.observability.enabled, true);
       assert.equal(config.observability.stdoutJson, true);
       assert.equal(config.observability.eventLogPath, "data/metrics-events.ndjson");
-      assert.equal(config.engagement.postMinIntervalMinutes, 90);
+      assert.equal(config.engagement.postMinIntervalMinutes, 60);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
       assert.equal(config.engagement.nutrientMinDigestScore, 0.5);
       assert.equal(config.engagement.nutrientMaxIntakePerCycle, 12);

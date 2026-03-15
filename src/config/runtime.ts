@@ -69,7 +69,7 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postGenerationMaxAttempts: 2,
   postMaxChars: 220,
   postMinLength: 20,
-  postMinIntervalMinutes: 90,
+  postMinIntervalMinutes: 60,
   maxPostsPerCycle: 1,
   nutrientMinDigestScore: 0.5,
   nutrientMaxIntakePerCycle: 12,

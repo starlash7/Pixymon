@@ -291,6 +291,15 @@ export function planEventEvidenceAct(params: {
       if (!pair) {
         return null;
       }
+      if (event.lane === "onchain" && countPriceLikeEvidence(pair.evidence) > 0) {
+        const onchainOnlyPair = selectEvidencePairForLane(event.lane, evidence, {
+          requireOnchainEvidence,
+          requireCrossSourceEvidence: false,
+        });
+        if (onchainOnlyPair && countPriceLikeEvidence(onchainOnlyPair.evidence) < countPriceLikeEvidence(pair.evidence)) {
+          pair = onchainOnlyPair;
+        }
+      }
       if (
         event.source === "evidence:structural-fallback" &&
         event.lane === "onchain" &&
