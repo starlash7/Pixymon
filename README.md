@@ -1,4 +1,3 @@
-# Pixymon
 
 <p align="center">
   <img src="./docs/assets/pixymon-sprite.jpg" alt="Pixymon sprite sheet" width="680" />
