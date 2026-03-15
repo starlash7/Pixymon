@@ -524,7 +524,7 @@ test("buildTrendEvents filters low-quality ranking and prediction headlines", ()
   });
 
   assert.equal(events.length, 1);
-  assert.match(events[0].headline, /업그레이드|프로토콜|다시 본다/);
+  assert.match(events[0].headline, /업그레이드|프로토콜|코드 변경|사용 흔적|살핀다|확인한다|짚는다/);
 });
 
 test("buildTrendEvents filters market snapshot headlines without structural signal", () => {
@@ -668,7 +668,7 @@ test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence
       {
         id: "event:fallback:onchain:fees:mempool",
         lane: "onchain",
-        headline: "체인 위가 실제로 붐비는지와 대기 거래가 얼마나 쌓이는지가 같은 방향으로 이어지는지부터 다시 본다",
+        headline: "체인 위가 실제로 붐비는지와 대기 거래가 얼마나 쌓이는지가 같은 방향으로 붙는지부터 가린다",
         summary: "가격 스냅샷보다 체인 혼잡 신호를 먼저 확인한다.",
         source: "evidence:structural-fallback",
         trust: 0.78,
@@ -736,7 +736,7 @@ test("planEventEvidenceAct keeps generic onchain event on non-price evidence pai
       {
         id: "event:onchain:1",
         lane: "onchain",
-        headline: "체인 위 흐름이 실제로 달라지는 지점부터 다시 본다",
+        headline: "체인 위에서 먼저 달라지는 흔적이 어디인지 짚는다",
         summary: "온체인 흐름을 가격보다 먼저 확인한다.",
         source: "news:coindesk-rss",
         trust: 0.74,
@@ -802,7 +802,7 @@ test("planEventEvidenceAct avoids price-like evidence for ecosystem lane when st
       {
         id: "event:ecosystem:1",
         lane: "ecosystem",
-        headline: "생태계 이야기와 실제 사용 흔적이 맞물리는지 다시 본다",
+        headline: "생태계가 살아 있다는 말이 정말 사용 흔적으로 이어지는지 확인한다",
         summary: "사용성 변화와 참여 흐름을 구조적으로 본다.",
         source: "news:coindesk-rss",
         trust: 0.72,

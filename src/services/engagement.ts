@@ -2016,7 +2016,7 @@ function buildLocalQuoteComment(params: {
       `${scene}. 나는 ${a}와 ${b} 중 먼저 흔들리는 쪽부터 다시 본다.`,
       `${a}와 ${b}가 같은 말을 오래 하지 않으면 이 장면은 다시 읽게 된다.`,
       memo
-        ? `${scene}. 방금 남은 메모도 결국 ${memo} 쪽이었어서, ${a}와 ${b}를 한 번 더 겹쳐 보게 된다.`
+        ? `${scene}. 방금 남긴 메모도 비슷했다. 그래서 ${a}와 ${b}를 한 번 더 겹쳐 보게 된다.`
         : `${scene}. ${a}와 ${b}가 끝까지 같은 말을 하지 않으면 이 읽기는 바로 바꾼다.`,
     ];
     return finalizeNarrativeSurface(pool[seed % pool.length], "ko", params.maxChars, "quote");
@@ -2079,8 +2079,38 @@ function isUsableLocalQuoteTarget(text: string): boolean {
 }
 
 function formatEvidenceToken(label: string, value: string, maxChars: number): string {
-  const normalized = sanitizeTweetText([label, value].map((item) => String(item || "").trim()).filter(Boolean).join(" "));
-  return normalized.slice(0, maxChars).trim();
+  const rawLabel = sanitizeTweetText(String(label || "").trim());
+  const rawValue = sanitizeTweetText(String(value || "").trim());
+  const merged = sanitizeTweetText([rawLabel, rawValue].filter(Boolean).join(" "));
+  const exactHumanized: Array<[RegExp, string]> = [
+    [/^BTC 네트워크 수수료$/i, rawValue ? `체인 수수료 ${rawValue}` : "체인 수수료"],
+    [/^BTC 멤풀 대기열$/i, rawValue ? `대기 거래 ${rawValue}` : "대기 거래"],
+    [/^고래\/대형주소 활동 프록시$/i, "큰손 움직임"],
+    [/^스테이블코인 총공급 플로우$/i, "대기 유동성 흐름"],
+    [/^거래소 순유입 프록시$/i, "거래소 유입 흐름"],
+  ];
+
+  for (const [pattern, replacement] of exactHumanized) {
+    if (pattern.test(rawLabel)) {
+      return sanitizeTweetText(replacement).slice(0, maxChars).trim();
+    }
+  }
+
+  if (/(24h 변동|24h change|sold off|selloff|sold off first|rallied|surged|jumped|fell|dropped|price)/i.test(merged)) {
+    return "먼저 흔들린 건 가격인지";
+  }
+  if (!rawLabel && /^[-+]?\d+(?:[.,]\d+)?%$/.test(rawValue)) {
+    return "퍼센트보다 방향";
+  }
+  if (/[A-Za-z]{6,}/.test(merged) && !/[가-힣]/.test(merged)) {
+    if (/network use|usage|activity/i.test(merged)) return "실제 사용 흔적";
+    if (/token value|valuation/i.test(merged)) return "토큰 가격 서사";
+    if (/liquidity/i.test(merged)) return "유동성 흐름";
+    if (/volume/i.test(merged)) return "거래량 흐름";
+    return "시장 반응";
+  }
+
+  return merged.slice(0, maxChars).trim();
 }
 
 function buildPendingDigestReflectionHint(
@@ -2097,16 +2127,16 @@ function buildPendingDigestReflectionHint(
   if (language === "ko") {
     if (anchors.length >= 2) {
       return sanitizeTweetText(
-        `${anchors[0]}와 ${anchors[1]}가 같은 말을 하는지부터 다시 본다${rejectLine ? `, ${rejectLine}는 이번엔 일단 뒤로 둔다` : ""}`
+        `${anchors[0]}와 ${anchors[1]}가 끝까지 같은 말을 하는지부터 가린다${rejectLine ? `, ${rejectLine}는 이번엔 일단 뒤로 둔다` : ""}`
       ).slice(0, 88);
     }
     if (anchors.length === 1) {
       return sanitizeTweetText(
-        `${anchors[0]}가 버티는지부터 다시 본다${rejectLine ? `, ${rejectLine}는 아직 보류한다` : ""}`
+        `${anchors[0]}가 끝까지 버티는지부터 살핀다${rejectLine ? `, ${rejectLine}는 아직 보류한다` : ""}`
       ).slice(0, 88);
     }
     return rejectLine
-      ? sanitizeTweetText(`${rejectLine}를 서두르지 않고, 남은 신호부터 다시 맞춰 본다`).slice(0, 88)
+      ? sanitizeTweetText(`${rejectLine}를 서두르지 않고, 남은 신호부터 차례대로 맞춰 본다`).slice(0, 88)
       : "";
   }
 
@@ -2623,7 +2653,7 @@ function buildNutritionNarrativeHint(params: {
 
   const shortPool = [
     "이럴 때는 단서를 더 모으기보다, 이미 잡힌 단서를 끝까지 검증하는 편이 낫다.",
-    "나는 숫자를 바로 믿지 않는다. 왜 움직였는지부터 다시 본다.",
+    "나는 숫자를 바로 믿지 않는다. 왜 움직였는지부터 짚는다.",
     "오늘은 반응보다 원인을 먼저 따라가 보려 한다.",
     "나는 단서를 빨리 모으는 것보다, 틀린 해석을 빨리 버리는 쪽을 택한다.",
     "지금은 많이 말하는 것보다, 맞는 단서를 남기는 편이 더 중요하다.",
@@ -2639,15 +2669,15 @@ function buildNutritionNarrativeHint(params: {
   const withNutrient =
     nutrientLabel.length >= 2
       ? [
-          `지금은 ${nutrientLabel} 쪽부터 다시 확인한다.`,
-          `이번엔 ${nutrientLabel}부터 다시 짚어본다.`,
+          `지금은 ${nutrientLabel} 쪽부터 먼저 확인한다.`,
+          `이번엔 ${nutrientLabel}부터 천천히 짚는다.`,
           `${nutrientLabel}가 끝까지 버티는지 먼저 본다.`,
-          `먼저 ${nutrientLabel} 쪽 흐름이 이어지는지 확인한다.`,
+          `${nutrientLabel} 쪽 흐름이 이어지는지부터 가린다.`,
         ][seed % 4]
       : [
-          "이번에는 핵심 단서부터 다시 짚어본다.",
-          "지금은 먼저 흔들리는 단서부터 다시 본다.",
-          "이번엔 제일 약한 고리부터 다시 확인한다.",
+          "이번에는 핵심 단서부터 천천히 짚는다.",
+          "지금은 먼저 흔들리는 단서부터 가린다.",
+          "이번엔 제일 약한 고리부터 먼저 확인한다.",
           "우선 핵심 단서가 끝까지 버티는지부터 본다.",
         ][seed % 4];
   const shortLine = `${shortPool[seed % shortPool.length]} ${withNutrient}`;
@@ -4756,9 +4786,9 @@ function normalizeKoContractHeadline(text: string, seedHint: string = ""): strin
     const left = importantMatch[1].trim();
     const right = importantMatch[2].trim();
     const pool = [
-      `${left}보다 ${right} 쪽이 더 중요하게 느껴진다`,
-      `이번엔 ${left}보다 ${right} 쪽을 먼저 붙잡게 된다`,
-      `결국 ${left}보다 ${right} 쪽에서 이야기가 갈린다는 생각이 남는다`,
+      `이번 장면에선 ${left}보다 ${right}가 더 중요해 보인다`,
+      `이번엔 ${left}보다 ${right}를 먼저 확인해야 할 것 같다`,
+      `${left}보다 ${right}가 먼저 눈에 들어오는 날이다`,
     ];
     return pool[stableSeedForPrelude(`${cleaned}|important|${seedHint}`) % pool.length];
   }
@@ -4769,8 +4799,8 @@ function normalizeKoContractHeadline(text: string, seedHint: string = ""): strin
     const right = decideMatch[2].trim();
     const pool = [
       `${left}는 결국 ${right}에서 먼저 갈린다`,
-      `요즘은 ${left}가 ${right}에서 먼저 정해지는 장면으로 읽힌다`,
-      `이번엔 ${left}가 ${right}에서 먼저 갈리는지만 보게 된다`,
+      `요즘은 ${left}가 ${right}에서 먼저 정해진다는 쪽이 더 또렷하다`,
+      `이번엔 ${left}보다 ${right} 쪽에서 답이 먼저 나온다고 느껴진다`,
     ];
     return pool[stableSeedForPrelude(`${cleaned}|decide|${seedHint}`) % pool.length];
   }
@@ -4780,9 +4810,9 @@ function normalizeKoContractHeadline(text: string, seedHint: string = ""): strin
     const left = retentionQuestionMatch[1].trim();
     const right = retentionQuestionMatch[2].trim();
     const pool = [
-      `요즘은 ${left}가 ${right}보다 오래 남는지부터 다시 보게 된다`,
+      `요즘은 ${left}가 ${right}보다 오래 남는지부터 보게 된다`,
       `결국 ${left}가 ${right}보다 오래 버티는지만 확인하게 된다`,
-      `이번엔 ${left}가 ${right}보다 오래 남는 쪽인지부터 본다`,
+      `이번엔 ${left}가 ${right}보다 오래 가는 쪽인지부터 본다`,
     ];
     return pool[stableSeedForPrelude(`${cleaned}|retain|${seedHint}`) % pool.length];
   }
@@ -4802,7 +4832,7 @@ function normalizeKoContractHeadline(text: string, seedHint: string = ""): strin
   if (/생각$/.test(cleaned)) {
     const pool = [
       `${cleaned}이 오늘 유독 오래 남는다`,
-      `오늘은 ${cleaned} 쪽으로 자꾸 다시 돌아오게 된다`,
+      `오늘은 자꾸 ${cleaned} 쪽으로 생각이 돌아간다`,
       `${cleaned}이 생각보다 오래 머문다`,
     ];
     return pool[stableSeedForPrelude(`${cleaned}|thought|${seedHint}`) % pool.length];
@@ -4844,9 +4874,9 @@ function buildHardContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|hard|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 나란히 놓고 본다. 오늘은 누가 먼저 움직였는지부터 가린다. 둘이 서로 딴소리를 하면 이 읽기는 바로 접는다. 끝까지 버틴 근거만 다음 판단으로 넘긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 먼저 반응 순서를 맞춰 보고 어긋나면 여기서 해석을 접는다. 마지막까지 살아남은 쪽만 조용히 남겨 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 사이에서 먼저 흔들리는 쪽을 본다. 예상과 다른 축이 먼저 움직이면 이 읽기는 바로 버린다. 지금은 버틴 단서 하나만 짧게 적어 둔다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 나란히 놓고 누가 먼저 움직였는지부터 가린다. 둘이 서로 딴소리를 하면 오늘 해석은 여기서 멈춘다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘을 한 화면에 붙여 둔다. 반응 순서가 어긋나면 결론 대신 메모만 짧게 남긴다.`,
+    `${headline}. ${aToken}, ${bToken}, 이 둘 사이에서 먼저 흔들리는 쪽을 본다. 예상과 다른 축이 먼저 움직이면 지금 읽기는 버린다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4884,9 +4914,9 @@ function buildRescueContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|rescue|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 먼저 붙여 놓는다. 오늘은 누가 먼저 움직였는지만 본다. 흐름이 어긋나면 이 읽기는 접는다. 끝까지 버티는 근거가 아니면 여기선 더 말하지 않는다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같은 줄에 둔다. 반응 순서가 예상과 다르면 여기서 바로 생각을 바꾼다. 마지막까지 남는 근거만 따로 메모해 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 기울어지는 쪽을 본다. 전제가 흔들리면 이 읽기는 더 밀지 않는다. 마지막까지 버틴 단서만 다음 판단으로 넘긴다.`,
+    `${headline}. 먼저 ${aToken}와 ${bToken}를 붙여 놓고 누가 먼저 움직이는지만 가린다. 흐름이 어긋나면 여기서 순서를 다시 세운다.`,
+    `${headline}. ${aToken}와 ${bToken}를 같은 줄에 둔 채, 예상보다 먼저 미끄러지는 쪽이 있는지 본다. 다르면 결론보다 메모만 남긴다.`,
+    `${headline}. 오늘은 ${aToken}보다 ${bToken}가 얼마나 따라오는지에 더 눈이 간다. 전제가 흔들리면 여기서 문장을 짧게 끊는다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4916,14 +4946,14 @@ function buildEmergencyContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 먼저 같이 본다. 오늘은 먼저 움직인 쪽만 확인한다. 흐름이 꺾이면 이 읽기는 접는다. 마지막까지 남는 근거만 다음 판단으로 넘긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 살아남은 근거만 따로 메모해 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 마지막까지 버틴 단서만 남겨 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 먼저 흔들리는 쪽을 본다. 먼저 움직인 축이 예상과 다르면 이 읽기는 버린다. 그 뒤에도 남는 근거만 다시 적는다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 겹쳐 놓고 어디서 먼저 틈이 나는지 본다. 순서가 틀리면 지금 생각은 접는다. 하루를 넘겨도 남는 쪽만 다시 적는다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 붙여 놓고 먼저 반응 속도부터 잰다. 예상보다 다른 축이 빠르면 바로 다시 읽는다. 오래 남은 쪽만 조심스럽게 이어 간다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘이 끝까지 같은 쪽을 보는지부터 확인한다. 흐름이 갈라지면 여기서 생각을 바꾼다. 남는 근거만 짧게 남겨 둔다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 중 어느 쪽이 먼저 무너지는지 본다. 전제가 어긋나면 여기서 처음부터 다시 읽는다. 끝까지 남는 근거 하나만 붙들고 간다.`,
+    `${headline}. ${aToken}와 ${bToken}를 같은 화면에 붙여 두고 먼저 약해지는 쪽만 고른다. 예상이 틀리면 오늘 결론은 여기서 멈춘다.`,
+    `${headline}. 지금은 ${aToken}와 ${bToken}가 같은 쪽을 가리키는지부터 가린다. 엇갈리기 시작하면 이 문장은 더 밀지 않는다.`,
+    `${headline}. 오늘은 ${aToken} 옆에 ${bToken}를 붙여 놓고 약한 고리부터 찾는다. 흐름이 끊기면 해석도 여기서 바꾼다.`,
+    `${headline}. ${aToken}와 ${bToken} 중 먼저 흔들리는 축만 짧게 잡는다. 예상과 다르면 이 장면은 여기서 접어 둔다.`,
+    `${headline}. ${aToken}와 ${bToken}를 겹쳐 놓으면 어디서 틈이 나는지 먼저 보인다. 순서가 틀리면 지금 생각은 접는다.`,
+    `${headline}. ${aToken}와 ${bToken}, 이 두 단서의 반응 속도만 먼저 잰다. 예상보다 다른 축이 빠르면 잠깐 멈춘다.`,
+    `${headline}. ${aToken}와 ${bToken}가 끝까지 같이 가는지 확인한다. 흐름이 갈라지면 남는 신호만 챙기고 물러난다.`,
+    `${headline}. ${aToken}와 ${bToken} 중 어느 쪽이 먼저 무너지는지만 본다. 전제가 어긋나면 이 장면은 다시 쓰지 않는다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
