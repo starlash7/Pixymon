@@ -398,7 +398,7 @@ export function validateEventEvidenceContract(
     .map((token) => token.toLowerCase())
     .filter((token) => token.length >= 2)
     .slice(0, 12);
-  const eventHit = eventTokens.some((token) => normalized.includes(token));
+  const laneAnchorTokens = buildLaneAnchorTokens(plan.lane);
 
   let evidenceHitCount = 0;
   for (const evidence of plan.evidence.slice(0, 2)) {
@@ -411,6 +411,9 @@ export function validateEventEvidenceContract(
     });
     if (hit) evidenceHitCount += 1;
   }
+  const rawEventHit = eventTokens.some((token) => normalized.includes(token));
+  const laneAnchorHit = laneAnchorTokens.some((token) => normalized.includes(token));
+  const eventHit = rawEventHit || (laneAnchorHit && evidenceHitCount >= 1);
 
   if (!eventHit) {
     return {
@@ -433,6 +436,18 @@ export function validateEventEvidenceContract(
     eventHit,
     evidenceHitCount,
   };
+}
+
+function buildLaneAnchorTokens(lane: TrendLane): string[] {
+  const aliasMap: Record<TrendLane, string[]> = {
+    protocol: ["프로토콜", "업그레이드", "검증자", "합의", "테스트넷", "메인넷"],
+    ecosystem: ["생태계", "실사용", "지갑", "커뮤니티", "채택", "개발자"],
+    regulation: ["규제", "정책", "당국", "집행", "법원", "컴플라이언스"],
+    macro: ["매크로", "달러", "금리", "거시", "물가", "유동성"],
+    onchain: ["온체인", "체인", "주소", "멤풀", "수수료", "고래"],
+    "market-structure": ["유동성", "거래소", "체결", "호가", "거래량", "시장"],
+  };
+  return aliasMap[lane] || [];
 }
 
 export function buildEventEvidenceFallbackPost(
@@ -1146,7 +1161,44 @@ function dedupEvidence(items: OnchainEvidence[]): OnchainEvidence[] {
 function buildEvidenceAnchorTokens(evidence: OnchainEvidence): string[] {
   const merged = `${evidence.label} ${evidence.value} ${evidence.summary}`.toLowerCase();
   const tokens = merged.match(/\$[a-z]{2,10}\b|[a-z][a-z0-9-]{2,}|[가-힣]{2,}/g) || [];
-  return [...new Set(tokens.filter((token) => !EVIDENCE_TOKEN_STOP_WORDS.has(token)).slice(0, 8))];
+  const aliases = new Set<string>();
+  if (/(24h 변동|24h change|price|breakout|rally|surge|jump|fell|drop|sold off|selloff)/.test(merged)) {
+    aliases.add("가격");
+    aliases.add("변동");
+    aliases.add("흔들");
+    aliases.add("알트");
+    aliases.add("시장");
+  }
+  if (/(network fee|수수료|멤풀|mempool|address|고래|whale|stablecoin|유입)/.test(merged)) {
+    aliases.add("체인");
+    aliases.add("온체인");
+    aliases.add("수수료");
+    aliases.add("주소");
+    aliases.add("유입");
+  }
+  if (/(regulation|policy|sec|cftc|compliance|court|규제|정책|당국)/.test(merged)) {
+    aliases.add("규제");
+    aliases.add("정책");
+    aliases.add("당국");
+    aliases.add("집행");
+    aliases.add("반응");
+  }
+  if (/(usage|wallet|adoption|community|developer|ecosystem|실사용|사용|지갑|커뮤니티|생태계)/.test(merged)) {
+    aliases.add("실사용");
+    aliases.add("사용");
+    aliases.add("지갑");
+    aliases.add("커뮤니티");
+    aliases.add("생태계");
+  }
+  if (/(upgrade|mainnet|testnet|validator|consensus|rollup|firedancer|업그레이드|검증자|합의)/.test(merged)) {
+    aliases.add("업그레이드");
+    aliases.add("검증자");
+    aliases.add("합의");
+    aliases.add("운영");
+  }
+  return [...new Set([...tokens, ...aliases])]
+    .filter((token) => !EVIDENCE_TOKEN_STOP_WORDS.has(token))
+    .slice(0, 12);
 }
 
 function formatEvidenceAnchor(evidence: OnchainEvidence | undefined, language: "ko" | "en"): string {

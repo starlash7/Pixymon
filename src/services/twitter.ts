@@ -309,8 +309,15 @@ function isPreferredTrendReplyTarget(
   if (text.length < 30) return false;
   if (cashtagCount >= 3 || urlCount >= 1) return false;
   if (rules.blockSuspiciousPromo && isSuspiciousTrendReplyTarget(tweet, user)) return false;
-  if (!verified && followers < 3000) return false;
-  if (verified && followers < 500) return false;
+  if (!verified) {
+    const exceptionalSmallAccount =
+      followers >= 1200 &&
+      sourceTrust >= Math.max(0.58, hardMinTrust + 0.08) &&
+      evaluation.score >= Math.max(4.2, hardMinScore + 0.7) &&
+      evaluation.engagementRaw >= Math.max(20, hardMinEngagement + 8);
+    if (!exceptionalSmallAccount && followers < 3000) return false;
+  }
+  if (verified && followers < 300) return false;
   return true;
 }
 

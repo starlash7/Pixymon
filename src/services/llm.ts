@@ -12,7 +12,7 @@ export interface ClaudeTextLikeBlock {
 }
 
 export const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
-export const CLAUDE_RESEARCH_MODEL = process.env.ANTHROPIC_RESEARCH_MODEL || "claude-3-5-haiku-latest";
+export const CLAUDE_RESEARCH_MODEL = process.env.ANTHROPIC_RESEARCH_MODEL || "claude-haiku-4-5-20251001";
 export type ReplyToneMode = "signal" | "personal";
 export const REPLY_TONE_MODE = resolveReplyToneMode(process.env.REPLY_TONE_MODE);
 const TOOL_CALL_STRICT_VALIDATE = String(process.env.TOOL_CALL_STRICT_VALIDATE || "true").trim().toLowerCase() === "true";

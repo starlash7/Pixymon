@@ -668,6 +668,140 @@ test("buildTrendEvents localizes english-only ecosystem headlines into korean sc
   assert.match(events[0].headline, /실제 사용 흔적|토큰 가격 서사|다시 본다/);
 });
 
+test("validateEventEvidenceContract accepts lane anchor when evidence anchors are present", () => {
+  const createdAt = new Date().toISOString();
+  const plan = {
+    lane: "regulation" as const,
+    event: {
+      id: "event-regulation",
+      lane: "regulation" as const,
+      headline: "The SEC and CFTC join hands: State of Crypto",
+      summary: "Regulators aligned their messaging around crypto oversight.",
+      source: "news:rss",
+      trust: 0.78,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["sec", "cftc", "regulation"],
+    },
+    evidence: [
+      {
+        id: "ev1",
+        lane: "regulation" as const,
+        nutrientId: "n1",
+        source: "news" as const,
+        label: "규제 쪽 실제 움직임",
+        value: "포착",
+        summary: "Regulatory move picked up in official messaging.",
+        trust: 0.76,
+        freshness: 0.87,
+        capturedAt: createdAt,
+      },
+      {
+        id: "ev2",
+        lane: "onchain" as const,
+        nutrientId: "n2",
+        source: "onchain" as const,
+        label: "BTC 네트워크 수수료",
+        value: "2 sat/vB",
+        summary: "Fees stayed low near 2 sat/vB.",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+      },
+    ],
+    hasOnchainEvidence: true,
+    hasCrossSourceEvidence: true,
+    evidenceSourceDiversity: 2,
+    laneUsage: {
+      totalPosts: 0,
+      byLane: {
+        protocol: 0,
+        ecosystem: 0,
+        regulation: 0,
+        macro: 0,
+        onchain: 0,
+        "market-structure": 0,
+      },
+    },
+    laneProjectedRatio: 0.1,
+    laneQuotaLimited: false,
+  };
+
+  const contract = validateEventEvidenceContract(
+    "규제 말과 실제 반응이 어디서 갈라지는지 본다. 규제 쪽 실제 움직임과 BTC 네트워크 수수료 2 sat/vB를 같이 둔다.",
+    plan as any
+  );
+
+  assert.equal(contract.ok, true);
+});
+
+test("validateEventEvidenceContract accepts paraphrased price evidence aliases", () => {
+  const createdAt = new Date().toISOString();
+  const plan = {
+    lane: "ecosystem" as const,
+    event: {
+      id: "event-ecosystem",
+      lane: "ecosystem" as const,
+      headline: "생태계가 살아 있다는 말이 정말 사용 흔적으로 이어지는지 확인한다",
+      summary: "Usage narrative needs to survive beyond price action.",
+      source: "news:test",
+      trust: 0.78,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["생태계", "사용", "흔적"],
+    },
+    evidence: [
+      {
+        id: "ev1",
+        lane: "onchain" as const,
+        nutrientId: "n1",
+        source: "onchain" as const,
+        label: "BTC 네트워크 수수료",
+        value: "2 sat/vB",
+        summary: "Fees stayed near 2 sat/vB.",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+      },
+      {
+        id: "ev2",
+        lane: "ecosystem" as const,
+        nutrientId: "n2",
+        source: "market" as const,
+        label: "ETH 24h 변동",
+        value: "+8.78%",
+        summary: "ETH price moved sharply over 24h.",
+        trust: 0.74,
+        freshness: 0.87,
+        capturedAt: createdAt,
+      },
+    ],
+    hasOnchainEvidence: true,
+    hasCrossSourceEvidence: true,
+    evidenceSourceDiversity: 2,
+    laneUsage: {
+      totalPosts: 0,
+      byLane: {
+        protocol: 0,
+        ecosystem: 0,
+        regulation: 0,
+        macro: 0,
+        onchain: 0,
+        "market-structure": 0,
+      },
+    },
+    laneProjectedRatio: 0.1,
+    laneQuotaLimited: false,
+  };
+
+  const contract = validateEventEvidenceContract(
+    "생태계 서사가 실제 사용 흔적으로 이어지는지 본다. 체인 수수료 2 sat/vB와 알트 쪽이 먼저 들뜨는지를 같은 화면에 붙여 둔다.",
+    plan as any
+  );
+
+  assert.equal(contract.ok, true);
+});
+
 test("buildStructuralFallbackEventsFromEvidence builds structural events from onchain evidence", () => {
   const createdAt = new Date().toISOString();
   const evidence = buildOnchainEvidence([

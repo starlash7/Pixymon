@@ -10,7 +10,7 @@ test("isPreferredTrendReplyTarget rejects low-follower unverified account", () =
       created_at: new Date().toISOString(),
       text: "Onchain infra note with enough detail to look like a real market comment, not a short spam line.",
     },
-    { verified: false, public_metrics: { followers_count: 1200 } },
+    { verified: false, public_metrics: { followers_count: 900 } },
     { engagementRaw: 42, score: 5.2 },
     0.62,
     { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
@@ -29,6 +29,22 @@ test("isPreferredTrendReplyTarget accepts solid unverified account above relaxed
     { verified: false, public_metrics: { followers_count: 4200 } },
     { engagementRaw: 24, score: 4.4 },
     0.52,
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+  );
+  assert.equal(ok, true);
+});
+
+test("isPreferredTrendReplyTarget accepts smaller clean unverified account when trust and engagement are exceptional", () => {
+  const ok = __trendTargetTest.isPreferredTrendReplyTarget(
+    {
+      id: "1",
+      conversation_id: "1",
+      created_at: new Date().toISOString(),
+      text: "Detailed onchain thread with a clear thesis, no links, and enough context to justify a real reply without looking like a promo post.",
+    },
+    { verified: false, public_metrics: { followers_count: 1600 } },
+    { engagementRaw: 31, score: 4.9 },
+    0.68,
     { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, true);
