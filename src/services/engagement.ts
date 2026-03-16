@@ -726,6 +726,27 @@ export async function postTrendUpdate(
       lane: eventPlan.lane,
       acceptedNutrients: feedNutrients,
     });
+    const preferredEventAnchorKo = buildCompactEventAnchorLine(
+      eventPlan.lane,
+      eventPlan.event.headline,
+      `prompt|${eventPlan.event.id || ""}|ko`
+    );
+    const preferredEventAnchorEn = sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
+    const preferredEvidenceAnchors = eventPlan.evidence
+      .slice(0, 2)
+      .map((item) => formatEvidenceToken(item.label, item.value, 32));
+    const preferredConceptCueKo = buildPixymonConceptCue(
+      eventPlan.lane,
+      "ko",
+      nutritionHint.shortLine,
+      soulIntent.styleDirective
+    );
+    const preferredConceptCueEn = buildPixymonConceptCue(
+      eventPlan.lane,
+      "en",
+      nutritionHint.shortLine,
+      soulIntent.styleDirective
+    );
 
     if (TEST_NO_EXTERNAL_CALLS) {
       const localAnchors = eventPlan.evidence
@@ -779,7 +800,8 @@ export async function postTrendUpdate(
           localPost,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars,
-          nutritionHint.shortLine
+          nutritionHint.shortLine,
+          eventPlan.lane
         );
         localPost = enforceActionAndInvalidation(
           localPost,
@@ -885,7 +907,8 @@ export async function postTrendUpdate(
             localPost,
             runtimeSettings.postLanguage,
             runtimeSettings.postMaxChars,
-            nutritionHint.shortLine
+            nutritionHint.shortLine,
+            eventPlan.lane
           );
           localPost = enforceActionAndInvalidation(
             localPost,
@@ -1090,11 +1113,17 @@ export async function postTrendUpdate(
 - 문체 지시: ${soulIntent.styleDirective}
 
 핵심 이벤트(1개 고정):
-${eventPlan.event.headline}
+- raw headline: ${eventPlan.event.headline}
+- 글에서 우선 사용할 이벤트 문장: ${preferredEventAnchorKo}
 
 근거 2개(둘 다 필수):
-1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
-2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
+1) raw: ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
+   자연스러운 앵커: ${preferredEvidenceAnchors[0]}
+2) raw: ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
+   자연스러운 앵커: ${preferredEvidenceAnchors[1]}
+
+픽시몬 컨셉 씨앗(문장에 자연스럽게 1회만 섞기):
+${preferredConceptCueKo}
 
 글의 관점 레인: ${eventPlan.lane}
 오프닝 가이드: ${narrativePlan.openingDirective}
@@ -1131,6 +1160,7 @@ ${rejectionFeedback || "없음"}
 - 과장/확정적 투자 조언 금지
 - 금기 없이 자유롭게 상상해도 되지만 숫자/사실 왜곡 금지
 - 반드시 \"이벤트 1개 + 근거 2개\" 구조 유지
+- raw 영어 headline/evidence를 그대로 복붙하지 말고, 위의 한국어 이벤트/근거 앵커를 우선 사용
 - 반드시 \"지금 확인할 행동 1개 + 틀리는 조건(반증) 1개\"를 문장 안에 포함
 - 첫 문장에 오늘 무엇을 말하는지(핵심 이슈)를 평문으로 명확히 제시
 - 읽는 사람이 1회독으로 이해되도록 문장을 짧고 직접적으로 유지
@@ -1158,11 +1188,17 @@ Character intent (highest priority):
 - Voice directive: ${soulIntent.styleDirective}
 
 Primary event (exactly one):
-${eventPlan.event.headline}
+- raw headline: ${eventPlan.event.headline}
+- preferred event anchor: ${preferredEventAnchorEn}
 
 Required evidence (must include both):
-1) ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
-2) ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
+1) raw: ${eventPlan.evidence[0].label} ${eventPlan.evidence[0].value}
+   preferred anchor: ${preferredEvidenceAnchors[0]}
+2) raw: ${eventPlan.evidence[1].label} ${eventPlan.evidence[1].value}
+   preferred anchor: ${preferredEvidenceAnchors[1]}
+
+Pixymon concept cue (use once, naturally):
+${preferredConceptCueEn}
 
 Narrative lane: ${eventPlan.lane}
 Opening directive: ${narrativePlan.openingDirective}
@@ -1199,6 +1235,7 @@ Rules:
 - No financial certainty claims
 - You can be imaginative, but do not fabricate numbers/facts
 - Keep strict structure: one event + two evidence anchors
+- Do not copy raw English headline/evidence fragments if a cleaner anchor phrase is provided above
 - Include one concrete action to verify now, and one falsification condition
 - First sentence must state the core issue in plain language
 - Keep sentence flow straightforward enough to understand in one pass
@@ -1284,7 +1321,8 @@ Rules:
           candidate,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars,
-          nutritionHint.shortLine
+          nutritionHint.shortLine,
+          eventPlan.lane
         );
         candidate = enforceActionAndInvalidation(
           candidate,
@@ -1334,6 +1372,18 @@ Rules:
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
+        candidate = ensureTrendTokens(
+          candidate,
+          requiredTrendTokens,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        candidate = enforceActionAndInvalidation(
+          candidate,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        candidate = finalizeGeneratedText(candidate, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         const contract = validateEventEvidenceContract(candidate, eventPlan);
         if (!contract.ok) {
           rejectionFeedback = `event/evidence 계약 미충족(${contract.reason})`;
@@ -1471,7 +1521,8 @@ Rules:
           fallbackPost,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars,
-          nutritionHint.shortLine
+          nutritionHint.shortLine,
+          eventPlan.lane
         );
         fallbackPost = enforceActionAndInvalidation(
           fallbackPost,
@@ -1516,6 +1567,22 @@ Rules:
         fallbackPost = repairEventEvidenceContractPost(
           fallbackPost,
           eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        fallbackPost = ensureTrendTokens(
+          fallbackPost,
+          requiredTrendTokens,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        fallbackPost = enforceActionAndInvalidation(
+          fallbackPost,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
+        fallbackPost = finalizeGeneratedText(
+          fallbackPost,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars
         );
@@ -2769,7 +2836,8 @@ function ensurePixymonConceptSignal(
   text: string,
   language: "ko" | "en",
   maxChars: number,
-  hintLine: string
+  hintLine: string,
+  lane: TrendLane = "market-structure"
 ): string {
   const normalized = sanitizeTweetText(text);
   if (!normalized) return normalized;
@@ -2781,44 +2849,105 @@ function ensurePixymonConceptSignal(
     return normalized.slice(0, maxChars);
   }
   const bridge = sanitizeTweetText(hintLine || "").trim();
-  if (!bridge) {
-    return normalized.slice(0, maxChars);
-  }
+  const preferredBridge = buildPixymonConceptCue(lane, language, bridge, normalized);
   if (language === "ko") {
     const parts = normalized
       .split(/(?<=[.!?])/)
       .map((item) => item.trim())
       .filter((item) => item.length > 0);
     if (parts.length >= 2) {
-      const inserted = sanitizeTweetText([parts[0], bridge, ...parts.slice(1)].join(" "));
+      const inserted = sanitizeTweetText([parts[0], preferredBridge, ...parts.slice(1)].join(" "));
       if (inserted.length <= maxChars) {
         return inserted;
       }
     }
   }
-  const merged = sanitizeTweetText(`${normalized} ${bridge}`);
+  const merged = sanitizeTweetText(`${normalized} ${preferredBridge}`);
   if (merged.length <= maxChars) {
     return merged;
   }
-  const inline = language === "ko" ? injectInlineConceptKo(normalized) : injectInlineConceptEn(normalized);
+  const inline = language === "ko" ? injectInlineConceptKo(normalized, lane) : injectInlineConceptEn(normalized, lane);
   if (inline.length <= maxChars) {
     return inline;
   }
   return truncateAtWordBoundary(inline, maxChars);
 }
 
-function injectInlineConceptKo(text: string): string {
+function buildPixymonConceptCue(
+  lane: TrendLane,
+  language: "ko" | "en",
+  hintLine: string,
+  seedText: string
+): string {
+  const bridge = sanitizeTweetText(hintLine || "").trim();
+  if (language === "en") {
+    const poolByLane: Record<TrendLane, string[]> = {
+      protocol: [
+        "I only let code changes evolve into conviction after the logs survive digestion.",
+        "I treat upgrade traces as feed and keep only what still makes sense after digestion.",
+      ],
+      ecosystem: [
+        "I keep only the clues that survive digestion into real user habits.",
+        "I feed on usage clues first and evolve only what still holds after digestion.",
+      ],
+      regulation: [
+        "I do not evolve a regulation thesis until the chain side survives digestion too.",
+        "Policy headlines are just feed until digestion shows real behavior underneath.",
+      ],
+      macro: [
+        "Macro noise is only feed until digestion leaves one clue worth evolving.",
+        "I digest the macro wave first and keep only what survives into chain behavior.",
+      ],
+      onchain: [
+        "Onchain traces are feed first; I evolve only what survives digestion.",
+        "I keep chewing on raw chain traces until one clue is worth evolution.",
+      ],
+      "market-structure": [
+        "I treat orderflow as feed and evolve only the part that survives digestion.",
+        "I digest the microstructure first and keep only what still holds under pressure.",
+      ],
+    };
+    const pool = poolByLane[lane];
+    return pool[stableSeedForPrelude(`${lane}|${seedText}|${bridge}|en-concept`) % pool.length];
+  }
+
+  const poolByLane: Record<TrendLane, string[]> = {
+    protocol: [
+      "먹은 단서는 바로 진화로 넘기지 않는다. 코드 변화가 오래 버틸 때만 소화된 근거로 남긴다.",
+      "업그레이드 로그는 먼저 소화해 본다. 끝까지 버티는 단서만 진화 쪽으로 넘긴다.",
+    ],
+    ecosystem: [
+      "먹은 단서가 사람들 습관까지 번질 때만 소화된 신호로 남긴다.",
+      "실사용 흔적은 급히 삼키지 않는다. 오래 버티는 장면만 소화해 다음 진화에 쓴다.",
+    ],
+    regulation: [
+      "먹은 단서는 바로 믿지 않는다. 말과 행동이 맞을 때만 소화된 신호로 남긴다.",
+      "정책 문장은 먼저 씹어 본다. 실제 행동까지 번져야 진화할 근거로 남긴다.",
+    ],
+    macro: [
+      "거시 파동도 바로 삼키지 않는다. 체인 안쪽까지 남은 것만 소화해 진화에 쓴다.",
+      "먹은 단서는 오래 버텨야 한다. 매크로 소음이 빠지고 남은 것만 진화 쪽으로 넘긴다.",
+    ],
+    onchain: [
+      "체인에서 먹은 단서는 천천히 소화한다. 끝까지 남는 흔적만 진화 신호로 남긴다.",
+      "온체인 냄새는 급히 삼키지 않는다. 오래 남는 단서만 소화해 다음 진화에 보탠다.",
+    ],
+    "market-structure": [
+      "먹은 단서는 체결까지 버텨야 한다. 끝까지 남은 흔적만 소화해 다음 진화에 넘긴다.",
+      "시장 구조 단서는 급히 삼키면 흐려진다. 버틴 흐름만 소화해 진화 신호로 남긴다.",
+    ],
+  };
+  const pool = poolByLane[lane];
+  const seed = stableSeedForPrelude(`${lane}|${seedText}|${bridge}|ko-concept`);
+  if (bridge && bridge.length >= 12 && bridge.length <= 80) {
+    return [pool[seed % pool.length], bridge][seed % 2];
+  }
+  return pool[seed % pool.length];
+}
+
+function injectInlineConceptKo(text: string, lane: TrendLane): string {
   const normalized = sanitizeTweetText(text);
-  const conceptTailPool = [
-    "먹은 단서가 버티는지 한 번 더 본다.",
-    "단서를 급히 넘기지 않고 끝까지 소화해 본다.",
-    "신호를 한 번 더 씹어 보고 남는 것만 말한다.",
-    "근거가 버티는지 확인한 뒤에야 다음 문장을 고른다.",
-    "이 장면을 통과한 근거만 다음 판단에 남긴다.",
-    "지금은 맞은 문장보다 버틴 단서를 더 믿는다.",
-    "끝까지 살아남은 근거만 조용히 적어 둔다.",
-  ];
-  const tail = conceptTailPool[stableSeedForPrelude(normalized) % conceptTailPool.length];
+  const tail = buildPixymonConceptCue(lane, "ko", "", normalized);
   if (/^(?:오늘\s*핵심\s*장면은|이번\s*사이클의\s*출발점은|지금\s*먼저\s*확인할\s*쟁점은|핵심만\s*먼저\s*말하면|한\s*줄\s*요지는|먼저\s*짚을\s*포인트는|지금\s*시장이\s*묻는\s*질문은|내가\s*지금\s*붙잡는\s*장면은)/.test(normalized)) {
     return sanitizeTweetText(`${normalized} ${tail}`);
   }
@@ -2828,12 +2957,13 @@ function injectInlineConceptKo(text: string): string {
   return sanitizeTweetText(`${normalized} ${tail}`);
 }
 
-function injectInlineConceptEn(text: string): string {
+function injectInlineConceptEn(text: string, lane: TrendLane): string {
   const normalized = sanitizeTweetText(text);
+  const bridge = buildPixymonConceptCue(lane, "en", "", normalized);
   if (/^i\s+/i.test(normalized)) {
     return sanitizeTweetText(normalized.replace(/^i\s+/i, "I digest signals first and "));
   }
-  return sanitizeTweetText(`Pixymon feed/digest mode first. ${normalized}`);
+  return sanitizeTweetText(`${bridge} ${normalized}`);
 }
 
 function ensureLeadIssueAnchor(
@@ -2878,10 +3008,10 @@ function ensureLeadIssueAnchor(
   if (hasDomain || hasDomainInLeadWindow) {
     return normalized.slice(0, maxChars);
   }
-  if (looksSceneAnchored) {
-    return normalized.slice(0, maxChars);
-  }
   if (language === "en") {
+    if (looksSceneAnchored) {
+      return truncateAtWordBoundary(`In crypto terms, ${normalized}`, maxChars);
+    }
     const laneLabel: Record<TrendLane, string> = {
       protocol: "Protocol",
       ecosystem: "Ecosystem",
@@ -2891,6 +3021,19 @@ function ensureLeadIssueAnchor(
       "market-structure": "Market-structure",
     };
     return truncateAtWordBoundary(`From a ${laneLabel[lane].toLowerCase()} lens, ${normalized}`, maxChars);
+  }
+  if (looksSceneAnchored) {
+    const laneNudgeKo: Record<TrendLane, string[]> = {
+      protocol: ["프로토콜 쪽으로 좁히면", "코드 얘기로 좁히면"],
+      ecosystem: ["생태계 쪽으로 좁히면", "사용자 쪽으로 좁히면"],
+      regulation: ["규제 쪽으로 좁히면", "정책 얘기로 좁히면"],
+      macro: ["매크로 쪽으로 좁히면", "거시 변수까지 얹어 보면"],
+      onchain: ["온체인 쪽으로 좁히면", "체인 안쪽으로 좁히면"],
+      "market-structure": ["시장 구조로 좁히면", "체결 쪽으로 좁히면"],
+    };
+    const pool = laneNudgeKo[lane];
+    const lead = pool[stableSeedForPrelude(`${lane}|${normalized}|lead-nudge`) % pool.length];
+    return truncateAtWordBoundary(`${lead} ${normalized}`, maxChars);
   }
   const laneLeadKo: Record<TrendLane, string[]> = {
     protocol: [
@@ -3051,15 +3194,18 @@ function ensureEventEvidenceAnchors(
     return truncateAtWordBoundary(normalized, maxChars);
   }
   const missingTokens = [!hasA ? aToken : "", !hasB ? bToken : ""].filter(Boolean);
+  const bothMissing = !hasA && !hasB;
   const koClauses = [
+    bothMissing ? `이 장면에선 ${aToken}와 ${bToken}를 같이 본다.` : "",
     `근거는 ${missingTokens.join(", ")}.`,
     `단서는 ${missingTokens.join(" · ")}.`,
     `${missingTokens.join(" · ")}부터 다시 본다.`,
-  ];
+  ].filter(Boolean);
   const enClauses = [
+    bothMissing ? `I keep ${aToken} and ${bToken} on the same screen.` : "",
     `Core anchors are ${missingTokens.join(" and ")}.`,
     `I keep ${missingTokens.join(" / ")} on the same screen.`,
-  ];
+  ].filter(Boolean);
   const clauses = language === "ko" ? koClauses : enClauses;
 
   for (const clause of clauses) {
@@ -3109,6 +3255,16 @@ function repairEventEvidenceContractPost(
   contract = validateEventEvidenceContract(normalized, eventPlan as any);
   if (!contract.ok && contract.evidenceHitCount < 2) {
     normalized = ensureEventEvidenceAnchors(normalized, eventPlan, language, maxChars);
+    contract = validateEventEvidenceContract(normalized, eventPlan as any);
+    if (!contract.ok && contract.evidenceHitCount < 2 && language === "ko") {
+      const aToken = formatEvidenceToken(eventPlan.evidence[0]?.label || "", eventPlan.evidence[0]?.value || "", 28);
+      const bToken = formatEvidenceToken(eventPlan.evidence[1]?.label || "", eventPlan.evidence[1]?.value || "", 28);
+      normalized = finalizeGeneratedText(
+        sanitizeTweetText(`${normalized} 이 장면에선 ${aToken}와 ${bToken}를 같이 본다.`),
+        language,
+        maxChars
+      );
+    }
   }
 
   return finalizeGeneratedText(normalized, language, maxChars);
@@ -5043,6 +5199,12 @@ function normalizeKoContractHeadline(text: string, seedHint: string = ""): strin
       return pick(
         "업그레이드 말이 실제 체인 행동으로 이어지는지 본다",
         "코드 변화가 운영 현장까지 번지는지 먼저 짚는다"
+      );
+    }
+    if (/spac|ipo|public|go public|listing|listed|deal|acquisition|merger/.test(lower)) {
+      return pick(
+        "상장 서사가 실제 체결 흐름까지 바꾸는지 먼저 본다",
+        "큰 거래 뉴스가 실제 유동성 습관까지 번지는지 짚는다"
       );
     }
     if (/sold off|selloff|breakout|rally|surge|jump|climbs?|fell|dropped|bitcoin-led|broad move|price/.test(lower)) {

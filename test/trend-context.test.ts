@@ -398,6 +398,163 @@ test("buildOnchainEvidence humanizes english-heavy evidence before planning", ()
   assert.match(String(evidence[0]?.summary || ""), /사람이 실제로 쓰는 흐름/);
 });
 
+test("buildTrendEvents reassigns lane after localized korean headline changes issue type", () => {
+  const createdAt = new Date().toISOString();
+  const events = buildTrendEvents({
+    createdAt,
+    newsRows: [
+      {
+        item: {
+          title: "XRP wallets expand while SEC review drags on",
+          summary: "Policy overhang still shapes the next move around XRP ecosystem headlines.",
+          source: "CoinDesk",
+          category: "ecosystem",
+          importance: "high",
+        },
+        sourceKey: "news:coindesk",
+        trust: 0.77,
+      },
+    ],
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.lane, "regulation");
+  assert.match(String(events[0]?.headline || ""), /규제|정책/);
+});
+
+test("planEventEvidenceAct avoids weak fee-only onchain support when better structural support exists", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event-reg",
+        lane: "regulation",
+        headline: "규제 문장과 실제 반응이 어디서 갈라지는지 먼저 짚는다",
+        summary: "Stablecoin oversight debate keeps widening into market behavior.",
+        source: "news:rss",
+        trust: 0.81,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["규제", "stablecoin", "oversight"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n1",
+        source: "news",
+        category: "regulation-news",
+        label: "The SEC and CFTC join hands to discuss stablecoin oversight",
+        value: "CoinDesk RSS",
+        evidence: "Regulators coordinated on stablecoin oversight next steps.",
+        trust: 0.79,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.76 },
+      },
+      {
+        id: "n2",
+        source: "onchain",
+        category: "fees",
+        label: "BTC 네트워크 수수료",
+        value: "2 sat/vB",
+        evidence: "Network fee stayed low during the session.",
+        trust: 0.78,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.71 },
+      },
+      {
+        id: "n3",
+        source: "onchain",
+        category: "stablecoin-flow",
+        label: "스테이블코인 총공급 플로우",
+        value: "+$180M",
+        evidence: "Stablecoin supply expanded while the policy discussion kept dragging on.",
+        trust: 0.82,
+        freshness: 0.91,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.79 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  assert.ok(plan?.evidence.some((item) => /스테이블코인 총공급 플로우/.test(item.label)));
+  assert.ok(!plan?.evidence.every((item) => /BTC 네트워크 수수료/.test(item.label)));
+});
+
+test("buildEventEvidenceFallbackPost uses humanized anchors for raw english evidence", () => {
+  const createdAt = new Date().toISOString();
+  const fallback = buildEventEvidenceFallbackPost(
+    {
+      lane: "regulation",
+      event: {
+        id: "event-reg",
+        lane: "regulation",
+        headline: "규제 문장과 실제 반응이 어디서 갈라지는지 먼저 짚는다",
+        summary: "Policy overhang widens into market behavior.",
+        source: "news:rss",
+        trust: 0.81,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["규제", "stablecoin", "oversight"],
+      },
+      evidence: [
+        {
+          id: "ev1",
+          lane: "regulation",
+          nutrientId: "n1",
+          source: "news",
+          label: "The SEC and CFTC join hands to discuss stablecoin oversight",
+          value: "CoinDesk RSS",
+          summary: "Regulators coordinated on stablecoin oversight next steps.",
+          trust: 0.79,
+          freshness: 0.9,
+          capturedAt: createdAt,
+        },
+        {
+          id: "ev2",
+          lane: "onchain",
+          nutrientId: "n2",
+          source: "onchain",
+          label: "BTC 네트워크 수수료",
+          value: "2 sat/vB",
+          summary: "Network fee stayed low during the session.",
+          trust: 0.78,
+          freshness: 0.88,
+          capturedAt: createdAt,
+        },
+      ],
+      hasOnchainEvidence: true,
+      hasCrossSourceEvidence: true,
+      evidenceSourceDiversity: 2,
+      laneUsage: {
+        totalPosts: 0,
+        byLane: {
+          protocol: 0,
+          ecosystem: 0,
+          regulation: 0,
+          macro: 0,
+          onchain: 0,
+          "market-structure": 0,
+        },
+      },
+      laneProjectedRatio: 0,
+      laneQuotaLimited: false,
+    },
+    "ko",
+    220,
+    "identity-journal"
+  );
+
+  assert.ok(fallback);
+  assert.doesNotMatch(String(fallback), /SEC and CFTC|CoinDesk RSS/);
+  assert.match(String(fallback), /규제 말|체인 수수료/);
+});
+
 test("planEventEvidenceAct blocks when onchain evidence is required but unavailable", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({

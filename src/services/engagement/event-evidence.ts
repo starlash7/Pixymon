@@ -29,7 +29,7 @@ const LANE_KEYWORDS: Record<TrendLane, RegExp> = {
     /upgrade|mainnet|testnet|fork|rollup|layer2|l2|validator|consensus|throughput|firedancer|업그레이드|메인넷|테스트넷|포크/,
   ecosystem:
     /ecosystem|adoption|wallet|gaming|app|developer|community|airdrop|partnership|meme|memecoin|생태계|채택|파트너십/,
-  regulation: /sec|cftc|lawsuit|regulation|regulatory|policy|compliance|court|etf\s*approval|규제|소송|법안|당국/,
+  regulation: /sec|cftc|lawsuit|regulation|regulatory|policy|compliance|court|etf\s*approval|규제|정책|집행|컴플라이언스|소송|법안|당국/,
   macro: /fed|ecb|cpi|inflation|rates|bond|treasury|usd|eur\/usd|dxy|fomc|매크로|금리|인플레이션/,
   onchain: /onchain|mempool|fee|gas|whale|stablecoin|netflow|address|transaction|tvl|온체인|멤풀|수수료|고래|스테이블/,
   "market-structure": /exchange|listing|liquidity|volume|funding|open interest|derivatives|market maker|orderbook|거래소|유동성|거래량|파생/,
@@ -99,10 +99,12 @@ export function buildTrendEvents(params: {
   const dedup = new Map<string, TrendEvent>();
   params.newsRows.slice(0, 12).forEach((row, index) => {
     const rawHeadline = sanitizeTweetText(row.item.title || "").slice(0, 160);
-    const lane = inferTrendLane([rawHeadline, row.item.category, row.item.summary].join(" "));
-    const headline = localizeTrendHeadline(rawHeadline, lane, row.item.summary || "").slice(0, 160);
-    if (headline.length < 12) return;
     const summary = sanitizeTweetText(row.item.summary || row.item.title || "").slice(0, 220);
+    const inferredLane = inferTrendLane([rawHeadline, row.item.category, summary].join(" "));
+    const headline = localizeTrendHeadline(rawHeadline, inferredLane, summary).slice(0, 160);
+    const localizedLane = inferTrendLane(headline);
+    const lane = localizedLane !== "market-structure" ? localizedLane : inferredLane;
+    if (headline.length < 12) return;
     if (isLowQualityTrendHeadline(headline, summary)) return;
     const priceHeadlinePenalty = estimateHeadlineCommodityPenalty(headline, summary, lane);
     const richness = estimateNarrativeRichness(headline, lane);
@@ -332,6 +334,7 @@ export function planEventEvidenceAct(params: {
         pair.evidence.reduce((sum, item) => sum + item.trust * item.freshness, 0) / pair.evidence.length;
       const laneRepeatPenalty = lastLane && lastLane === event.lane ? 0.14 : 0;
       const priceEvidencePenalty = estimatePriceEvidencePenalty(pair.evidence, event.lane);
+      const eventEvidenceMismatchPenalty = estimateEventEvidenceMismatchPenalty(event, pair.evidence);
       const coldStartExplorationJitter = laneUsage.totalPosts === 0 ? (Math.random() - 0.5) * 0.16 : 0;
       const score =
         event.trust * 0.3 +
@@ -344,6 +347,7 @@ export function planEventEvidenceAct(params: {
         (quotaLimited ? 0.35 : 0) -
         laneRepeatPenalty -
         priceEvidencePenalty * 1.15 +
+        eventEvidenceMismatchPenalty * -1.35 +
         coldStartExplorationJitter;
       return {
         event,
@@ -906,6 +910,65 @@ function estimateWeakEvidencePenalty(pair: OnchainEvidence[]): number {
   }, 0);
 }
 
+function estimateEventEvidenceMismatchPenalty(event: TrendEvent, pair: OnchainEvidence[]): number {
+  const localizedHeadline = containsKorean(event.headline)
+    ? sanitizeTweetText(event.headline)
+    : localizeTrendHeadline(event.headline, event.lane, event.summary || "");
+  const eventTokens = new Set(
+    [
+      ...extractHeadlineTokens(localizedHeadline),
+      ...extractHeadlineTokens(event.summary || ""),
+      ...expandLocalizedEventTokens([...(event.keywords || []), ...extractHeadlineTokens(event.headline)]),
+      ...buildLaneAnchorTokens(event.lane),
+    ]
+      .map((token) => sanitizeTweetText(String(token || "")).toLowerCase())
+      .filter((token) => token.length >= 2)
+  );
+
+  let alignedEvidenceCount = 0;
+  for (const item of pair) {
+    const evidenceTokens = buildEvidenceAnchorTokens(item).map((token) => sanitizeTweetText(token).toLowerCase());
+    if (evidenceTokens.some((token) => eventTokens.has(token))) {
+      alignedEvidenceCount += 1;
+    }
+  }
+
+  const hasWeakGenericOnchainSupport = pair.some((item) => {
+    const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+    return (
+      item.source === "onchain" &&
+      event.lane !== "onchain" &&
+      event.lane !== "protocol" &&
+      event.lane !== "market-structure" &&
+      /(네트워크\s*수수료|체인\s*수수료|멤풀|대기\s*거래|mempool|network fee)/.test(normalized)
+    );
+  });
+
+  const hasGenericExternalSupport = pair.some((item) => /(외부 뉴스 흐름|시장 반응)\b/.test(item.label));
+  const hasPriceSupportOutsidePriceLanes =
+    event.lane !== "macro" &&
+    event.lane !== "market-structure" &&
+    countPriceLikeEvidence(pair) >= 1;
+
+  let penalty = 0;
+  if (alignedEvidenceCount === 0) {
+    penalty += 0.18;
+  } else if (alignedEvidenceCount === 1) {
+    penalty += 0.05;
+  }
+  if (hasWeakGenericOnchainSupport) {
+    penalty += 0.12;
+  }
+  if (hasGenericExternalSupport && alignedEvidenceCount < 2) {
+    penalty += 0.08;
+  }
+  if (hasPriceSupportOutsidePriceLanes) {
+    penalty += 0.06;
+  }
+
+  return clampNumber(penalty, 0, 0.42, 0.12);
+}
+
 function isPriceActionHeadline(text: string): boolean {
   const normalized = sanitizeTweetText(text).toLowerCase();
   const hasPriceMove =
@@ -1205,10 +1268,54 @@ function formatEvidenceAnchor(evidence: OnchainEvidence | undefined, language: "
   if (!evidence) {
     return language === "ko" ? "데이터 확인 중" : "data pending";
   }
-  if (language === "ko") {
+  const raw = sanitizeTweetText(`${evidence.label} ${evidence.value} ${evidence.summary}`).trim();
+  if (language !== "ko") {
     return `${evidence.label} ${evidence.value}`.replace(/\s+/g, " ").trim().slice(0, 70);
   }
-  return `${evidence.label} ${evidence.value}`.replace(/\s+/g, " ").trim().slice(0, 70);
+
+  const exactHumanized: Array<[RegExp, string]> = [
+    [/^BTC 네트워크 수수료$/i, evidence.value ? `체인 수수료 ${evidence.value}` : "체인 수수료"],
+    [/^BTC 멤풀 대기열$/i, evidence.value ? `대기 거래 ${evidence.value}` : "대기 거래"],
+    [/^고래\/대형주소 활동 프록시$/i, "큰손 움직임"],
+    [/^스테이블코인 총공급 플로우$/i, "대기 유동성 흐름"],
+    [/^거래소 순유입 프록시$/i, "거래소 유입 흐름"],
+    [/^시장 반응$/i, "가격이 먼저 뛰는지"],
+    [/^실사용 실험$/i, "실사용 흔적이 커지는지"],
+    [/^규제 쪽 실제 움직임$/i, "규제 말이 실제 행동으로 번지는지"],
+    [/^프로토콜 변화 신호$/i, "업그레이드가 실제 운영으로 이어지는지"],
+    [/^업계 스트레스 신호$/i, "업계 안쪽 압박이 번지는지"],
+    [/^외부 뉴스 흐름$/i, "바깥 뉴스가 체인 안쪽으로 번지는지"],
+  ];
+  for (const [pattern, replacement] of exactHumanized) {
+    if (pattern.test(evidence.label)) {
+      return sanitizeTweetText(replacement).slice(0, 70);
+    }
+  }
+
+  if (/(24h 변동|24h change|sold off|selloff|rallied|surged|jumped|fell|dropped|price|breakout|broad move)/i.test(raw)) {
+    if (/\b(xrp|sol|eth|altcoin|alts?)\b/i.test(raw)) return "알트 쪽이 먼저 들뜨는지";
+    return "가격이 먼저 뛰는지";
+  }
+  if (/(visa|ai agent|agentic|prediction market)/i.test(raw)) {
+    return "실사용 쪽이 먼저 움직이는지";
+  }
+  if (/(sec|cftc|regulation|policy|compliance|lawsuit|court|bankruptcy|filing)/i.test(raw)) {
+    return "규제 말과 업계 반응이 어디서 갈리는지";
+  }
+  if (/(wallet|community|developer|adoption|ecosystem|network use|usage|app)/i.test(raw)) {
+    return "실사용 흔적이 실제로 커지는지";
+  }
+  if (/(upgrade|mainnet|testnet|validator|consensus|rollup|firedancer|fork)/i.test(raw)) {
+    return "업그레이드가 실제 운영으로 이어지는지";
+  }
+  if (/[A-Za-z]{6,}/.test(raw) && !/[가-힣]/.test(raw)) {
+    return "바깥 뉴스가 체인 안쪽으로 번지는지";
+  }
+
+  const fallback = `${humanizeStructuralEvidenceLabel(evidence.label)} ${sanitizeTweetText(evidence.value || "")}`
+    .replace(/\s+/g, " ")
+    .trim();
+  return fallback.slice(0, 70);
 }
 
 function extractHeadlineTokens(headline: string): string[] {
