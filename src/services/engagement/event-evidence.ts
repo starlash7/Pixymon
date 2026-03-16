@@ -143,12 +143,13 @@ export function buildOnchainEvidence(
   const dedup = new Map<string, OnchainEvidence>();
   nutrients.forEach((nutrient, index) => {
     const lane = inferTrendLane(`${nutrient.category} ${nutrient.label} ${nutrient.evidence}`);
+    const humanized = humanizeEvidenceForNarrative(nutrient);
     const digestScore =
       typeof nutrient.metadata?.digestScore === "number"
         ? clampNumber(nutrient.metadata.digestScore, 0, 1, 0.5)
         : undefined;
-    const key = `${nutrient.source}|${nutrient.category}|${normalizeHeadlineKey(nutrient.label)}|${normalizeHeadlineKey(
-      nutrient.value
+    const key = `${nutrient.source}|${nutrient.category}|${normalizeHeadlineKey(humanized.label)}|${normalizeHeadlineKey(
+      humanized.value
     )}`;
     if (dedup.has(key)) return;
     dedup.set(key, {
@@ -156,9 +157,9 @@ export function buildOnchainEvidence(
       lane: nutrient.source === "onchain" ? "onchain" : lane,
       nutrientId: nutrient.id,
       source: nutrient.source,
-      label: sanitizeTweetText(nutrient.label).slice(0, 110),
-      value: sanitizeTweetText(nutrient.value).slice(0, 80),
-      summary: sanitizeTweetText(nutrient.evidence || `${nutrient.label} ${nutrient.value}`).slice(0, 180),
+      label: humanized.label.slice(0, 110),
+      value: humanized.value.slice(0, 80),
+      summary: humanized.summary.slice(0, 180),
       trust: clampNumber(nutrient.trust, 0.05, 0.99, 0.52),
       freshness: clampNumber(nutrient.freshness, 0.05, 0.99, 0.7),
       digestScore,
@@ -300,17 +301,24 @@ export function planEventEvidenceAct(params: {
           pair = onchainOnlyPair;
         }
       }
-      if (
-        event.source === "evidence:structural-fallback" &&
-        event.lane === "onchain" &&
-        pair.hasCrossSourceEvidence &&
-        countPriceLikeEvidence(pair.evidence) > 0
-      ) {
+      if (event.lane === "onchain") {
         const onchainOnlyPair = selectEvidencePairForLane(event.lane, evidence, {
           requireOnchainEvidence,
           requireCrossSourceEvidence: false,
         });
-        if (onchainOnlyPair && countPriceLikeEvidence(onchainOnlyPair.evidence) < countPriceLikeEvidence(pair.evidence)) {
+        const currentWeakPenalty = estimateWeakEvidencePenalty(pair.evidence);
+        const currentHasGenericExternal = pair.evidence.some(
+          (item) =>
+            item.source !== "onchain" &&
+            /(외부 뉴스 흐름|시장 반응|실사용 실험|규제 쪽 실제 움직임|업계 스트레스 신호)/.test(item.label)
+        );
+        if (
+          onchainOnlyPair &&
+          onchainOnlyPair.evidence.every((item) => item.source === "onchain") &&
+          (countPriceLikeEvidence(onchainOnlyPair.evidence) < countPriceLikeEvidence(pair.evidence) ||
+            estimateWeakEvidencePenalty(onchainOnlyPair.evidence) < currentWeakPenalty ||
+            currentHasGenericExternal)
+        ) {
           pair = onchainOnlyPair;
         }
       }
@@ -376,10 +384,20 @@ export function validateEventEvidenceContract(
   plan: EventEvidencePlan
 ): { ok: boolean; reason?: string; eventHit: boolean; evidenceHitCount: number } {
   const normalized = sanitizeTweetText(text).toLowerCase();
-  const eventTokens = [...new Set([...plan.event.keywords, ...extractHeadlineTokens(plan.event.headline)])]
+  const localizedHeadline = containsKorean(plan.event.headline)
+    ? sanitizeTweetText(plan.event.headline)
+    : localizeTrendHeadline(plan.event.headline, plan.lane, plan.event.summary || "");
+  const eventTokens = [
+    ...new Set([
+      ...extractHeadlineTokens(localizedHeadline),
+      ...expandLocalizedEventTokens([...plan.event.keywords, ...extractHeadlineTokens(plan.event.headline)]),
+      ...plan.event.keywords,
+      ...extractHeadlineTokens(plan.event.headline),
+    ]),
+  ]
     .map((token) => token.toLowerCase())
-    .filter((token) => token.length >= 3)
-    .slice(0, 8);
+    .filter((token) => token.length >= 2)
+    .slice(0, 12);
   const eventHit = eventTokens.some((token) => normalized.includes(token));
 
   let evidenceHitCount = 0;
@@ -678,6 +696,64 @@ function isEnglishHeavyHeadline(text: string): boolean {
   return letters >= 18 && spaces >= 2;
 }
 
+function isEnglishHeavyEvidence(text: string): boolean {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized || containsKorean(normalized)) return false;
+  const letters = (normalized.match(/[A-Za-z]/g) || []).length;
+  return letters >= 12;
+}
+
+function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
+  label: string;
+  value: string;
+  summary: string;
+} {
+  const rawLabel = sanitizeTweetText(nutrient.label || "");
+  const rawValue = sanitizeTweetText(nutrient.value || "");
+  const rawEvidence = sanitizeTweetText(nutrient.evidence || `${rawLabel} ${rawValue}`);
+  const normalized = `${rawLabel} ${rawValue} ${rawEvidence}`.toLowerCase();
+  const source = String(nutrient.source || "");
+
+  if (source === "onchain") {
+    return {
+      label: applyKoNarrativeLexicon(rawLabel).trim() || rawLabel,
+      value: applyKoNarrativeLexicon(rawValue).trim() || rawValue,
+      summary: applyKoNarrativeLexicon(rawEvidence).trim() || rawEvidence,
+    };
+  }
+
+  const rewrite = (label: string, value: string, summary: string) => ({
+    label: sanitizeTweetText(label),
+    value: sanitizeTweetText(value),
+    summary: sanitizeTweetText(summary),
+  });
+
+  if (/court|lawsuit|sec|cftc|policy|regulation|regulatory|compliance|etf/.test(normalized)) {
+    return rewrite("규제 쪽 실제 움직임", "포착", "규제 해석보다 실제 집행과 반응의 간격이 먼저 보였다.");
+  }
+  if (/bankruptcy|chapter 11|liquidation|insolvency|distress|default/.test(normalized)) {
+    return rewrite("업계 스트레스 신호", "감지", "업계 안쪽 압박이 실제 움직임으로 번지는 조짐이 잡혔다.");
+  }
+  if (/upgrade|mainnet|testnet|validator|consensus|throughput|firedancer|rollup|fork/.test(normalized)) {
+    return rewrite("프로토콜 변화 신호", "포착", "코드 변화가 실제 운영 흐름으로 이어지는지 확인할 장면이다.");
+  }
+  if (/ai agent|visa|prediction market|wallet|adoption|community|developer|ecosystem|app/.test(normalized)) {
+    return rewrite("실사용 실험", "확대", "사람이 실제로 쓰는 흐름이 커지는지 볼 만한 장면이다.");
+  }
+  if (/xrp|sol|altcoin|breakout|bitcoin-led|broad move|surge|rally|pump/.test(normalized)) {
+    return rewrite("시장 반응", "과열 가능성", "서사보다 가격이 먼저 달아오르는 쪽인지 확인이 필요하다.");
+  }
+  if (isEnglishHeavyEvidence(rawEvidence) || isEnglishHeavyEvidence(rawLabel)) {
+    return rewrite("외부 뉴스 흐름", "포착", "바깥 뉴스가 체인 안쪽 움직임까지 번지는지 아직 더 봐야 한다.");
+  }
+
+  return {
+    label: applyKoNarrativeLexicon(rawLabel).trim() || rawLabel,
+    value: applyKoNarrativeLexicon(rawValue).trim() || rawValue,
+    summary: applyKoNarrativeLexicon(rawEvidence).trim() || rawEvidence,
+  };
+}
+
 function localizeTrendHeadline(headline: string, lane: TrendLane, summary: string): string {
   const cleaned = sanitizeTweetText(headline).replace(/[.!?]+$/g, "").trim();
   if (!cleaned) return cleaned;
@@ -803,6 +879,16 @@ function estimateHeadlineCommodityPenalty(headline: string, summary: string, lan
     return 0.1;
   }
   return 0;
+}
+
+function estimateWeakEvidencePenalty(pair: OnchainEvidence[]): number {
+  return pair.reduce((sum, item) => {
+    const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+    if (/coindesk|cointelegraph|rss|reuters/.test(normalized)) return sum + 0.12;
+    if (/(외부 뉴스 흐름|시장 반응)\b/.test(item.label)) return sum + 0.1;
+    if (isEnglishHeavyEvidence(`${item.label} ${item.summary}`)) return sum + 0.14;
+    return sum;
+  }, 0);
 }
 
 function isPriceActionHeadline(text: string): boolean {
@@ -1001,12 +1087,14 @@ function selectEvidencePairForLane(
         (sum, item) => sum + (item.digestScore ?? 0.55) * item.trust * item.freshness,
         0
       );
+      const weakEvidencePenalty = estimateWeakEvidencePenalty(pair);
       const score =
         baseScore +
         laneMatchCount * 0.08 +
         (hasOnchainEvidence ? 0.06 : 0) +
         (hasCrossSourceEvidence ? 0.04 : 0) -
-        estimatePriceEvidencePenalty(pair, lane) * 1.6;
+        estimatePriceEvidencePenalty(pair, lane) * 1.6 -
+        weakEvidencePenalty;
       if (!best || score > best.score) {
         best = {
           evidence: pair,
@@ -1084,6 +1172,58 @@ function extractHeadlineTokens(headline: string): string[] {
     .slice(0, 10);
 
   return [...new Set(merged)];
+}
+
+function expandLocalizedEventTokens(tokens: string[]): string[] {
+  const aliases = new Set<string>();
+  const normalizedTokens = tokens.map((token) => sanitizeTweetText(token).toLowerCase()).filter(Boolean);
+  for (const token of normalizedTokens) {
+    if (/(sec|cftc|regulation|regulatory|policy|compliance|court|lawsuit|etf)/.test(token)) {
+      aliases.add("규제");
+      aliases.add("당국");
+      aliases.add("정책");
+    }
+    if (/stablecoin/.test(token)) {
+      aliases.add("스테이블");
+      aliases.add("스테이블코인");
+    }
+    if (/(validator|consensus)/.test(token)) {
+      aliases.add("검증자");
+      aliases.add("합의");
+    }
+    if (/(upgrade|mainnet|testnet|fork|rollup|firedancer)/.test(token)) {
+      aliases.add("업그레이드");
+      aliases.add("테스트넷");
+      aliases.add("메인넷");
+    }
+    if (/(wallet|adoption|community|ecosystem|developer|app)/.test(token)) {
+      aliases.add("지갑");
+      aliases.add("채택");
+      aliases.add("커뮤니티");
+      aliases.add("생태계");
+      aliases.add("개발자");
+    }
+    if (/(whale|mempool|fee|gas|netflow|address|tvl)/.test(token)) {
+      aliases.add("고래");
+      aliases.add("멤풀");
+      aliases.add("수수료");
+      aliases.add("주소");
+      aliases.add("유입");
+    }
+    if (/(exchange|liquidity|volume|funding|open-interest|openinterest|orderbook)/.test(token)) {
+      aliases.add("거래소");
+      aliases.add("유동성");
+      aliases.add("거래량");
+      aliases.add("호가");
+    }
+    if (/(fed|ecb|inflation|rates|rate|usd|eur|dxy|macro)/.test(token)) {
+      aliases.add("매크로");
+      aliases.add("달러");
+      aliases.add("금리");
+      aliases.add("물가");
+    }
+  }
+  return [...aliases];
 }
 
 function normalizeHeadlineKey(text: string): string {

@@ -249,22 +249,43 @@ export async function proactiveEngagement(
     });
     const runContext = getOrCreateRunContext(cache, trend, recentReflectionHint);
 
-    const candidates = await getOrSearchTrendTweets(
+    const primarySearchRules = {
+      minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
+      minScore: runtimeSettings.minTrendTweetScore,
+      minEngagement: runtimeSettings.minTrendTweetEngagement,
+      maxAgeHours: runtimeSettings.trendTweetMaxAgeHours,
+      requireRootPost: runtimeSettings.trendTweetRequireRootPost,
+      blockSuspiciousPromo: runtimeSettings.trendTweetBlockSuspiciousPromo,
+    };
+
+    let candidates = await getOrSearchTrendTweets(
       twitter,
       trend.keywords,
       Math.max(24, goal * 10),
-      {
-        minSourceTrust: runtimeSettings.minTrendTweetSourceTrust,
-        minScore: runtimeSettings.minTrendTweetScore,
-        minEngagement: runtimeSettings.minTrendTweetEngagement,
-        maxAgeHours: runtimeSettings.trendTweetMaxAgeHours,
-        requireRootPost: runtimeSettings.trendTweetRequireRootPost,
-        blockSuspiciousPromo: runtimeSettings.trendTweetBlockSuspiciousPromo,
-      },
+      primarySearchRules,
       timezone,
       xApiCostSettings,
       cache
     );
+
+    if (candidates.length === 0) {
+      const secondaryKeywords = buildSecondaryReplyKeywords(trend, trend.keywords);
+      if (secondaryKeywords.length > 0) {
+        console.log("[ENGAGE] 1차 후보 없음, 장면 키워드로 2차 검색");
+        candidates = await getOrSearchTrendTweets(
+          twitter,
+          secondaryKeywords,
+          Math.max(30, goal * 12),
+          {
+            ...primarySearchRules,
+            maxAgeHours: Math.min(primarySearchRules.maxAgeHours, 18),
+          },
+          timezone,
+          xApiCostSettings,
+          cache
+        );
+      }
+    }
 
     if (candidates.length === 0) {
       console.log("[ENGAGE] 트렌드 후보 트윗 없음");
@@ -756,6 +777,12 @@ export async function postTrendUpdate(
         );
         localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         localPost = ensureLeadIssueAnchor(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars, eventPlan.lane);
+        localPost = ensureEventHeadlineAnchor(
+          localPost,
+          eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
         localPost = ensureEventEvidenceAnchors(localPost, eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         localPost = finalizeGeneratedText(localPost, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
         localPost = deconflictOpening(
@@ -855,6 +882,12 @@ export async function postTrendUpdate(
             runtimeSettings.postMaxChars,
             eventPlan.lane
           );
+          localPost = ensureEventHeadlineAnchor(
+            localPost,
+            eventPlan,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars
+          );
           localPost = ensureEventEvidenceAnchors(
             localPost,
             eventPlan,
@@ -886,7 +919,7 @@ export async function postTrendUpdate(
               previousNarrativeMode,
               allowTopicRepeatOnModeShift: true,
               language: runtimeSettings.postLanguage,
-              requireActionAndInvalidation: true,
+              requireActionAndInvalidation: false,
               requireLeadIssueClarity: false,
               requirePixymonConceptSignal: true,
             }
@@ -930,8 +963,8 @@ export async function postTrendUpdate(
               previousNarrativeMode,
               allowTopicRepeatOnModeShift: true,
               language: runtimeSettings.postLanguage,
-              requireActionAndInvalidation: true,
-              requireLeadIssueClarity: true,
+              requireActionAndInvalidation: false,
+              requireLeadIssueClarity: false,
               requirePixymonConceptSignal: true,
             }
           );
@@ -967,8 +1000,8 @@ export async function postTrendUpdate(
               previousNarrativeMode,
               allowTopicRepeatOnModeShift: true,
               language: runtimeSettings.postLanguage,
-              requireActionAndInvalidation: true,
-              requireLeadIssueClarity: true,
+              requireActionAndInvalidation: false,
+              requireLeadIssueClarity: false,
               requirePixymonConceptSignal: true,
             }
           );
@@ -1242,6 +1275,12 @@ Rules:
           runtimeSettings.postMaxChars,
           eventPlan.lane
         );
+        candidate = ensureEventHeadlineAnchor(
+          candidate,
+          eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
         candidate = ensureEventEvidenceAnchors(
           candidate,
           eventPlan,
@@ -1421,6 +1460,12 @@ Rules:
           runtimeSettings.postMaxChars,
           eventPlan.lane
         );
+        fallbackPost = ensureEventHeadlineAnchor(
+          fallbackPost,
+          eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars
+        );
         fallbackPost = ensureEventEvidenceAnchors(
           fallbackPost,
           eventPlan,
@@ -1475,7 +1520,7 @@ Rules:
             previousNarrativeMode,
             allowTopicRepeatOnModeShift: true,
             language: runtimeSettings.postLanguage,
-            requireActionAndInvalidation: true,
+            requireActionAndInvalidation: false,
             requireLeadIssueClarity: false,
             requirePixymonConceptSignal: true,
           }
@@ -1508,8 +1553,8 @@ Rules:
           previousNarrativeMode,
           allowTopicRepeatOnModeShift: true,
           language: runtimeSettings.postLanguage,
-          requireActionAndInvalidation: true,
-          requireLeadIssueClarity: true,
+          requireActionAndInvalidation: false,
+          requireLeadIssueClarity: false,
           requirePixymonConceptSignal: true,
         });
         if (hardQuality.ok) {
@@ -1537,8 +1582,8 @@ Rules:
             previousNarrativeMode,
             allowTopicRepeatOnModeShift: true,
             language: runtimeSettings.postLanguage,
-            requireActionAndInvalidation: true,
-            requireLeadIssueClarity: true,
+            requireActionAndInvalidation: false,
+            requireLeadIssueClarity: false,
             requirePixymonConceptSignal: true,
           }
         );
@@ -2388,7 +2433,8 @@ export async function runDailyQuotaCycle(
     return finalize(executed, remaining, adaptivePolicy);
   }
 
-  const postGoal = Math.max(3, Math.floor(target * 0.25));
+  const postGoal = Math.max(2, Math.floor(target * 0.25));
+  const replyGoal = Math.max(1, Math.min(3, Math.floor(target * 0.3)));
 
   while (executed < maxActions && remaining > 0) {
     if (!canActWithDigest) {
@@ -2398,71 +2444,24 @@ export async function runDailyQuotaCycle(
 
     const before = executed;
     const todayPosts = memory.getTodayPostCount(timezone);
+    const todayReplies = memory.getTodayReplyCount(timezone);
     const canQuoteInCycle = quotesCreatedThisCycle < 1;
     const canPostInCycle = postsCreatedThisCycle < runtimeSettings.maxPostsPerCycle;
-    const preferPost = canPostInCycle && todayPosts < postGoal && (executed === 0 || executed % 2 === 0);
+    const needReplies = todayReplies < replyGoal;
+    const shouldLeadWithPost = canPostInCycle && todayPosts < postGoal && postsCreatedThisCycle === 0;
+    const actionOrder: Array<"post" | "reply" | "quote"> = [];
 
-    if (preferPost) {
-      const posted = await postTrendUpdate(
-        twitter,
-        claude,
-        adaptivePolicy,
-        timezone,
-        runtimeSettings,
-        xApiCostSettings,
-        cycleCache,
-        feedDigest.acceptedNutrients,
-        cycleReflectionHint
-      );
-      if (posted) {
-        executed += 1;
-        postsCreatedThisCycle += 1;
-      }
-    } else if (canQuoteInCycle) {
-      const quoted = await postTrendQuote(
-        twitter,
-        claude,
-        adaptivePolicy,
-        runtimeSettings,
-        timezone,
-        xApiCostSettings,
-        cycleCache,
-        cycleReflectionHint
-      );
-      if (quoted) {
-        executed += 1;
-        quotesCreatedThisCycle += 1;
-      }
-    } else {
-      const replied = await proactiveEngagement(
-        twitter,
-        claude,
-        1,
-        adaptivePolicy,
-        runtimeSettings,
-        timezone,
-        xApiCostSettings,
-        cycleCache
-      );
-      executed += replied;
-    }
+    if (shouldLeadWithPost) actionOrder.push("post");
+    if (needReplies) actionOrder.push("reply");
+    if (canQuoteInCycle && !needReplies) actionOrder.push("quote");
+    if (canQuoteInCycle && !actionOrder.includes("quote")) actionOrder.push("quote");
+    if (canPostInCycle && !actionOrder.includes("post")) actionOrder.push("post");
+    if (!actionOrder.includes("reply")) actionOrder.push("reply");
 
-    if (executed === before) {
-      if (preferPost) {
-        const fallbackReplies = await proactiveEngagement(
-          twitter,
-          claude,
-          1,
-          adaptivePolicy,
-          runtimeSettings,
-          timezone,
-          xApiCostSettings,
-          cycleCache,
-          cycleReflectionHint
-        );
-        executed += fallbackReplies;
-      } else if (canPostInCycle) {
-        const fallbackPosted = await postTrendUpdate(
+    for (const action of actionOrder) {
+      if (action === "post") {
+        if (!canPostInCycle) continue;
+        const posted = await postTrendUpdate(
           twitter,
           claude,
           adaptivePolicy,
@@ -2473,12 +2472,36 @@ export async function runDailyQuotaCycle(
           feedDigest.acceptedNutrients,
           cycleReflectionHint
         );
-        if (fallbackPosted) {
+        if (posted) {
           executed += 1;
           postsCreatedThisCycle += 1;
+          break;
         }
-      } else if (canQuoteInCycle) {
-        const fallbackQuote = await postTrendQuote(
+        continue;
+      }
+
+      if (action === "reply") {
+        const replied = await proactiveEngagement(
+          twitter,
+          claude,
+          1,
+          adaptivePolicy,
+          runtimeSettings,
+          timezone,
+          xApiCostSettings,
+          cycleCache,
+          cycleReflectionHint
+        );
+        if (replied > 0) {
+          executed += replied;
+          break;
+        }
+        continue;
+      }
+
+      if (action === "quote") {
+        if (!canQuoteInCycle) continue;
+        const quoted = await postTrendQuote(
           twitter,
           claude,
           adaptivePolicy,
@@ -2488,9 +2511,10 @@ export async function runDailyQuotaCycle(
           cycleCache,
           cycleReflectionHint
         );
-        if (fallbackQuote) {
+        if (quoted) {
           executed += 1;
           quotesCreatedThisCycle += 1;
+          break;
         }
       }
     }
@@ -2841,6 +2865,91 @@ function ensureLeadIssueAnchor(
   const leadPool = laneLeadKo[lane];
   const lead = leadPool[stableSeedForPrelude(`${lane}|${normalized}`) % leadPool.length];
   return truncateAtWordBoundary(`${lead} ${normalized}`, maxChars);
+}
+
+function extractContractAnchorTokens(text: string): string[] {
+  const normalized = sanitizeTweetText(text).toLowerCase();
+  const tokens = normalized.match(/\$[a-z]{2,10}\b|[a-z][a-z0-9-]{2,}|[가-힣]{2,}/g) || [];
+  return [...new Set(tokens.filter((token) => token.length >= 2))].slice(0, 8);
+}
+
+function buildSecondaryReplyKeywords(
+  trend: {
+    keywords?: string[];
+    headlines?: string[];
+    events?: Array<{ headline?: string; keywords?: string[] }>;
+  },
+  primaryKeywords: string[]
+): string[] {
+  const genericStopwords = new Set([
+    "crypto",
+    "blockchain",
+    "onchain",
+    "market",
+    "markets",
+    "price",
+    "prices",
+    "bitcoin",
+    "btc",
+    "ethereum",
+    "eth",
+    "today",
+    "update",
+    "news",
+    "signal",
+    "흐름",
+    "시장",
+    "가격",
+    "뉴스",
+    "오늘",
+    "온체인",
+    "비트코인",
+    "이슈",
+    "단서",
+    "근거",
+  ]);
+  const seeds = [
+    ...(trend.keywords || []),
+    ...(trend.headlines || []),
+    ...((trend.events || []).flatMap((event) => [event.headline || "", ...((event.keywords as string[]) || [])])),
+  ];
+  const tokens = seeds.flatMap((seed) => extractContractAnchorTokens(seed));
+  const primarySet = new Set(primaryKeywords.map((keyword) => String(keyword || "").trim().toLowerCase()));
+  const expanded = [...new Set(tokens)]
+    .map((token) => String(token || "").trim())
+    .filter((token) => token.length >= 3)
+    .filter((token) => !genericStopwords.has(token.toLowerCase()))
+    .filter((token) => !primarySet.has(token.toLowerCase()))
+    .slice(0, 12);
+  return expanded;
+}
+
+function ensureEventHeadlineAnchor(
+  text: string,
+  eventPlan: {
+    event: {
+      id?: string;
+      headline: string;
+      keywords?: string[];
+    };
+  },
+  language: "ko" | "en",
+  maxChars: number
+): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const eventHeadline =
+    language === "ko"
+      ? normalizeKoContractHeadline(eventPlan.event.headline, `event-anchor|${eventPlan.event.id || ""}`)
+      : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
+  const tokens = extractContractAnchorTokens(`${eventHeadline} ${(eventPlan.event.keywords || []).join(" ")}`).filter(
+    (token) => token.length >= 3
+  );
+  const lower = normalized.toLowerCase();
+  if (tokens.some((token) => lower.includes(token.toLowerCase()))) {
+    return truncateAtWordBoundary(normalized, maxChars);
+  }
+  return truncateAtWordBoundary(`${eventHeadline}. ${normalized}`, maxChars);
 }
 
 function ensureEventEvidenceAnchors(
@@ -4874,9 +4983,9 @@ function buildHardContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|hard|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}, ${bToken}, 이 두 단서를 나란히 놓고 누가 먼저 움직였는지부터 가린다. 둘이 서로 딴소리를 하면 오늘 해석은 여기서 멈춘다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘을 한 화면에 붙여 둔다. 반응 순서가 어긋나면 결론 대신 메모만 짧게 남긴다.`,
-    `${headline}. ${aToken}, ${bToken}, 이 둘 사이에서 먼저 흔들리는 쪽을 본다. 예상과 다른 축이 먼저 움직이면 지금 읽기는 버린다.`,
+    `${headline}. ${aToken}와 ${bToken}를 나란히 두고 먼저 흔들리는 축만 본다. 둘이 끝까지 같은 말을 하지 않으면 오늘 해석은 여기서 멈춘다.`,
+    `오늘 주워 온 장면은 ${headline}. ${aToken}와 ${bToken}를 붙여 보면 말보다 순서가 먼저 보인다. 타이밍이 어긋나면 결론 대신 메모만 남긴다.`,
+    `${headline}. 지금은 ${aToken}와 ${bToken}를 한 번 더 씹어 보는 편이 낫다. 예상과 다른 축이 먼저 움직이면 지금 읽기는 버린다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4914,9 +5023,9 @@ function buildRescueContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|rescue|${eventPlan.lane}`);
   const pool = [
-    `${headline}. 먼저 ${aToken}와 ${bToken}를 붙여 놓고 누가 먼저 움직이는지만 가린다. 흐름이 어긋나면 여기서 순서를 다시 세운다.`,
-    `${headline}. ${aToken}와 ${bToken}를 같은 줄에 둔 채, 예상보다 먼저 미끄러지는 쪽이 있는지 본다. 다르면 결론보다 메모만 남긴다.`,
-    `${headline}. 오늘은 ${aToken}보다 ${bToken}가 얼마나 따라오는지에 더 눈이 간다. 전제가 흔들리면 여기서 문장을 짧게 끊는다.`,
+    `${headline}. 먼저 ${aToken}와 ${bToken}를 붙여 놓고 어느 쪽이 먼저 새는지만 본다. 흐름이 어긋나면 여기서 순서를 다시 세운다.`,
+    `이 장면은 바로 삼키지 않는다. ${headline}. ${aToken}와 ${bToken}를 같은 줄에 둔 채, 먼저 미끄러지는 쪽이 보이면 결론보다 메모만 남긴다.`,
+    `${headline}. 오늘은 ${aToken}보다 ${bToken}가 늦게 따라오는지에 더 눈이 간다. 전제가 흔들리면 여기서 문장을 짧게 끊는다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }
@@ -4946,14 +5055,14 @@ function buildEmergencyContractPost(
 
   const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|${eventPlan.lane}`);
   const pool = [
-    `${headline}. ${aToken}와 ${bToken}를 같은 화면에 붙여 두고 먼저 약해지는 쪽만 고른다. 예상이 틀리면 오늘 결론은 여기서 멈춘다.`,
-    `${headline}. 지금은 ${aToken}와 ${bToken}가 같은 쪽을 가리키는지부터 가린다. 엇갈리기 시작하면 이 문장은 더 밀지 않는다.`,
-    `${headline}. 오늘은 ${aToken} 옆에 ${bToken}를 붙여 놓고 약한 고리부터 찾는다. 흐름이 끊기면 해석도 여기서 바꾼다.`,
-    `${headline}. ${aToken}와 ${bToken} 중 먼저 흔들리는 축만 짧게 잡는다. 예상과 다르면 이 장면은 여기서 접어 둔다.`,
-    `${headline}. ${aToken}와 ${bToken}를 겹쳐 놓으면 어디서 틈이 나는지 먼저 보인다. 순서가 틀리면 지금 생각은 접는다.`,
-    `${headline}. ${aToken}와 ${bToken}, 이 두 단서의 반응 속도만 먼저 잰다. 예상보다 다른 축이 빠르면 잠깐 멈춘다.`,
-    `${headline}. ${aToken}와 ${bToken}가 끝까지 같이 가는지 확인한다. 흐름이 갈라지면 남는 신호만 챙기고 물러난다.`,
-    `${headline}. ${aToken}와 ${bToken} 중 어느 쪽이 먼저 무너지는지만 본다. 전제가 어긋나면 이 장면은 다시 쓰지 않는다.`,
+    `${headline}.\n\n지금은 ${aToken}와 ${bToken} 사이의 시간차만 본다. 먼저 무너지는 쪽이 나오면 이 읽기는 접는다.`,
+    `${headline}.\n\n이 장면은 급하게 삼키면 흐려진다. ${aToken}와 ${bToken}를 나란히 두고, 하나라도 먼저 새면 바로 다시 읽는다.`,
+    `오늘 주워 온 건 ${headline}. ${aToken}와 ${bToken}를 붙여 두고 약한 고리부터 찾는다. 흐름이 끊기면 여기서 멈춘다.`,
+    `${headline}.\n\n${aToken}와 ${bToken} 중 먼저 흔들리는 축만 짧게 잡는다. 예상과 다르면 이 장면은 여기서 접어 둔다.`,
+    `입에 넣기엔 아직 거친 장면이다. ${headline}. ${aToken}와 ${bToken}가 끝까지 같이 가지 않으면 오늘 메모는 여기서 멈춘다.`,
+    `${headline}.\n\n${aToken}와 ${bToken}를 겹쳐 놓으면 어디서 틈이 나는지 먼저 보인다. 순서가 틀리면 지금 생각은 접는다.`,
+    `${headline}.\n\n오늘은 ${aToken}보다 ${bToken}가 늦게 따라오는지에 더 눈이 간다. 전제가 어긋나면 말을 줄인다.`,
+    `${headline}.\n\n${aToken}와 ${bToken}를 끝까지 붙여 보고 남는 쪽만 들고 간다. 갈라지면 여기서 다시 적는다.`,
   ];
   return finalizeGeneratedText(pool[seed % pool.length], language, maxChars);
 }

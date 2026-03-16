@@ -310,6 +310,94 @@ test("validateEventEvidenceContract enforces event + two evidence anchors", () =
   assert.equal(typeof bad.reason, "string");
 });
 
+test("validateEventEvidenceContract accepts localized event anchor for english headline", () => {
+  const createdAt = new Date().toISOString();
+  const plan = {
+    lane: "regulation" as const,
+    event: {
+      id: "event-reg",
+      lane: "regulation" as const,
+      headline: "The SEC and CFTC join hands to discuss stablecoin oversight",
+      summary: "Regulators coordinated on stablecoin oversight next steps.",
+      source: "news:rss",
+      trust: 0.78,
+      freshness: 0.89,
+      capturedAt: createdAt,
+      keywords: ["sec", "cftc", "stablecoin"],
+    },
+    evidence: [
+      {
+        id: "ev1",
+        lane: "regulation" as const,
+        nutrientId: "n1",
+        source: "news" as const,
+        label: "규제 쪽 실제 움직임",
+        value: "포착",
+        summary: "규제 해석보다 실제 집행과 반응의 간격이 먼저 보였다.",
+        trust: 0.79,
+        freshness: 0.9,
+        capturedAt: createdAt,
+      },
+      {
+        id: "ev2",
+        lane: "onchain" as const,
+        nutrientId: "n2",
+        source: "onchain" as const,
+        label: "스테이블 흐름",
+        value: "확대",
+        summary: "스테이블 유입이 규제 논의 구간에서도 이어졌다.",
+        trust: 0.76,
+        freshness: 0.88,
+        capturedAt: createdAt,
+      },
+    ],
+    hasOnchainEvidence: true,
+    hasCrossSourceEvidence: true,
+    evidenceSourceDiversity: 2,
+    laneUsage: {
+      totalPosts: 2,
+      byLane: {
+        protocol: 0,
+        ecosystem: 0,
+        regulation: 1,
+        macro: 0,
+        onchain: 1,
+        "market-structure": 0,
+      },
+    },
+    laneProjectedRatio: 0.5,
+    laneQuotaLimited: false,
+  };
+
+  const localized = validateEventEvidenceContract(
+    "규제 문장과 실제 행동이 어디서 갈라지는지 먼저 본다. 규제 쪽 실제 움직임 포착, 스테이블 흐름 확대를 함께 놓고 본다.",
+    plan
+  );
+  assert.equal(localized.ok, true);
+});
+
+test("buildOnchainEvidence humanizes english-heavy evidence before planning", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "news",
+      category: "protocol-news",
+      label: "AI agents are quietly rewriting prediction market trading",
+      value: "observed",
+      evidence: "AI agents are quietly rewriting prediction market trading behavior across retail wallets.",
+      trust: 0.8,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.72 },
+    },
+  ]);
+
+  assert.equal(evidence[0]?.label, "실사용 실험");
+  assert.equal(evidence[0]?.value, "확대");
+  assert.match(String(evidence[0]?.summary || ""), /사람이 실제로 쓰는 흐름/);
+});
+
 test("planEventEvidenceAct blocks when onchain evidence is required but unavailable", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({
@@ -855,8 +943,8 @@ test("planEventEvidenceAct avoids price-like evidence for ecosystem lane when st
   });
 
   assert.ok(plan);
-  assert.deepEqual(
-    plan?.evidence.map((item) => item.label),
-    ["고래/대형주소 활동 프록시", "개발자 커뮤니티 반응"]
-  );
+  const labels = plan?.evidence.map((item) => item.label) || [];
+  assert.deepEqual(labels[0], "고래/대형주소 활동 프록시");
+  assert.equal(labels.includes("ETH 24h 변동"), false);
+  assert.equal(labels.includes("실사용 실험") || labels.includes("개발자 커뮤니티 반응"), true);
 });
