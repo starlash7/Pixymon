@@ -10,10 +10,10 @@ test("isPreferredTrendReplyTarget rejects low-follower unverified account", () =
       created_at: new Date().toISOString(),
       text: "Onchain infra note with enough detail to look like a real market comment, not a short spam line.",
     },
-    { verified: false, public_metrics: { followers_count: 900 } },
-    { engagementRaw: 42, score: 5.2 },
-    0.62,
-    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+    { verified: false, public_metrics: { followers_count: 320 } },
+    { engagementRaw: 7, score: 2.9 },
+    0.39,
+    { minSourceTrust: 0.38, minScore: 2.6, minEngagement: 4, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, false);
 });
@@ -46,6 +46,22 @@ test("isPreferredTrendReplyTarget accepts smaller clean unverified account when 
     { engagementRaw: 31, score: 4.9 },
     0.68,
     { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+  );
+  assert.equal(ok, true);
+});
+
+test("isPreferredTrendReplyTarget accepts mid-sized clean unverified account after relaxed floor", () => {
+  const ok = __trendTargetTest.isPreferredTrendReplyTarget(
+    {
+      id: "1",
+      conversation_id: "1",
+      created_at: new Date().toISOString(),
+      text: "Careful market structure note with a real thesis, no links, and enough detail to justify a thoughtful reply target.",
+    },
+    { verified: false, public_metrics: { followers_count: 2100 } },
+    { engagementRaw: 14, score: 3.8 },
+    0.47,
+    { minSourceTrust: 0.42, minScore: 3, minEngagement: 8, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, true);
 });
@@ -120,4 +136,20 @@ test("isPreferredTrendReplyTarget rejects suspicious telegram or link promo acco
     { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
   );
   assert.equal(ok, false);
+});
+
+test("buildTrendSearchTerms reduces narrative phrases into searchable terms", () => {
+  const terms = __trendTargetTest.buildTrendSearchTerms([
+    "사람들이 실제로 머무는 체인과 밖에서 도는 서사가 맞물리는지 살핀다",
+    "AI 에이전트 서사가 결제와 실사용까지 닿는지부터 본다",
+    "Firedancer upgrade",
+  ]);
+
+  assert.ok(terms.includes("에이전트"));
+  assert.ok(terms.includes("결제"));
+  assert.ok(terms.includes("실사용"));
+  assert.ok(terms.includes("Firedancer"));
+  assert.equal(terms.includes("사람들"), false);
+  assert.equal(terms.includes("사람"), true);
+  assert.equal(terms.includes("장면"), false);
 });

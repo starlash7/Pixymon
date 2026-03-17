@@ -20,86 +20,86 @@ interface LocalNarrativeTheme {
 const LOCAL_NARRATIVE_THEMES: LocalNarrativeTheme[] = [
   {
     lane: "onchain",
-    headline: "내 지갑이 스스로 움직인 날, 책임의 주어가 바뀌었다",
-    summary: "에이전트 지갑 시대에는 성과보다 책임 경로를 먼저 설계해야 한다.",
-    keywords: ["agent-wallet", "accountability", "onchain-intent", "crypto-ai", "identity"],
-    evidence: ["자동 실행 정책 문서", "거래 기록이 얼마나 투명하게 남는지", "실패 복구 규칙"],
+    headline: "조용한 시간대에도 같은 방향으로 움직이는 큰 지갑",
+    summary: "수수료가 낮아도 자금 이동이 이어지면 체인 안쪽 의도가 남아 있다고 본다.",
+    keywords: ["whale-flow", "address-movement", "onchain", "wallets", "signal"],
+    evidence: ["큰손 자금이 어디로 움직이는지", "비슷한 지갑이 한쪽으로 몰리는지", "체인 사용이 다시 살아나는지"],
   },
   {
     lane: "protocol",
-    headline: "자유는 느림이 아니라 설명 가능한 합의라는 생각",
-    summary: "프로토콜 철학을 UX로 번역하는 팀이 장기 신뢰를 얻는다.",
-    keywords: ["protocol-design", "decentralization", "ux-tradeoff", "governance", "philosophy"],
+    headline: "업그레이드 공지 뒤에도 그대로 붙어 있는 검증자",
+    summary: "속도보다 운영 안정성과 합의 유지가 먼저인 장면을 추적한다.",
+    keywords: ["protocol-upgrade", "validators", "consensus", "rollout", "resilience"],
     evidence: ["검증자가 얼마나 남아 있는지", "구현체가 한쪽에만 쏠리는지", "업그레이드 합의 과정"],
   },
   {
     lane: "ecosystem",
-    headline: "커뮤니티 설계는 토큰 보상보다 오래 남는가",
-    summary: "보상 이벤트보다 반복 가능한 관계 설계가 생태계 체류 시간을 만든다.",
-    keywords: ["community-loop", "mission-design", "retention", "ecosystem", "coordination"],
-    evidence: ["기여자 재방문 패턴", "미션 완료율", "신규 온보딩 경로"],
+    headline: "보상 이벤트가 끝난 뒤에도 다시 돌아오는 사람들",
+    summary: "토큰 이벤트보다 반복되는 사용 습관이 생태계 체류 시간을 만든다.",
+    keywords: ["community", "retention", "ecosystem", "missions", "usage"],
+    evidence: ["기여자가 다시 오는지", "미션 완료율", "새로 들어온 사람이 어디서 떠나는지"],
   },
   {
     lane: "regulation",
-    headline: "규제를 핑계로 삼는 순간 제품은 멈춘다",
-    summary: "규제를 장벽이 아닌 인터페이스로 다루는 팀이 생존 확률을 높인다.",
-    keywords: ["regulation", "compliance-by-design", "policy", "crypto", "execution"],
-    evidence: ["규제가 어디서 갈리는지", "얼마나 투명하게 설명하는지", "위험을 얼마나 솔직히 드러내는지"],
+    headline: "정책 발표 뒤 엇갈리는 거래소 공지",
+    summary: "규제 문장이 끝난 뒤 현장 반응이 어디서 갈리는지 확인한다.",
+    keywords: ["regulation", "policy", "compliance", "exchange", "filing"],
+    evidence: ["규제가 어디서 갈리는지", "거래소가 얼마나 빨리 반응하는지", "얼마나 투명하게 설명하는지"],
   },
   {
     lane: "macro",
-    headline: "불확실할수록 사람은 이야기에 기대어 움직인다",
-    summary: "거시 불확실성 구간일수록 가격보다 기대와 신뢰 구조가 길게 남는다.",
-    keywords: ["macro-narrative", "expectation", "liquidity", "trust", "decision-frame"],
-    evidence: ["사람들이 다시 위험을 감수하려는지", "방어 포지션이 얼마나 풀리는지", "자금 이동 서사"],
+    headline: "달러가 흔들린 날에도 남아 있는 체인 안 자금",
+    summary: "거시 뉴스 뒤에도 위험 선호가 체인 안쪽에 남는지 확인한다.",
+    keywords: ["macro", "usd", "liquidity", "risk", "flows"],
+    evidence: ["달러 쪽 움직임", "사람들이 다시 위험을 감수하려는지", "방어 포지션이 얼마나 풀리는지"],
   },
   {
     lane: "market-structure",
-    headline: "유동성은 숫자가 아니라 허용된 행동의 지도다",
-    summary: "시장 구조는 가격보다 참여자가 할 수 있는 행동 범위를 규정한다.",
-    keywords: ["market-structure", "liquidity-behavior", "execution", "crypto-microstructure", "depth-map"],
-    evidence: ["호가 간격이 얼마나 안정적인지", "주문이 어디서 자꾸 미끄러지는지", "주문 충격에 약한 구간"],
+    headline: "호가가 얇아진 뒤에도 버티는 큰 주문",
+    summary: "시장 구조는 차트보다 실제 체결 품질에서 먼저 드러난다고 본다.",
+    keywords: ["market-structure", "liquidity", "execution", "orderbook", "slippage"],
+    evidence: ["호가 간격이 얼마나 안정적인지", "큰 주문이 얼마나 깔끔하게 소화되는지", "주문이 어디서 자꾸 미끄러지는지"],
   },
   {
     lane: "protocol",
-    headline: "업그레이드 속도보다 중요한 건 롤백 없이 신뢰를 유지하는 방식",
-    summary: "기술 진보 자체보다 장애 대응 설계가 장기 신뢰를 좌우한다.",
-    keywords: ["protocol-upgrade", "rollback-risk", "resilience", "validator", "trust"],
+    headline: "테스트넷 이슈 뒤에도 안정적으로 버티는 노드",
+    summary: "기술 진보보다 장애 복구와 합의 안정성이 오래 남는 신뢰를 만든다.",
+    keywords: ["testnet", "nodes", "protocol", "recovery", "upgrade"],
     evidence: ["업그레이드 후 장애 빈도", "장애 뒤 얼마나 빨리 복구되는지", "검증자 합의가 얼마나 안정적인지"],
   },
   {
     lane: "ecosystem",
-    headline: "리텐션은 보상보다 관계 설계에서 먼저 결정된다",
-    summary: "커뮤니티 리텐션은 인센티브보다 반복 가능한 관계 구조에서 형성된다.",
-    keywords: ["retention", "community-design", "engagement-loop", "ecosystem", "social"],
-    evidence: ["재방문 비율", "커뮤니티 코호트 유지율", "기여자 전환률"],
+    headline: "토큰 이벤트 뒤에 남는 실제 사용",
+    summary: "이벤트 열기보다 실사용 습관이 남는지가 생태계의 핵심이다.",
+    keywords: ["usage", "ecosystem", "community", "retention", "adoption"],
+    evidence: ["재방문 비율", "실사용 실험", "기여자 전환률"],
   },
   {
     lane: "regulation",
-    headline: "정책 문장은 짧아도 시장 행동의 지연 시간은 길다",
-    summary: "규제 해석은 즉시 반응보다 시차를 두고 거래 행태에 반영된다.",
-    keywords: ["policy-lag", "regulation", "behavior-shift", "compliance", "market-delay"],
-    evidence: ["정책 발표 후 거래량 변동", "공시 지연 패턴", "거래소가 얼마나 빨리 반응하는지"],
+    headline: "규제 문장 뒤 멈추는 사용자 흐름",
+    summary: "정책 발표 뒤 실제 사용자 행동의 지연 시간을 추적한다.",
+    keywords: ["policy", "regulation", "behavior", "compliance", "exchange"],
+    evidence: ["정책 발표 후 거래량 변동", "공시 지연 패턴", "위험을 얼마나 솔직히 드러내는지"],
   },
   {
     lane: "macro",
-    headline: "달러가 흔들릴 때 내러티브의 수명이 먼저 길어진다",
-    summary: "거시 변동성 확대 구간에서는 가격보다 설명 가능한 서사가 오래 남는다.",
-    keywords: ["macro-volatility", "usd", "narrative-duration", "liquidity", "risk"],
+    headline: "금리 뉴스 뒤에도 남는 위험 선호",
+    summary: "거시 뉴스가 끝난 뒤 실제 자금 성격이 어떻게 남는지 확인한다.",
+    keywords: ["rates", "macro", "liquidity", "risk", "dxy"],
     evidence: ["달러 인덱스 변동성", "위험자산 반응이 얼마나 예민한지", "헤지 수요 변화"],
   },
   {
     lane: "onchain",
-    headline: "조용한 체인에서도 의도는 주소 이동에서 먼저 드러난다",
-    summary: "활동량이 낮아도 주소 이동 구조는 다음 행동의 실마리를 남긴다.",
-    keywords: ["onchain-intent", "address-flow", "mempool", "signal", "behavior"],
-    evidence: ["큰손 자금이 어디로 움직이는지", "비슷한 지갑이 한쪽으로 몰리는 모습", "자금이 어느 쪽으로 몰리는지"],
+    headline: "수수료가 낮아도 이어지는 자금 이동",
+    summary: "체인이 조용해도 큰 지갑 움직임이 남으면 다음 행동의 실마리가 된다.",
+    keywords: ["fees", "flows", "addresses", "onchain", "mempool"],
+    evidence: ["체인 사용이 다시 살아나는지", "큰손 자금이 어디로 움직이는지", "비슷한 지갑이 한쪽으로 몰리는지"],
   },
   {
     lane: "market-structure",
-    headline: "얕은 호가는 공포보다 실행 전략의 문제를 먼저 보여준다",
-    summary: "체결 구조 약화는 심리보다 실행 경로의 취약점을 선행 반영한다.",
-    keywords: ["orderbook-depth", "execution-risk", "market-structure", "liquidity", "slippage"],
+    headline: "화면은 조용한데 커지는 주문 충격",
+    summary: "체결 구조의 약화는 심리보다 실행 경로의 취약점에서 먼저 보인다.",
+    keywords: ["orderbook", "execution", "slippage", "market-structure", "depth"],
     evidence: ["유동성이 얼마나 빨리 돌아오는지", "주문 충격에 약한 구간", "큰 주문이 얼마나 깔끔하게 소화되는지"],
   },
 ];
@@ -227,7 +227,7 @@ export async function collectTrendContext(options: Partial<TrendContextOptions> 
     newsRows: filteredNews,
     createdAt,
   });
-  const events = dedupTrendEvents([...narrativeBridgeEvents, ...marketEvents], 12);
+  const events = dedupTrendEvents(marketEvents.length > 0 ? marketEvents : narrativeBridgeEvents, 12);
   const laneMix = summarizeLaneMix(events);
   const soulIntent = memory.getSoulIntentPlan("ko");
 
@@ -427,7 +427,6 @@ function buildNarrativeBridgeEvents(params: {
   capturedAt: string;
   keywords: string[];
 }> {
-  const soulIntent = memory.getSoulIntentPlan("ko");
   const topNews = params.newsRows
     .map((row) => sanitizeTweetText(row.item.title))
     .filter((title) => title.length >= 10)
@@ -436,15 +435,9 @@ function buildNarrativeBridgeEvents(params: {
   if (topNews.length === 0) return [];
 
   const reframed = topNews.map((headline, index) => {
-    const lane = inferTrendLane(`${headline} ${soulIntent.philosophyFrame} ${soulIntent.interactionMission}`);
-    const narrativeHeadline =
-      index % 2 === 0
-        ? `${headline}를 '${soulIntent.signatureBelief}' 관점으로 다시 읽어본다`
-        : `${headline}가 행동을 바꾼다면 어떤 근거가 먼저 움직이는지 확인한다`;
-    const summary =
-      index % 2 === 0
-        ? `${soulIntent.selfNarrative}. ${soulIntent.philosophyFrame}. 사건을 가격이 아닌 선택의 구조로 해석한다.`
-        : `${soulIntent.primaryDesire}. ${soulIntent.interactionMission}. 반증 가능한 조건을 남긴다.`;
+    const lane = inferTrendLane(headline);
+    const narrativeHeadline = rewriteNarrativeBridgeHeadline(headline, lane);
+    const summary = buildNarrativeBridgeSummary(lane, headline, index);
 
     return {
       id: `event:bridge:${lane}:${index}:${params.createdAt}`,
@@ -460,6 +453,88 @@ function buildNarrativeBridgeEvents(params: {
   });
 
   return reframed.slice(0, 2);
+}
+
+function rewriteNarrativeBridgeHeadline(
+  headline: string,
+  lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure"
+): string {
+  const cleaned = sanitizeTweetText(headline).replace(/[.!?]+$/g, "").trim();
+  if (!cleaned) return buildBridgeLaneFallback(lane);
+  const lower = cleaned.toLowerCase();
+
+  if (/sec|cftc|policy|compliance|lawsuit|court|etf|filing|approval|review/.test(lower)) {
+    return "규제 뉴스 뒤 실제 반응이 같은 방향인지 본다";
+  }
+  if (/upgrade|mainnet|testnet|validator|rollout|consensus|firedancer|fork|throughput/.test(lower)) {
+    return "업그레이드 뉴스 뒤 운영 안정성이 유지되는지 본다";
+  }
+  if (/wallet|community|developer|adoption|usage|user|app|ecosystem/.test(lower)) {
+    return "생태계 뉴스 뒤 실제 사용이 이어지는지 본다";
+  }
+  if (/fed|ecb|cpi|inflation|rates|treasury|dxy|usd|eur/.test(lower)) {
+    return "거시 뉴스 뒤 위험 선호가 체인 안쪽에 남는지 본다";
+  }
+  if (/exchange|liquidity|volume|funding|open interest|market maker|orderbook/.test(lower)) {
+    return "시장 뉴스 뒤 실제 주문이 받쳐주는지 본다";
+  }
+  return buildBridgeLaneFallback(lane);
+}
+
+function buildNarrativeBridgeSummary(
+  lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure",
+  headline: string,
+  index: number
+): string {
+  const compact = sanitizeTweetText(headline).replace(/\.$/, "");
+  const byLane: Record<
+    "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure",
+    string[]
+  > = {
+    protocol: [
+      `${compact}. 속도보다 운영 안정성과 합의 유지가 먼저다.`,
+      `${compact}. 뉴스보다 검증자와 운영 현장의 반응을 먼저 본다.`,
+    ],
+    ecosystem: [
+      `${compact}. 서사보다 실제 사용과 재방문이 이어지는지 확인한다.`,
+      `${compact}. 이벤트 열기보다 사람들의 재방문이 남는지가 더 중요하다.`,
+    ],
+    regulation: [
+      `${compact}. 정책 문장 뒤 현장 반응이 어디서 갈리는지 본다.`,
+      `${compact}. 공지보다 실제 사용자 흐름이 어디서 멈추는지 확인한다.`,
+    ],
+    macro: [
+      `${compact}. 거시 뉴스 뒤에도 위험 선호가 체인 안쪽에 남는지 본다.`,
+      `${compact}. 거시 바람보다 실제 자금 성격이 어떻게 남는지 확인한다.`,
+    ],
+    onchain: [
+      `${compact}. 조용한 체인 안쪽에서 자금 이동이 계속 살아 있는지 본다.`,
+      `${compact}. 수수료가 낮아도 주소 움직임이 이어지는지 확인한다.`,
+    ],
+    "market-structure": [
+      `${compact}. 차트가 뜨거워도 실제 돈이 붙는지 본다.`,
+      `${compact}. 화면 분위기와 실제 체결이 같은 방향인지 확인한다.`,
+    ],
+  };
+  const pool = byLane[lane];
+  return pool[index % pool.length];
+}
+
+function buildBridgeLaneFallback(
+  lane: "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure"
+): string {
+  const byLane = {
+    protocol: "코드 변화 뒤 실제 운영이 흔들리지 않는지 본다",
+    ecosystem: "사람들이 말이 아니라 사용으로 남는지 본다",
+    regulation: "정책 문장 뒤 현장 반응이 같은 방향인지 본다",
+    macro: "큰 뉴스 뒤에도 체인 안 자금이 그대로 남는지 본다",
+    onchain: "조용한 체인에서도 자금 이동이 이어지는지 본다",
+    "market-structure": "차트가 뜨거워도 실제 돈이 붙는지 본다",
+  } satisfies Record<
+    "protocol" | "ecosystem" | "regulation" | "macro" | "onchain" | "market-structure",
+    string
+  >;
+  return byLane[lane];
 }
 
 function dedupTrendEvents(
@@ -653,12 +728,11 @@ function selectLocalThemes(count: number): LocalNarrativeTheme[] {
 function remixLocalHeadline(theme: LocalNarrativeTheme): string {
   const base = sanitizeTweetText(theme.headline).replace(/\.$/, "");
   const seed = Math.floor(Math.random() * 1000);
-  const focus = localLaneLabel(theme.lane);
   const templates = [
     `${base}`,
-    `${focus} 이슈: ${base}`,
-    `${focus} 맥락: ${base}`,
-    `${focus} 포인트: ${base}`,
+    `오늘은 ${base}`,
+    `${base}부터 다시 본다`,
+    `${base}부터 먼저 짚는다`,
   ];
   return templates[seed % templates.length];
 }

@@ -76,11 +76,11 @@ const EN_ACTION_INVALIDATION_BRIDGES_SHORT = [
   "If the premise breaks, I retract this claim.",
 ];
 const PIXYMON_CONCEPT_SIGNAL =
-  /(픽시몬|pixymon|온체인\s*데이터를?\s*먹|영양소|소화|진화|레벨업|레벨\s*\d|사이클\s*먹|먹은\s*단서|채집한\s*단서|체인\s*로그를?\s*소화)/i;
+  /(픽시몬|pixymon|온체인\s*데이터를?\s*먹|영양소|소화|진화|레벨업|레벨\s*\d|사이클\s*먹|먹은\s*단서|먹지\s*않|채집한\s*단서|체인\s*로그를?\s*소화|주워\s*온\s*(?:단서|건)|덜\s*소화된\s*신호|내\s*장부|진화에\s*쓸\s*단서|바로\s*먹을\s*만한|한\s*번\s*더\s*씹|천천히\s*소화|입에\s*넣기엔|오늘\s*단서로\s*남긴|바로\s*믿기엔\s*이르|끝까지\s*남는\s*쪽만\s*(?:단서|남긴))/i;
 const LEAD_ISSUE_DOMAIN_TOKEN_KO =
-  /(프로토콜|업그레이드|검증자|거버넌스|생태계|커뮤니티|규제|정책|컴플라이언스|온체인|체인|지갑|거래소|유동성|멤풀|고래|스테이블|거시|매크로|ETF|롤업|L2|디파이|크립토|블록체인|BTC|ETH|SOL|XRP)/i;
+  /(프로토콜|업그레이드|검증자|거버넌스|생태계|커뮤니티|실사용|사용자|규제|정책|컴플라이언스|온체인|체인|지갑|거래소|유동성|호가|호가창|주문|체결|멤풀|고래|스테이블|달러|금리|위험선호|거시|매크로|ETF|롤업|L2|디파이|크립토|블록체인|BTC|ETH|SOL|XRP)/i;
 const LEAD_ISSUE_DOMAIN_TOKEN_EN =
-  /(protocol|upgrade|validator|governance|ecosystem|community|regulation|policy|compliance|onchain|chain|wallet|exchange|liquidity|mempool|whale|stable|macro|etf|rollup|layer2|defi|crypto|blockchain|btc|eth|sol|xrp)/i;
+  /(protocol|upgrade|validator|governance|ecosystem|community|usage|user|regulation|policy|compliance|onchain|chain|wallet|exchange|liquidity|orderbook|orders|execution|mempool|whale|stable|dollar|rates|risk appetite|macro|etf|rollup|layer2|defi|crypto|blockchain|btc|eth|sol|xrp)/i;
 const LEAD_ISSUE_VAGUE_PREFIX =
   /^(?:나는|I\s+am|I\s+feel|오늘은|today|이번엔|this\s+time|지금은)\s+(?:그냥|그저|일단|먼저)\b/i;
 const LEAD_ISSUE_MARKER_KO = /(핵심|이슈|쟁점|장면|문제|사건|변화|논점|포인트)/;

@@ -85,6 +85,16 @@ test("buildNarrativePlan rotates mode away from overused mode", () => {
   assert.equal(plan.lane, "protocol");
 });
 
+test("buildNarrativePlan defaults protocol posts away from philosophy-heavy mode", () => {
+  const plan = buildNarrativePlan({
+    eventPlan: baseEventPlan(),
+    language: "ko",
+    recentPosts: [],
+  });
+
+  assert.ok(["identity-journal", "meta-reflection"].includes(plan.mode));
+});
+
 test("validateNarrativeNovelty rejects repeated opening pattern", () => {
   const plan = buildNarrativePlan({
     eventPlan: baseEventPlan(),

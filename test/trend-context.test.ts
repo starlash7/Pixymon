@@ -310,6 +310,98 @@ test("validateEventEvidenceContract enforces event + two evidence anchors", () =
   assert.equal(typeof bad.reason, "string");
 });
 
+test("structural fallback avoids raw fee/orderbook jargon in public headline", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "fee",
+      label: "BTC 네트워크 수수료",
+      value: "6 sat/vB",
+      evidence: "BTC network fee is 6 sat/vB",
+      trust: 0.81,
+      freshness: 0.92,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.76 },
+    },
+    {
+      id: "n2",
+      source: "market",
+      category: "price-action",
+      label: "시장 반응",
+      value: "과열 가능성",
+      evidence: "Altcoins rallied before broader confirmation",
+      trust: 0.72,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.68 },
+    },
+  ]);
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 3);
+  assert.ok(events.length >= 1);
+  const joined = events.map((item) => `${item.headline} ${item.summary}`).join(" ");
+  assert.equal(/호가창|시간차|체인 수수료\s*6\s*sat\/vB/i.test(joined), false);
+  assert.equal(/체인 안쪽의 조용함|먼저 달아오른 표정|화면 분위기/i.test(joined), true);
+});
+
+test("fallback post humanizes raw evidence into pixymon-facing Korean", () => {
+  const createdAt = new Date().toISOString();
+  const plan = {
+    lane: "market-structure" as const,
+    event: {
+      id: "event-1",
+      lane: "market-structure" as const,
+      headline: "외부 뉴스 흐름이 실제 주문까지 번지는지 본다",
+      summary: "External news and market reaction diverged.",
+      source: "evidence:structural-fallback",
+      trust: 0.74,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      keywords: ["news", "order"],
+    },
+    evidence: [
+      {
+        id: "ev1",
+        lane: "onchain" as const,
+        nutrientId: "n1",
+        source: "onchain" as const,
+        label: "BTC 네트워크 수수료",
+        value: "6 sat/vB",
+        summary: "BTC network fee is 6 sat/vB",
+        trust: 0.82,
+        freshness: 0.93,
+        digestScore: 0.77,
+        capturedAt: createdAt,
+      },
+      {
+        id: "ev2",
+        lane: "market-structure" as const,
+        nutrientId: "n2",
+        source: "market" as const,
+        label: "시장 반응",
+        value: "과열 가능성",
+        summary: "Altcoins rallied before broader confirmation",
+        trust: 0.75,
+        freshness: 0.89,
+        digestScore: 0.69,
+        capturedAt: createdAt,
+      },
+    ],
+    hasOnchainEvidence: true,
+    hasCrossSourceEvidence: true,
+    evidenceSourceDiversity: 2,
+    laneUsage: { totalPosts: 0, byLane: { protocol: 0, ecosystem: 0, regulation: 0, macro: 0, onchain: 0, "market-structure": 0 } },
+    laneProjectedRatio: 0.15,
+    laneQuotaLimited: false,
+  };
+
+  const post = buildEventEvidenceFallbackPost(plan, "ko", 220, "identity-journal");
+  assert.equal(/시간차|호가창|체인 수수료\s*6\s*sat\/vB/i.test(post), false);
+  assert.equal(/체인 사용|가격 반응|규제 반응/i.test(post), true);
+});
+
 test("validateEventEvidenceContract accepts localized event anchor for english headline", () => {
   const createdAt = new Date().toISOString();
   const plan = {
@@ -393,9 +485,31 @@ test("buildOnchainEvidence humanizes english-heavy evidence before planning", ()
     },
   ]);
 
-  assert.equal(evidence[0]?.label, "실사용 실험");
-  assert.equal(evidence[0]?.value, "확대");
-  assert.match(String(evidence[0]?.summary || ""), /사람이 실제로 쓰는 흐름/);
+  assert.equal(evidence[0]?.label, "예측시장 사용 흐름");
+  assert.equal(evidence[0]?.value, "포착");
+  assert.match(String(evidence[0]?.summary || ""), /예측시장/);
+});
+
+test("buildOnchainEvidence humanizes raw onchain fee evidence before planning", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "fee",
+      label: "BTC 네트워크 수수료",
+      value: "6 sat/vB",
+      evidence: "BTC network fee is 6 sat/vB",
+      trust: 0.81,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.71 },
+    },
+  ]);
+
+  assert.equal(evidence[0]?.label, "체인 사용");
+  assert.ok(/흐름/.test(String(evidence[0]?.value || "")));
+  assert.equal(/sat\/vB/i.test(String(evidence[0]?.summary || "")), false);
 });
 
 test("buildTrendEvents reassigns lane after localized korean headline changes issue type", () => {
@@ -482,8 +596,8 @@ test("planEventEvidenceAct avoids weak fee-only onchain support when better stru
   });
 
   assert.ok(plan);
-  assert.ok(plan?.evidence.some((item) => /스테이블코인 총공급 플로우/.test(item.label)));
-  assert.ok(!plan?.evidence.every((item) => /BTC 네트워크 수수료/.test(item.label)));
+  assert.ok(plan?.evidence.some((item) => /대기 자금/.test(item.label)));
+  assert.ok(!plan?.evidence.every((item) => /체인 사용/.test(item.label)));
 });
 
 test("buildEventEvidenceFallbackPost uses humanized anchors for raw english evidence", () => {
@@ -552,7 +666,7 @@ test("buildEventEvidenceFallbackPost uses humanized anchors for raw english evid
 
   assert.ok(fallback);
   assert.doesNotMatch(String(fallback), /SEC and CFTC|CoinDesk RSS/);
-  assert.match(String(fallback), /규제 말|체인 수수료/);
+  assert.match(String(fallback), /규제|정책|체인 수수료|스테이블/);
 });
 
 test("planEventEvidenceAct blocks when onchain evidence is required but unavailable", () => {
@@ -739,6 +853,28 @@ test("buildTrendEvents maps news rows into lane-tagged events", () => {
   assert.equal(events.length, 1);
   assert.equal(events[0].lane, "regulation");
   assert.match(events[0].headline, /규제|정책|반응/);
+});
+
+test("buildTrendEvents strips public korean lane labels from headlines", () => {
+  const events = buildTrendEvents({
+    createdAt: new Date().toISOString(),
+    newsRows: [
+      {
+        item: {
+          title: "생태계 포인트: 리텐션은 보상보다 관계 설계에서 먼저 결정된다",
+          summary: "Community retention depends on relationship design first.",
+          source: "CoinDesk RSS",
+          category: "ecosystem",
+        },
+        sourceKey: "news:coindesk-rss",
+        trust: 0.76,
+      },
+    ],
+  });
+
+  assert.equal(events.length, 1);
+  assert.doesNotMatch(events[0].headline, /^생태계 포인트[:：]/);
+  assert.match(events[0].headline, /리텐션|관계 설계/);
 });
 
 test("buildTrendEvents filters low-quality ranking and prediction headlines", () => {
@@ -952,7 +1088,7 @@ test("validateEventEvidenceContract accepts paraphrased price evidence aliases",
   };
 
   const contract = validateEventEvidenceContract(
-    "생태계 서사가 실제 사용 흔적으로 이어지는지 본다. 체인 수수료 2 sat/vB와 알트 쪽이 먼저 들뜨는지를 같은 화면에 붙여 둔다.",
+    "생태계 서사가 실제 사용 흔적으로 이어지는지 본다. 체인 안쪽의 조용함과 알트 쪽에서 먼저 번진 열기를 같은 화면에 붙여 둔다.",
     plan as any
   );
 
@@ -1003,7 +1139,7 @@ test("buildStructuralFallbackEventsFromEvidence builds structural events from on
   const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt);
 
   assert.ok(events.length >= 1);
-  assert.match(events[0].headline, /큰손들이 실제로 움직이는지|대기 중인 유동성이 늘어나는지/);
+  assert.match(events[0].headline, /큰손 움직임|대기 자금 흐름/);
   assert.doesNotMatch(events[0].headline, /24h 변동|도미넌스|시총|공포 지수/i);
 });
 
@@ -1104,7 +1240,7 @@ test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence
   assert.equal(plan?.hasCrossSourceEvidence, false);
   assert.deepEqual(
     plan?.evidence.map((item) => item.label),
-    ["BTC 네트워크 수수료", "BTC 멤풀 대기열"]
+    ["체인 사용", "거래 대기"]
   );
 });
 
@@ -1170,7 +1306,7 @@ test("planEventEvidenceAct keeps generic onchain event on non-price evidence pai
   assert.ok(plan);
   assert.deepEqual(
     plan?.evidence.map((item) => item.label),
-    ["BTC 네트워크 수수료", "BTC 멤풀 대기열"]
+    ["체인 사용", "거래 대기"]
   );
 });
 
@@ -1235,7 +1371,238 @@ test("planEventEvidenceAct avoids price-like evidence for ecosystem lane when st
 
   assert.ok(plan);
   const labels = plan?.evidence.map((item) => item.label) || [];
-  assert.deepEqual(labels[0], "고래/대형주소 활동 프록시");
+  assert.deepEqual(labels[0], "큰손 움직임");
   assert.equal(labels.includes("ETH 24h 변동"), false);
-  assert.equal(labels.includes("실사용 실험") || labels.includes("개발자 커뮤니티 반응"), true);
+  assert.equal(labels.includes("실사용 흐름") || labels.includes("개발자 커뮤니티 반응") || labels.includes("개발자 반응"), true);
+});
+
+test("planEventEvidenceAct avoids generic market reaction plus fee pair when lane-specific regulation evidence exists", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:regulation:1",
+        lane: "regulation",
+        headline: "규제 뉴스 뒤 실제 반응이 갈리는지 본다",
+        summary: "정책 발표 뒤 집행과 사용자 반응이 어떻게 갈리는지 본다.",
+        source: "news:coindesk-rss",
+        trust: 0.74,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["규제", "정책", "집행"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n1",
+        source: "news",
+        category: "regulation",
+        label: "규제 쪽 실제 움직임",
+        value: "포착",
+        evidence: "Regulatory response started to diverge across venues.",
+        trust: 0.82,
+        freshness: 0.92,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.8 },
+      },
+      {
+        id: "n2",
+        source: "onchain",
+        category: "stable-flow",
+        label: "스테이블코인 총공급 플로우",
+        value: "+$180M",
+        evidence: "Stablecoin supply expanded across major chains.",
+        trust: 0.81,
+        freshness: 0.91,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.77 },
+      },
+      {
+        id: "n3",
+        source: "market",
+        category: "price-action",
+        label: "시장 반응",
+        value: "과열 가능성",
+        evidence: "Price reacted faster than follow-through volume.",
+        trust: 0.75,
+        freshness: 0.89,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.65 },
+      },
+      {
+        id: "n4",
+        source: "onchain",
+        category: "network-fee",
+        label: "BTC 네트워크 수수료",
+        value: "2 sat/vB",
+        evidence: "BTC network fees stayed near 2 sat/vB.",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.74 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  const labels = plan?.evidence.map((item) => item.label) || [];
+  assert.equal(labels.includes("규제 일정") || labels.includes("규제 쪽 실제 움직임"), true);
+  assert.equal(labels.includes("시장 반응") && labels.includes("BTC 네트워크 수수료"), false);
+});
+
+test("planEventEvidenceAct rejects market-structure lane when evidence is only generic mood plus fee", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:market-structure:1",
+        lane: "market-structure",
+        headline: "가격보다 실제 주문이 받쳐주는지 본다",
+        summary: "시장 분위기와 주문 흐름이 어긋나는지 본다.",
+        source: "news:coindesk-rss",
+        trust: 0.71,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["주문", "체결"],
+      },
+      {
+        id: "event:ecosystem:1",
+        lane: "ecosystem",
+        headline: "사람들이 실제로 머무는 체인과 밖에서 도는 서사가 맞물리는지 살핀다",
+        summary: "실사용과 서사가 같은 방향인지 본다.",
+        source: "news:coindesk-rss",
+        trust: 0.72,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["실사용", "체인"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n1",
+        source: "market",
+        category: "price-action",
+        label: "시장 반응",
+        value: "과열 가능성",
+        evidence: "Price reacted faster than follow-through volume.",
+        trust: 0.73,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.66 },
+      },
+      {
+        id: "n2",
+        source: "onchain",
+        category: "network-fee",
+        label: "BTC 네트워크 수수료",
+        value: "6 sat/vB",
+        evidence: "BTC network fees stayed near 6 sat/vB.",
+        trust: 0.79,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.74 },
+      },
+      {
+        id: "n3",
+        source: "news",
+        category: "ecosystem",
+        label: "실사용 실험",
+        value: "확대",
+        evidence: "Usage and wallet activity kept rising after the initial narrative burst.",
+        trust: 0.8,
+        freshness: 0.91,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.78 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  assert.notEqual(plan?.lane, "market-structure");
+  assert.equal(plan?.lane, "ecosystem");
+});
+
+test("planEventEvidenceAct rejects regulation lane when evidence collapses to generic regulation plus fee", () => {
+  const createdAt = new Date().toISOString();
+  const events = [
+    {
+      id: "event-reg",
+      lane: "regulation" as const,
+      headline: "SEC and CFTC policy update sharpens crypto compliance focus",
+      summary: "Regulatory coordination discussion moved back into focus.",
+      source: "news:rss",
+      trust: 0.8,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["sec", "cftc", "policy"],
+    },
+    {
+      id: "event-protocol",
+      lane: "protocol" as const,
+      headline: "Firedancer testnet milestone sharpens validator rollout path",
+      summary: "Validator rollout and recovery design moved into focus.",
+      source: "news:rss",
+      trust: 0.78,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      keywords: ["firedancer", "validator", "upgrade"],
+    },
+  ];
+
+  const evidence = [
+    {
+      id: "ev-reg-generic",
+      lane: "regulation" as const,
+      nutrientId: "n-reg",
+      source: "news" as const,
+      label: "규제 일정",
+      value: "포착",
+      summary: "규제 해석보다 실제 집행 일정과 시장 반응의 간격을 볼 장면이다.",
+      trust: 0.76,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      digestScore: 0.74,
+    },
+    {
+      id: "ev-fee",
+      lane: "onchain" as const,
+      nutrientId: "n-fee",
+      source: "onchain" as const,
+      label: "BTC 네트워크 수수료",
+      value: "6 sat/vB",
+      summary: "BTC network fee rose to 6 sat/vB",
+      trust: 0.81,
+      freshness: 0.92,
+      capturedAt: createdAt,
+      digestScore: 0.77,
+    },
+    {
+      id: "ev-protocol",
+      lane: "protocol" as const,
+      nutrientId: "n-protocol",
+      source: "news" as const,
+      label: "Firedancer 테스트 흐름",
+      value: "포착",
+      summary: "검증자 쪽 기대가 실제 운영 반응으로 이어지는지 볼 장면이다.",
+      trust: 0.79,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      digestScore: 0.75,
+    },
+  ];
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts: [],
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "event-protocol");
 });

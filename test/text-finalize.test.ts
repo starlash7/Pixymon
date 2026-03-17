@@ -72,7 +72,7 @@ test("finalizeGeneratedText softens explicit pixymon self-reference in korean", 
   const input =
     "픽시몬은 신호를 바로 믿지 않는다. 픽시몬의 메모는 오래 버티는 근거만 남긴다.";
   const output = finalizeGeneratedText(input, "ko", 220);
-  assert.equal(output, "나는 신호를 바로 믿지 않는다. 내 메모는 오래 버티는 근거만 남긴다.");
+  assert.equal(output, "내 메모는 오래 버티는 근거만 남긴다. 나는 신호를 바로 믿지 않는다.");
 });
 
 test("finalizeGeneratedText corrects broken korean particles in generated fallback text", () => {
@@ -111,4 +111,11 @@ test("finalizeGeneratedText rewrites analyst jargon into natural korean", () => 
     output,
     "비슷한 지갑이 한쪽으로 몰리는 모습과 자금이 어느 쪽으로 몰리는지, 구현체가 한쪽에만 쏠리는지, 방어 포지션이 얼마나 풀리는지, 거래소가 얼마나 빨리 반응하는지를 같이 본다."
   );
+});
+
+test("finalizeGeneratedText collapses repeated korean lead phrase", () => {
+  const input =
+    "실사용 쪽에선 실사용 쪽에선 내가 자주 틀리는 건 단서 하나를 너무 빨리 믿은 순간이다.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(output, "실사용 쪽에선 내가 자주 틀리는 건 단서 하나를 너무 빨리 믿은 순간이다.");
 });

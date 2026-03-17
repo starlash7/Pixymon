@@ -16,9 +16,12 @@ export function finalizeGeneratedText(text: string, language: "ko" | "en", maxCh
   const deduped = collapseImmediateSentenceRepeat(truncated, language);
   const deRepeated = removeRepeatedSentences(deduped);
   const laneAdjusted = language === "ko" ? reduceLaneAnchorEcho(deRepeated) : deRepeated;
-  const varied = language === "ko" ? diversifyKoTransitions(laneAdjusted) : laneAdjusted;
+  const stackedLeadCollapsed = language === "ko" ? collapseStackedKoLeadPrelude(laneAdjusted) : laneAdjusted;
+  const repeatedLeadCollapsed = language === "ko" ? collapseRepeatedKoLeadPhrase(stackedLeadCollapsed) : stackedLeadCollapsed;
+  const varied = language === "ko" ? diversifyKoTransitions(repeatedLeadCollapsed) : repeatedLeadCollapsed;
   const selfSoftened = language === "ko" ? softenExplicitSelfReferenceKo(varied) : varied;
-  const particleAdjusted = language === "ko" ? correctKoParticles(selfSoftened) : selfSoftened;
+  const conceptAdjusted = language === "ko" ? rebalanceKoConceptLead(selfSoftened) : selfSoftened;
+  const particleAdjusted = language === "ko" ? correctKoParticles(conceptAdjusted) : conceptAdjusted;
   const cleaned = cleanupDanglingTail(trimTrailingFragment(pruneIncompleteSentences(particleAdjusted, language), language), language);
   const punctuated = ensureTerminalPunctuation(cleaned, maxChars);
   return punctuated.length <= maxChars ? punctuated : truncateAtWordBoundary(punctuated, maxChars);
@@ -190,6 +193,80 @@ function softenExplicitSelfReferenceKo(text: string): string {
     .replace(/픽시몬의/g, "내")
     .replace(/픽시몬 기준으로/g, "내 기준으로")
     .replace(/픽시몬 메모/g, "내 메모");
+}
+
+function rebalanceKoConceptLead(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (parts.length < 2) return normalized;
+
+  const leadingConcept: string[] = [];
+  while (parts.length > 0 && isKoConceptCueSentence(parts[0])) {
+    const sentence = parts.shift();
+    if (!sentence) break;
+    if (leadingConcept.length === 0 || normalizeKoConceptCue(sentence) !== normalizeKoConceptCue(leadingConcept[leadingConcept.length - 1])) {
+      leadingConcept.push(sentence);
+    }
+  }
+
+  if (leadingConcept.length === 0 || parts.length === 0) {
+    return normalized;
+  }
+
+  const reordered = [parts[0], ...leadingConcept, ...parts.slice(1)];
+  return sanitizeTweetText(reordered.join(" "));
+}
+
+function collapseRepeatedKoLeadPhrase(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  const parts = normalized
+    .split(/(?<=[.!?])/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (parts.length === 0) return normalized;
+
+  const words = parts[0].split(/\s+/).filter(Boolean);
+  for (let size = 5; size >= 2; size -= 1) {
+    if (words.length < size * 2) continue;
+    const left = words.slice(0, size).join(" ");
+    const right = words.slice(size, size * 2).join(" ");
+    if (left.length < 6) continue;
+    if (left === right) {
+      parts[0] = [...words.slice(0, size), ...words.slice(size * 2)].join(" ").trim();
+      return sanitizeTweetText(parts.join(" "));
+    }
+  }
+  return normalized;
+}
+
+function collapseStackedKoLeadPrelude(text: string): string {
+  const normalized = sanitizeTweetText(text);
+  if (!normalized) return normalized;
+  return sanitizeTweetText(
+    normalized.replace(
+      /^(?:프로토콜|생태계|규제|정책 반응|크립토 시장|온체인|체인 안쪽|시장|실사용|업그레이드 장면|실제 돈이 붙는 쪽에선)\s*(?:쪽에선|에선|으로 보면)\s+((?:프로토콜|생태계|규제|정책 반응|크립토 시장|온체인|체인 안쪽|시장|실사용)\s*(?:쪽에선|에선))/u,
+      "$1"
+    )
+  );
+}
+
+function isKoConceptCueSentence(text: string): boolean {
+  const normalized = sanitizeTweetText(text);
+  return /(?:아직\s+바로\s+믿기엔\s+이른|아직\s+바로\s+단정할|아직\s+한\s+번\s+더\s+씹어|급히\s+삼키지\s+않|바로\s+믿지\s+않|오늘\s+단서가\s+된|단서가\s+된다|돈이\s+붙어야|한\s+번\s+더\s+씹는다)/.test(
+    normalized
+  );
+}
+
+function normalizeKoConceptCue(text: string): string {
+  return sanitizeTweetText(text)
+    .replace(/^(?:프로토콜|생태계|규제|정책 반응|크립토 시장|온체인|체인 안쪽|시장|실제 돈이 붙는 쪽에선)\s*(?:쪽에선|에선|으로 보면)?\s*/u, "")
+    .replace(/[.!?]+$/g, "")
+    .trim();
 }
 
 function normalizeKoAnchorSuffixes(text: string): string {

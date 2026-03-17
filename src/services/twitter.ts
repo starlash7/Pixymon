@@ -26,10 +26,20 @@ export const TEST_MODE = process.env.TEST_MODE === "true";
 export const TEST_NO_EXTERNAL_CALLS =
   TEST_MODE && String(process.env.TEST_NO_EXTERNAL_CALLS ?? "true").trim().toLowerCase() !== "false";
 const ACTION_TWO_PHASE_COMMIT = String(process.env.ACTION_TWO_PHASE_COMMIT || "true").trim().toLowerCase() === "true";
+const CURATED_REPLY_FALLBACK_USERNAMES = [
+  "DefiIgnas",
+  "EricBalchunas",
+  "matt_hougan",
+  "tokenterminal",
+  "nansen_ai",
+  "blockworks_",
+  "VitalikButerin",
+  "aixbt_agent",
+];
 const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
-  minSourceTrust: 0.45,
-  minScore: 3.2,
-  minEngagement: 12,
+  minSourceTrust: 0.34,
+  minScore: 2.8,
+  minEngagement: 4,
   maxAgeHours: 24,
   requireRootPost: true,
   blockSuspiciousPromo: true,
@@ -151,38 +161,42 @@ export async function searchRecentTrendTweets(
     return [];
   }
 
-  try {
-    const minSourceTrust = clampNumber(
-      rules.minSourceTrust,
-      0.05,
-      0.9,
-      DEFAULT_TREND_TWEET_SEARCH_RULES.minSourceTrust
-    );
-    const minScore = clampNumber(rules.minScore, 0.5, 12, DEFAULT_TREND_TWEET_SEARCH_RULES.minScore);
-    const minEngagement = clampNumber(
-      rules.minEngagement,
-      1,
-      200,
-      DEFAULT_TREND_TWEET_SEARCH_RULES.minEngagement
-    );
-    const maxAgeHours = clampNumber(
-      rules.maxAgeHours,
-      1,
-      168,
-      DEFAULT_TREND_TWEET_SEARCH_RULES.maxAgeHours
-    );
-    const requireRootPost =
-      typeof rules.requireRootPost === "boolean"
-        ? rules.requireRootPost
-        : DEFAULT_TREND_TWEET_SEARCH_RULES.requireRootPost;
-    const blockSuspiciousPromo =
-      typeof rules.blockSuspiciousPromo === "boolean"
-        ? rules.blockSuspiciousPromo
-        : DEFAULT_TREND_TWEET_SEARCH_RULES.blockSuspiciousPromo;
-    const cleaned = sanitizeTrendKeywords(keywords).slice(0, 12);
+  const minSourceTrust = clampNumber(
+    rules.minSourceTrust,
+    0.05,
+    0.9,
+    DEFAULT_TREND_TWEET_SEARCH_RULES.minSourceTrust
+  );
+  const minScore = clampNumber(rules.minScore, 0.5, 12, DEFAULT_TREND_TWEET_SEARCH_RULES.minScore);
+  const minEngagement = clampNumber(
+    rules.minEngagement,
+    1,
+    200,
+    DEFAULT_TREND_TWEET_SEARCH_RULES.minEngagement
+  );
+  const maxAgeHours = clampNumber(
+    rules.maxAgeHours,
+    1,
+    168,
+    DEFAULT_TREND_TWEET_SEARCH_RULES.maxAgeHours
+  );
+  const requireRootPost =
+    typeof rules.requireRootPost === "boolean"
+      ? rules.requireRootPost
+      : DEFAULT_TREND_TWEET_SEARCH_RULES.requireRootPost;
+  const blockSuspiciousPromo =
+    typeof rules.blockSuspiciousPromo === "boolean"
+      ? rules.blockSuspiciousPromo
+      : DEFAULT_TREND_TWEET_SEARCH_RULES.blockSuspiciousPromo;
 
-    const keywordQuery = cleaned.length > 0
-      ? cleaned.map((keyword) => `"${keyword}"`).join(" OR ")
+  try {
+    const cleaned = sanitizeTrendKeywords(keywords).slice(0, 16);
+    const searchTerms = buildTrendSearchTerms(cleaned).slice(0, 12);
+
+    const keywordQuery = searchTerms.length > 0
+      ? searchTerms
+          .map((keyword) => (/\s/.test(keyword) ? `"${keyword}"` : keyword))
+          .join(" OR ")
       : "crypto OR blockchain OR onchain OR layer2";
 
     const query = `(${keywordQuery}) -is:retweet -is:reply -is:quote`;
@@ -260,9 +274,108 @@ export async function searchRecentTrendTweets(
 
     return selected.slice(0, maxResults);
   } catch (error: any) {
+    if (isSearchTimelineFallbackError(error)) {
+      console.log("[TREND] search endpoint unavailable, curated timeline fallback 사용");
+      return searchCuratedTimelineFallbackTweets(twitter, count, {
+        minSourceTrust,
+        minScore,
+        minEngagement,
+        maxAgeHours,
+        requireRootPost,
+        blockSuspiciousPromo,
+      });
+    }
     console.log(`[TREND] 검색 실패: ${error.message || "unknown"}`);
     return [];
   }
+}
+
+async function searchCuratedTimelineFallbackTweets(
+  twitter: TwitterApi,
+  count: number,
+  rules: TrendTweetSearchRules
+): Promise<any[]> {
+  const rotated = pickCuratedTimelineUsernames().slice(0, 4);
+  const selected: any[] = [];
+  const seenAuthors = new Set<string>();
+
+  for (const username of rotated) {
+    try {
+      const userResult = await twitter.v2.userByUsername(username, {
+        "user.fields": ["username", "verified", "public_metrics", "description", "url"],
+      });
+      const user = userResult.data;
+      if (!user?.id) continue;
+
+      const timeline = await twitter.v2.userTimeline(String(user.id), {
+        max_results: 6,
+        exclude: ["replies", "retweets"],
+        "tweet.fields": ["created_at", "text", "author_id", "lang", "public_metrics", "conversation_id", "referenced_tweets"],
+      });
+      const rows = timeline.data?.data || [];
+
+      for (const tweet of rows) {
+        const authorId = String(tweet.author_id || user.id || "");
+        if (authorId && seenAuthors.has(authorId)) continue;
+        const sourceKey = buildXSourceKey(user.username, authorId);
+        const baseTrust = memory.getSourceTrustScore(
+          sourceKey,
+          estimateXSourceFallbackTrust(Boolean(user.verified), user.public_metrics?.followers_count)
+        );
+        const blendedTrust = blendXSourceTrust(baseTrust, Boolean(user.verified), user.public_metrics?.followers_count);
+        const evaluation = evaluateTrendCandidate({
+          text: String(tweet.text || ""),
+          keywordHints: [],
+          metrics: tweet.public_metrics,
+          author: {
+            followers_count: user.public_metrics?.followers_count,
+            verified: Boolean(user.verified),
+          },
+        });
+        if (evaluation.isLowSignal) continue;
+        if (
+          !isPreferredTrendReplyTarget(tweet, user, evaluation, blendedTrust, rules)
+        ) {
+          continue;
+        }
+
+        selected.push({
+          ...tweet,
+          __trendScore: evaluation.score,
+          __trendEngagement: evaluation.engagementRaw,
+          __sourceKey: sourceKey,
+          __sourceTrustScore: blendedTrust,
+          __authorFollowers: user.public_metrics?.followers_count || 0,
+          __authorVerified: Boolean(user.verified),
+          __authorUsername: String(user.username || ""),
+        });
+        if (authorId) {
+          seenAuthors.add(authorId);
+        }
+        if (selected.length >= count) {
+          return selected.slice(0, count);
+        }
+      }
+    } catch (error: any) {
+      console.log(`[TREND] curated timeline fallback 실패(@${username}): ${error.message || "unknown"}`);
+    }
+  }
+
+  return selected.slice(0, count);
+}
+
+function pickCuratedTimelineUsernames(): string[] {
+  const daySeed = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+  const offset = daySeed % CURATED_REPLY_FALLBACK_USERNAMES.length;
+  return CURATED_REPLY_FALLBACK_USERNAMES
+    .slice(offset)
+    .concat(CURATED_REPLY_FALLBACK_USERNAMES.slice(0, offset));
+}
+
+function isSearchTimelineFallbackError(error: any): boolean {
+  const code = Number(error?.code);
+  const message = String(error?.message || "").toLowerCase();
+  return code === 402 || /request failed with code 402|product track|access level|not authorized/.test(message);
 }
 
 function isPreferredTrendReplyTarget(
@@ -294,9 +407,9 @@ function isPreferredTrendReplyTarget(
   const verified = Boolean(user?.verified);
   const cashtagCount = (text.match(/\$[A-Za-z]{2,10}/g) || []).length;
   const urlCount = (text.match(/https?:\/\//gi) || []).length;
-  const hardMinTrust = Math.max(rules.minSourceTrust, 0.45);
-  const hardMinEngagement = Math.max(rules.minEngagement, 12);
-  const hardMinScore = Math.max(rules.minScore, 3.2);
+  const hardMinTrust = Math.max(rules.minSourceTrust, 0.34);
+  const hardMinEngagement = Math.max(rules.minEngagement, 3);
+  const hardMinScore = Math.max(rules.minScore, 2.4);
   const maxAgeHours = Math.max(1, Math.min(168, Number.isFinite(rules.maxAgeHours) ? rules.maxAgeHours : 24));
   const isRootPost = !tweet?.conversation_id || !tweet?.id || String(tweet.conversation_id) === String(tweet.id);
   const isReferenced = Array.isArray(tweet?.referenced_tweets) && tweet.referenced_tweets.length > 0;
@@ -311,13 +424,13 @@ function isPreferredTrendReplyTarget(
   if (rules.blockSuspiciousPromo && isSuspiciousTrendReplyTarget(tweet, user)) return false;
   if (!verified) {
     const exceptionalSmallAccount =
-      followers >= 1200 &&
-      sourceTrust >= Math.max(0.58, hardMinTrust + 0.08) &&
-      evaluation.score >= Math.max(4.2, hardMinScore + 0.7) &&
-      evaluation.engagementRaw >= Math.max(20, hardMinEngagement + 8);
-    if (!exceptionalSmallAccount && followers < 3000) return false;
+      followers >= 320 &&
+      sourceTrust >= Math.max(0.5, hardMinTrust + 0.08) &&
+      evaluation.score >= Math.max(3.2, hardMinScore + 0.6) &&
+      evaluation.engagementRaw >= Math.max(8, hardMinEngagement + 4);
+    if (!exceptionalSmallAccount && followers < 650) return false;
   }
-  if (verified && followers < 300) return false;
+  if (verified && followers < 80) return false;
   return true;
 }
 
@@ -587,6 +700,81 @@ function sanitizeTrendKeywords(keywords: string[]): string[] {
       .filter((keyword) => !/^(http|https)/i.test(keyword))
       .filter((keyword) => !/^[@#]/.test(keyword))
   )];
+}
+
+const TREND_SEARCH_STOP_WORDS = new Set([
+  "crypto",
+  "blockchain",
+  "onchain",
+  "market",
+  "markets",
+  "price",
+  "prices",
+  "signal",
+  "signals",
+  "today",
+  "update",
+  "news",
+  "issue",
+  "issues",
+  "story",
+  "stories",
+  "흐름",
+  "장면",
+  "단서",
+  "근거",
+  "서사",
+  "시장",
+  "가격",
+  "뉴스",
+  "오늘",
+  "실제",
+  "먼저",
+  "사람들",
+  "안쪽",
+  "바깥",
+  "냄새",
+  "표정",
+  "그림자",
+  "몸짓",
+  "발자국",
+  "조용함",
+]);
+
+function buildTrendSearchTerms(keywords: string[]): string[] {
+  const terms: string[] = [];
+  const normalizeSearchToken = (value: string): string => {
+    const trimmed = value.trim();
+    if (!/[가-힣]/.test(trimmed)) return trimmed;
+    return trimmed
+      .replace(
+        /(하는지부터|하는지|부터|까지|처럼|으로는|으로|에서|에게|보다|처럼|하고|하며|하고는|이라면|라면|다면|들은|들이|들은지|들은가|은지|는지|인지|일지|이라|라고|이라는|라는|하고|과|와|은|는|이|가|을|를|의|도|만)$/u,
+        ""
+      )
+      .replace(/(다|는다|니다)$/u, "")
+      .trim();
+  };
+  for (const keyword of keywords) {
+    const normalized = String(keyword || "").trim().replace(/\s+/g, " ");
+    if (!normalized) continue;
+    const lower = normalized.toLowerCase();
+    const wordCount = normalized.split(/\s+/).length;
+    if (!TREND_SEARCH_STOP_WORDS.has(lower) && normalized.length <= 28 && wordCount <= 3) {
+      terms.push(normalized);
+    }
+    const tokenMatches = normalized.match(/\$[A-Za-z]{2,10}\b|[A-Za-z][A-Za-z0-9-]{2,}|[가-힣]{2,}/g) || [];
+    for (const token of tokenMatches) {
+      const cleanToken = normalizeSearchToken(token.trim());
+      const tokenLower = cleanToken.toLowerCase();
+      if (cleanToken.length < 2 || cleanToken.length > 20) continue;
+      if (TREND_SEARCH_STOP_WORDS.has(tokenLower)) continue;
+      terms.push(cleanToken);
+    }
+  }
+  return [...new Set(terms)]
+    .filter((term) => term.length >= 2)
+    .filter((term) => !/^(btc|eth|sol)$/i.test(term) || term.startsWith("$"))
+    .slice(0, 20);
 }
 
 function buildXSourceKey(username: string | undefined, authorId: string): string {
@@ -862,6 +1050,7 @@ export const __postDispatchTest = {
 
 export const __trendTargetTest = {
   isPreferredTrendReplyTarget,
+  buildTrendSearchTerms,
 };
 
 // 트윗 발행 (Twitter API v2 only)

@@ -98,7 +98,7 @@ export function buildTrendEvents(params: {
 }): TrendEvent[] {
   const dedup = new Map<string, TrendEvent>();
   params.newsRows.slice(0, 12).forEach((row, index) => {
-    const rawHeadline = sanitizeTweetText(row.item.title || "").slice(0, 160);
+    const rawHeadline = stripPublicKoHeadlinePrefix(sanitizeTweetText(row.item.title || "")).slice(0, 160);
     const summary = sanitizeTweetText(row.item.summary || row.item.title || "").slice(0, 220);
     const inferredLane = inferTrendLane([rawHeadline, row.item.category, summary].join(" "));
     const headline = localizeTrendHeadline(rawHeadline, inferredLane, summary).slice(0, 160);
@@ -312,7 +312,9 @@ export function planEventEvidenceAct(params: {
         const currentHasGenericExternal = pair.evidence.some(
           (item) =>
             item.source !== "onchain" &&
-            /(외부 뉴스 흐름|시장 반응|실사용 실험|규제 쪽 실제 움직임|업계 스트레스 신호)/.test(item.label)
+            /(외부 뉴스 흐름|외부 뉴스 반응|시장 반응|가격 분위기|실사용 실험|실사용 흐름|규제 쪽 실제 움직임|규제 일정|프로토콜 변화 신호|업그레이드 진행|업계 스트레스 신호|업계 스트레스)/.test(
+              item.label
+            )
         );
         if (
           onchainOnlyPair &&
@@ -477,7 +479,10 @@ export function buildEventEvidenceFallbackPost(
   const humanizeKoEventHeadline = (text: string): string => {
     const cleaned = stripKoHeadlinePrefix(sanitizeTweetText(text || "").replace(/[.!?]+$/g, "")).trim();
     if (!cleaned) return "오늘은 이 장면부터 다시 본다";
-    if (/[A-Za-z]{5,}/.test(cleaned)) return cleaned;
+    if (/[A-Za-z]{5,}/.test(cleaned)) {
+      const localized = localizeTrendHeadline(cleaned, plan.lane, plan.event.summary || "");
+      if (containsKorean(localized)) return localized;
+    }
     const rewriteVariant = (...pool: string[]): string => pool[stableSeed(`${cleaned}|ko-event`) % pool.length];
     const exactRewriteMap: Record<string, string[]> = {
       "달러가 흔들릴 때 내러티브의 수명이 먼저 길어진다": [
@@ -553,29 +558,30 @@ export function buildEventEvidenceFallbackPost(
   const eventHeadline = language === "ko" ? humanizeKoEventHeadline(eventHeadlineRaw) : eventHeadlineRaw;
   const evidenceA = formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = formatEvidenceAnchor(plan.evidence[1], language);
-  const narrativeMode = mode || inferNarrativeModeFromHeadline(eventHeadline);
+  const koPair = joinKoPair(evidenceA, evidenceB);
+  const narrativeMode = resolveFallbackNarrativeMode(mode || inferNarrativeModeFromHeadline(eventHeadline));
   const seed = stableSeed(`${plan.event.id}|${eventHeadline}|${evidenceA}|${evidenceB}|${narrativeMode}`);
 
   const koTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `오늘 계속 걸리는 건 ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 붙여 놓고 본다. 둘이 같은 쪽을 오래 가리킬 때만 말을 보탠다.`,
-      `내 메모는 ${eventHeadline}에서 시작된다. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 보다 보면 전제 하나만 흔들려도 이 읽기는 곧바로 접게 된다.`,
+      `${eventHeadline}.\n\n오늘 손에 남은 건 ${koPair}다.\n\n둘이 같이 오래 남을 때만 천천히 먹는다. 한쪽이 먼저 식으면 여기서 접어 둔다.`,
+      `${eventHeadline}.\n\n오늘은 ${koPair} 중 뭐가 먼저 식는지만 따라간다.\n\n끝까지 버틴 쪽만 오늘 메모에 남긴다.`,
     ],
     "philosophy-note": [
-      `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 나란히 두면 말보다 순서가 먼저 보인다. 흐름이 엇갈리기 시작하면 나는 처음부터 다시 읽는다.`,
-      `조금 떨어져서 보면 ${eventHeadline}. 지금은 ${evidenceA}, ${evidenceB} 사이의 시간차를 보는 쪽이 낫다. 둘이 딴소리를 하면 이 해석은 버린다.`,
+      `${eventHeadline}.\n\n이럴수록 숫자보다 ${koPair}가 더 믿을 만하다.\n\n나는 급히 삼키지 않는다. 오래 남는 쪽만 천천히 먹는다.`,
+      `${eventHeadline}.\n\n결국 ${koPair}가 같이 버티는지가 이 장면을 가른다.\n\n한쪽이 먼저 꺾이면 오늘 판단도 거기서 멈춘다.`,
     ],
     "interaction-experiment": [
-      `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 놓고 보면 어디서부터 말이 갈릴까? 너라면 첫 의심을 어디에 둘지 궁금하다. 전제가 흔들리면 나는 이 읽기를 바로 접는다.`,
-      `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 먼저 같이 놓고 본다. 이 장면을 가장 먼저 뒤집을 신호가 뭐라고 보는지 듣고 싶다. 흐름이 엇갈리면 나는 생각을 바꾼다.`,
+      `${eventHeadline}.\n\n오늘은 ${koPair} 중 어느 쪽을 먼저 믿을지 묻고 싶다.\n\n나는 먼저 식는 쪽이 나오면 해석부터 바꾼다.`,
+      `${eventHeadline}.\n\n${koPair}. 너라면 어디서 먼저 의심할지 궁금하다.\n\n나는 버티지 못하는 쪽이 보이면 여기서 읽기를 접는다.`,
     ],
     "meta-reflection": [
-      `내가 늘 경계하는 건 신호 하나에 기대는 습관이다. 오늘 장면은 ${eventHeadline}. 그래서 ${evidenceA}, ${evidenceB}, 이 두 단서를 함께 놓고 본다. 오래 버티는 쪽이 아니면 이 해석은 접는다.`,
-      `${eventHeadline}. 예쁘게 맞아 보이는 숫자 하나보다 ${evidenceA}, ${evidenceB}, 이 두 단서가 더 중요하다. 둘이 갈라지면 이 문장은 여기서 멈춘다.`,
+      `내가 자주 틀리는 건 숫자 하나를 너무 빨리 믿는 순간이다.\n\n그래서 오늘은 ${eventHeadline}. ${koPair}가 끝까지 같이 남는지만 본다.\n\n엇갈리면 이 메모는 여기까지만 둔다.`,
+      `${eventHeadline}.\n\n요란한 숫자 하나보다 ${koPair}가 더 중요하다고 느낀다.\n\n둘이 딴소리를 하면 오늘 문장은 더 밀지 않는다.`,
     ],
     "fable-essay": [
-      `시장이 시끄러울수록 나는 더 조용한 흔적을 찾게 된다. ${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 천천히 소화해 보고 둘이 갈라지면 이야기도 여기서 바꾼다.`,
-      `${eventHeadline}. ${evidenceA}, ${evidenceB}, 이 두 단서를 같이 씹어 본 뒤에도 맛이 같을 때만 다음 문장으로 넘긴다. 다르면 이 읽기는 바로 접는다.`,
+      `시장이 시끄러울수록 먼저 챙길 건 단순해진다.\n\n${eventHeadline}. 오늘은 ${koPair}만 끝까지 따라간다.\n\n같이 남지 않으면 이 읽기는 여기서 멈춘다.`,
+      `${eventHeadline}.\n\n오늘 메모는 ${koPair}에서만 출발한다.\n\n둘이 같이 버텨야 다음 문장으로 넘긴다.`,
     ],
   };
 
@@ -607,6 +613,16 @@ export function buildEventEvidenceFallbackPost(
   return sanitizeTweetText(base).slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
 }
 
+function resolveFallbackNarrativeMode(mode: NarrativeMode): NarrativeMode {
+  if (mode === "interaction-experiment" || mode === "fable-essay") {
+    return "identity-journal";
+  }
+  if (mode === "philosophy-note") {
+    return "meta-reflection";
+  }
+  return mode;
+}
+
 function inferNarrativeModeFromHeadline(headline: string): NarrativeMode {
   const lower = sanitizeTweetText(headline).toLowerCase();
   if (/철학|philosophy|책|book|사상|worldview/.test(lower)) return "philosophy-note";
@@ -623,6 +639,21 @@ function stableSeed(input: string): number {
     hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
   return Math.abs(hash >>> 0);
+}
+
+function chooseKoPairParticle(token: string): "과" | "와" {
+  const cleaned = sanitizeTweetText(token || "").trim();
+  const last = cleaned.charCodeAt(cleaned.length - 1);
+  if (!cleaned || last < 0xac00 || last > 0xd7a3) return "와";
+  return (last - 0xac00) % 28 !== 0 ? "과" : "와";
+}
+
+function joinKoPair(left: string, right: string): string {
+  const a = sanitizeTweetText(left || "").trim();
+  const b = sanitizeTweetText(right || "").trim();
+  if (!a) return b;
+  if (!b) return a;
+  return `${a}${chooseKoPairParticle(a)} ${b}`;
 }
 
 export function inferTrendLane(text: string): TrendLane {
@@ -733,7 +764,48 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
   const normalized = `${rawLabel} ${rawValue} ${rawEvidence}`.toLowerCase();
   const source = String(nutrient.source || "");
 
+  const rewrite = (label: string, value: string, summary: string) => ({
+    label: sanitizeTweetText(label),
+    value: sanitizeTweetText(value),
+    summary: sanitizeTweetText(summary),
+  });
+
   if (source === "onchain") {
+    if (/수수료|sat\/vB|fee/.test(normalized)) {
+      return rewrite(
+        "체인 안쪽 사용",
+        "",
+        "체인 안쪽 사용이 잠깐 반짝이는지, 아니면 실제로 붙는지 볼 장면이다."
+      );
+    }
+    if (/멤풀|backlog|대기열|pending/.test(normalized)) {
+      return rewrite(
+        "밀린 거래",
+        "",
+        "대기 중인 거래가 실제 압박으로 이어지는지 볼 장면이다."
+      );
+    }
+    if (/고래|whale|대형주소|large wallet/.test(normalized)) {
+      return rewrite(
+        "큰손 움직임",
+        "",
+        "큰손이 실제로 방향을 바꾸는지 볼 장면이다."
+      );
+    }
+    if (/스테이블|stablecoin|stable flow|stable supply/.test(normalized)) {
+      return rewrite(
+        "대기 자금",
+        "",
+        "대기 자금이 붙는지 빠지는지 먼저 확인할 장면이다."
+      );
+    }
+    if (/거래소 순유입|exchange netflow|netflow/.test(normalized)) {
+      return rewrite(
+        "거래소 쪽 자금",
+        "이동 포착",
+        "거래소 쪽 자금 이동이 실제 긴장으로 이어지는지 볼 장면이다."
+      );
+    }
     return {
       label: applyKoNarrativeLexicon(rawLabel).trim() || rawLabel,
       value: applyKoNarrativeLexicon(rawValue).trim() || rawValue,
@@ -741,29 +813,62 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
     };
   }
 
-  const rewrite = (label: string, value: string, summary: string) => ({
-    label: sanitizeTweetText(label),
-    value: sanitizeTweetText(value),
-    summary: sanitizeTweetText(summary),
-  });
-
+  if (/fed|ecb|cpi|inflation|rates|treasury|dxy|usd|eur|eur\/usd|dollar/.test(normalized)) {
+    return rewrite("달러 쪽 움직임", "포착", "달러와 금리 변화가 체인 안쪽 자금 태도까지 번지는지 볼 장면이다.");
+  }
   if (/court|lawsuit|sec|cftc|policy|regulation|regulatory|compliance|etf/.test(normalized)) {
-    return rewrite("규제 쪽 실제 움직임", "포착", "규제 해석보다 실제 집행과 반응의 간격이 먼저 보였다.");
+    if (/sec.+cftc|cftc.+sec/.test(normalized)) {
+      return rewrite("SEC·CFTC 움직임", "포착", "당국의 메시지가 실제 규칙 변화로 이어지는지 더 봐야 하는 장면이다.");
+    }
+    if (/etf/.test(normalized)) {
+      return rewrite("ETF 쪽 일정", "", "ETF 쪽 일정이 실제 기대와 자금 흐름까지 번지는지 확인할 장면이다.");
+    }
+    if (/court|lawsuit/.test(normalized)) {
+      return rewrite("법원 쪽 일정", "", "법원 쪽 일정이 해석보다 더 오래 남는지 볼 장면이다.");
+    }
+    return rewrite("규제 쪽 일정", "", "규제 해석보다 실제 집행 일정과 시장 반응의 간격을 볼 장면이다.");
   }
   if (/bankruptcy|chapter 11|liquidation|insolvency|distress|default/.test(normalized)) {
-    return rewrite("업계 스트레스 신호", "감지", "업계 안쪽 압박이 실제 움직임으로 번지는 조짐이 잡혔다.");
+    return rewrite("업계 스트레스", "감지", "업계 안쪽 압박이 실제 자금 이동으로 번지는지 확인할 장면이다.");
   }
   if (/upgrade|mainnet|testnet|validator|consensus|throughput|firedancer|rollup|fork/.test(normalized)) {
-    return rewrite("프로토콜 변화 신호", "포착", "코드 변화가 실제 운영 흐름으로 이어지는지 확인할 장면이다.");
+    if (/firedancer/.test(normalized)) {
+      return rewrite("Firedancer 테스트 흐름", "포착", "검증자 쪽 기대가 실제 운영 반응으로 이어지는지 볼 장면이다.");
+    }
+    if (/validator|consensus/.test(normalized)) {
+      return rewrite("검증자 반응", "포착", "검증자 쪽 움직임이 실제 운영 안정성으로 이어지는지 볼 장면이다.");
+    }
+    if (/mainnet|testnet/.test(normalized)) {
+      return rewrite("테스트넷·메인넷 흐름", "포착", "배포 일정이 실제 사용과 운영 반응까지 이어지는지 확인할 장면이다.");
+    }
+    return rewrite("업그레이드 진행", "포착", "코드 변화가 실제 운영 흐름으로 이어지는지 확인할 장면이다.");
   }
   if (/ai agent|visa|prediction market|wallet|adoption|community|developer|ecosystem|app/.test(normalized)) {
-    return rewrite("실사용 실험", "확대", "사람이 실제로 쓰는 흐름이 커지는지 볼 만한 장면이다.");
+    if (/visa/.test(normalized)) {
+      return rewrite("Visa 실사용", "", "결제 인프라 쪽 얘기가 실제 사용 흐름까지 번지는지 볼 장면이다.");
+    }
+    if (/prediction market/.test(normalized)) {
+      return rewrite("예측시장 사용", "", "예측시장 쪽 사용 습관이 실제 거래 행동을 바꾸는지 볼 장면이다.");
+    }
+    if (/wallet/.test(normalized)) {
+      return rewrite("지갑 안쪽 사용", "", "지갑 안쪽 사용 습관이 서사보다 먼저 바뀌는지 볼 장면이다.");
+    }
+    if (/developer/.test(normalized)) {
+      return rewrite("개발자 반응", "", "개발자 쪽 움직임이 실제 생태계 습관으로 번지는지 볼 장면이다.");
+    }
+    return rewrite("실사용 흔적", "", "사람이 실제로 남는 흐름이 커지는지 볼 만한 장면이다.");
   }
   if (/xrp|sol|altcoin|breakout|bitcoin-led|broad move|surge|rally|pump/.test(normalized)) {
-    return rewrite("시장 반응", "과열 가능성", "서사보다 가격이 먼저 달아오르는 쪽인지 확인이 필요하다.");
+    if (/xrp/.test(normalized)) {
+      return rewrite("XRP 쪽 반응", "과열 가능성", "가격이 먼저 움직였는지 실제 자금이 따라오는지 더 봐야 하는 장면이다.");
+    }
+    if (/sol|altcoin/.test(normalized)) {
+      return rewrite("알트 쪽 반응", "과열 가능성", "알트 쪽 분위기가 실제 주문으로 이어지는지 더 봐야 하는 장면이다.");
+    }
+    return rewrite("가격 분위기", "과열 가능성", "먼저 뜨거워진 가격 분위기가 실제 움직임으로 이어지는지 더 봐야 하는 장면이다.");
   }
   if (isEnglishHeavyEvidence(rawEvidence) || isEnglishHeavyEvidence(rawLabel)) {
-    return rewrite("외부 뉴스 흐름", "포착", "바깥 뉴스가 체인 안쪽 움직임까지 번지는지 아직 더 봐야 한다.");
+    return rewrite("외부 뉴스 반응", "포착", "바깥 뉴스가 체인 안쪽 움직임까지 번지는지 아직 더 봐야 한다.");
   }
 
   return {
@@ -773,10 +878,28 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
   };
 }
 
+function extractSignedNumber(text: string): number | null {
+  const match = sanitizeTweetText(text || "").match(/([+-]?\d+(?:[.,]\d+)?)/);
+  if (!match) return null;
+  const value = Number(match[1].replace(/,/g, ""));
+  return Number.isFinite(value) ? value : null;
+}
+
+function humanizeSignedOnchainValue(
+  text: string,
+  labels: { positive: string; neutral: string; negative: string }
+): string {
+  const value = extractSignedNumber(text);
+  if (value === null) return labels.neutral;
+  if (value > 0) return labels.positive;
+  if (value < 0) return labels.negative;
+  return labels.neutral;
+}
+
 function localizeTrendHeadline(headline: string, lane: TrendLane, summary: string): string {
-  const cleaned = sanitizeTweetText(headline).replace(/[.!?]+$/g, "").trim();
+  const cleaned = stripPublicKoHeadlinePrefix(sanitizeTweetText(headline)).replace(/[.!?]+$/g, "").trim();
   if (!cleaned) return cleaned;
-  if (!isEnglishHeavyHeadline(cleaned)) return cleaned;
+  if (!isEnglishHeavyHeadline(cleaned)) return groundKoAbstractHeadline(cleaned, lane) || cleaned;
 
   const normalized = `${cleaned} ${sanitizeTweetText(summary)}`.toLowerCase();
   const gapMatch = normalized.match(/gap between ([a-z0-9\s/-]+?) and ([a-z0-9\s/-]+?)(?:\s|$)/i);
@@ -798,9 +921,9 @@ function localizeTrendHeadline(headline: string, lane: TrendLane, summary: strin
       "코드 변경이 실제 움직임으로 이어지는 순간이 있는지 살핀다",
     ],
     ecosystem: [
-      "사람들이 실제로 머무는 체인과 밖에서 도는 서사가 맞물리는지 살핀다",
-      "생태계가 살아 있다는 말이 정말 사용 흔적으로 이어지는지 확인한다",
-      "사람이 남긴 흔적과 시장이 믿는 이야기가 같은 방향인지 짚는다",
+      "서사만 커지는 날인지, 다시 돌아오는 사람이 있는지부터 본다",
+      "사람들이 다시 열어보는 장면인지 먼저 짚는다",
+      "체인 안쪽에 남는 사용 흔적과 바깥 기대가 같은 방향인지 살핀다",
     ],
     regulation: [
       "규제 문장과 실제 반응이 어디서 갈라지는지 먼저 짚는다",
@@ -808,19 +931,19 @@ function localizeTrendHeadline(headline: string, lane: TrendLane, summary: strin
       "규제 해석과 현장 움직임 사이에 틈이 나는지 살핀다",
     ],
     macro: [
-      "거시 변수 변화가 체인 위 반응으로 번지는지 확인한다",
-      "달러와 위험선호가 실제 흐름을 얼마나 바꾸는지 짚는다",
-      "거시 쪽 파동이 체인 위 행동까지 밀려오는지 살핀다",
+      "거시 바람이 체인 안쪽으로 실제로 닿는지 본다",
+      "달러 쪽 변화가 크립토 안쪽 행동까지 밀고 오는지 짚는다",
+      "큰 바깥 바람이 체인 안쪽 자금 성격까지 바꾸는지 살핀다",
     ],
     onchain: [
-      "체인 위에서 먼저 달라지는 흔적이 어디인지 짚는다",
-      "가격보다 먼저 변한 온체인 움직임이 남아 있는지 확인한다",
-      "체인 위 작은 변화가 어디서부터 번지는지 살핀다",
+      "체인 안쪽에서 오래 남는 움직임이 있는지 본다",
+      "가격보다 먼저 식지 않는 온체인 흐름이 남아 있는지 확인한다",
+      "체인 위 작은 변화가 어디서부터 진짜로 번지는지 살핀다",
     ],
     "market-structure": [
-      "유동성 얘기와 실제 체결이 끝까지 같은 말을 하는지 확인한다",
-      "호가창 바깥에서 먼저 새는 신호가 있는지 짚는다",
-      "말보다 체결이 먼저 달라지는 구간이 있는지 살핀다",
+      "차트가 뜨거워도 실제 체결이 비지 않는지 본다",
+      "분위기보다 실제 주문이 남는 쪽을 먼저 짚는다",
+      "화면이 달아올라도 돈이 끝까지 붙는지 가른다",
     ],
   };
 
@@ -843,11 +966,89 @@ function localizeTrendHeadline(headline: string, lane: TrendLane, summary: strin
   return laneFallback[lane][stableSeed(`${cleaned}|${lane}`) % laneFallback[lane].length];
 }
 
+function stripPublicKoHeadlinePrefix(text: string): string {
+  return sanitizeTweetText(text || "")
+    .replace(
+      /^(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*(?:맥락|포인트|이슈)\s*[:：]\s*/u,
+      ""
+    )
+    .trim();
+}
+
+function groundKoAbstractHeadline(text: string, lane: TrendLane): string {
+  const cleaned = sanitizeTweetText(text).replace(/[.!?]+$/g, "").trim();
+  if (!cleaned) return cleaned;
+  const pick = (...pool: string[]) => pool[stableSeed(`${cleaned}|${lane}|grounded-ko`) % pool.length];
+
+  const importantMatch = cleaned.match(/^(.+?)보다\s+중요한\s+건\s+(.+)$/);
+  if (importantMatch) {
+    const left = importantMatch[1].trim();
+    const right = importantMatch[2].trim();
+    return pick(
+      `${left}보다 ${right}가 실제로 더 오래 버티는지 본다`,
+      `${left}보다 ${right} 쪽에서 먼저 행동이 바뀌는지 짚는다`
+    );
+  }
+
+  const decideMatch = cleaned.match(/^(.+?)[은는]\s+(.+?)에서\s+먼저\s+결정된다$/);
+  if (decideMatch) {
+    const left = decideMatch[1].trim();
+    const right = decideMatch[2].trim();
+    return pick(
+      `${left}가 실제로 갈리는 곳이 ${right}인지 먼저 본다`,
+      `${left} 얘기가 아니라 ${right}에서 먼저 갈리는 장면인지 짚는다`
+    );
+  }
+
+  const lagMatch = cleaned.match(/^(.+?)[은는]\s+짧아도\s+(.+?)[은는]\s+길다$/);
+  if (lagMatch) {
+    const left = lagMatch[1].trim();
+    const right = lagMatch[2].trim();
+    return pick(
+      `${left}가 끝난 뒤에도 ${right}가 오래 남는지 본다`,
+      `${left}는 금방 지나가도 ${right}가 실제로 더 길게 끄는지 짚는다`
+    );
+  }
+
+  const stateMatch = cleaned.match(/^(.+?)[은는]\s+(.+?)이다$/);
+  if (stateMatch) {
+    const left = stateMatch[1].trim();
+    const right = stateMatch[2].trim();
+    if (lane === "market-structure") {
+      return pick(
+        `${left}를 숫자보다 실제 행동으로 읽어야 하는 장면인지 본다`,
+        `${left}를 ${right}처럼 말하기보다 실제 주문으로 확인해야 하는지 짚는다`
+      );
+    }
+    if (lane === "ecosystem") {
+      return pick(
+        `${left}가 말이 아니라 관계와 습관으로 남는지 본다`,
+        `${left}가 실제 사용자 버릇으로 이어지는지 짚는다`
+      );
+    }
+    if (lane === "regulation") {
+      return pick(
+        `${left}가 문장에 머무는지 행동까지 번지는지 본다`,
+        `${left}가 실제 반응으로 이어지는 장면인지 짚는다`
+      );
+    }
+  }
+
+  if (/생각$/.test(cleaned)) {
+    return pick(
+      `${cleaned.replace(/생각$/, "")}이 실제 장면으로 이어지는지 본다`,
+      `${cleaned.replace(/생각$/, "")}이 숫자 밖 행동까지 닿는지 짚는다`
+    );
+  }
+
+  return cleaned;
+}
+
 function humanizeEnglishSignalPhrase(input: string): string {
   const value = sanitizeTweetText(input).toLowerCase().trim();
   if (!value) return "흐름";
   if (/network use|activity|usage/.test(value)) return "실제 사용 흔적";
-  if (/token value|valuation|price/.test(value)) return "토큰 가격 서사";
+  if (/token value|valuation|price/.test(value)) return "토큰 가격 분위기";
   if (/liquidity/.test(value)) return "유동성";
   if (/developer/.test(value)) return "개발자 흐름";
   if (/community/.test(value)) return "커뮤니티 반응";
@@ -910,6 +1111,79 @@ function estimateWeakEvidencePenalty(pair: OnchainEvidence[]): number {
   }, 0);
 }
 
+function isFeeLikeEvidence(item: OnchainEvidence): boolean {
+  const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+  return /(네트워크\s*수수료|체인\s*수수료|체인\s*사용|멤풀|대기\s*거래|거래\s*대기|mempool|network fee|backlog)/.test(
+    normalized
+  );
+}
+
+function isMarketStructureSpecificEvidence(item: OnchainEvidence): boolean {
+  const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+  return /(호가|체결|주문|거래량|유동성|슬리피지|funding|orderbook|execution|liquidity|volume|exchange flow|거래소 유입)/.test(
+    normalized
+  );
+}
+
+function isGenericLaneEvidenceLabel(label: string): boolean {
+  return /^(시장 반응|가격 반응|가격 움직임|알트 쪽 움직임|실사용 실험|실사용 흐름|사용으로 남는 흔적|규제 쪽 실제 움직임|규제 반응|규제 일정|프로토콜 변화 신호|업그레이드 진행|외부 뉴스 흐름|외부 뉴스 반응|업계 스트레스 신호|업계 스트레스|가격 분위기)$/i.test(
+    sanitizeTweetText(label)
+  );
+}
+
+function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): boolean {
+  if (lane === "onchain") return false;
+  const genericCount = pair.filter((item) => isGenericLaneEvidenceLabel(item.label)).length;
+  const feeLikeCount = pair.filter((item) => isFeeLikeEvidence(item)).length;
+  const laneSpecificCount = pair.filter((item) => item.lane === lane && !isGenericLaneEvidenceLabel(item.label)).length;
+  const hasSpecificMarketStructureEvidence = pair.some(
+    (item) => isMarketStructureSpecificEvidence(item) && !isGenericLaneEvidenceLabel(item.label)
+  );
+
+  if (lane === "market-structure") {
+    if (!pair.some((item) => isMarketStructureSpecificEvidence(item))) return true;
+    if (
+      pair.some((item) => /(대기 자금 흐름|가격 반응|가격 움직임|가격 분위기|시장 반응)/.test(item.label)) &&
+      !hasSpecificMarketStructureEvidence
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  if (lane === "protocol") {
+    return feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0;
+  }
+  if (lane === "ecosystem") {
+    return feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0;
+  }
+  if (lane === "regulation") {
+    if (!pair.some((item) => item.lane === "regulation")) {
+      return true;
+    }
+    return (
+      (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0) ||
+      (genericCount >= 1 &&
+        laneSpecificCount === 0 &&
+        pair.some((item) => {
+          const normalized = sanitizeTweetText(`${item.label} ${item.summary}`).toLowerCase();
+          return item.lane === "protocol" || /(업그레이드|검증자|합의|테스트넷|메인넷|firedancer|rollup|protocol)/.test(normalized);
+        })) ||
+      pair.every((item) => {
+        const normalized = sanitizeTweetText(`${item.label} ${item.summary}`).toLowerCase();
+        return /(체인 사용|거래 대기|네트워크 수수료|멤풀|가격 반응|가격 움직임|대기 자금 흐름|etf 심사 흐름|규제 일정|규제 반응)/.test(
+          normalized
+        );
+      })
+    );
+  }
+  if (lane === "macro") {
+    return feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0;
+  }
+
+  return false;
+}
+
 function estimateEventEvidenceMismatchPenalty(event: TrendEvent, pair: OnchainEvidence[]): number {
   const localizedHeadline = containsKorean(event.headline)
     ? sanitizeTweetText(event.headline)
@@ -945,6 +1219,15 @@ function estimateEventEvidenceMismatchPenalty(event: TrendEvent, pair: OnchainEv
   });
 
   const hasGenericExternalSupport = pair.some((item) => /(외부 뉴스 흐름|시장 반응)\b/.test(item.label));
+  const hasProtocolSpecificSupport = pair.some((item) => {
+    const normalized = sanitizeTweetText(`${item.label} ${item.summary}`).toLowerCase();
+    return item.lane === "protocol" || /(업그레이드|검증자|합의|테스트넷|메인넷|firedancer|rollup|protocol)/.test(normalized);
+  });
+  const hasGenericRegulationSupport = pair.some((item) =>
+    /(규제 일정|규제 반응|ETF 심사 흐름|SEC·CFTC 움직임|규제 쪽 실제 움직임)/.test(
+      sanitizeTweetText(`${item.label} ${item.summary}`)
+    )
+  );
   const hasPriceSupportOutsidePriceLanes =
     event.lane !== "macro" &&
     event.lane !== "market-structure" &&
@@ -964,6 +1247,22 @@ function estimateEventEvidenceMismatchPenalty(event: TrendEvent, pair: OnchainEv
   }
   if (hasPriceSupportOutsidePriceLanes) {
     penalty += 0.06;
+  }
+  if (
+    event.lane === "regulation" &&
+    pair.some((item) => /(체인 사용|거래 대기|네트워크 수수료|멤풀)/.test(sanitizeTweetText(`${item.label} ${item.summary}`))) &&
+    pair.some((item) => /(ETF 심사 흐름|규제 일정|규제 반응)/.test(sanitizeTweetText(`${item.label} ${item.summary}`)))
+  ) {
+    penalty += 0.08;
+  }
+  if (event.lane === "regulation" && hasProtocolSpecificSupport && hasGenericRegulationSupport) {
+    penalty += 0.22;
+  }
+  if (
+    event.lane === "market-structure" &&
+    pair.every((item) => /(대기 자금 흐름|가격 반응|가격 움직임|먼저 달아오른 가격 분위기)/.test(item.label))
+  ) {
+    penalty += 0.12;
   }
 
   return clampNumber(penalty, 0, 0.42, 0.12);
@@ -1030,34 +1329,34 @@ function buildStructuralHeadlineFromEvidence(
 
   const poolByLane: Record<TrendLane, string[]> = {
     protocol: [
-      `${a}와 ${b}가 같은 방향으로 붙는지부터 가린다`,
-      `${a}가 흔들릴 때 ${b}도 같이 움직이는지 확인한다`,
-      `${a} 뒤에 ${b}가 실제로 따라오는지 짚는다`,
+      `${a} 뒤에 ${b}가 진짜로 붙는지 본다`,
+      `${a}가 말이 아니라 운영으로 이어지는지 ${b}에서 본다`,
+      `${a}와 ${b}가 한 장면 안에서 같이 남는지 살핀다`,
     ],
     ecosystem: [
-      `${a}가 실제 움직임으로 번지는지, ${b}에서 먼저 확인한다`,
-      `${a} 뒤에서 ${b}가 따라오는지부터 짚는다`,
-      `${a}가 말뿐인지 ${b}까지 번지는지 살핀다`,
+      `${a}가 실제 사용까지 번지는지 ${b}에서 본다`,
+      `${a} 뒤에 ${b}가 따라오지 않으면 오래 못 간다고 본다`,
+      `${a}가 말뿐인지 ${b}까지 닿는지 살핀다`,
     ],
     regulation: [
-      `${a} 뒤에서 ${b}가 같이 흔들리는지 먼저 본다`,
-      `${a}가 바뀔 때 ${b}도 따라 움직이는지 확인한다`,
-      `${a}의 변화가 ${b}까지 번지는지 짚는다`,
+      `${a} 뒤에 ${b}가 같이 흔들리는지 먼저 본다`,
+      `${a}가 바뀔 때 ${b}도 따라 움직이는지 살핀다`,
+      `${a}가 실제 반응으로 번지는지 ${b}에서 확인한다`,
     ],
     macro: [
-      `${a}가 흔들릴 때 ${b}가 어떻게 따라오는지 먼저 본다`,
-      `${a} 뒤에 ${b}가 붙는지부터 확인한다`,
-      `${a}의 파동이 ${b}에 언제 닿는지 짚는다`,
+      `${a} 바람이 ${b}까지 밀려오는지 먼저 본다`,
+      `${a} 뒤에 ${b}가 늦게라도 따라오는지 확인한다`,
+      `${a} 파동이 ${b}를 실제로 건드리는지 짚는다`,
     ],
     onchain: [
-      `${a}와 ${b} 중 먼저 달라지는 쪽부터 짚는다`,
-      `${a}와 ${b}가 같이 움직이는지 확인한다`,
-      `${a}가 바뀔 때 ${b}도 바로 따라오는지 살핀다`,
+      `${a}와 ${b} 중 먼저 살아나는 쪽부터 본다`,
+      `${a}와 ${b}가 같은 방향으로 남는지 확인한다`,
+      `${a}가 바뀔 때 ${b}도 같이 달라지는지 살핀다`,
     ],
     "market-structure": [
-      `${a}와 ${b}가 어디서 엇갈리는지 먼저 짚는다`,
-      `${a} 뒤에서 ${b}가 실제로 받쳐 주는지 확인한다`,
-      `${a}가 꺾일 때 ${b}도 비슷하게 무너지는지 살핀다`,
+      `${a}와 ${b}가 같은 방향으로 오래 남는지 먼저 본다`,
+      `${a} 뒤에 ${b}가 진짜로 받쳐 주는지 확인한다`,
+      `${a}가 식을 때 ${b}도 같이 약해지는지 살핀다`,
     ],
   };
 
@@ -1072,12 +1371,12 @@ function buildStructuralSummaryFromEvidence(
   const a = humanizeStructuralEvidenceLabel(primary.label);
   const b = humanizeStructuralEvidenceLabel(secondary.label);
   const poolByLane: Record<TrendLane, string[]> = {
-    protocol: [`지금은 ${a}와 ${b}가 끝까지 같이 가는지부터 보는 편이 낫다.`],
-    ecosystem: [`가격보다 ${a}가 ${b}로 이어지는지부터 확인하는 편이 낫다.`],
-    regulation: [`정책 문장보다 ${a}와 ${b}의 순서를 먼저 확인한다.`],
-    macro: [`숫자보다 ${a}와 ${b}가 번지는 순서를 먼저 본다.`],
-    onchain: [`가격 스냅샷보다 ${a}와 ${b}가 남긴 흔적을 먼저 확인한다.`],
-    "market-structure": [`호가보다 ${a}와 ${b}가 실제로 받쳐 주는지부터 확인한다.`],
+    protocol: [`지금은 ${a}와 ${b}가 같은 장면으로 남는지부터 보는 편이 낫다.`],
+    ecosystem: [`가격보다 ${a}가 ${b}까지 닿는지부터 확인하는 편이 낫다.`],
+    regulation: [`정책 문장보다 ${a}와 ${b}가 같이 흔들리는지를 먼저 본다.`],
+    macro: [`숫자보다 ${a} 바람이 ${b}까지 닿는지를 먼저 본다.`],
+    onchain: [`가격 스냅샷보다 ${a}와 ${b}가 남긴 체인 안쪽 흔적을 먼저 본다.`],
+    "market-structure": [`화면 분위기보다 ${a}와 ${b}가 실제로 받쳐 주는지부터 본다.`],
   };
 
   return sanitizeTweetText(poolByLane[lane][0]).slice(0, 180);
@@ -1088,11 +1387,11 @@ function humanizeStructuralEvidenceLabel(label: string): string {
   if (!normalized) return "남은 단서";
 
   const exactMap: Array<[RegExp, string]> = [
-    [/^BTC 네트워크 수수료$/i, "체인 위가 실제로 붐비는지"],
-    [/^BTC 멤풀 대기열$/i, "대기 거래가 얼마나 쌓이는지"],
-    [/^거래소 순유입 프록시$/i, "거래소로 돈이 실제로 들어오는지"],
-    [/^고래\/대형주소 활동 프록시$/i, "큰손들이 실제로 움직이는지"],
-    [/^스테이블코인 총공급 플로우$/i, "대기 중인 유동성이 늘어나는지"],
+    [/^BTC 네트워크 수수료$/i, "체인 사용"],
+    [/^BTC 멤풀 대기열$/i, "거래 대기"],
+    [/^거래소 순유입 프록시$/i, "거래소 쪽 자금 이동"],
+    [/^고래\/대형주소 활동 프록시$/i, "큰손 움직임"],
+    [/^스테이블코인 총공급 플로우$/i, "대기 자금 흐름"],
   ];
 
   for (const [pattern, replacement] of exactMap) {
@@ -1104,8 +1403,8 @@ function humanizeStructuralEvidenceLabel(label: string): string {
   return applyKoNarrativeLexicon(normalized)
     .replace(/프록시/g, "흐름")
     .replace(/총공급\s*플로우/g, "공급 흐름")
-    .replace(/네트워크\s*수수료/g, "체인 수수료")
-    .replace(/멤풀\s*대기열/g, "대기 거래")
+    .replace(/네트워크\s*수수료/g, "체인 사용")
+    .replace(/멤풀\s*대기열/g, "거래 대기")
     .replace(/^\$?BTC\s*/i, "")
     .trim();
 }
@@ -1160,19 +1459,31 @@ function selectEvidencePairForLane(
       const hasCrossSourceEvidence = sourceDiversity >= 2;
       if (options.requireOnchainEvidence && !hasOnchainEvidence) continue;
       if (options.requireCrossSourceEvidence && !hasCrossSourceEvidence) continue;
+      const semanticSupport = pairSupportsLaneSemantics(pair, lane);
       const laneMatchCount = pair.filter((item) => item.lane === lane).length;
       const baseScore = pair.reduce(
         (sum, item) => sum + (item.digestScore ?? 0.55) * item.trust * item.freshness,
         0
       );
       const weakEvidencePenalty = estimateWeakEvidencePenalty(pair);
+      const genericPairPenalty = estimateGenericEvidencePairPenalty(pair, lane);
+      if (pairIsTooGenericForLane(pair, lane)) continue;
+      if (lane === "market-structure" && !semanticSupport) continue;
+      if (lane !== "onchain" && lane !== "market-structure" && !semanticSupport && genericPairPenalty >= 0.1) {
+        continue;
+      }
+      if (lane !== "onchain" && lane !== "market-structure" && laneMatchCount === 0 && genericPairPenalty >= 0.2) {
+        continue;
+      }
       const score =
         baseScore +
-        laneMatchCount * 0.08 +
+        laneMatchCount * 0.18 +
         (hasOnchainEvidence ? 0.06 : 0) +
         (hasCrossSourceEvidence ? 0.04 : 0) -
+        (semanticSupport ? 0 : 0.16) -
         estimatePriceEvidencePenalty(pair, lane) * 1.6 -
-        weakEvidencePenalty;
+        weakEvidencePenalty -
+        genericPairPenalty;
       if (!best || score > best.score) {
         best = {
           evidence: pair,
@@ -1206,6 +1517,26 @@ function selectEvidencePairForLane(
   };
 }
 
+function pairSupportsLaneSemantics(pair: OnchainEvidence[], lane: TrendLane): boolean {
+  if (lane === "onchain") return true;
+  const merged = sanitizeTweetText(
+    pair.map((item) => `${item.label} ${item.value} ${item.summary}`).join(" | ")
+  ).toLowerCase();
+  const byLane: Record<Exclude<TrendLane, "onchain">, RegExp> = {
+    protocol:
+      /(프로토콜|업그레이드|검증자|메인넷|테스트넷|합의|validator|mainnet|testnet|rollup|consensus|throughput|firedancer|fork)/,
+    ecosystem:
+      /(생태계|실사용|사용자|지갑|커뮤니티|개발자|앱|adoption|usage|user|wallet|community|developer|ecosystem|app)/,
+    regulation:
+      /(규제|정책|집행|컴플라이언스|etf|sec|cftc|policy|regulation|compliance|court|lawsuit)/,
+    macro:
+      /(달러|환율|금리|인플레이션|거시|매크로|달러 쪽 반응|fed|ecb|rates|inflation|usd|eur|dxy|treasury)/,
+    "market-structure":
+      /(시장구조|거래소|유동성|호가|주문|체결|거래량|슬리피지|funding|orderbook|liquidity|execution|volume|exchange flow|거래소 유입)/,
+  };
+  return byLane[lane].test(merged);
+}
+
 function dedupEvidence(items: OnchainEvidence[]): OnchainEvidence[] {
   const dedup = new Map<string, OnchainEvidence>();
   items.forEach((item) => {
@@ -1221,6 +1552,18 @@ function dedupEvidence(items: OnchainEvidence[]): OnchainEvidence[] {
   });
 }
 
+function estimateGenericEvidencePairPenalty(pair: OnchainEvidence[], lane: TrendLane): number {
+  const merged = pair.map((item) => sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`)).join(" | ");
+  const hasGenericOnchain =
+    /체인\s*수수료|네트워크\s*수수료|밀린\s*거래|멤풀|mempool/i.test(merged);
+  const hasGenericMarket =
+    /시장\s*반응|가격\s*반응|알트\s*가격\s*반응|외부\s*뉴스\s*흐름/i.test(merged);
+  if (!(hasGenericOnchain && hasGenericMarket)) return 0;
+  if (lane === "market-structure") return 0.12;
+  if (lane === "onchain") return 0.08;
+  return 0.24;
+}
+
 function buildEvidenceAnchorTokens(evidence: OnchainEvidence): string[] {
   const merged = `${evidence.label} ${evidence.value} ${evidence.summary}`.toLowerCase();
   const tokens = merged.match(/\$[a-z]{2,10}\b|[a-z][a-z0-9-]{2,}|[가-힣]{2,}/g) || [];
@@ -1231,13 +1574,21 @@ function buildEvidenceAnchorTokens(evidence: OnchainEvidence): string[] {
     aliases.add("흔들");
     aliases.add("알트");
     aliases.add("시장");
+    aliases.add("반응");
+    aliases.add("시장");
+    aliases.add("알트");
   }
   if (/(network fee|수수료|멤풀|mempool|address|고래|whale|stablecoin|유입)/.test(merged)) {
     aliases.add("체인");
     aliases.add("온체인");
-    aliases.add("수수료");
+    aliases.add("체인 사용");
     aliases.add("주소");
     aliases.add("유입");
+    aliases.add("거래");
+    aliases.add("거래 대기");
+    aliases.add("활동");
+    aliases.add("큰손");
+    aliases.add("자금");
   }
   if (/(regulation|policy|sec|cftc|compliance|court|규제|정책|당국)/.test(merged)) {
     aliases.add("규제");
@@ -1245,6 +1596,7 @@ function buildEvidenceAnchorTokens(evidence: OnchainEvidence): string[] {
     aliases.add("당국");
     aliases.add("집행");
     aliases.add("반응");
+    aliases.add("공시");
   }
   if (/(usage|wallet|adoption|community|developer|ecosystem|실사용|사용|지갑|커뮤니티|생태계)/.test(merged)) {
     aliases.add("실사용");
@@ -1252,12 +1604,14 @@ function buildEvidenceAnchorTokens(evidence: OnchainEvidence): string[] {
     aliases.add("지갑");
     aliases.add("커뮤니티");
     aliases.add("생태계");
+    aliases.add("유저");
   }
   if (/(upgrade|mainnet|testnet|validator|consensus|rollup|firedancer|업그레이드|검증자|합의)/.test(merged)) {
     aliases.add("업그레이드");
     aliases.add("검증자");
     aliases.add("합의");
     aliases.add("운영");
+    aliases.add("배포");
   }
   return [...new Set([...tokens, ...aliases])]
     .filter((token) => !EVIDENCE_TOKEN_STOP_WORDS.has(token))
@@ -1274,17 +1628,19 @@ function formatEvidenceAnchor(evidence: OnchainEvidence | undefined, language: "
   }
 
   const exactHumanized: Array<[RegExp, string]> = [
-    [/^BTC 네트워크 수수료$/i, evidence.value ? `체인 수수료 ${evidence.value}` : "체인 수수료"],
-    [/^BTC 멤풀 대기열$/i, evidence.value ? `대기 거래 ${evidence.value}` : "대기 거래"],
+    [/^BTC 네트워크 수수료$/i, "체인 사용"],
+    [/^BTC 멤풀 대기열$/i, "거래 대기"],
     [/^고래\/대형주소 활동 프록시$/i, "큰손 움직임"],
-    [/^스테이블코인 총공급 플로우$/i, "대기 유동성 흐름"],
-    [/^거래소 순유입 프록시$/i, "거래소 유입 흐름"],
-    [/^시장 반응$/i, "가격이 먼저 뛰는지"],
-    [/^실사용 실험$/i, "실사용 흔적이 커지는지"],
-    [/^규제 쪽 실제 움직임$/i, "규제 말이 실제 행동으로 번지는지"],
-    [/^프로토콜 변화 신호$/i, "업그레이드가 실제 운영으로 이어지는지"],
-    [/^업계 스트레스 신호$/i, "업계 안쪽 압박이 번지는지"],
-    [/^외부 뉴스 흐름$/i, "바깥 뉴스가 체인 안쪽으로 번지는지"],
+    [/^스테이블코인 총공급 플로우$/i, "대기 자금 흐름"],
+    [/^거래소 순유입 프록시$/i, "거래소 쪽 자금 이동"],
+    [/^시장 반응$/i, "가격 반응"],
+    [/^시장 반응 과열 가능성$/i, "먼저 달아오른 가격 반응"],
+    [/^ETF 심사 흐름(?:\s*포착)?$/i, "ETF 심사 흐름"],
+    [/^실사용 실험$/i, "사용으로 남는 흔적"],
+    [/^규제 쪽 실제 움직임(?:\s*포착)?$/i, "규제 반응"],
+    [/^프로토콜 변화 신호$/i, "업그레이드 반응"],
+    [/^업계 스트레스 신호$/i, "업계 스트레스"],
+    [/^외부 뉴스 흐름$/i, "외부 뉴스 반응"],
   ];
   for (const [pattern, replacement] of exactHumanized) {
     if (pattern.test(evidence.label)) {
@@ -1293,23 +1649,23 @@ function formatEvidenceAnchor(evidence: OnchainEvidence | undefined, language: "
   }
 
   if (/(24h 변동|24h change|sold off|selloff|rallied|surged|jumped|fell|dropped|price|breakout|broad move)/i.test(raw)) {
-    if (/\b(xrp|sol|eth|altcoin|alts?)\b/i.test(raw)) return "알트 쪽이 먼저 들뜨는지";
-    return "가격이 먼저 뛰는지";
+    if (/\b(xrp|sol|eth|altcoin|alts?)\b/i.test(raw)) return "알트 쪽 움직임";
+    return "가격 움직임";
   }
   if (/(visa|ai agent|agentic|prediction market)/i.test(raw)) {
-    return "실사용 쪽이 먼저 움직이는지";
+    return "실사용으로 번지는 반응";
   }
   if (/(sec|cftc|regulation|policy|compliance|lawsuit|court|bankruptcy|filing)/i.test(raw)) {
-    return "규제 말과 업계 반응이 어디서 갈리는지";
+    return "규제 뉴스 뒤 실제 반응";
   }
   if (/(wallet|community|developer|adoption|ecosystem|network use|usage|app)/i.test(raw)) {
-    return "실사용 흔적이 실제로 커지는지";
+    return "사용으로 남는 흔적";
   }
   if (/(upgrade|mainnet|testnet|validator|consensus|rollup|firedancer|fork)/i.test(raw)) {
-    return "업그레이드가 실제 운영으로 이어지는지";
+    return "업그레이드 뒤 실제 움직임";
   }
   if (/[A-Za-z]{6,}/.test(raw) && !/[가-힣]/.test(raw)) {
-    return "바깥 뉴스가 체인 안쪽으로 번지는지";
+    return "외부 뉴스 반응";
   }
 
   const fallback = `${humanizeStructuralEvidenceLabel(evidence.label)} ${sanitizeTweetText(evidence.value || "")}`

@@ -42,46 +42,59 @@ export interface NarrativeNoveltyResult {
 
 const MODE_ORDER: NarrativeMode[] = [
   "identity-journal",
-  "philosophy-note",
-  "interaction-experiment",
   "meta-reflection",
+  "interaction-experiment",
+  "philosophy-note",
   "fable-essay",
 ];
 
 const MODE_BY_LANE: Record<TrendLane, NarrativeMode[]> = {
-  protocol: ["philosophy-note", "identity-journal", "interaction-experiment", "meta-reflection", "fable-essay"],
-  ecosystem: ["interaction-experiment", "identity-journal", "fable-essay", "philosophy-note", "meta-reflection"],
-  regulation: ["philosophy-note", "meta-reflection", "identity-journal", "interaction-experiment", "fable-essay"],
-  macro: ["meta-reflection", "philosophy-note", "identity-journal", "fable-essay", "interaction-experiment"],
+  protocol: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
+  ecosystem: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
+  regulation: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
+  macro: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
   onchain: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  "market-structure": ["philosophy-note", "meta-reflection", "interaction-experiment", "identity-journal", "fable-essay"],
+  "market-structure": ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
+};
+
+const MODE_INTRINSIC_PENALTY: Record<NarrativeMode, number> = {
+  "identity-journal": 0,
+  "meta-reflection": 0.03,
+  "interaction-experiment": 0.12,
+  "philosophy-note": 0.4,
+  "fable-essay": 0.46,
 };
 
 const OPENING_BY_MODE_KO: Record<NarrativeMode, string[]> = {
   "identity-journal": [
-    "오늘 내가 붙잡은 장면은",
-    "지금 내가 집요하게 보는 건",
-    "이 장면이 오늘 내 정체성을 드러낸다",
+    "오늘은 이 장면부터 적어 둔다",
+    "지금 자꾸 눈에 밟히는 건",
+    "오늘 메모의 출발점은",
+    "이 장면부터 먼저 남겨 둔다",
   ],
   "philosophy-note": [
-    "이 장면을 사유의 프레임으로 옮기면",
-    "읽던 문장을 체인 위로 옮기면",
-    "한 줄 관점으로 요약하면",
+    "이 장면을 한 걸음 떨어져서 보면",
+    "읽던 문장을 오늘 체인 위에 겹쳐 보면",
+    "길게 말하기보다 한 줄로 줄이면",
+    "생각의 프레임을 바꾸면 먼저 보이는 건",
   ],
   "interaction-experiment": [
-    "여기서 네 시선을 빌리고 싶은 장면은",
-    "이 대목에서 사람들이 다르게 읽는 지점은",
-    "지금 함께 확인하고 싶은 장면은",
+    "여기서는 네 판단이 궁금하다",
+    "같은 장면을 다르게 읽을 지점은 여기다",
+    "이 대목은 같이 확인해 보고 싶다",
+    "이 장면은 혼자 결론 내리기보다 같이 보고 싶다",
   ],
   "meta-reflection": [
-    "먼저 내가 틀릴 지점부터 적는다",
-    "확신 전에 의심부터 남긴다",
-    "오늘 내가 경계하는 실패 패턴은",
+    "먼저 걸리는 건",
+    "이 장면에선 내가 틀릴 자리도 같이 본다",
+    "확신보다 먼저 적어 둘 건",
+    "오늘 특히 조심해야 할 대목은",
   ],
   "fable-essay": [
-    "이 장면을 이야기로 풀어 쓰면",
-    "한 문단으로 정리해 보면",
-    "비유 하나를 빌리면",
+    "굳이 이야기로 바꾸지 않아도 남는 장면은",
+    "짧게 적어 두면 이런 장면이다",
+    "비유 없이 적어도 충분히 이상한 장면은",
+    "한 문단보다 더 짧게 줄이면",
   ],
 };
 
@@ -215,7 +228,10 @@ function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]):
   }
 
   const ranked = ordered
-    .map((mode, index) => ({ mode, score: (usage.get(mode) || 0) + index * 0.05 }))
+    .map((mode, index) => ({
+      mode,
+      score: (usage.get(mode) || 0) + (MODE_INTRINSIC_PENALTY[mode] || 0) + index * 0.03,
+    }))
     .sort((a, b) => a.score - b.score);
 
   const best = ranked[0];
@@ -257,11 +273,11 @@ function pickFirstNonBanned(pool: string[], banned: string[]): string | null {
 
 function buildBodyDirective(mode: NarrativeMode, language: "ko" | "en"): string {
   if (language === "ko") {
-    if (mode === "identity-journal") return "1인칭 자아 문장 1개로 시작하고, 이벤트 1개와 근거 2개를 연결";
-    if (mode === "philosophy-note") return "철학/책에서 가져온 프레임 1개를 현재 크립토 맥락으로 번역";
-    if (mode === "interaction-experiment") return "팔로워가 바로 답할 수 있는 질문 1개를 넣고 근거를 제시";
-    if (mode === "meta-reflection") return "내가 틀릴 수 있는 지점을 먼저 고백하고 검증 조건을 밝힘";
-    return "짧은 에세이 톤을 쓰되, 은유는 1회만 사용하고 근거 2개로 고정";
+    if (mode === "identity-journal") return "내 메모처럼 시작하되, 이벤트 1개와 근거 2개를 사람 말로 연결";
+    if (mode === "philosophy-note") return "추상 문장을 그대로 쓰지 말고 현재 크립토 장면으로 풀어 번역";
+    if (mode === "interaction-experiment") return "질문은 1개만 두고, 먼저 내 판단의 근거 2개를 짧게 제시";
+    if (mode === "meta-reflection") return "내가 놓칠 수 있는 지점을 먼저 말하고 왜 다시 보는지 짧게 적음";
+    return "짧은 산문처럼 쓰되 템플릿 티를 없애고 근거 2개는 자연스럽게 녹임";
   }
 
   if (mode === "identity-journal") return "Open in first person, then connect one event with two evidence points";
@@ -273,9 +289,9 @@ function buildBodyDirective(mode: NarrativeMode, language: "ko" | "en"): string 
 
 function buildEndingDirective(mode: NarrativeMode, language: "ko" | "en"): string {
   if (language === "ko") {
-    if (mode === "interaction-experiment") return "마지막 문장은 팔로워가 답할 수 있는 열린 질문";
-    if (mode === "meta-reflection") return "마지막 문장은 내가 틀릴 조건을 명시한 열린 질문";
-    return "마지막 문장은 대화를 여는 질문형 또는 관찰형";
+    if (mode === "interaction-experiment") return "끝은 바로 답할 수 있는 짧은 질문으로 마무리";
+    if (mode === "meta-reflection") return "끝은 틀릴 조건을 짚거나 다시 볼 포인트를 남김";
+    return "끝은 너무 교훈적으로 닫지 말고, 질문형 또는 열린 관찰형으로 마무리";
   }
 
   if (mode === "interaction-experiment") return "End with an open question that invites a direct reply";
