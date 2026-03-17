@@ -395,3 +395,25 @@ test("evaluatePostQuality rejects when pixymon concept signal is missing", () =>
   assert.equal(result.ok, false);
   assert.equal(result.reason, "픽시몬 컨셉 신호 부족(먹기/소화/진화)");
 });
+
+test("evaluatePostQuality accepts scene-led opener when later sentence carries crypto anchor and pixymon cue", () => {
+  const policy = getDefaultAdaptivePolicy();
+  const result = evaluatePostQuality(
+    "오늘 내 메모는 말만 커지는 날인지부터 다시 보는 데서 시작한다. 그래도 체인 안쪽 사용과 법원 쪽 일정이 같이 남는지부터 본다. 금방 사라지는 건 아직 먹은 단서로 치지 않는다. 둘이 딴소리를 하면 오늘 판단은 미룬다.",
+    [{ symbol: "BTC", name: "Bitcoin", price: 100000, change24h: 1.2 }],
+    [],
+    policy,
+    resolveContentQualityRules({
+      topicBlockConsecutiveTag: false,
+      topicMaxSameTag24h: 8,
+    }),
+    {
+      requireLeadIssueClarity: true,
+      requireActionAndInvalidation: true,
+      requirePixymonConceptSignal: true,
+      language: "ko",
+    }
+  );
+
+  assert.equal(result.ok, true);
+});

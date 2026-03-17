@@ -485,7 +485,7 @@ test("buildOnchainEvidence humanizes english-heavy evidence before planning", ()
     },
   ]);
 
-  assert.equal(evidence[0]?.label, "예측시장 사용 흐름");
+  assert.equal(evidence[0]?.label, "예측시장 사용");
   assert.equal(evidence[0]?.value, "포착");
   assert.match(String(evidence[0]?.summary || ""), /예측시장/);
 });
@@ -507,7 +507,7 @@ test("buildOnchainEvidence humanizes raw onchain fee evidence before planning", 
     },
   ]);
 
-  assert.equal(evidence[0]?.label, "체인 사용");
+  assert.equal(evidence[0]?.label, "체인 안쪽 사용");
   assert.ok(/흐름/.test(String(evidence[0]?.value || "")));
   assert.equal(/sat\/vB/i.test(String(evidence[0]?.summary || "")), false);
 });
@@ -832,6 +832,74 @@ test("buildEventEvidenceFallbackPost avoids label-style opener leakage", () => {
 
   assert.equal(/(?:오늘 기록:|관찰 노트:|온체인에서 오늘 붙잡은 장면:)/.test(fallback), false);
   assert.ok(fallback.length >= 30);
+});
+
+test("buildEventEvidenceFallbackPost uses stronger pixymon cue and drops old fallback boilerplate", () => {
+  const createdAt = new Date().toISOString();
+  const fallback = buildEventEvidenceFallbackPost(
+    {
+      lane: "ecosystem",
+      event: {
+        id: "event-eco",
+        lane: "ecosystem",
+        headline: "말만 커지는 날이 아닌지, 실제로 다시 돌아오는 사람이 있는지 본다",
+        summary: "Usage retention matters more than loud narrative.",
+        source: "news:test",
+        trust: 0.82,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["실사용", "리텐션"],
+      },
+      evidence: [
+        {
+          id: "ev1",
+          lane: "ecosystem",
+          nutrientId: "n1",
+          source: "news",
+          label: "실사용 흐름",
+          value: "포착",
+          summary: "People actually returned to use the product again.",
+          trust: 0.8,
+          freshness: 0.9,
+          capturedAt: createdAt,
+        },
+        {
+          id: "ev2",
+          lane: "onchain",
+          nutrientId: "n2",
+          source: "onchain",
+          label: "체인 사용",
+          value: "살아남",
+          summary: "Chain activity did not fade immediately.",
+          trust: 0.78,
+          freshness: 0.87,
+          capturedAt: createdAt,
+        },
+      ],
+      hasOnchainEvidence: true,
+      hasCrossSourceEvidence: true,
+      evidenceSourceDiversity: 2,
+      laneUsage: {
+        totalPosts: 0,
+        byLane: {
+          protocol: 0,
+          ecosystem: 0,
+          regulation: 0,
+          macro: 0,
+          onchain: 0,
+          "market-structure": 0,
+        },
+      },
+      laneProjectedRatio: 0.2,
+      laneQuotaLimited: false,
+    },
+    "ko",
+    220,
+    "identity-journal"
+  );
+
+  assert.doesNotMatch(fallback, /오늘 손에 남은 건|뭐가 먼저 식는지만 따라간다|끝까지 버틴 쪽만 오늘 메모에 남긴다/);
+  assert.match(fallback, /(먹은 단서|입에 넣는다|삼키지 않는다|오늘 단서)/);
 });
 
 test("buildTrendEvents maps news rows into lane-tagged events", () => {
@@ -1240,7 +1308,7 @@ test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence
   assert.equal(plan?.hasCrossSourceEvidence, false);
   assert.deepEqual(
     plan?.evidence.map((item) => item.label),
-    ["체인 사용", "거래 대기"]
+    ["체인 안쪽 사용", "밀린 거래"]
   );
 });
 
@@ -1306,7 +1374,7 @@ test("planEventEvidenceAct keeps generic onchain event on non-price evidence pai
   assert.ok(plan);
   assert.deepEqual(
     plan?.evidence.map((item) => item.label),
-    ["체인 사용", "거래 대기"]
+    ["체인 안쪽 사용", "밀린 거래"]
   );
 });
 
@@ -1449,8 +1517,8 @@ test("planEventEvidenceAct avoids generic market reaction plus fee pair when lan
 
   assert.ok(plan);
   const labels = plan?.evidence.map((item) => item.label) || [];
-  assert.equal(labels.includes("규제 일정") || labels.includes("규제 쪽 실제 움직임"), true);
-  assert.equal(labels.includes("시장 반응") && labels.includes("BTC 네트워크 수수료"), false);
+  assert.equal(labels.includes("규제 쪽 일정") || labels.includes("현장으로 번지는 규제 반응"), true);
+  assert.equal(labels.includes("먼저 달아오른 가격 분위기") && labels.includes("BTC 네트워크 수수료"), false);
 });
 
 test("planEventEvidenceAct rejects market-structure lane when evidence is only generic mood plus fee", () => {

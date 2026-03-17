@@ -153,3 +153,11 @@ test("buildTrendSearchTerms reduces narrative phrases into searchable terms", ()
   assert.equal(terms.includes("사람"), true);
   assert.equal(terms.includes("장면"), false);
 });
+
+test("trend search cooldown helper reports remaining time", () => {
+  const now = Date.now();
+  __trendTargetTest.setTrendSearchCooldownUntilForTest(now + 30_000);
+  assert.ok(__trendTargetTest.getTrendSearchCooldownRemainingMs(now) >= 29_000);
+  __trendTargetTest.setTrendSearchCooldownUntilForTest(0);
+  assert.equal(__trendTargetTest.getTrendSearchCooldownRemainingMs(now), 0);
+});

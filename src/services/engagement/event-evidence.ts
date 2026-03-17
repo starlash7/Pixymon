@@ -564,24 +564,29 @@ export function buildEventEvidenceFallbackPost(
 
   const koTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `${eventHeadline}.\n\n오늘 손에 남은 건 ${koPair}다.\n\n둘이 같이 오래 남을 때만 천천히 먹는다. 한쪽이 먼저 식으면 여기서 접어 둔다.`,
-      `${eventHeadline}.\n\n오늘은 ${koPair} 중 뭐가 먼저 식는지만 따라간다.\n\n끝까지 버틴 쪽만 오늘 메모에 남긴다.`,
+      `${eventHeadline}.\n\n오늘은 ${koPair}가 같이 오래 남는지만 본다.\n\n금방 사라지는 건 아직 먹은 단서로 치지 않는다.`,
+      `오늘 내 메모는 ${eventHeadline}에서 시작한다.\n\n${koPair}가 끝까지 같은 말을 할 때만 입에 넣는다.\n\n한쪽이 먼저 식으면 여기서 읽기를 멈춘다.`,
+      `${eventHeadline}.\n\n나는 ${koPair}가 한쪽으로 기울기 전까지 더 천천히 본다.\n\n같이 남지 않으면 더 밀어 붙이지 않는다.`,
     ],
     "philosophy-note": [
-      `${eventHeadline}.\n\n이럴수록 숫자보다 ${koPair}가 더 믿을 만하다.\n\n나는 급히 삼키지 않는다. 오래 남는 쪽만 천천히 먹는다.`,
-      `${eventHeadline}.\n\n결국 ${koPair}가 같이 버티는지가 이 장면을 가른다.\n\n한쪽이 먼저 꺾이면 오늘 판단도 거기서 멈춘다.`,
+      `${eventHeadline}.\n\n이럴수록 숫자보다 ${koPair}가 더 솔직하다.\n\n나는 급히 삼키지 않는다. 오래 남는 쪽만 오늘 단서로 남긴다.`,
+      `${eventHeadline}.\n\n결국 ${koPair}가 같은 방향으로 버텨야 이 장면도 버틴다.\n\n엇갈리면 결론을 미루는 편이 낫다.`,
+      `${eventHeadline}.\n\n나는 ${koPair}가 같이 남지 않으면 이 장면을 쉽게 믿지 않는다.\n\n오래 남는 쪽만 천천히 삼킨다.`,
     ],
     "interaction-experiment": [
-      `${eventHeadline}.\n\n오늘은 ${koPair} 중 어느 쪽을 먼저 믿을지 묻고 싶다.\n\n나는 먼저 식는 쪽이 나오면 해석부터 바꾼다.`,
-      `${eventHeadline}.\n\n${koPair}. 너라면 어디서 먼저 의심할지 궁금하다.\n\n나는 버티지 못하는 쪽이 보이면 여기서 읽기를 접는다.`,
+      `${eventHeadline}.\n\n오늘은 ${koPair} 중 어디를 먼저 의심할지 묻고 싶다.\n\n나는 먼저 무너지는 쪽이 보이면 거기서 읽기를 바꾼다.`,
+      `${eventHeadline}.\n\n${koPair}. 너라면 어느 쪽부터 다시 볼지 궁금하다.\n\n나는 한쪽이 먼저 식으면 거기서 멈춘다.`,
+      `${eventHeadline}.\n\n오늘 질문은 단순하다. ${koPair} 중 어디가 먼저 버티지 못하느냐는 쪽이다.\n\n나는 그 순간부터 해석을 고쳐 쓴다.`,
     ],
     "meta-reflection": [
-      `내가 자주 틀리는 건 숫자 하나를 너무 빨리 믿는 순간이다.\n\n그래서 오늘은 ${eventHeadline}. ${koPair}가 끝까지 같이 남는지만 본다.\n\n엇갈리면 이 메모는 여기까지만 둔다.`,
-      `${eventHeadline}.\n\n요란한 숫자 하나보다 ${koPair}가 더 중요하다고 느낀다.\n\n둘이 딴소리를 하면 오늘 문장은 더 밀지 않는다.`,
+      `예전엔 숫자 하나가 세게 튀면 거기서 바로 결론을 냈다.\n\n그래서 오늘은 ${eventHeadline}. ${koPair}가 끝까지 같이 남는지만 본다.\n\n어긋나면 이 메모는 여기서 접는다.`,
+      `${eventHeadline}.\n\n요란한 숫자 하나보다 ${koPair}가 더 믿을 만하다고 느낀다.\n\n둘이 딴소리를 하면 오늘 판단은 미룬다.`,
+      `${eventHeadline}.\n\n내가 자주 틀리는 건 먼저 들뜬 쪽을 곧바로 믿는 순간이다.\n\n그래서 ${koPair}가 어긋나면 오늘 문장도 거기서 멈춘다.`,
     ],
     "fable-essay": [
-      `시장이 시끄러울수록 먼저 챙길 건 단순해진다.\n\n${eventHeadline}. 오늘은 ${koPair}만 끝까지 따라간다.\n\n같이 남지 않으면 이 읽기는 여기서 멈춘다.`,
-      `${eventHeadline}.\n\n오늘 메모는 ${koPair}에서만 출발한다.\n\n둘이 같이 버텨야 다음 문장으로 넘긴다.`,
+      `시끄러운 날일수록 먼저 챙길 건 더 단순해진다.\n\n${eventHeadline}. 오늘은 ${koPair}가 같이 오래 남는지만 본다.\n\n같이 남지 않으면 더 말하지 않는다.`,
+      `${eventHeadline}.\n\n오늘 내 입에 남는 건 ${koPair}뿐이다.\n\n둘이 같이 버텨야 다음 문장으로 넘긴다.`,
+      `말이 커질수록 먼저 붙잡을 건 줄어든다.\n\n${eventHeadline}. ${koPair}가 오래 남는 쪽만 오늘 단서가 된다.\n\n한쪽이 먼저 사라지면 여기서 읽기를 접는다.`,
     ],
   };
 
@@ -921,9 +926,9 @@ function localizeTrendHeadline(headline: string, lane: TrendLane, summary: strin
       "코드 변경이 실제 움직임으로 이어지는 순간이 있는지 살핀다",
     ],
     ecosystem: [
-      "서사만 커지는 날인지, 다시 돌아오는 사람이 있는지부터 본다",
-      "사람들이 다시 열어보는 장면인지 먼저 짚는다",
-      "체인 안쪽에 남는 사용 흔적과 바깥 기대가 같은 방향인지 살핀다",
+      "말만 커지는 날이 아닌지, 실제로 다시 돌아오는 사람이 있는지 본다",
+      "다시 열어보는 손이 늘어나는지부터 먼저 본다",
+      "바깥 기대보다 실제 사용이 다시 붙는지 살핀다",
     ],
     regulation: [
       "규제 문장과 실제 반응이 어디서 갈라지는지 먼저 짚는다",

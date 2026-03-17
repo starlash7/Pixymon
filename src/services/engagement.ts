@@ -11,6 +11,7 @@ import {
   requestBudgetedClaudeMessage,
 } from "./llm.js";
 import {
+  getTrendSearchCooldownRemainingMs,
   getMentions,
   postTweet,
   replyToMention,
@@ -1963,8 +1964,30 @@ Rules:
       "post"
     );
     const dispatchSurfaceIssue = detectNarrativeSurfaceIssue(postText, runtimeSettings.postLanguage);
-    if (dispatchSurfaceIssue) {
-      console.log(`[POST] dispatch 직전 rescue fallback 전환: ${dispatchSurfaceIssue}`);
+    const dispatchContract = validateEventEvidenceContract(postText, eventPlan);
+    const dispatchQuality = evaluatePostQuality(
+      postText,
+      trend.marketData,
+      recentBriefingPosts,
+      policy,
+      qualityRules,
+      {
+        requiredTrendTokens,
+        narrativeMode: narrativePlan.mode,
+        previousNarrativeMode,
+        allowTopicRepeatOnModeShift: true,
+        language: runtimeSettings.postLanguage,
+        requireActionAndInvalidation: false,
+        requireLeadIssueClarity: true,
+        requirePixymonConceptSignal: true,
+      }
+    );
+    const dispatchRescueReason =
+      dispatchSurfaceIssue ||
+      (!dispatchContract.ok ? `contract:${dispatchContract.reason}` : "") ||
+      (!dispatchQuality.ok ? `quality:${dispatchQuality.reason}` : "");
+    if (dispatchRescueReason) {
+      console.log(`[POST] dispatch 직전 rescue fallback 전환: ${dispatchRescueReason}`);
       const rescueAtDispatch = buildRescueContractPost(
         eventPlan,
         runtimeSettings.postLanguage,
@@ -1977,6 +2000,22 @@ Rules:
           runtimeSettings.postMaxChars,
           "post"
         );
+        const rescueContract = validateEventEvidenceContract(postText, eventPlan);
+        if (!rescueContract.ok) {
+          const emergencyAtDispatch = buildEmergencyContractPost(
+            eventPlan,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars
+          );
+          if (emergencyAtDispatch) {
+            postText = finalizeNarrativeSurface(
+              emergencyAtDispatch,
+              runtimeSettings.postLanguage,
+              runtimeSettings.postMaxChars,
+              "post"
+            );
+          }
+        }
       }
     }
 
@@ -3625,12 +3664,17 @@ function detectNarrativeSurfaceIssue(text: string, language: "ko" | "en"): strin
   if (!normalized) return "empty";
   if (language !== "ko") return null;
   if (
-    /(sat\/vB|24h\s*변동|market cap|도미넌스|BTC 네트워크 수수료|BTC 네트워크\.)/i.test(normalized)
+    /(sat\/vB|24h\s*변동|market cap|도미넌스|BTC 네트워크 수수료|BTC 네트워크\.|(?:BTC|ETH|SOL)\s*가?\s*\d[\d,\s]{2,}\s*(?:불|달러)|\d,\s+\d)/i.test(
+      normalized
+    )
   ) {
     return "raw-evidence-fragment";
   }
   if (/(호가창 바깥|같은 화면에 붙여 둔다|같은 화면에 붙여 놓는다|시간차부터 잰다|호가만 흔들리고)/.test(normalized)) {
     return "templated-market-metaphor";
+  }
+  if (/(오늘은 이 장면부터 적어 둔다|오늘 메모의 출발점은|이 장면부터 먼저 남겨 둔다)/.test(normalized)) {
+    return "templated-control-opener";
   }
   if (
     /(?:정책 반응을 따라가 보면|시장에선|실제 돈이 붙는 쪽에선|프로토콜 쪽에선|생태계 쪽에선|온체인에선|체인 안쪽에선)\s+(?:오늘은 이 장면부터 적어 둔다|오늘 메모의 출발점은|이 장면부터 먼저 남겨 둔다)/.test(
@@ -3977,6 +4021,20 @@ async function getOrSearchTrendTweets(
   }
 
   if (!TEST_NO_EXTERNAL_CALLS) {
+    const searchCooldownRemainingMs = getTrendSearchCooldownRemainingMs();
+    if (searchCooldownRemainingMs > 0) {
+      console.log(`[TREND] search cooldown active (${Math.ceil(searchCooldownRemainingMs / 60000)}m 남음)`);
+      const reusable = getReusablePersistedTrendTweets(key, count);
+      if (reusable.length > 0) {
+        console.log(`[ENGAGE] 최근 안전 후보 ${reusable.length}개 재사용`);
+        if (cache) {
+          cache.trendTweets = { key, data: reusable };
+        }
+        return reusable;
+      }
+      return [];
+    }
+
     const trendReadGuard = xApiBudget.checkReadAllowance({
       enabled: xApiCostSettings.enabled,
       timezone,
@@ -6105,28 +6163,28 @@ function buildPixymonConceptLine(
   const seed = stableSeedForPrelude(`${eventPlan.lane}|${variant}|concept`);
   const byLane: Record<TrendLane, string[]> = {
     protocol: [
-      "주워 온 업그레이드 얘기는 바로 삼키지 않는다. 운영이 버틴 뒤에야 내 단서가 된다.",
-      "코드 변화는 한 번 더 씹어 본다. 끝까지 남은 로그만 다음 장면으로 넘긴다.",
+      "업그레이드 얘기는 바로 먹지 않는다. 운영이 버틴 뒤에야 오늘 단서가 된다.",
+      "코드가 바뀌었다는 말보다 끝까지 남는 로그가 있어야 입에 넣는다.",
     ],
     ecosystem: [
-      "사람이 다시 돌아오지 않으면 오늘 주워 온 신호로 치지 않는다.",
-      "서사만 큰 날은 그냥 흘려보낸다. 실사용이 남을 때만 입에 넣는다.",
+      "사람이 다시 돌아오지 않으면 오늘 먹은 단서로 치지 않는다.",
+      "서사만 붓고 사람이 안 남으면 그냥 흘려보낸다.",
     ],
     regulation: [
-      "규제 뉴스는 바로 삼키지 않는다. 행동이 붙을 때만 내 쪽 단서가 된다.",
-      "문장만 센 날은 그냥 지나간다. 현장 반응이 남을 때만 먹는다.",
+      "정책 문장은 바로 삼키지 않는다. 현장 반응이 붙을 때만 단서가 된다.",
+      "말만 센 날은 지나간다. 행동까지 이어질 때만 오늘 메모에 남긴다.",
     ],
     macro: [
-      "큰 바람일수록 바로 믿지 않는다. 체인 안쪽까지 남은 것만 천천히 먹는다.",
-      "거시 뉴스는 먼저 식혀 본다. 오래 남은 흐름만 오늘 단서로 둔다.",
+      "거시 뉴스는 먼저 식혀 본다. 체인 안쪽까지 남은 것만 오늘 단서로 둔다.",
+      "큰 바람일수록 천천히 삼킨다. 체인 안쪽까지 번질 때만 믿는다.",
     ],
     onchain: [
-      "체인에서 주운 건 바로 믿지 않는다. 오래 남는 흔적만 천천히 먹는다.",
-      "온체인 단서는 한 번 더 씹는다. 금방 식는 건 오늘 장부에 올리지 않는다.",
+      "체인에서 주운 건 바로 믿지 않는다. 오래 남는 흔적만 오늘 단서로 남긴다.",
+      "온체인 단서는 한 번 더 씹는다. 금방 식는 건 먹은 걸로 치지 않는다.",
     ],
     "market-structure": [
-      "차트보다 실제 돈이 붙는 쪽을 더 믿는다. 끝까지 남은 쪽만 천천히 먹는다.",
-      "화면만 뜨거우면 아직 삼키지 않는다. 돈이 남을 때만 오늘 단서가 된다.",
+      "화면이 뜨거워도 바로 삼키지 않는다. 실제 돈이 남을 때만 단서가 된다.",
+      "차트보다 체결이 더 중요하다. 돈이 안 붙으면 오늘 먹은 신호로 치지 않는다.",
     ],
   };
   return byLane[eventPlan.lane][seed % byLane[eventPlan.lane].length];
@@ -6139,7 +6197,7 @@ function buildPixymonObservationLine(
   const seed = stableSeedForPrelude(`${eventPlan.lane}|${variant}|observation`);
   const byLane: Record<TrendLane, string[]> = {
     protocol: [
-      "오늘은 발표보다 운영 반응이 얼마나 버티는지만 따라간다.",
+      "오늘은 발표보다 운영 반응이 얼마나 오래 버티는지만 따라간다.",
       "지금은 설명보다 로그 뒤에 남는 흔적을 더 오래 본다.",
     ],
     ecosystem: [
@@ -6178,10 +6236,10 @@ function buildPixymonEvidenceLine(
   const bToken = formatEvidenceToken(b?.label || "", b?.value || "", 22) || "둘째 단서";
   const seed = stableSeedForPrelude(`${eventPlan.lane}|${variant}|${aToken}|${bToken}|evidence`);
   const pool = [
-    `오늘 손에 남은 건 ${aToken}와 ${bToken}다.`,
-    `${aToken}, ${bToken}. 오늘 메모는 이 둘에서 시작한다.`,
-    `지금은 ${aToken}와 ${bToken}만 끝까지 따라간다.`,
-    `${aToken}와 ${bToken} 중 어디서 먼저 힘이 빠지는지 짚는다.`,
+    `오늘은 ${aToken}와 ${bToken}가 같이 오래 남는지부터 본다.`,
+    `먼저 확인할 건 ${aToken}와 ${bToken}가 끝까지 같은 말을 하는지다.`,
+    `${aToken}와 ${bToken} 중 어느 쪽이 먼저 힘이 빠지는지부터 본다.`,
+    `오늘 메모는 ${aToken}와 ${bToken}를 같이 놓는 데서 시작한다.`,
   ];
   return pool[seed % pool.length];
 }
@@ -6193,28 +6251,28 @@ function buildPixymonDecisionLine(
   const seed = stableSeedForPrelude(`${eventPlan.lane}|${variant}|decision`);
   const byLane: Record<TrendLane, string[]> = {
     protocol: [
-      "운영이 먼저 흔들리면 이 이야기는 오늘 여기서 접어 둔다.",
+      "운영이 먼저 흔들리면 이 이야기는 오늘 여기서 접는다.",
       "로그가 못 버티면 이 장면은 더 밀지 않는다.",
     ],
     ecosystem: [
       "사람이 안 남으면 이 얘긴 오래 못 간다.",
-      "돌아오는 손이 없으면 오늘 해석은 여기까지만 둔다.",
+      "돌아오는 손이 없으면 오늘 해석은 여기서 멈춘다.",
     ],
     regulation: [
-      "말이 행동으로 안 번지면 이 장면은 다시 씹는다.",
-      "집행이 붙지 않으면 오늘 결론은 덜어낸다.",
+      "말이 행동으로 안 번지면 이 장면은 다시 읽는다.",
+      "집행이 붙지 않으면 오늘 결론은 미룬다.",
     ],
     macro: [
-      "체인 안쪽으로 안 내려오면 오늘 결론은 접어 둔다.",
+      "체인 안쪽으로 안 내려오면 오늘 결론은 접는다.",
       "바람만 세고 흔적이 안 남으면 더 밀지 않는다.",
     ],
     onchain: [
-      "흔적이 바로 식으면 오늘은 메모만 남기고 멈춘다.",
+      "흔적이 바로 식으면 오늘은 여기서 멈춘다.",
       "주소 움직임이 끊기면 이 장면도 여기서 접는다.",
     ],
     "market-structure": [
       "실제 돈이 안 남으면 이 열기는 그냥 지나가게 둔다.",
-      "체결이 비면 이 장면은 오늘 메모에서 뺀다.",
+      "체결이 비면 이 장면은 오늘 판단에서 뺀다.",
     ],
   };
   return byLane[eventPlan.lane][seed % byLane[eventPlan.lane].length];

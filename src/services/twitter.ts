@@ -36,6 +36,8 @@ const CURATED_REPLY_FALLBACK_USERNAMES = [
   "VitalikButerin",
   "aixbt_agent",
 ];
+const TREND_SEARCH_ENDPOINT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+let trendSearchEndpointUnavailableUntil = 0;
 const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
   minSourceTrust: 0.34,
   minScore: 2.8,
@@ -188,6 +190,11 @@ export async function searchRecentTrendTweets(
     typeof rules.blockSuspiciousPromo === "boolean"
       ? rules.blockSuspiciousPromo
       : DEFAULT_TREND_TWEET_SEARCH_RULES.blockSuspiciousPromo;
+  const cooldownRemainingMs = getTrendSearchCooldownRemainingMs();
+  if (cooldownRemainingMs > 0) {
+    console.log(`[TREND] search endpoint cooldown active (${Math.ceil(cooldownRemainingMs / 60000)}m 남음)`);
+    return [];
+  }
 
   try {
     const cleaned = sanitizeTrendKeywords(keywords).slice(0, 16);
@@ -275,15 +282,9 @@ export async function searchRecentTrendTweets(
     return selected.slice(0, maxResults);
   } catch (error: any) {
     if (isSearchTimelineFallbackError(error)) {
-      console.log("[TREND] search endpoint unavailable, curated timeline fallback 사용");
-      return searchCuratedTimelineFallbackTweets(twitter, count, {
-        minSourceTrust,
-        minScore,
-        minEngagement,
-        maxAgeHours,
-        requireRootPost,
-        blockSuspiciousPromo,
-      });
+      activateTrendSearchCooldown();
+      console.log("[TREND] search endpoint unavailable, proactive reply 검색을 잠시 중단");
+      return [];
     }
     console.log(`[TREND] 검색 실패: ${error.message || "unknown"}`);
     return [];
@@ -376,6 +377,21 @@ function isSearchTimelineFallbackError(error: any): boolean {
   const code = Number(error?.code);
   const message = String(error?.message || "").toLowerCase();
   return code === 402 || /request failed with code 402|product track|access level|not authorized/.test(message);
+}
+
+export function getTrendSearchCooldownRemainingMs(now: number = Date.now()): number {
+  return Math.max(0, trendSearchEndpointUnavailableUntil - now);
+}
+
+function activateTrendSearchCooldown(now: number = Date.now()): void {
+  trendSearchEndpointUnavailableUntil = Math.max(
+    trendSearchEndpointUnavailableUntil,
+    now + TREND_SEARCH_ENDPOINT_COOLDOWN_MS
+  );
+}
+
+function setTrendSearchCooldownUntilForTest(value: number): void {
+  trendSearchEndpointUnavailableUntil = Math.max(0, Math.floor(value));
 }
 
 function isPreferredTrendReplyTarget(
@@ -1051,6 +1067,8 @@ export const __postDispatchTest = {
 export const __trendTargetTest = {
   isPreferredTrendReplyTarget,
   buildTrendSearchTerms,
+  getTrendSearchCooldownRemainingMs,
+  setTrendSearchCooldownUntilForTest,
 };
 
 // 트윗 발행 (Twitter API v2 only)

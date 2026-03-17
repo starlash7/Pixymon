@@ -119,3 +119,10 @@ test("finalizeGeneratedText collapses repeated korean lead phrase", () => {
   const output = finalizeGeneratedText(input, "ko", 220);
   assert.equal(output, "실사용 쪽에선 내가 자주 틀리는 건 단서 하나를 너무 빨리 믿은 순간이다.");
 });
+
+test("finalizeGeneratedText removes repeated lane lead before short concept cue sentence", () => {
+  const input =
+    "생태계 쪽에선 말만 커지는 날이 아닌지 본다. 생태계 쪽에선 아직 바로 먹기엔 이른 장면이다.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(output, "생태계 쪽에선 말만 커지는 날이 아닌지 본다. 아직 바로 먹기엔 이른 장면이다.");
+});
