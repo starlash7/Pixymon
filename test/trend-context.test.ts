@@ -899,7 +899,7 @@ test("buildEventEvidenceFallbackPost uses stronger pixymon cue and drops old fal
   );
 
   assert.doesNotMatch(fallback, /오늘 손에 남은 건|뭐가 먼저 식는지만 따라간다|끝까지 버틴 쪽만 오늘 메모에 남긴다/);
-  assert.match(fallback, /(먹은 단서|입에 넣는다|삼키지 않는다|오늘 단서)/);
+  assert.match(fallback, /(근거는|지금 보는 근거는|내가 먼저 확인할 건)/);
 });
 
 test("buildTrendEvents maps news rows into lane-tagged events", () => {
@@ -1642,9 +1642,9 @@ test("planEventEvidenceAct rejects regulation lane when evidence collapses to ge
       lane: "onchain" as const,
       nutrientId: "n-fee",
       source: "onchain" as const,
-      label: "BTC 네트워크 수수료",
-      value: "6 sat/vB",
-      summary: "BTC network fee rose to 6 sat/vB",
+      label: "검증자 참여율 변화",
+      value: "유지",
+      summary: "검증자 참여율이 업그레이드 직후에도 유지되는지 볼 장면이다.",
       trust: 0.81,
       freshness: 0.92,
       capturedAt: createdAt,
@@ -1673,4 +1673,107 @@ test("planEventEvidenceAct rejects regulation lane when evidence collapses to ge
 
   assert.ok(plan);
   assert.equal(plan?.event.id, "event-protocol");
+});
+
+test("buildStructuralFallbackEventsFromEvidence writes direct structural headlines instead of templated scene language", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "ev1",
+      lane: "onchain" as const,
+      nutrientId: "n1",
+      source: "onchain" as const,
+      label: "지갑 안쪽 사용",
+      value: "유지",
+      summary: "실사용 흔적이 초기 서사 뒤에도 남아 있는지 보는 단서다.",
+      trust: 0.82,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      digestScore: 0.79,
+    },
+    {
+      id: "ev2",
+      lane: "ecosystem" as const,
+      nutrientId: "n2",
+      source: "news" as const,
+      label: "사용자 재방문 흐름",
+      value: "확대",
+      summary: "서사 이후에도 다시 돌아오는 사용자가 실제로 늘었는지 보는 단서다.",
+      trust: 0.8,
+      freshness: 0.89,
+      capturedAt: createdAt,
+      digestScore: 0.77,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 2);
+  assert.ok(events.length >= 1);
+  const headline = events[0].headline;
+  assert.match(headline, /갈린다|달렸다|성립한다/);
+  assert.doesNotMatch(headline, /뒤에|살핀다|짚는다|장면/);
+});
+
+test("buildEventEvidenceFallbackPost keeps korean fallback direct and free of raw fragments", () => {
+  const createdAt = new Date().toISOString();
+  const plan = {
+    lane: "regulation" as const,
+    event: {
+      id: "event-reg",
+      lane: "regulation" as const,
+      headline: "SEC and CFTC policy update sharpens crypto compliance focus",
+      summary: "Regulatory coordination discussion moved back into focus.",
+      source: "news:rss",
+      trust: 0.8,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["sec", "cftc", "policy"],
+    },
+    evidence: [
+      {
+        id: "ev-reg",
+        lane: "regulation" as const,
+        nutrientId: "n-reg",
+        source: "news" as const,
+        label: "규제 쪽 실제 움직임",
+        value: "포착",
+        summary: "규제 해석보다 실제 집행 반응을 먼저 봐야 하는 구간이다.",
+        trust: 0.79,
+        freshness: 0.88,
+        capturedAt: createdAt,
+      },
+      {
+        id: "ev-onchain",
+        lane: "onchain" as const,
+        nutrientId: "n-onchain",
+        source: "onchain" as const,
+        label: "스테이블코인 총공급 플로우",
+        value: "+$180M",
+        summary: "Stablecoin balances continued to expand across major venues.",
+        trust: 0.81,
+        freshness: 0.9,
+        capturedAt: createdAt,
+      },
+    ],
+    hasOnchainEvidence: true,
+    hasCrossSourceEvidence: true,
+    evidenceSourceDiversity: 2,
+    laneUsage: {
+      totalPosts: 0,
+      byLane: {
+        protocol: 0,
+        ecosystem: 0,
+        regulation: 0,
+        macro: 0,
+        onchain: 0,
+        "market-structure": 0,
+      },
+    },
+    laneProjectedRatio: 0.1,
+    laneQuotaLimited: false,
+  };
+
+  const text = buildEventEvidenceFallbackPost(plan, "ko", 220, "identity-journal");
+  assert.match(text, /근거는|지금 보는 근거는|내가 먼저 확인할 건/);
+  assert.match(text, /버린다|보류한다|다시 읽는다/);
+  assert.doesNotMatch(text, /오늘은 이 장면부터|시간차부터 잰다|같은 화면에 둔다|sat\/vB|SEC and CFTC/);
 });

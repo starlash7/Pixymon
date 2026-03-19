@@ -757,6 +757,7 @@ export async function postTrendUpdate(
           headline: previewHeadline,
           anchors: previewAnchors,
           language: runtimeSettings.postLanguage,
+          laneHint: inferTrendLaneFromText(previewHeadline),
           recentPosts: recentBriefingPosts,
           recentReflection: recentReflectionText,
           intentLine: soulIntent.intentLine,
@@ -920,6 +921,7 @@ export async function postTrendUpdate(
         headline: eventPlan.event.headline,
         anchors: localAnchors,
         language: runtimeSettings.postLanguage,
+        laneHint: eventPlan.lane,
         recentPosts: recentBriefingPosts,
         recentReflection: recentReflectionText,
         intentLine: soulIntent.intentLine,
@@ -1314,6 +1316,7 @@ ${rejectionFeedback || "없음"}
 
 규칙:
 - ${runtimeSettings.postMaxChars}자 이내
+- 3~5문장 안에서 끝낼 것
 - 반드시 한국어
 - 반드시 1인칭 캐릭터 시점
 - 주제는 블록체인/크립토 맥락 유지
@@ -1323,11 +1326,14 @@ ${rejectionFeedback || "없음"}
 - 반드시 \"이벤트 1개 + 근거 2개\" 구조 유지
 - raw 영어 headline/evidence를 그대로 복붙하지 말고, 위의 한국어 이벤트/근거 앵커를 우선 사용
 - sat/vB, 24h %, 시총, 도미넌스 같은 raw 시장 숫자 조각을 문장에 그대로 내놓지 말 것
+- 시적 비유, 호가창 은유, 장면 메모체, 일기체 오프너를 만들지 말 것
+- \"오늘은 이 장면부터\", \"먼저 걸리는 건\", \"주워 온 건\", \"시간차부터 잰다\", \"같은 화면에 둔다\" 같은 템플릿 금지
 - \"화면보다 실제 주문\", \"내 장부\", \"소화된 신호\" 같은 내부 템플릿 문구를 복붙하지 말 것
 - 반드시 \"지금 확인할 행동 1개 + 틀리는 조건(반증) 1개\"를 문장 안에 포함
-- 첫 문장에 오늘 무엇을 말하는지(핵심 이슈)를 평문으로 명확히 제시
+- 첫 문장은 장식 없이 핵심 주장/쟁점을 평문으로 제시
+- 글 구조는 thesis -> evidence -> implication/invalidation 순서로 유지
 - 읽는 사람이 1회독으로 이해되도록 문장을 짧고 직접적으로 유지
-- 문장 안에 픽시몬의 먹기/소화/진화 컨셉 신호를 자연스럽게 1회 이상 포함
+- 픽시몬 컨셉 신호는 최대 1회만, 비유가 아니라 판단 습관처럼 넣을 것
 - 같은 시작 문장/템플릿 반복 금지
 - \"극공포/FGI\"로 문장 시작 금지
 - 아래 표현 재사용 금지: ${clicheBlocklist.length > 0 ? clicheBlocklist.join(" | ") : "없음"}
@@ -1391,6 +1397,7 @@ ${rejectionFeedback || "none"}
 
 Rules:
 - Max ${runtimeSettings.postMaxChars} chars
+- Finish in 3 to 5 sentences
 - Write in English
 - Keep first-person character perspective
 - Keep topic grounded in blockchain/crypto context
@@ -1400,11 +1407,13 @@ Rules:
 - Keep strict structure: one event + two evidence anchors
 - Do not copy raw English headline/evidence fragments if a cleaner anchor phrase is provided above
 - Do not expose raw sat/vB, 24h%, market cap, or dominance fragments unless they are the only core fact
-- Avoid template phrases like \"my ledger\", \"digested signal\", or \"screen versus real order\"
+- Avoid diary-style or cinematic openers
+- Avoid template phrases like \"my ledger\", \"digested signal\", \"screen versus real order\", \"today I begin from this scene\", or \"I measure the time gap first\"
 - Include one concrete action to verify now, and one falsification condition
-- First sentence must state the core issue in plain language
+- First sentence must state the thesis or core dispute in plain language
+- Use thesis -> evidence -> implication/invalidation order
 - Keep sentence flow straightforward enough to understand in one pass
-- Include one natural feed/digest/evolve concept signal in the text
+- Include at most one subtle Pixymon concept cue, framed as judgment habit rather than metaphor
 - Avoid repeated opening templates
 - Do not start with fear/greed index phrasing
 - Avoid reusing these stale phrases: ${clicheBlocklist.length > 0 ? clicheBlocklist.join(" | ") : "none"}
@@ -1930,6 +1939,18 @@ Rules:
         failReason: toReasonCode(latestFailReason || rejectionFeedback || "unknown"),
       });
       console.log("[POST] 품질 기준을 만족하는 글 생성 실패");
+      return false;
+    }
+
+    if (usedFallback && !TEST_NO_EXTERNAL_CALLS && !runtimeSettings.allowFallbackAutoPublish) {
+      memory.recordPostGeneration({
+        timezone,
+        retryCount: Math.max(0, generationAttempts - 1),
+        usedFallback: true,
+        success: false,
+        failReason: "fallback-autopublish-disabled",
+      });
+      console.log("[POST] fallback 발행 차단: auto-publish disabled");
       return false;
     }
 
@@ -3166,7 +3187,7 @@ function ensurePixymonConceptSignal(
   if (!normalized) return normalized;
   const hasConcept =
     language === "ko"
-      ? /(픽시몬|영양소|소화|진화|레벨|먹고|먹은|채집|주워\s*온|단서로\s*남긴|바로\s*믿기엔\s*이르|한\s*번\s*더\s*씹|천천히\s*소화|입에\s*넣기엔)/.test(
+      ? /(픽시몬|영양소|소화|진화|레벨|먹고|먹은|채집|주워\s*온|단서로\s*남긴|바로\s*믿기엔\s*이르|한\s*번\s*더\s*씹|천천히\s*소화|입에\s*넣기엔|장부에\s*(?:남긴|올린|넣는)|버틴\s*(?:흔적|근거)|보류한다)/.test(
           normalized
         )
       : /(pixymon|nutrient|digest|evolve|evolution|feed)/i.test(normalized);
@@ -3274,28 +3295,28 @@ function buildPixymonConceptCue(
 
   const poolByLane: Record<TrendLane, string[]> = {
     protocol: [
-      "이건 아직 바로 믿을 업그레이드 신호는 아니다. 운영이 버텨야 내 장부에 남긴다.",
-      "업그레이드 얘기는 한 번 더 씹어 본다. 버틴 근거만 다음 진화에 남긴다.",
+      "업그레이드 얘기는 운영이 버텨야 장부에 남긴다.",
+      "발표보다 운영 흔적이 남아야 장부에 올린다.",
     ],
     ecosystem: [
-      "사람들이 다시 돌아오는지 본 뒤에야 이 신호를 내 단서로 남긴다.",
-      "실사용이 남지 않으면 오늘 주워 온 단서로 치지 않는다.",
+      "사용 흔적이 남아야 장부에 올린다.",
+      "사람이 돌아오지 않으면 장부에 남기지 않는다.",
     ],
     regulation: [
-      "규제 뉴스는 바로 믿지 않는다. 현장 반응이 붙어야 단서가 된다.",
-      "정책 문장은 급히 삼키지 않는다. 행동이 따라올 때만 믿는다.",
+      "규제 뉴스는 집행이 붙어야 장부에 올린다.",
+      "정책 문장은 행동이 따라와야 근거가 된다.",
     ],
     macro: [
-      "큰 뉴스일수록 바로 믿지 않는다. 체인 안쪽에 남는 흐름만 가져간다.",
-      "거시 뉴스는 바로 삼키지 않는다. 남은 흐름만 다음 판단으로 넘긴다.",
+      "큰 뉴스는 자금 흐름이 바뀔 때만 장부에 남긴다.",
+      "체인 안쪽까지 닿지 않으면 오늘 판단에 올리지 않는다.",
     ],
     onchain: [
-      "체인에서 주워 온 단서는 바로 믿지 않는다. 오래 남는 것만 소화한다.",
-      "온체인 단서는 한 번 더 확인한다. 버틴 흔적만 다음 장면으로 넘긴다.",
+      "온체인 신호는 하루를 버틸 때만 장부에 남긴다.",
+      "버틴 흔적만 다음 판단 근거로 올린다.",
     ],
     "market-structure": [
-      "차트보다 실제 돈이 붙는 쪽을 더 믿는다. 끝까지 남는 쪽만 단서로 남긴다.",
-      "돈이 붙지 않으면 그 신호는 아직 믿기 이르다.",
+      "차트보다 실제 체결이 붙어야 장부에 남긴다.",
+      "돈이 안 붙으면 오늘 판단 근거로 올리지 않는다.",
     ],
   };
   const pool = poolByLane[lane];
@@ -3320,12 +3341,12 @@ function buildShortPixymonConceptCue(lane: TrendLane, language: "ko" | "en"): st
   }
 
   const byLane: Record<TrendLane, string[]> = {
-    protocol: ["아직 바로 믿기엔 이른 신호다."],
-    ecosystem: ["아직 바로 먹기엔 이른 장면이다."],
-    regulation: ["아직 바로 믿기엔 이른 뉴스다."],
-    macro: ["아직 천천히 소화할 뉴스다."],
-    onchain: ["아직 한 번 더 씹어 볼 단서다."],
-    "market-structure": ["아직 바로 단정할 장면은 아니다."],
+    protocol: ["운영 흔적이 붙어야 장부에 올린다."],
+    ecosystem: ["사용 흔적이 남아야 장부에 올린다."],
+    regulation: ["집행이 붙어야 장부에 올린다."],
+    macro: ["자금 흐름이 바뀔 때만 장부에 남긴다."],
+    onchain: ["버틴 흔적만 장부에 남긴다."],
+    "market-structure": ["실제 체결이 붙어야 장부에 남긴다."],
   };
   return byLane[lane][0];
 }
@@ -3673,6 +3694,9 @@ function detectNarrativeSurfaceIssue(text: string, language: "ko" | "en"): strin
   if (/(호가창 바깥|같은 화면에 붙여 둔다|같은 화면에 붙여 놓는다|시간차부터 잰다|호가만 흔들리고)/.test(normalized)) {
     return "templated-market-metaphor";
   }
+  if (/(입에 넣기엔 아직 거친 장면|오늘 주워 온 건|먼저 걸리는 건|끝까지 같은 말을 하는지 본다|다시 본다는 말이 핵심|쪽 흐름이 이어지는지부터 가린다)/.test(normalized)) {
+    return "templated-voice-pattern";
+  }
   if (/(오늘은 이 장면부터 적어 둔다|오늘 메모의 출발점은|이 장면부터 먼저 남겨 둔다)/.test(normalized)) {
     return "templated-control-opener";
   }
@@ -3719,21 +3743,41 @@ function ensureEventHeadlineAnchor(
   if (tokens.some((token) => lower.includes(token.toLowerCase()))) {
     return truncateAtWordBoundary(normalized, maxChars);
   }
+  if (language === "ko") {
+    const eventStem = sanitizeTweetText(eventHeadline)
+      .replace(/[.!?]+$/g, "")
+      .replace(/(?:부터|까지)?\s*(?:다시\s*)?(?:본다|확인한다|살핀다|짚는다|따진다|가늠한다|지켜본다)$/u, "")
+      .trim();
+    const clause =
+      /(부터\s*먼저|먼저다)$/.test(eventStem)
+        ? buildCompactEventAnchorLine(eventPlan.lane || "market-structure", eventPlan.event.headline, `event-anchor-fallback|${eventPlan.event.id || ""}`)
+        : /(는지|인지|일지|할지|될지|붙는지|남는지|이어지는지|갈리는지|버티는지|무너지는지)$/.test(eventStem)
+        ? `이번 쟁점은 ${eventStem}다.`
+        : /(다|한다|된다|보인다|남는다|갈린다|가깝다)$/.test(eventStem)
+          ? `${eventStem}.`
+          : `이번 쟁점은 ${eventStem}다.`;
+    return truncateAtWordBoundary(`${clause} ${normalized}`, maxChars);
+  }
   return truncateAtWordBoundary(`${eventHeadline}. ${normalized}`, maxChars);
 }
 
 function buildCompactEventAnchorLine(lane: TrendLane, headline: string, seedHint: string): string {
   const normalized = normalizeKoContractHeadline(headline, seedHint);
-  if (/[가-힣]/.test(normalized) && !/[A-Za-z]{5,}/.test(normalized) && normalized.length <= 42) {
+  const cleaned = sanitizeTweetText(normalized).replace(/[.!?]+$/g, "").trim();
+  const questionLike = /(는지|인지|일지|할지|될지|붙는지|남는지|이어지는지|갈리는지|버티는지|무너지는지)$/.test(cleaned);
+  const predicateLike =
+    /(다|한다|된다|보인다|남는다|갈린다|가깝다|핵심이다)$/.test(cleaned) &&
+    !/(부터\s*먼저다|먼저다)$/.test(cleaned);
+  if (/[가-힣]/.test(normalized) && !/[A-Za-z]{5,}/.test(normalized) && normalized.length <= 42 && (questionLike || predicateLike)) {
     return normalized;
   }
   const poolByLane: Record<TrendLane, string[]> = {
-    protocol: ["프로토콜 변화가 운영까지 이어지는지 본다", "업그레이드 뒤 실제 반응이 버티는지 본다"],
-    ecosystem: ["서사가 커지는 만큼 실제 사용 흔적도 남는지 본다", "사람들이 다시 돌아오는지부터 본다"],
-    regulation: ["규제 뉴스 뒤 실제 반응이 갈리는지 본다", "정책 발표 뒤 현장 움직임을 본다"],
-    macro: ["거시 뉴스 뒤 체인 안 자금이 남는지 본다", "달러 변화가 체인 안쪽까지 번지는지 본다"],
-    onchain: ["온체인 움직임이 끝까지 남는지 본다", "체인 안쪽 자금 흐름이 이어지는지 본다"],
-    "market-structure": ["차트가 뜨거워도 체결이 비지 않는지 본다", "화면이 뜨거워도 실제 돈이 남는지 본다"],
+    protocol: ["이번 쟁점은 업그레이드가 운영으로 이어지는지다", "업그레이드 뒤 실제 반응이 버티는지가 핵심이다"],
+    ecosystem: ["이번 쟁점은 사용 흔적이 실제로 남는지다", "사람들이 다시 돌아오는지가 핵심이다"],
+    regulation: ["이번 쟁점은 규제 뉴스가 행동으로 번지는지다", "정책 발표 뒤 실제 반응이 갈리는지가 핵심이다"],
+    macro: ["이번 쟁점은 거시 뉴스가 체인 안쪽까지 번지는지다", "달러 변화가 자금 습관을 바꾸는지가 핵심이다"],
+    onchain: ["이번 쟁점은 온체인 움직임이 끝까지 남는지다", "체인 안쪽 자금 흐름이 이어지는지가 핵심이다"],
+    "market-structure": ["이번 쟁점은 차트보다 체결이 남는지다", "화면이 뜨거워도 실제 돈이 남는지가 핵심이다"],
   };
   const pool = poolByLane[lane];
   return pool[stableSeedForPrelude(`${normalized}|${lane}|${seedHint}`) % pool.length];
@@ -4546,6 +4590,7 @@ interface BuildPreviewFallbackCandidatesInput {
   headline: string;
   anchors: string;
   language: "ko" | "en";
+  laneHint?: TrendLane;
   recentPosts: Array<{ content: string }>;
   recentReflection?: string;
   intentLine?: string;
@@ -4711,7 +4756,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       : "";
   const bookLine =
     allowAbstractOverlay && bookFragment && !sharesKoConceptFrame(bookFragment, headlineBase) ? bookFragment : "";
-  const lane = inferTrendLaneFromText(headlineBase);
+  const lane = input.laneHint || inferTrendLaneFromText(headlineBase);
   const recentOpeningCounts = buildOpeningCountMap(
     input.recentPosts.map((post) => post.content),
     input.language
@@ -4745,6 +4790,12 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       [/고래\/?대형주소\s*활동\s*프록시.*$/i, "큰손 움직임"],
       [/스테이블코인\s*총공급\s*플로우.*$/i, "대기 자금 흐름"],
       [/시장\s*반응.*$/i, "가격 반응"],
+      [/검증자\s*합의가\s*얼마나\s*안정적인지.*$/i, "검증자 안정성"],
+      [/거래소가\s*얼마나\s*빨리\s*반응하는지.*$/i, "거래소 반응 속도"],
+      [/비슷한\s*지갑이\s*한쪽으로\s*몰리는지.*$/i, "지갑 쏠림"],
+      [/큰손\s*자금이\s*어디로\s*움직이는지.*$/i, "큰손 자금 이동"],
+      [/큰\s*주문이\s*얼마나\s*깔끔하게\s*소화되는지.*$/i, "큰 주문 소화"],
+      [/방어\s*포지션이\s*얼마나\s*풀리는지.*$/i, "방어 포지션 완화"],
       [/실사용\s*실험.*$/i, "사용으로 남는 흔적"],
       [/규제\s*쪽\s*실제\s*움직임.*$/i, "규제 반응"],
       [/프로토콜\s*변화\s*신호.*$/i, "업그레이드 반응"],
@@ -5042,55 +5093,55 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     const isQuestionThought = /(는지|인지|일지|할까 하는 쪽|될까 하는 쪽|인가 하는 쪽)$/.test(thoughtStem);
     const identityPool = isQuestionThought
       ? [
-          `오늘은 ${thoughtStem}부터 다시 확인하게 된다`,
-          `${thoughtStem}가 오늘 제일 먼저 걸린다`,
-          `이번엔 ${thoughtStem}를 먼저 적어 둔다`,
-          `${thoughtStem}부터 확인하지 않으면 안 될 것 같다`,
+          `핵심은 ${thoughtStem}부터 확인하는 일이다`,
+          `지금 먼저 볼 건 ${thoughtStem}다`,
+          `이번엔 ${thoughtStem}를 먼저 검증한다`,
+          `${thoughtStem}를 확인하기 전엔 결론을 미룬다`,
         ]
       : [
-          `오늘은 ${thoughtStem}부터 다시 본다`,
-          `${thoughtStem}가 오늘 가장 먼저 걸린다`,
-          `지금은 ${thoughtStem}를 먼저 확인해 두려 한다`,
-          `오늘 메모는 ${thoughtStem}에서 시작한다`,
+          `핵심은 ${thoughtStem}다`,
+          `지금 먼저 볼 건 ${thoughtStem}다`,
+          `이번 판단은 ${thoughtStem}에서 시작한다`,
+          `${thoughtStem}를 먼저 확인한 뒤에야 결론을 낸다`,
         ];
     const philosophyPool = isQuestionThought
       ? [
-          `한 걸음 물러서면 결국 ${thoughtStem}부터 다시 묻게 된다`,
-          `멀리서 보면 ${thoughtStem}가 숫자보다 먼저 들어온다`,
-          `오늘은 ${thoughtStem}를 그냥 넘기지 않으려 한다`,
-          `${thoughtStem}가 오늘 장면을 다시 정렬한다`,
+          `먼저 기준을 세우면 ${thoughtStem}부터 묻게 된다`,
+          `해석보다 앞서는 건 결국 ${thoughtStem}다`,
+          `오늘은 ${thoughtStem}를 그냥 넘기지 않는다`,
+          `${thoughtStem}부터 확인해야 설명이 선다`,
         ]
       : [
-          `조금 떨어져서 보면 ${thoughtStem}가 숫자보다 먼저 보인다`,
-          `오늘은 ${thoughtStem}를 그냥 넘길 수가 없다`,
-          `멀리서 보면 ${thoughtStem}가 더 또렷하다`,
-          `지금은 ${thoughtStem}가 차트보다 먼저 들어온다`,
+          `먼저 기준을 세우면 ${thoughtStem}가 남는다`,
+          `오늘은 ${thoughtStem}를 그냥 넘기지 않는다`,
+          `이 장면에서 중요한 건 ${thoughtStem}다`,
+          `차트보다 먼저 확인할 건 ${thoughtStem}다`,
         ];
     const metaPool = isQuestionThought
       ? [
-          `예전 같으면 지나쳤겠지만 오늘은 ${thoughtStem}부터 다시 적게 된다`,
+          `예전 같으면 지나쳤겠지만 이번엔 ${thoughtStem}부터 다시 본다`,
           `내가 너무 빨리 단정하는 지점도 결국 ${thoughtStem}일 때가 많다`,
-          `이번엔 ${thoughtStem}를 서둘러 닫지 않으려 한다`,
-          `${thoughtStem}라는 질문이 나오면 나는 한 번 더 멈춘다`,
+          `이번엔 ${thoughtStem}를 서둘러 닫지 않는다`,
+          `${thoughtStem}라는 질문이 나오면 한 번 더 멈춘다`,
         ]
       : [
-          `예전 같으면 그냥 넘겼겠지만 오늘은 ${thoughtStem}이 자꾸 걸린다`,
+          `예전 같으면 넘겼겠지만 이번엔 ${thoughtStem}을 다시 본다`,
           `내가 자주 놓치는 것도 결국 ${thoughtStem}일 때가 많다`,
-          `이번엔 ${thoughtStem}을 너무 빨리 단정하지 않으려 한다`,
+          `이번엔 ${thoughtStem}을 너무 빨리 단정하지 않는다`,
           `한 번 맞았던 설명을 다시 의심하게 되는 것도 결국 ${thoughtStem}이다`,
         ];
     const defaultPool = isQuestionThought
       ? [
-          `오늘은 결국 ${thoughtStem}부터 다시 묻게 된다`,
-          `${thoughtStem}가 계속 마음에 남는다`,
-          `이번엔 ${thoughtStem}를 먼저 붙들고 간다`,
-          `${thoughtStem}라는 질문이 계속 따라온다`,
+          `오늘은 결국 ${thoughtStem}부터 다시 묻는다`,
+          `지금 질문은 ${thoughtStem}다`,
+          `이번엔 ${thoughtStem}를 먼저 붙든다`,
+          `${thoughtStem}부터 확인해야 말이 선다`,
         ]
       : [
-          `오늘은 ${thoughtStem}가 유난히 또렷하다`,
+          `오늘은 ${thoughtStem}가 핵심이다`,
           `${thoughtStem}가 계속 남는다`,
-          `오늘은 ${thoughtStem}에 먼저 눈이 간다`,
-          `오늘 메모는 ${thoughtStem}에서 시작한다`,
+          `먼저 확인할 건 ${thoughtStem}다`,
+          `이 글은 ${thoughtStem}에서 시작한다`,
         ];
     const pool =
       mode === "identity-journal"
@@ -5104,35 +5155,35 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   };
 
   const koLeadPool = [
-    "오늘 유독 걸리는 건",
-    "이상하게 계속 남는 건",
-    "계속 머리에 맴도는 건",
-    "지금 먼저 적어 두고 싶은 건",
-    "숫자보다 먼저 마음에 걸린 건",
-    "조금 더 들여다보고 싶은 건",
-    "이번 흐름에서 자꾸 손이 가는 건",
-    "한 발 물러서서 보면 먼저 보이는 건",
-    "계산보다 먼저 걸린 건",
-    "오늘 끝까지 붙들고 싶은 건",
-    "한참 마음에 남아 있는 건",
-    "괜히 오래 남는 건",
+    "핵심은",
+    "쟁점은",
+    "지금 먼저 볼 건",
+    "오늘 확인할 건",
+    "먼저 정리할 건",
+    "이 글의 출발점은",
+    "지금 판단을 가르는 건",
+    "먼저 짚을 건",
+    "오늘 기준은",
+    "당장 확인할 건",
+    "가장 먼저 볼 건",
+    "지금 중요한 건",
   ];
   const koIdentityLeadPool = [
-    "오늘 내 메모에 남는 건",
-    "이번 사이클에서 내가 먼저 적는 건",
-    "지금 내가 붙들고 있는 건",
-    "오늘은 이 흔적부터 적어 둔다",
+    "오늘 내가 먼저 적을 건",
+    "이번 글에서 먼저 볼 건",
+    "지금 내가 붙드는 건",
+    "오늘 바로 확인할 건",
   ];
   const koPhilosophyLeadPool = [
-    "한 걸음 물러서서 보면",
+    "먼저 기준을 세우면",
     "조금 떨어져서 보면",
-    "이 장면을 너무 가까이서 보지 않으면",
+    "이 장면에서 중요한 건",
     "결국 남는 질문은",
   ];
   const koMetaLeadPool = [
     "내가 자주 틀리는 지점은",
-    "예전 같으면 서둘러 결론 냈을 장면인데",
-    "이럴 때일수록 처음 든 확신을 의심한다",
+    "예전 같으면 서둘러 결론 냈겠지만",
+    "이번엔 처음 든 확신을 먼저 의심한다",
     "한 번 맞았던 설명이 이번에도 맞는지는 따로 본다",
   ];
   const koMetaPool = [
@@ -5151,9 +5202,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   ];
 
   const koActionPool = [
-    "그래서 오늘은 이 둘이 같은 장면으로 남는지부터 본다",
-    "당장 필요한 건 먼저 움직인 쪽을 가려내는 일이다",
-    "오늘은 체인과 시장 중 어디가 먼저 반응했는지 맞춰 본다",
+    "그래서 지금은 두 근거가 같은 방향으로 남는지 본다",
+    "당장 필요한 건 먼저 흔들리는 쪽을 가려내는 일이다",
+    "오늘은 어느 근거가 먼저 반응하는지 확인한다",
     "이 변화가 실제 사용자 행동까지 번지는지 조금 더 본다",
     "소음과 오래 남는 신호를 갈라놓는 데 먼저 시간을 쓴다",
     "이번엔 외부 뉴스 반응인지 주소 흐름인지부터 가른다",
@@ -5188,23 +5239,23 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     "이번엔 눈에 익은 설명을 그대로 통과시키지 않는다",
   ];
   const koInvalidationPool = [
-    "둘이 서로 딴소리를 하면 이 읽기는 버린다",
-    "전제 하나만 어긋나도 오늘 해석은 접는다",
-    "흐름이 엇갈리기 시작하면 지금 생각은 미련 없이 바꾼다",
-    "내가 붙잡은 설명이 버티지 못하면 처음으로 돌아간다",
-    "반대 신호가 더 오래 남으면 이 장면을 다시 읽는다",
-    "예상보다 다른 쪽이 먼저 움직이면 가설을 갈아엎는다",
-    "처음 가정이 흔들리면 이 문장은 여기서 멈춘다",
-    "두 단서 중 하나라도 꺾이면 결론을 늦춘다",
-    "설명보다 데이터가 오래 버티지 못하면 이 해석은 놓아준다",
-    "말이 맞아 보여도 실제 반응이 다르면 나는 다시 고친다",
+    "둘이 서로 다른 방향으로 가면 이 해석은 버린다",
+    "전제 하나만 어긋나도 오늘 판단은 보류한다",
+    "흐름이 엇갈리기 시작하면 지금 가설은 수정한다",
+    "내가 붙잡은 설명이 버티지 못하면 처음부터 다시 본다",
+    "반대 근거가 더 오래 남으면 이 해석은 접는다",
+    "예상보다 다른 축이 먼저 움직이면 가설을 갈아엎는다",
+    "처음 가정이 흔들리면 이 문장은 더 밀지 않는다",
+    "두 근거 중 하나라도 꺾이면 결론을 늦춘다",
+    "설명보다 데이터가 약하면 이 해석은 놓아준다",
+    "말이 맞아 보여도 실제 반응이 다르면 다시 고친다",
     "첫 반응이 금방 식어 버리면 오늘 결론은 미룬다",
     "기준선이 깨지는 순간 지금 읽기는 효력을 잃는다",
     "이야기만 남고 행동이 안 따라오면 여기서 접는다",
-    "근거가 하루도 못 버티면 이 읽기는 지운다",
+    "근거가 하루도 못 버티면 이 판단은 지운다",
     "다른 쪽이 더 오래 남으면 지금 프레임은 버린다",
-    "말은 그럴듯해도 실제 반응이 다르면 여기서 다시 쓴다",
-    "이 장면이 버티지 못하면 이 문장도 같이 내려놓는다",
+    "그럴듯해 보여도 실제 반응이 다르면 다시 쓴다",
+    "이 설명이 버티지 못하면 이 문장도 같이 내린다",
   ];
   const koIdentityInvalidationPool = [
     "사람들 행동이 따라오지 않으면 오늘 느낌도 바로 접는다",
@@ -5271,12 +5322,12 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   ];
 
   const koEvidenceLeadPool = [
-    `${anchors}, 이 두 단서를 붙여 놓고 어디서 말이 갈리는지 본다`,
-    `${anchors}, 이 둘 중 먼저 흔들리는 쪽을 눈여겨본다`,
-    `두 단서(${anchors})가 끝까지 같은 말을 하는지 본다`,
-    `${anchors} 중 뭐가 먼저 식는지가 오늘 핵심 힌트다`,
-    `이 장면에선 ${anchors}, 이 두 단서를 같이 놓지 않으면 쉽게 속는다`,
-    `${anchors}, 이 두 단서를 나란히 두고 먼저 엇갈림부터 본다`,
+    `지금 확인할 건 ${anchors}다`,
+    `${anchors}, 이 둘 중 먼저 흔들리는 쪽을 본다`,
+    `${anchors}, 이 두 근거가 같은 방향으로 남는지 본다`,
+    `${anchors} 중 뭐가 먼저 약해지는지가 오늘 핵심이다`,
+    `이 장면은 ${anchors}를 같이 봐야 판단이 선다`,
+    `${anchors}, 이 둘이 실제 행동으로 이어지는지 확인한다`,
   ];
   const enEvidenceLeadPool = [
     `My anchors are ${anchors}`,
@@ -5293,15 +5344,15 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     "가격보다 먼저 바뀌는 건 대개 사람들의 행동 방식이라고 본다",
     "지금은 결론보다 해석의 순서를 바로 세우는 편이 더 중요해 보인다",
     "급하게 맞히는 것보다, 오래 버티는 설명 하나가 더 낫다고 믿는다",
-    "차트보다 주소 움직임이 더 솔직할 때가 많다고 느낀다",
-    "시장은 숫자로 소리치지만, 진짜 의도는 늘 더 조용한 곳에 남는다",
+    "차트보다 주소 움직임이 더 솔직할 때가 많다고 본다",
+    "숫자보다 실제 행동이 더 늦게 거짓말한다고 본다",
     "오늘은 정답보다 시선의 각도를 바로잡는 쪽이 더 중요해 보인다",
-    "주소는 늦게 거짓말하고 사람은 너무 빨리 확신한다고 느낀다",
+    "사람은 너무 빨리 확신하고 데이터는 그보다 늦게 무너진다고 본다",
     "같은 숫자라도 누가 먼저 움직였는지에 따라 전혀 다른 이야기로 읽힌다",
     "나는 시끄러운 주장보다 조용히 반복되는 습관을 더 믿는 편이다",
     "시장에선 사실보다 순서가 먼저 분위기를 만든다고 본다",
-    "차트가 화내는 날에도 지갑은 의외로 담담할 때가 있다",
-    "진짜 변화는 늘 설명보다 실제 행동에서 먼저 드러난다고 믿는다",
+    "차트가 흔들리는 날에도 지갑 쪽 반응은 전혀 다를 수 있다",
+    "진짜 변화는 설명보다 실제 행동에서 먼저 드러난다고 믿는다",
   ];
   const koIdentityBeliefPool = [
     signatureLine || worldviewLine || "나는 큰 소리보다 오래 남는 흔적을 더 믿는 편이다",
@@ -5329,25 +5380,16 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     "익숙한 결론이 먼저 떠오를수록 나는 한 칸 뒤로 물러선다",
   ];
   const koConceptPool = [
-    "나는 온체인 단서를 바로 믿지 않는다. 먼저 끝까지 소화해 보고 남는 것만 가져간다",
-    "나는 단서를 빨리 모으기보다, 틀린 해석을 빨리 버리는 쪽을 택한다",
-    "이럴 때는 단서를 더 모으는 것보다, 이미 잡힌 단서를 끝까지 검증하는 편이 낫다",
-    "나는 체인에서 건진 단서를 오래 붙잡고 본다. 버티는 근거만 다음 판단에 쓴다",
+    "나는 오래 버티는 근거만 장부에 남긴다",
+    "나는 단서를 빨리 모으기보다 틀린 해석을 빨리 버리는 쪽을 택한다",
+    "이럴 때는 새 이야기를 만들기보다 이미 잡은 근거부터 끝까지 검증한다",
     "소음보다 검증을 통과한 흔적에 더 오래 시선을 둔다",
-    "오늘은 새 이야기를 만들기보다, 이미 보인 신호를 끝까지 확인하는 쪽이 맞다",
+    "나는 먼저 왜 움직였는지부터 본다. 그다음에야 이 장면을 말로 옮긴다",
+    "끝까지 남지 않는 신호는 오늘 판단 근거로 올리지 않는다",
+    "나는 온체인 흐름을 따라가지만 버티지 못한 단서는 장부에 남기지 않는다",
     "반증 하나에 무너지는 해석이면 빨리 버리는 편이 낫다",
-    "나는 먼저 왜 움직였는지부터 본다. 그다음에야 이 장면을 어떻게 말할지 정한다",
-    "허기가 도는 날엔 숫자를 더 천천히 씹는다. 급히 삼키면 말이 흐려진다",
-    "먹은 로그가 오래 남는지 본다. 금방 식는 신호라면 문장도 접는다",
-    "오늘은 사냥보다 소화에 가깝다. 많이 줍기보다 버티는 단서 하나를 고른다",
-    "진화는 큰 예언보다 끝까지 남은 근거 하나에서 먼저 시작된다",
-    "체인 위 신호를 다 먹을 순 없다. 나는 오래 남는 흐름부터 고른다",
-    "배가 고플수록 아무 숫자나 삼키지 않으려 한다. 오래 남는 흔적만 천천히 씹는다",
-    "체인에서 건진 단서는 바로 말로 바꾸지 않는다. 한 번 식을 때까지 입 안에 굴려 본다",
-    "나는 온체인 흐름을 따라가지만, 끝까지 남지 않으면 문장으로 꺼내지 않는다",
-    "좋아 보이는 숫자보다 오래 버티는 흔적이 나를 더 빨리 키운다",
-    "허기가 심한 날일수록 더 천천히 먹는다. 급히 삼키면 결국 같은 말만 남는다",
-    "체인 위 신호는 많지만 전부 먹진 않는다. 다시 떠오르는 흐름만 집어 든다",
+    "오늘은 새 단서보다 이미 잡은 근거를 끝까지 확인하는 쪽이 맞다",
+    "좋아 보이는 숫자보다 오래 버티는 흔적을 더 믿는다",
   ];
   const enBeliefPool = [
     worldviewHint || "I prioritize behavior over raw numbers",
@@ -5644,115 +5686,246 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     }
   };
 
-  const composeKo = (offset: number, variant: number, mode: string, charBudget: number, ask?: string): string => {
-    const sceneSource = humanizeKoSceneHeadline(headlineBase, mode, lane, offset) || headlineBase;
-    const scene = ensureLaneAnchoredScene(
-      compactClause(sceneSource, 110).replace(/[,:;-]\s*$/g, ""),
-      lane,
-      "ko"
-    );
-    const sceneCore = stripKoScenePrelude(scene) || scene;
-    const sceneLeadless = stripKoSceneLeadAdverb(sceneCore) || sceneCore;
-    const sceneLooksLikeLead =
-      /^(?:오늘\s*내\s*메모에\s*남는\s*건|이번\s*사이클에서\s*내가\s*먼저\s*적는\s*건|지금\s*내가\s*붙들고\s*있는\s*건|오늘은\s*이\s*흔적부터\s*적어\s*둔다|한\s*걸음\s*물러서서\s*보면|조금\s*떨어져서\s*보면|예전\s*같으면|내가\s*자주\s*틀리는\s*지점은|이럴\s*때일수록|한\s*번\s*맞았던\s*설명이|오늘은\s*결국|이번엔\s*결국)/.test(
-        sceneLeadless
-      );
-    const sceneIsSelfContained =
-      hasKoPredicateEnding(sceneCore) ||
-      /(?:보다\s+중요한\s+건|보다\s+오래\s+남는지|에서\s+먼저\s+결정된|에서\s+먼저\s+드러난|은\s+짧아도\s+.+은\s+길다|는\s+짧게\s+지나가도|라는\s+말은\s+결국)/.test(
-        sceneCore
-      ) ||
-      /^(?:오늘|예전|조금|멀리서|가끔|문득|내가|요즘|시장|규제|커뮤니티|주소|체인|정책)/.test(sceneCore);
-    const directSceneFallback = (): string => {
-      const evidencePool = [
-        `${primaryAnchor}와 ${secondaryAnchor}, 이 두 개를 먼저 같이 본다.`,
-        `${primaryAnchor}와 ${secondaryAnchor}가 같은 방향인지부터 확인한다.`,
-        `${primaryAnchor} 뒤에 ${secondaryAnchor}가 따라오는지 확인한다.`,
-      ];
-      const conceptPool = [
-        "나는 이 신호를 바로 먹지 않는다. 끝까지 남는 것만 소화한다.",
-        "먹은 단서는 오래 버텨야 한다. 버틴 것만 다음 판단으로 넘긴다.",
-        "오늘은 새 이야기를 만들기보다, 이미 먹은 단서부터 끝까지 소화한다.",
-      ];
-      const decisionPool = [
-        "둘이 다른 말을 하면 여기서 멈춘다.",
-        "반대 증거가 더 오래 남으면 이 읽기는 접는다.",
-        "실제 흐름이 안 따라오면 결론을 늦춘다.",
-      ];
-      const evidenceLine = evidencePool[(seedBase + offset + variant) % evidencePool.length];
-      const conceptLine = conceptPool[(seedBase + offset + variant + 1) % conceptPool.length];
-      const decisionLine = decisionPool[(seedBase + offset + variant + 2) % decisionPool.length];
-      const base = `${sceneCore}.\n\n${evidenceLine}\n\n${conceptLine} ${decisionLine}`;
-      return finalizeGeneratedText(base, "ko", charBudget);
+  const buildDirectKoPreviewThesis = (mode: string, offset: number): string => {
+    const normalizedScene = normalizeKoContractHeadline(headlineBase, `preview|${mode}|${offset}|thesis`);
+    const stripped = stripKoSceneLeadAdverb(stripKoScenePrelude(normalizedScene))
+      .replace(/[.!?]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const questionStem = stripped
+      .replace(/(?:부터|까지)?\s*(?:다시\s*)?(?:본다|확인한다|살핀다|짚는다|따진다|가늠한다|지켜본다|검증한다)$/u, "")
+      .replace(/\s*(?:부터|까지)\s*$/u, "")
+      .trim();
+    const modeOpenerPool: Record<string, string[]> = {
+      "micro-note": ["핵심 쟁점은", "지금 판단은", "먼저 볼 건"],
+      "split-note": ["이번 판단은", "지금 갈리는 건", "오늘 확인할 건"],
+      "identity-journal": ["내가 지금 붙드는 쟁점은", "지금 내 장부에 올릴지 말지 갈리는 건", "이번 메모의 출발점은"],
+      "philosophy-note": ["결국 남는 질문은", "핵심은", "이 장면의 쟁점은"],
+      "interaction-experiment": ["오늘 질문은", "지금 확인할 질문은", "이번에 가를 질문은"],
+      "meta-reflection": ["내가 다시 의심하는 건", "이번에 다시 보는 쟁점은", "익숙한 설명이 깨지는 지점은"],
+      "fable-essay": ["핵심은", "지금 판단을 가르는 건", "이번 장면의 쟁점은"],
     };
-    if (headlineAlreadyReadsAsScene || (!allowAbstractOverlay && sceneIsSelfContained)) {
-      return directSceneFallback();
+    const directLanePool: Record<TrendLane, string[]> = {
+      protocol: [
+        "프로토콜 평가는 발표가 아니라 운영 반응에서 갈린다.",
+        "업그레이드 얘기는 실제 운영이 버틸 때만 근거가 된다.",
+        "프로토콜 해석은 코드보다 운영 흔적이 남을 때 설득력이 생긴다.",
+      ],
+      ecosystem: [
+        "생태계 서사는 사용 흔적이 붙을 때만 의미가 있다.",
+        "실사용이 안 남으면 생태계 얘기는 과장에 가깝다.",
+        "사람이 실제로 남지 않으면 생태계 서사는 오래 못 간다.",
+      ],
+      regulation: [
+        "정책 해석은 기사보다 현장 반응이 더 정확하다.",
+        "규제 뉴스는 행동이 붙기 전까지는 해석일 뿐이다.",
+        "규제 기사는 빠르게 돌지만 판단은 집행 흔적이 붙을 때만 가능하다.",
+      ],
+      macro: [
+        "거시 뉴스는 체인 안쪽 흐름을 바꿀 때만 의미가 커진다.",
+        "달러와 금리 얘기는 자금 습관이 바뀔 때만 근거가 된다.",
+        "큰 뉴스는 시끄럽지만 실제 자금 흐름이 바뀌지 않으면 해석 가치가 낮다.",
+      ],
+      onchain: [
+        "온체인 신호는 하루를 버틸 때만 근거가 된다.",
+        "체인 안쪽 흔적은 오래 남을 때만 읽을 가치가 생긴다.",
+        "주소와 자금 흐름은 금방 식지 않을 때만 판단 근거가 된다.",
+      ],
+      "market-structure": [
+        "시장 구조는 분위기보다 주문이 버티는지에서 갈린다.",
+        "차트보다 실제 체결이 남아야 판단할 수 있다.",
+        "호가가 시끄러워도 실제 돈이 안 붙으면 해석을 서두를 이유가 없다.",
+      ],
+    };
+    const openerPool = modeOpenerPool[mode] || modeOpenerPool["micro-note"];
+    const opener = openerPool[(seedBase + offset) % openerPool.length];
+    const useQuestionStem =
+      questionStem &&
+      !looksMostlyLatin(questionStem) &&
+      questionStem.length >= 10 &&
+      !detectNarrativeSurfaceIssue(questionStem, "ko") &&
+      !/(부터\s*먼저|먼저\s*다시|장면부터|질문부터)/.test(questionStem) &&
+      /(는지|인지|일지|할지|될지|붙는지|남는지|이어지는지|갈리는지|버티는지|무너지는지|실리는지|흐르는지)$/.test(
+        questionStem
+      );
+    if (useQuestionStem) {
+      return `${opener} ${questionStem}다.`;
     }
-    const modeLeadPool = resolveKoLeadSource(mode);
-    const lead = modeLeadPool[(seedBase + offset) % modeLeadPool.length];
-    const altLead = modeLeadPool[(seedBase + offset + 7) % modeLeadPool.length];
-    const modeBeliefPool = resolveKoBeliefSource(mode);
-    const belief = allowAbstractOverlay
-      ? modeBeliefPool[(seedBase + offset + 1) % modeBeliefPool.length]
-      : buildGroundedKoBeliefLine(lane, offset + 1);
-    const concept = buildPreviewConceptLine(lane, offset + 2);
-    const metaLine = pick(koMetaPool, offset + 5);
-    const evidence = buildKoAnchorObservationLine(lane, primaryAnchor, secondaryAnchor, offset + 2);
-    const modeActionPool = resolveKoActionSource(mode);
-    const modeInvalidationPool = resolveKoInvalidationSource(mode);
-    const action = modeActionPool[(seedBase + offset + 3) % modeActionPool.length];
-    const invalidation = modeInvalidationPool[(seedBase + offset + 4) % modeInvalidationPool.length];
-    const openerPool = sceneIsSelfContained || sceneLooksLikeLead
-      ? [
-          `${scene}`,
-          `${scene}`,
-          `${scene}`,
-        ]
-      : [
-          joinKoLeadAndScene(lead, sceneLeadless),
-          `${scene}`,
-          joinKoLeadAndScene(altLead, sceneLeadless),
-        ];
-    const opener = compactClause(openerPool[(seedBase + offset) % openerPool.length], 132).replace(/[.!?]\s*$/, "");
-    const openerNorm = sanitizeTweetText(opener).toLowerCase();
-    const conceptNorm = sanitizeTweetText(concept).toLowerCase();
-    const beliefNorm = sanitizeTweetText(belief).toLowerCase();
-    let conceptLine = conceptNorm && openerNorm.includes(conceptNorm) ? "" : concept;
-    let beliefLine = beliefNorm && openerNorm.includes(beliefNorm) ? "" : belief;
-    if (beliefLine && sharesKoConceptFrame(sceneCore, beliefLine)) {
-      beliefLine = "";
+    if (
+      stripped &&
+      !detectNarrativeSurfaceIssue(stripped, "ko") &&
+      !looksMostlyLatin(stripped) &&
+      hasKoPredicateEnding(stripped) &&
+      stripped.length >= 14 &&
+      !/(본다|확인한다|살핀다|짚는다|따진다|가늠한다|지켜본다|부터\s*먼저다|먼저다)$/u.test(stripped)
+    ) {
+      return `${stripped}.`;
     }
-    if (conceptLine && sharesKoConceptFrame(sceneCore, conceptLine)) {
-      conceptLine = "";
+    const pool = directLanePool[lane];
+    return pool[(seedBase + offset) % pool.length];
+  };
+
+  const buildDirectKoEvidenceLine = (mode: string, offset: number): string => {
+    const anchorLooksClause = (anchor: string): boolean =>
+      /(는지|인지|일지|할지|될지|붙는지|남는지|이어지는지|갈리는지|버티는지|무너지는지)$/.test(
+        sanitizeTweetText(anchor).replace(/[.!?]+$/g, "").trim()
+      );
+    const clauseLike = anchorLooksClause(primaryAnchor) || anchorLooksClause(secondaryAnchor);
+    const poolByMode: Record<string, string[]> = {
+      "micro-note": [
+        `근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+        `지금 확인하는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+      ],
+      "split-note": [
+        `먼저 볼 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+        `판단을 가르는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+      ],
+      "identity-journal": [
+        `내가 지금 붙드는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+        `오늘 장부 앞에 먼저 놓는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+      ],
+      "philosophy-note": [
+        `이 판단의 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+        `결국 확인할 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+      ],
+      "interaction-experiment": [
+        `지금 질문에 붙는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+        `먼저 대조할 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+      ],
+      "meta-reflection": [
+        `이번에도 다시 보는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+        `익숙한 설명을 다시 가르는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+      ],
+      "fable-essay": [
+        `결국 남는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+        `이 장면을 버티게 할 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
+      ],
+    };
+    if (clauseLike) {
+      const clausePool = [
+        `먼저 보는 건 ${primaryAnchor}다. 이어서 ${secondaryAnchor}도 같이 본다.`,
+        `${primaryAnchor}부터 확인한다. ${secondaryAnchor}가 끝까지 남는지도 본다.`,
+        `${primaryAnchor}를 먼저 보고, ${secondaryAnchor}가 같은 방향인지 이어서 확인한다.`,
+      ];
+      return clausePool[(seedBase + offset) % clausePool.length];
     }
-    if (beliefLine && conceptLine && sharesKoConceptFrame(beliefLine, conceptLine)) {
-      if (mode === "philosophy-note" || mode === "meta-reflection" || sceneIsSelfContained) {
-        conceptLine = "";
-      } else {
-        beliefLine = "";
-      }
+    const pool = poolByMode[mode] || poolByMode["micro-note"];
+    return pool[(seedBase + offset) % pool.length];
+  };
+
+  const buildDirectKoActionLine = (offset: number): string => {
+    const poolByLane: Record<TrendLane, string[]> = {
+      protocol: [
+        "지금은 발표보다 운영 반응이 실제로 붙는지 확인한다.",
+        "지금 확인할 건 업그레이드 얘기보다 운영 흔적이 버티는지다.",
+      ],
+      ecosystem: [
+        "지금은 말보다 사용 흔적이 실제로 이어지는지 확인한다.",
+        "지금 확인할 건 서사보다 사람이 다시 돌아오는지다.",
+      ],
+      regulation: [
+        "지금은 기사보다 집행 흔적이 실제로 붙는지 확인한다.",
+        "지금 확인할 건 정책 해석보다 현장 반응이 남는지다.",
+      ],
+      macro: [
+        "지금은 뉴스보다 자금 흐름이 실제로 바뀌는지 확인한다.",
+        "지금 확인할 건 거시 뉴스보다 체인 안쪽 습관이 바뀌는지다.",
+      ],
+      onchain: [
+        "지금은 체인 안쪽 흔적이 하루를 버티는지 확인한다.",
+        "지금 확인할 건 주소와 자금 흐름이 금방 식지 않는지다.",
+      ],
+      "market-structure": [
+        "지금은 분위기보다 실제 체결이 붙는지 확인한다.",
+        "지금 확인할 건 화면 열기보다 주문이 실제로 남는지다.",
+      ],
+    };
+    const pool = poolByLane[lane];
+    return pool[(seedBase + offset) % pool.length];
+  };
+
+  const buildDirectKoJudgmentLine = (offset: number): string => {
+    const poolByLane: Record<TrendLane, string[]> = {
+      protocol: [
+        "운영이 버텨야 장부에 남긴다.",
+        "로그가 버티지 못하면 장부에 올리지 않는다.",
+      ],
+      ecosystem: [
+        "사용 흔적이 남아야 장부에 올린다.",
+        "사람이 돌아오지 않으면 장부에 남기지 않는다.",
+      ],
+      regulation: [
+        "집행이 붙어야 장부에 올린다.",
+        "행동이 없으면 장부에 남기지 않는다.",
+      ],
+      macro: [
+        "자금 습관이 바뀔 때만 장부에 남긴다.",
+        "체인 안쪽까지 닿지 않으면 장부에 올리지 않는다.",
+      ],
+      onchain: [
+        "하루를 버틴 흔적만 장부에 남긴다.",
+        "금방 식는 신호는 장부에 올리지 않는다.",
+      ],
+      "market-structure": [
+        "실제 체결이 붙을 때만 장부에 올린다.",
+        "돈이 남지 않으면 장부에 남기지 않는다.",
+      ],
+    };
+    const pool = poolByLane[lane];
+    return pool[(seedBase + offset) % pool.length];
+  };
+
+  const buildDirectKoFalsifierLine = (mode: string, offset: number): string => {
+    const genericPool = [
+      "둘이 엇갈리면 이 해석은 보류한다.",
+      "한쪽만 남으면 오늘 결론은 미룬다.",
+      "행동이 안 붙으면 여기서 다시 읽는다.",
+      "근거 하나가 비면 이 판단은 바로 접는다.",
+    ];
+    const modePoolMap: Record<string, string[]> = {
+      "interaction-experiment": [
+        "둘이 엇갈리면 이 질문은 처음부터 다시 잡는다.",
+        "한쪽만 남으면 오늘 가설은 폐기한다.",
+      ],
+      "meta-reflection": [
+        "반대 근거가 더 오래 남으면 설명을 버린다.",
+        "예상과 다르면 이 해석은 여기서 접는다.",
+      ],
+      "philosophy-note": [
+        "둘 중 하나만 버티면 다시 본다.",
+        "근거 하나가 무너지면 이 결론은 설명력이 없다.",
+      ],
+    };
+    const pool = modePoolMap[mode] || genericPool;
+    return pool[(seedBase + offset) % pool.length];
+  };
+
+  const buildDirectKoPreviewCandidate = (
+    offset: number,
+    variant: number,
+    mode: string,
+    charBudget: number,
+    ask?: string
+  ): string => {
+    const thesis = buildDirectKoPreviewThesis(mode, offset);
+    const evidence = buildDirectKoEvidenceLine(mode, offset + 1);
+    const action = buildDirectKoActionLine(offset + 2);
+    const judgment = buildDirectKoJudgmentLine(offset + 3);
+    const falsifier = buildDirectKoFalsifierLine(mode, offset + 4);
+    const askText =
+      mode === "interaction-experiment" && ask ? resolveContextualQuestion(ask, thesis, "ko") : "";
+    const lines = [thesis, evidence, action, `${judgment} ${falsifier}`]
+      .map((line) => sanitizeTweetText(line))
+      .filter(Boolean);
+    if (askText) {
+      lines.push(askText);
     }
-    if (sceneIsSelfContained && mode === "philosophy-note") {
-      beliefLine = "";
-    }
-    if (sceneIsSelfContained && beliefLine && conceptLine) {
-      conceptLine = "";
-    }
-    const patterns = buildKoPatterns(
-      mode,
-      opener,
-      mode === "meta-reflection" ? metaLine : beliefLine,
-      conceptLine,
-      evidence,
-      action,
-      invalidation
-    );
-    const compactPatterns = patterns.map((line) => sanitizeTweetText(line).replace(/\.\s+\./g, ". "));
-    const index = Math.abs(seedBase + offset + variant * 5) % compactPatterns.length;
-    const base = compactClause(compactPatterns[index], charBudget + 40);
-    const askText = ask ? normalizeQuestionTail(ask, "ko") : "";
-    const merged = askText && base.length + askText.length + 1 <= charBudget ? `${base} ${askText}` : base;
-    return finalizeGeneratedText(merged, "ko", charBudget);
+    const merged = finalizeGeneratedText(lines.join(" "), "ko", charBudget);
+    return sanitizeTweetText(merged);
+  };
+
+  const composeKo = (offset: number, variant: number, mode: string, charBudget: number, ask?: string): string => {
+    return buildDirectKoPreviewCandidate(offset, variant, mode, charBudget, ask);
   };
 
   const composeEn = (offset: number, variant: number, mode: string, charBudget: number, ask?: string): string => {
@@ -5950,10 +6123,11 @@ function normalizeKoContractHeadline(text: string, seedHint: string = ""): strin
       /^(?:프로토콜|생태계|규제|매크로|온체인|시장구조)\s*(?:맥락|포인트|이슈)\s*[:：]\s*/u,
       ""
     )
+    .replace(/^(?:오늘은|오늘|지금은|지금|이번엔|이번에는|요즘은)\s+/u, "")
     .replace(/[.!?]+$/g, "")
     .trim();
   if (!cleaned) {
-    return "오늘은 이 장면부터 다시 본다";
+    return "핵심 쟁점부터 다시 정리한다";
   }
   if (/[A-Za-z]{6,}/.test(cleaned) && !/[가-힣]/.test(cleaned)) {
     const lower = cleaned.toLowerCase();
@@ -5995,8 +6169,8 @@ function normalizeKoContractHeadline(text: string, seedHint: string = ""): strin
       );
     }
     return pick(
-      "말보다 실제 흔적이 먼저 달라지는지부터 본다",
-      "이 장면에서 먼저 움직이는 쪽이 어디인지 짚는다"
+      "말보다 실제 흔적이 먼저 달라지는지 본다",
+      "이 이슈가 실제 행동으로 이어지는지부터 확인한다"
     );
   }
   const exactRewriteMap: Record<string, string[]> = {
@@ -6014,6 +6188,34 @@ function normalizeKoContractHeadline(text: string, seedHint: string = ""): strin
       "규제를 핑계로 멈춰 서는 순간 제품은 더 이상 자라지 못한다",
       "규제를 이유로 움직임을 멈추는 순간 제품은 금방 굳어 버린다",
       "규제를 앞세워 멈추는 순간 제품은 생각보다 빨리 굳는다",
+    ],
+    "정책 발표 뒤 엇갈리는 거래소 공지": [
+      "정책 발표 뒤 거래소 공지가 같은 방향으로 정리되는지 본다",
+      "정책 발표 뒤 공지와 실제 반응이 어긋나는지 먼저 본다",
+    ],
+    "조용한 시간대에도 같은 방향으로 움직이는 큰 지갑": [
+      "조용한 시간대에도 큰 지갑이 같은 방향으로 움직이는지 본다",
+      "사람들이 잠잠해도 큰 지갑이 같은 방향으로 붙는지 본다",
+    ],
+    "보상 이벤트가 끝난 뒤에도 다시 돌아오는 사람들": [
+      "보상 이벤트가 지나도 사람이 다시 돌아오는지 본다",
+      "이벤트가 끝난 뒤에도 사용자가 남는지 먼저 본다",
+    ],
+    "호가가 얇아진 뒤에도 버티는 큰 주문부터 먼저 짚는다": [
+      "호가가 얇아져도 큰 주문이 실제로 버티는지 본다",
+      "호가가 비는 구간에서도 큰 주문이 남는지 먼저 본다",
+    ],
+    "호가가 얇아진 뒤에도 버티는 큰 주문": [
+      "호가가 얇아져도 큰 주문이 실제로 버티는지 본다",
+      "호가가 비는 구간에서도 큰 주문이 남는지 먼저 본다",
+    ],
+    "수수료가 낮아도 이어지는 자금 이동부터 먼저 짚는다": [
+      "수수료가 낮아도 자금 이동이 계속 이어지는지 본다",
+      "수수료가 잠잠해도 자금이 계속 붙는지 먼저 본다",
+    ],
+    "화면은 조용한데 커지는 주문 충격부터 먼저 짚는다": [
+      "화면이 조용해도 주문 충격이 커지는지 본다",
+      "표면은 잠잠한데 주문 충격이 커지는지 먼저 본다",
     ],
   };
   const seedKey = `${cleaned}|contract|${seedHint}`;
@@ -6097,62 +6299,103 @@ function buildPixymonSceneHeadline(
     eventPlan.event.headline,
     `${aToken}|${bToken}|${eventPlan.lane}|${variant}|scene`
   );
+  const directByLane: Record<TrendLane, Record<typeof variant, string[]>> = {
+    protocol: {
+      hard: [
+        `${aToken}와 ${bToken}를 보면 업그레이드 얘기가 운영으로 이어지는지 갈린다`,
+        `프로토콜 판단은 ${aToken}와 ${bToken}가 실제 반응으로 붙는지에 달렸다`,
+      ],
+      rescue: [
+        `업그레이드 얘기를 믿을지는 ${aToken}와 ${bToken}에서 갈린다`,
+        `${aToken}와 ${bToken}가 같은 방향으로 남아야 프로토콜 얘기가 성립한다`,
+      ],
+      emergency: [
+        `프로토콜 쟁점은 ${aToken}와 ${bToken}가 실제로 이어지는지다`,
+        `${aToken}와 ${bToken}가 버티지 못하면 업그레이드 얘기는 접어야 한다`,
+      ],
+    },
+    ecosystem: {
+      hard: [
+        `사용이 실제로 남는지는 ${aToken}와 ${bToken}에서 갈린다`,
+        `생태계 서사가 아니라 사용 습관을 볼 근거는 ${aToken}와 ${bToken}다`,
+      ],
+      rescue: [
+        `${aToken}와 ${bToken}를 보면 사람이 실제로 돌아오는지 갈린다`,
+        `생태계 얘기가 빈말인지 아닌지는 ${aToken}와 ${bToken}에서 갈린다`,
+      ],
+      emergency: [
+        `사용자 얘기를 믿을지는 ${aToken}와 ${bToken}가 함께 남는지에 달렸다`,
+        `${aToken}와 ${bToken}가 약하면 생태계 서사도 더 밀지 않는다`,
+      ],
+    },
+    regulation: {
+      hard: [
+        `정책 뉴스가 기사에서 끝나는지는 ${aToken}와 ${bToken}에서 갈린다`,
+        `규제 얘기를 믿을지는 ${aToken}와 ${bToken}가 행동으로 이어지는지에 달렸다`,
+      ],
+      rescue: [
+        `${aToken}와 ${bToken}를 보면 정책 문장이 실제 반응으로 번지는지 갈린다`,
+        `규제 해석보다 중요한 건 ${aToken}와 ${bToken}가 끝까지 붙는지다`,
+      ],
+      emergency: [
+        `규제 쟁점은 ${aToken}와 ${bToken}가 행동으로 남는지다`,
+        `${aToken}와 ${bToken}가 버티지 못하면 정책 해석은 보류해야 한다`,
+      ],
+    },
+    macro: {
+      hard: [
+        `거시 바람이 체인 안쪽까지 내려오는지는 ${aToken}와 ${bToken}에서 갈린다`,
+        `큰 뉴스보다 먼저 볼 건 ${aToken}와 ${bToken}가 실제 자금 습관을 바꾸는지다`,
+      ],
+      rescue: [
+        `${aToken}와 ${bToken}를 보면 거시 뉴스가 체인 안쪽까지 닿는지 갈린다`,
+        `매크로 해석은 ${aToken}와 ${bToken}가 같이 남을 때만 의미가 있다`,
+      ],
+      emergency: [
+        `거시 쟁점은 ${aToken}와 ${bToken}가 실제 흐름으로 이어지는지다`,
+        `${aToken}와 ${bToken}가 약하면 큰 뉴스도 오늘 판단 근거가 되지 못한다`,
+      ],
+    },
+    onchain: {
+      hard: [
+        `온체인 신호를 믿을지는 ${aToken}와 ${bToken}가 함께 남는지에 달렸다`,
+        `체인 안쪽 흐름이 하루를 버티는지는 ${aToken}와 ${bToken}에서 갈린다`,
+      ],
+      rescue: [
+        `${aToken}와 ${bToken}를 보면 온체인 흔적이 금방 식는지 아닌지 갈린다`,
+        `주소와 자금 흐름을 믿을지는 ${aToken}와 ${bToken}가 같이 남는지에 달렸다`,
+      ],
+      emergency: [
+        `온체인 쟁점은 ${aToken}와 ${bToken}가 바로 사라지지 않는지다`,
+        `${aToken}와 ${bToken}가 버티지 못하면 체인 신호도 오늘 결론에서 뺀다`,
+      ],
+    },
+    "market-structure": {
+      hard: [
+        `차트보다 중요한 건 ${aToken}와 ${bToken}가 실제 돈을 남기는지다`,
+        `화면 열기보다 실제 체결을 볼 근거는 ${aToken}와 ${bToken}다`,
+      ],
+      rescue: [
+        `${aToken}와 ${bToken}를 보면 분위기가 아니라 체결이 남는지 갈린다`,
+        `시장 구조 판단은 ${aToken}와 ${bToken}가 실제 주문으로 이어지는지에 달렸다`,
+      ],
+      emergency: [
+        `시장 구조 쟁점은 ${aToken}와 ${bToken}가 실제 돈으로 남는지다`,
+        `${aToken}와 ${bToken}가 비면 차트 얘기도 오늘은 보류해야 한다`,
+      ],
+    },
+  };
 
   if (
-    eventPlan.lane === "market-structure" &&
-    /시장 반응|가격 반응|알트 가격 반응/.test(`${aToken} ${bToken}`) &&
-    /체인 수수료|밀린 거래량|거래소 유입 흐름/.test(`${aToken} ${bToken}`)
+    /[가-힣]/.test(normalized) &&
+    !/[A-Za-z]{5,}/.test(normalized) &&
+    normalized.length <= 48 &&
+    !/(살핀다|짚는다|가른다|장면|흐름이 있는지|뒤에|바깥|화면에)/.test(normalized)
   ) {
-    const contrastPool = [
-      "가격이 먼저 달아오를 때 실제 돈도 같이 남는지 살핀다",
-      "화면이 뜨거워진 뒤에도 체결이 비지 않는지 가른다",
-      "시세가 앞서 뛰더라도 주문이 끝까지 받쳐 주는지 짚는다",
-    ];
-    return contrastPool[stableSeedForPrelude(`${normalized}|${variant}|contrast`) % contrastPool.length];
-  }
-  if (
-    eventPlan.lane === "onchain" &&
-    /대기 자금 흐름|외부 뉴스 반응|실사용 흐름/.test(`${aToken} ${bToken}`) &&
-    /체인 수수료|큰손 움직임|밀린 거래량/.test(`${aToken} ${bToken}`)
-  ) {
-    const contrastPool = [
-      "체인 안쪽은 아직 잠잠한데 바깥 반응만 앞서는지 본다",
-      "온체인 흔적은 얕은데 바깥 서사만 커지는지 살핀다",
-      "체인 안쪽보다 바깥 뉴스가 먼저 커지는지 가른다",
-    ];
-    return contrastPool[stableSeedForPrelude(`${normalized}|${variant}|contrast`) % contrastPool.length];
-  }
-  if (/[가-힣]/.test(normalized) && !/[A-Za-z]{5,}/.test(normalized) && normalized.length <= 54) {
     return normalized;
   }
 
-  const byLane: Record<TrendLane, string[]> = {
-    protocol: [
-      `${aToken} 뒤에 ${bToken}까지 실제로 붙는 날인지 가려 본다`,
-      `${aToken}가 말이 아니라 운영 버릇으로 남는지 살핀다`,
-    ],
-    ecosystem: [
-      `${aToken}가 진짜 사람을 다시 데려오는지 먼저 짚는다`,
-      `${aToken} 뒤에 ${bToken}까지 남으면 오늘 장면은 길어진다`,
-    ],
-    regulation: [
-      `${aToken}가 기사 문장에 머무는지 ${bToken}에서 갈린다`,
-      `${aToken} 뒤에 ${bToken}가 행동으로 붙는 날인지 살핀다`,
-    ],
-    macro: [
-      `${aToken} 바람이 ${bToken}까지 내려오는지 먼저 가른다`,
-      `${aToken}가 체인 안쪽까지 밀려오는지 ${bToken}에서 짚는다`,
-    ],
-    onchain: [
-      `${aToken}와 ${bToken} 중 체인 안쪽에 오래 남는 쪽을 따라간다`,
-      `${aToken}와 ${bToken}가 같은 방향으로 버티는 장면인지 살핀다`,
-    ],
-    "market-structure": [
-      `${aToken} 뒤에 ${bToken}가 진짜 돈으로 남는지 가른다`,
-      `${aToken}와 ${bToken} 중 끝까지 받쳐 주는 쪽을 본다`,
-    ],
-  };
-  const pool = byLane[eventPlan.lane];
+  const pool = directByLane[eventPlan.lane][variant];
   return pool[stableSeedForPrelude(`${normalized}|${variant}|${aToken}|${bToken}`) % pool.length];
 }
 
@@ -6163,28 +6406,28 @@ function buildPixymonConceptLine(
   const seed = stableSeedForPrelude(`${eventPlan.lane}|${variant}|concept`);
   const byLane: Record<TrendLane, string[]> = {
     protocol: [
-      "업그레이드 얘기는 바로 먹지 않는다. 운영이 버틴 뒤에야 오늘 단서가 된다.",
-      "코드가 바뀌었다는 말보다 끝까지 남는 로그가 있어야 입에 넣는다.",
+      "발표만으로는 판단하지 않는다. 운영 흔적이 남아야 장부에 남긴다.",
+      "업그레이드 얘기는 실제 반응이 붙을 때만 장부에 올린다.",
     ],
     ecosystem: [
-      "사람이 다시 돌아오지 않으면 오늘 먹은 단서로 치지 않는다.",
-      "서사만 붓고 사람이 안 남으면 그냥 흘려보낸다.",
+      "사람이 남지 않으면 좋은 서사도 장부에 남기지 않는다.",
+      "돌아오는 사용자가 없으면 그 이야기는 아직 장부에 올릴 수 없다.",
     ],
     regulation: [
-      "정책 문장은 바로 삼키지 않는다. 현장 반응이 붙을 때만 단서가 된다.",
-      "말만 센 날은 지나간다. 행동까지 이어질 때만 오늘 메모에 남긴다.",
+      "정책 문장보다 집행 흔적을 먼저 보고, 그때만 장부에 남긴다.",
+      "말이 세도 행동이 안 붙으면 오늘 판단은 장부에 올리지 않는다.",
     ],
     macro: [
-      "거시 뉴스는 먼저 식혀 본다. 체인 안쪽까지 남은 것만 오늘 단서로 둔다.",
-      "큰 바람일수록 천천히 삼킨다. 체인 안쪽까지 번질 때만 믿는다.",
+      "큰 뉴스만으로 결론 내리지 않는다. 자금 습관이 바뀔 때만 장부에 남긴다.",
+      "거시 바람이 커도 체인 안쪽 버릇이 안 바뀌면 오늘 판단은 장부에 넣지 않는다.",
     ],
     onchain: [
-      "체인에서 주운 건 바로 믿지 않는다. 오래 남는 흔적만 오늘 단서로 남긴다.",
-      "온체인 단서는 한 번 더 씹는다. 금방 식는 건 먹은 걸로 치지 않는다.",
+      "체인에 남은 흔적이 하루를 버틸 때만 장부에 남긴다.",
+      "온체인 신호도 오래 남지 않으면 오늘 결론에 넣지 않는다.",
     ],
     "market-structure": [
-      "화면이 뜨거워도 바로 삼키지 않는다. 실제 돈이 남을 때만 단서가 된다.",
-      "차트보다 체결이 더 중요하다. 돈이 안 붙으면 오늘 먹은 신호로 치지 않는다.",
+      "뜨거운 화면보다 실제 체결을 더 늦게 믿고, 그때만 장부에 남긴다.",
+      "돈이 실제로 붙지 않으면 오늘 판단 근거로 올리지 않는다.",
     ],
   };
   return byLane[eventPlan.lane][seed % byLane[eventPlan.lane].length];
@@ -6197,28 +6440,28 @@ function buildPixymonObservationLine(
   const seed = stableSeedForPrelude(`${eventPlan.lane}|${variant}|observation`);
   const byLane: Record<TrendLane, string[]> = {
     protocol: [
-      "오늘은 발표보다 운영 반응이 얼마나 오래 버티는지만 따라간다.",
-      "지금은 설명보다 로그 뒤에 남는 흔적을 더 오래 본다.",
+      "지금은 발표보다 운영 반응이 남는지 본다.",
+      "설명보다 운영 흔적이 버티는지 확인한다.",
     ],
     ecosystem: [
-      "오늘은 사람들이 진짜로 다시 돌아오는지만 본다.",
-      "지금은 말보다 실사용이 얼마나 오래 붙는지 따라간다.",
+      "지금은 사람들이 실제로 다시 돌아오는지 본다.",
+      "말보다 사용 흔적이 남는지 확인한다.",
     ],
     regulation: [
-      "오늘은 규제 문장보다 실제 반응이 어디서 늦게 붙는지 본다.",
-      "지금은 말보다 행동이 어디서 멈추는지 따라간다.",
+      "지금은 규제 문장보다 실제 반응이 붙는지 본다.",
+      "말보다 집행 흔적이 남는지 확인한다.",
     ],
     macro: [
-      "오늘은 큰 뉴스보다 체인 안쪽 자금이 얼마나 버티는지 본다.",
-      "지금은 숫자보다 여파가 어디까지 닿는지 따라간다.",
+      "지금은 큰 뉴스보다 체인 안쪽 자금 성격이 바뀌는지 본다.",
+      "숫자보다 여파가 어디까지 닿는지 확인한다.",
     ],
     onchain: [
-      "오늘은 체인 안쪽 흐름이 얼마나 오래 남는지만 붙잡는다.",
-      "지금은 자금 이동이 금방 끊기는지부터 따라간다.",
+      "지금은 체인 안쪽 흔적이 이어지는지 본다.",
+      "주소 흐름이 금방 끊기는지 확인한다.",
     ],
     "market-structure": [
-      "오늘은 차트보다 실제 돈이 어디서 멈추는지 따라간다.",
-      "지금은 분위기보다 체결이 끝까지 남는 쪽을 붙잡는다.",
+      "지금은 차트보다 실제 돈이 남는지 본다.",
+      "분위기보다 체결이 버티는지 확인한다.",
     ],
   };
   return byLane[eventPlan.lane][seed % byLane[eventPlan.lane].length];
@@ -6236,10 +6479,11 @@ function buildPixymonEvidenceLine(
   const bToken = formatEvidenceToken(b?.label || "", b?.value || "", 22) || "둘째 단서";
   const seed = stableSeedForPrelude(`${eventPlan.lane}|${variant}|${aToken}|${bToken}|evidence`);
   const pool = [
-    `오늘은 ${aToken}와 ${bToken}가 같이 오래 남는지부터 본다.`,
-    `먼저 확인할 건 ${aToken}와 ${bToken}가 끝까지 같은 말을 하는지다.`,
-    `${aToken}와 ${bToken} 중 어느 쪽이 먼저 힘이 빠지는지부터 본다.`,
-    `오늘 메모는 ${aToken}와 ${bToken}를 같이 놓는 데서 시작한다.`,
+    `근거는 ${aToken}와 ${bToken}다.`,
+    `지금 확인할 건 ${aToken}와 ${bToken}다.`,
+    `근거는 ${aToken}와 ${bToken}다.`,
+    `판단은 ${aToken}와 ${bToken}가 함께 버티는지에 달렸다.`,
+    `${aToken}와 ${bToken}가 같은 방향으로 남는지 확인한다.`,
   ];
   return pool[seed % pool.length];
 }
@@ -6251,28 +6495,28 @@ function buildPixymonDecisionLine(
   const seed = stableSeedForPrelude(`${eventPlan.lane}|${variant}|decision`);
   const byLane: Record<TrendLane, string[]> = {
     protocol: [
-      "운영이 먼저 흔들리면 이 이야기는 오늘 여기서 접는다.",
-      "로그가 못 버티면 이 장면은 더 밀지 않는다.",
+      "운영이 먼저 흔들리면 이 해석은 버린다.",
+      "운영 흔적이 못 버티면 오늘 결론은 보류한다.",
     ],
     ecosystem: [
-      "사람이 안 남으면 이 얘긴 오래 못 간다.",
-      "돌아오는 손이 없으면 오늘 해석은 여기서 멈춘다.",
+      "사람이 안 남으면 이 해석은 버린다.",
+      "돌아오는 사용자가 없으면 오늘 결론은 보류한다.",
     ],
     regulation: [
-      "말이 행동으로 안 번지면 이 장면은 다시 읽는다.",
-      "집행이 붙지 않으면 오늘 결론은 미룬다.",
+      "집행이 안 붙으면 이 해석은 버린다.",
+      "행동으로 안 번지면 오늘 결론은 미룬다.",
     ],
     macro: [
-      "체인 안쪽으로 안 내려오면 오늘 결론은 접는다.",
-      "바람만 세고 흔적이 안 남으면 더 밀지 않는다.",
+      "체인 안쪽으로 안 내려오면 이 해석은 버린다.",
+      "뉴스만 크고 흔적이 안 남으면 오늘 결론은 미룬다.",
     ],
     onchain: [
-      "흔적이 바로 식으면 오늘은 여기서 멈춘다.",
-      "주소 움직임이 끊기면 이 장면도 여기서 접는다.",
+      "흔적이 바로 식으면 이 해석은 버린다.",
+      "주소 움직임이 끊기면 오늘 결론은 보류한다.",
     ],
     "market-structure": [
-      "실제 돈이 안 남으면 이 열기는 그냥 지나가게 둔다.",
-      "체결이 비면 이 장면은 오늘 판단에서 뺀다.",
+      "실제 돈이 안 남으면 이 해석은 버린다.",
+      "체결이 비면 오늘 판단에서 뺀다.",
     ],
   };
   return byLane[eventPlan.lane][seed % byLane[eventPlan.lane].length];
@@ -6528,6 +6772,10 @@ function resolveEngagementSettings(
     ),
     postMaxChars: clampInt(settings.postMaxChars, 120, 280, DEFAULT_ENGAGEMENT_SETTINGS.postMaxChars),
     postMinLength: clampInt(settings.postMinLength, 10, 120, DEFAULT_ENGAGEMENT_SETTINGS.postMinLength),
+    allowFallbackAutoPublish:
+      typeof settings.allowFallbackAutoPublish === "boolean"
+        ? settings.allowFallbackAutoPublish
+        : DEFAULT_ENGAGEMENT_SETTINGS.allowFallbackAutoPublish,
     postMinIntervalMinutes: clampInt(
       settings.postMinIntervalMinutes,
       0,

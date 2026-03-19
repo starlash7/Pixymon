@@ -182,7 +182,13 @@ export function buildStructuralFallbackEventsFromEvidence(
   createdAt: string,
   maxItems: number = 4
 ): TrendEvent[] {
-  const cleaned = dedupEvidence(evidence).filter((item) => !isLowSignalEvidenceForEvent(item));
+  const cleaned = dedupEvidence(evidence).filter((item) => {
+    if (isLowSignalEvidenceForEvent(item)) return false;
+    if (item.lane === "onchain") {
+      return !countPriceLikeEvidence([item]) && (!isFeeLikeEvidence(item) || isConcreteNarrativeEvidence(item, "onchain"));
+    }
+    return isConcreteNarrativeEvidence(item, item.lane);
+  });
   if (cleaned.length < 2) return [];
 
   const candidates = TREND_LANES.map((lane) => {
@@ -478,7 +484,7 @@ export function buildEventEvidenceFallbackPost(
   };
   const humanizeKoEventHeadline = (text: string): string => {
     const cleaned = stripKoHeadlinePrefix(sanitizeTweetText(text || "").replace(/[.!?]+$/g, "")).trim();
-    if (!cleaned) return "오늘은 이 장면부터 다시 본다";
+    if (!cleaned) return "핵심 쟁점부터 다시 정리한다";
     if (/[A-Za-z]{5,}/.test(cleaned)) {
       const localized = localizeTrendHeadline(cleaned, plan.lane, plan.event.summary || "");
       if (containsKorean(localized)) return localized;
@@ -547,8 +553,8 @@ export function buildEventEvidenceFallbackPost(
     if (/다$/.test(cleaned)) return cleaned;
     if (cleaned.length >= 12) {
       return rewriteVariant(
-        `${cleaned} 쪽이 오늘 유독 오래 남는다`,
-        `오늘은 ${cleaned}부터 다시 적어 두게 된다`
+        `${cleaned} 쪽이 실제로 이어지는지 다시 본다`,
+        `${cleaned}가 말에서 끝나는지 행동으로 이어지는지 다시 본다`
       );
     }
     return cleaned;
@@ -564,29 +570,29 @@ export function buildEventEvidenceFallbackPost(
 
   const koTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
-      `${eventHeadline}.\n\n오늘은 ${koPair}가 같이 오래 남는지만 본다.\n\n금방 사라지는 건 아직 먹은 단서로 치지 않는다.`,
-      `오늘 내 메모는 ${eventHeadline}에서 시작한다.\n\n${koPair}가 끝까지 같은 말을 할 때만 입에 넣는다.\n\n한쪽이 먼저 식으면 여기서 읽기를 멈춘다.`,
-      `${eventHeadline}.\n\n나는 ${koPair}가 한쪽으로 기울기 전까지 더 천천히 본다.\n\n같이 남지 않으면 더 밀어 붙이지 않는다.`,
+      `${eventHeadline}.\n\n근거는 ${koPair}다.\n\n둘 중 하나라도 먼저 꺾이면 이 해석은 버린다.`,
+      `쟁점은 ${eventHeadline}.\n\n지금 보는 근거는 ${koPair}다.\n\n한쪽만 남으면 오늘 결론은 보류한다.`,
+      `${eventHeadline}.\n\n내가 먼저 확인할 건 ${koPair}다.\n\n엇갈리기 시작하면 여기서 다시 읽는다.`,
     ],
     "philosophy-note": [
-      `${eventHeadline}.\n\n이럴수록 숫자보다 ${koPair}가 더 솔직하다.\n\n나는 급히 삼키지 않는다. 오래 남는 쪽만 오늘 단서로 남긴다.`,
-      `${eventHeadline}.\n\n결국 ${koPair}가 같은 방향으로 버텨야 이 장면도 버틴다.\n\n엇갈리면 결론을 미루는 편이 낫다.`,
-      `${eventHeadline}.\n\n나는 ${koPair}가 같이 남지 않으면 이 장면을 쉽게 믿지 않는다.\n\n오래 남는 쪽만 천천히 삼킨다.`,
+      `${eventHeadline}.\n\n설명은 근거를 대신하지 못한다. 그래서 ${koPair}를 먼저 본다.\n\n둘이 엇갈리면 이 판단은 성립하지 않는다.`,
+      `${eventHeadline}.\n\n말보다 중요한 건 ${koPair}가 끝까지 같은 방향으로 남는지다.\n\n다르면 이 생각은 바로 버린다.`,
+      `${eventHeadline}.\n\n이 판단이 설득력을 가지려면 ${koPair}가 함께 버텨야 한다.\n\n둘이 어긋나면 여기서 멈춘다.`,
     ],
     "interaction-experiment": [
-      `${eventHeadline}.\n\n오늘은 ${koPair} 중 어디를 먼저 의심할지 묻고 싶다.\n\n나는 먼저 무너지는 쪽이 보이면 거기서 읽기를 바꾼다.`,
-      `${eventHeadline}.\n\n${koPair}. 너라면 어느 쪽부터 다시 볼지 궁금하다.\n\n나는 한쪽이 먼저 식으면 거기서 멈춘다.`,
-      `${eventHeadline}.\n\n오늘 질문은 단순하다. ${koPair} 중 어디가 먼저 버티지 못하느냐는 쪽이다.\n\n나는 그 순간부터 해석을 고쳐 쓴다.`,
+      `${eventHeadline}.\n\n지금 질문은 ${koPair} 중 어느 쪽이 먼저 흔들리느냐다.\n\n먼저 무너지는 쪽이 보이면 거기서 읽기를 바꾼다.`,
+      `${eventHeadline}.\n\n${koPair}를 같이 두면 어디부터 의심해야 할지가 보인다.\n\n너라면 어느 쪽부터 검증할지 궁금하다.`,
+      `${eventHeadline}.\n\n오늘 질문은 단순하다. ${koPair} 중 무엇이 먼저 버티지 못하느냐다.\n\n그 순간부터 해석을 다시 쓴다.`,
     ],
     "meta-reflection": [
-      `예전엔 숫자 하나가 세게 튀면 거기서 바로 결론을 냈다.\n\n그래서 오늘은 ${eventHeadline}. ${koPair}가 끝까지 같이 남는지만 본다.\n\n어긋나면 이 메모는 여기서 접는다.`,
-      `${eventHeadline}.\n\n요란한 숫자 하나보다 ${koPair}가 더 믿을 만하다고 느낀다.\n\n둘이 딴소리를 하면 오늘 판단은 미룬다.`,
-      `${eventHeadline}.\n\n내가 자주 틀리는 건 먼저 들뜬 쪽을 곧바로 믿는 순간이다.\n\n그래서 ${koPair}가 어긋나면 오늘 문장도 거기서 멈춘다.`,
+      `예전엔 먼저 튀는 신호를 곧바로 믿었다.\n\n지금 쟁점은 ${eventHeadline}.\n\n그래서 ${koPair}가 같이 버티는지 보고, 아니면 이 해석부터 버린다.`,
+      `${eventHeadline}.\n\n내가 자주 틀리는 건 먼저 그럴듯한 쪽을 믿는 순간이다.\n\n그래서 ${koPair}가 어긋나면 오늘 판단도 거기서 멈춘다.`,
+      `${eventHeadline}.\n\n이번엔 예쁜 설명보다 ${koPair}가 끝까지 남는지부터 확인한다.\n\n하나가 먼저 꺾이면 결론은 미룬다.`,
     ],
     "fable-essay": [
-      `시끄러운 날일수록 먼저 챙길 건 더 단순해진다.\n\n${eventHeadline}. 오늘은 ${koPair}가 같이 오래 남는지만 본다.\n\n같이 남지 않으면 더 말하지 않는다.`,
-      `${eventHeadline}.\n\n오늘 내 입에 남는 건 ${koPair}뿐이다.\n\n둘이 같이 버텨야 다음 문장으로 넘긴다.`,
-      `말이 커질수록 먼저 붙잡을 건 줄어든다.\n\n${eventHeadline}. ${koPair}가 오래 남는 쪽만 오늘 단서가 된다.\n\n한쪽이 먼저 사라지면 여기서 읽기를 접는다.`,
+      `${eventHeadline}.\n\n떠드는 쪽보다 버티는 쪽이 더 중요하다.\n\n오늘은 ${koPair}가 끝까지 남는지 보고, 아니면 조용히 접는다.`,
+      `${eventHeadline}.\n\n결국 남는 건 ${koPair}다.\n\n둘이 같이 버티지 못하면 오늘 판단도 여기서 멈춘다.`,
+      `${eventHeadline}.\n\n설명이 커질수록 확인할 건 줄어든다.\n\n그래서 ${koPair}만 같이 놓고 본다. 하나가 먼저 사라지면 여기서 접는다.`,
     ],
   };
 
@@ -819,7 +825,16 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
   }
 
   if (/fed|ecb|cpi|inflation|rates|treasury|dxy|usd|eur|eur\/usd|dollar/.test(normalized)) {
-    return rewrite("달러 쪽 움직임", "포착", "달러와 금리 변화가 체인 안쪽 자금 태도까지 번지는지 볼 장면이다.");
+    if (/cpi|inflation/.test(normalized)) {
+      return rewrite("물가 압력", "포착", "물가 압력이 실제 위험 선호까지 번지는지 볼 장면이다.");
+    }
+    if (/rates|fed|ecb|treasury/.test(normalized)) {
+      return rewrite("금리 기대 변화", "포착", "금리 기대 변화가 체인 안쪽 자금 태도까지 번지는지 볼 장면이다.");
+    }
+    if (/dxy|usd|dollar|eur|eur\/usd/.test(normalized)) {
+      return rewrite("달러 흐름", "포착", "달러 흐름이 체인 안쪽 자금 성격까지 바꾸는지 볼 장면이다.");
+    }
+    return rewrite("거시 흐름 변화", "포착", "거시 흐름 변화가 체인 안쪽 자금 태도까지 번지는지 볼 장면이다.");
   }
   if (/court|lawsuit|sec|cftc|policy|regulation|regulatory|compliance|etf/.test(normalized)) {
     if (/sec.+cftc|cftc.+sec/.test(normalized)) {
@@ -1136,8 +1151,44 @@ function isGenericLaneEvidenceLabel(label: string): boolean {
   );
 }
 
+function isConcreteNarrativeEvidence(item: OnchainEvidence, lane: TrendLane): boolean {
+  const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+  if (isLowSignalEvidenceForEvent(item)) return false;
+  if (lane === "market-structure") {
+    return isMarketStructureSpecificEvidence(item) && !isGenericLaneEvidenceLabel(item.label);
+  }
+  if (lane !== "onchain" && isFeeLikeEvidence(item)) return false;
+  if (!isGenericLaneEvidenceLabel(item.label)) return true;
+  if (lane === "macro") {
+    return /(달러|금리|fed|ecb|cpi|inflation|dxy|usd|eur|treasury|채권|환율)/.test(normalized);
+  }
+  if (lane === "regulation") {
+    return /(sec|cftc|court|lawsuit|policy|regulation|compliance|etf|법원|소송|당국|정책|규제|집행)/.test(normalized);
+  }
+  if (lane === "protocol") {
+    return /(upgrade|validator|consensus|mainnet|testnet|rollup|firedancer|업그레이드|검증자|합의|메인넷|테스트넷)/.test(normalized);
+  }
+  if (lane === "ecosystem") {
+    return /(wallet|developer|community|adoption|usage|app|지갑|개발자|커뮤니티|채택|사용)/.test(normalized);
+  }
+  if (lane === "onchain") {
+    return /(address|whale|stablecoin|netflow|tvl|wallet|usage|activity|거래소|유입|주소|고래|스테이블|자금 흐름|순유입|지갑|사용|활동)/.test(
+      normalized
+    );
+  }
+  return false;
+}
+
+function countConcreteNarrativeEvidence(pair: OnchainEvidence[], lane: TrendLane): number {
+  return pair.filter((item) => isConcreteNarrativeEvidence(item, lane)).length;
+}
+
 function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): boolean {
-  if (lane === "onchain") return false;
+  const concreteCount = countConcreteNarrativeEvidence(pair, lane);
+  const laneConcreteCount = pair.filter((item) => item.lane === lane && isConcreteNarrativeEvidence(item, lane)).length;
+  if (lane === "onchain") {
+    return concreteCount < 1 || pair.every((item) => isFeeLikeEvidence(item)) || countPriceLikeEvidence(pair) >= 1;
+  }
   const genericCount = pair.filter((item) => isGenericLaneEvidenceLabel(item.label)).length;
   const feeLikeCount = pair.filter((item) => isFeeLikeEvidence(item)).length;
   const laneSpecificCount = pair.filter((item) => item.lane === lane && !isGenericLaneEvidenceLabel(item.label)).length;
@@ -1146,6 +1197,7 @@ function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): bool
   );
 
   if (lane === "market-structure") {
+    if (concreteCount < 2) return true;
     if (!pair.some((item) => isMarketStructureSpecificEvidence(item))) return true;
     if (
       pair.some((item) => /(대기 자금 흐름|가격 반응|가격 움직임|가격 분위기|시장 반응)/.test(item.label)) &&
@@ -1157,16 +1209,18 @@ function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): bool
   }
 
   if (lane === "protocol") {
-    return feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0;
+    return concreteCount < 2 || laneConcreteCount < 1 || (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0);
   }
   if (lane === "ecosystem") {
-    return feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0;
+    return concreteCount < 2 || laneConcreteCount < 1 || (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0);
   }
   if (lane === "regulation") {
     if (!pair.some((item) => item.lane === "regulation")) {
       return true;
     }
     return (
+      concreteCount < 2 ||
+      laneConcreteCount < 1 ||
       (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0) ||
       (genericCount >= 1 &&
         laneSpecificCount === 0 &&
@@ -1183,7 +1237,7 @@ function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): bool
     );
   }
   if (lane === "macro") {
-    return feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0;
+    return concreteCount < 2 || laneConcreteCount < 1 || (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0);
   }
 
   return false;
@@ -1334,34 +1388,34 @@ function buildStructuralHeadlineFromEvidence(
 
   const poolByLane: Record<TrendLane, string[]> = {
     protocol: [
-      `${a} 뒤에 ${b}가 진짜로 붙는지 본다`,
-      `${a}가 말이 아니라 운영으로 이어지는지 ${b}에서 본다`,
-      `${a}와 ${b}가 한 장면 안에서 같이 남는지 살핀다`,
+      `프로토콜 판단은 ${a}와 ${b}가 함께 남는지에 달렸다`,
+      `${a}와 ${b}를 보면 업그레이드 얘기가 운영으로 이어지는지 갈린다`,
+      `${a}와 ${b}가 같이 버텨야 프로토콜 얘기도 성립한다`,
     ],
     ecosystem: [
-      `${a}가 실제 사용까지 번지는지 ${b}에서 본다`,
-      `${a} 뒤에 ${b}가 따라오지 않으면 오래 못 간다고 본다`,
-      `${a}가 말뿐인지 ${b}까지 닿는지 살핀다`,
+      `생태계 판단은 ${a}와 ${b}가 실제 사용으로 이어지는지에 달렸다`,
+      `${a}와 ${b}를 보면 사람이 실제로 남는지 갈린다`,
+      `${a}와 ${b}가 약하면 생태계 서사도 더 밀지 않는다`,
     ],
     regulation: [
-      `${a} 뒤에 ${b}가 같이 흔들리는지 먼저 본다`,
-      `${a}가 바뀔 때 ${b}도 따라 움직이는지 살핀다`,
-      `${a}가 실제 반응으로 번지는지 ${b}에서 확인한다`,
+      `규제 해석은 ${a}와 ${b}가 실제 반응으로 이어지는지에 달렸다`,
+      `${a}와 ${b}를 보면 정책 문장이 기사에서 끝나는지 갈린다`,
+      `${a}와 ${b}가 버티지 못하면 규제 해석도 오늘은 보류한다`,
     ],
     macro: [
-      `${a} 바람이 ${b}까지 밀려오는지 먼저 본다`,
-      `${a} 뒤에 ${b}가 늦게라도 따라오는지 확인한다`,
-      `${a} 파동이 ${b}를 실제로 건드리는지 짚는다`,
+      `매크로 해석은 ${a}와 ${b}가 체인 안쪽까지 닿는지에 달렸다`,
+      `${a}와 ${b}를 보면 큰 뉴스가 실제 자금 습관을 바꾸는지 갈린다`,
+      `${a}와 ${b}가 약하면 거시 뉴스도 오늘 근거가 되지 못한다`,
     ],
     onchain: [
-      `${a}와 ${b} 중 먼저 살아나는 쪽부터 본다`,
-      `${a}와 ${b}가 같은 방향으로 남는지 확인한다`,
-      `${a}가 바뀔 때 ${b}도 같이 달라지는지 살핀다`,
+      `온체인 판단은 ${a}와 ${b}가 함께 남는지에 달렸다`,
+      `${a}와 ${b}를 보면 체인 안쪽 흐름이 금방 식는지 갈린다`,
+      `${a}와 ${b}가 버티지 못하면 오늘 온체인 해석은 보류한다`,
     ],
     "market-structure": [
-      `${a}와 ${b}가 같은 방향으로 오래 남는지 먼저 본다`,
-      `${a} 뒤에 ${b}가 진짜로 받쳐 주는지 확인한다`,
-      `${a}가 식을 때 ${b}도 같이 약해지는지 살핀다`,
+      `시장 구조 판단은 ${a}와 ${b}가 실제 돈으로 남는지에 달렸다`,
+      `${a}와 ${b}를 보면 분위기가 아니라 체결이 남는지 갈린다`,
+      `${a}와 ${b}가 비면 차트 얘기도 오늘은 보류해야 한다`,
     ],
   };
 
@@ -1376,12 +1430,12 @@ function buildStructuralSummaryFromEvidence(
   const a = humanizeStructuralEvidenceLabel(primary.label);
   const b = humanizeStructuralEvidenceLabel(secondary.label);
   const poolByLane: Record<TrendLane, string[]> = {
-    protocol: [`지금은 ${a}와 ${b}가 같은 장면으로 남는지부터 보는 편이 낫다.`],
-    ecosystem: [`가격보다 ${a}가 ${b}까지 닿는지부터 확인하는 편이 낫다.`],
-    regulation: [`정책 문장보다 ${a}와 ${b}가 같이 흔들리는지를 먼저 본다.`],
-    macro: [`숫자보다 ${a} 바람이 ${b}까지 닿는지를 먼저 본다.`],
-    onchain: [`가격 스냅샷보다 ${a}와 ${b}가 남긴 체인 안쪽 흔적을 먼저 본다.`],
-    "market-structure": [`화면 분위기보다 ${a}와 ${b}가 실제로 받쳐 주는지부터 본다.`],
+    protocol: [`지금은 ${a}와 ${b}가 실제 운영 반응으로 남는지부터 본다.`],
+    ecosystem: [`지금은 ${a}와 ${b}가 사람들의 실제 사용으로 이어지는지부터 본다.`],
+    regulation: [`지금은 ${a}와 ${b}가 기사 문장을 넘어 행동으로 이어지는지부터 본다.`],
+    macro: [`지금은 ${a}와 ${b}가 체인 안쪽 자금 습관까지 바꾸는지부터 본다.`],
+    onchain: [`지금은 ${a}와 ${b}가 체인 안쪽에서 같이 남는지부터 본다.`],
+    "market-structure": [`지금은 ${a}와 ${b}가 분위기가 아니라 실제 체결로 남는지부터 본다.`],
   };
 
   return sanitizeTweetText(poolByLane[lane][0]).slice(0, 180);
@@ -1397,6 +1451,8 @@ function humanizeStructuralEvidenceLabel(label: string): string {
     [/^거래소 순유입 프록시$/i, "거래소 쪽 자금 이동"],
     [/^고래\/대형주소 활동 프록시$/i, "큰손 움직임"],
     [/^스테이블코인 총공급 플로우$/i, "대기 자금 흐름"],
+    [/^지갑 사용 흐름$/i, "지갑 안쪽 사용"],
+    [/^실사용 실험$/i, "실사용 흔적"],
   ];
 
   for (const [pattern, replacement] of exactMap) {

@@ -54,16 +54,16 @@ const EN_INVALIDATION_PATTERN =
   /\b(falsif|invalidate|wrong if|drop this thesis|revise this thesis|if .*?(?:fails|breaks)|opposite evidence)\b/i;
 
 const KO_ACTION_INVALIDATION_BRIDGES = [
-  "그래서 오늘은 이 둘의 시간차부터 본다. 흐름이 어긋나면 생각을 바로 바꾼다.",
-  "지금은 확신보다 확인이 먼저다. 전제가 흔들리면 이 읽기는 접는다.",
-  "일단 두 신호의 순서를 맞춰 본다. 서로 딴소리를 하면 해석을 버린다.",
-  "오늘은 먼저 움직인 쪽을 가려낸다. 반대 증거가 더 오래 남으면 다시 읽는다.",
-  "우선 말보다 흐름을 본다. 조건이 깨지는 순간 이 결론은 내려놓는다.",
+  "지금은 두 근거가 실제로 이어지는지 확인한다. 하나라도 무너지면 이 판단은 접는다.",
+  "확신보다 검증이 먼저다. 반대 근거가 더 오래 버티면 이 해석은 수정한다.",
+  "먼저 남는 근거가 무엇인지 본다. 조건이 깨지면 이 결론은 보류한다.",
+  "지금은 순서보다 연결을 본다. 둘이 다른 방향으로 가면 이 읽기는 버린다.",
+  "말보다 행동을 먼저 확인한다. 행동이 붙지 않으면 오늘 해석은 미룬다.",
 ];
 const KO_ACTION_INVALIDATION_BRIDGES_SHORT = [
-  "엇갈리면 다시 읽는다.",
-  "전제가 흔들리면 이 해석은 접는다.",
-  "딴소리를 하면 결론을 늦춘다.",
+  "엇갈리면 이 해석은 접는다.",
+  "전제가 깨지면 판단을 보류한다.",
+  "근거가 갈리면 다시 쓴다.",
 ];
 const EN_ACTION_INVALIDATION_BRIDGES = [
   "I verify the key signals first, then revise the thesis if opposite evidence persists.",
@@ -76,7 +76,7 @@ const EN_ACTION_INVALIDATION_BRIDGES_SHORT = [
   "If the premise breaks, I retract this claim.",
 ];
 const PIXYMON_CONCEPT_SIGNAL =
-  /(픽시몬|pixymon|온체인\s*데이터를?\s*먹|영양소|소화|진화|레벨업|레벨\s*\d|사이클\s*먹|먹은\s*단서|먹은\s*걸로\s*치지\s*않|먹지\s*않|먹기엔|먹을\s*단서|채집한\s*단서|체인\s*로그를?\s*소화|주워\s*온\s*(?:단서|건)|건진\s*단서|덜\s*소화된\s*신호|내\s*장부|진화에\s*쓸\s*단서|바로\s*먹을\s*만한|삼키지\s*않|삼키기엔|한\s*번\s*더\s*씹|천천히\s*소화|입에\s*(?:넣|걸린)|허기|사냥|냄새가\s*남|오늘\s*단서로\s*남긴|바로\s*믿기엔\s*이르|끝까지\s*남는\s*쪽만\s*(?:단서|남긴))/i;
+  /(픽시몬|pixymon|온체인\s*데이터를?\s*먹|영양소|소화|진화|레벨업|레벨\s*\d|사이클\s*먹|먹은\s*단서|먹은\s*걸로\s*치지\s*않|먹지\s*않|먹기엔|먹을\s*단서|채집한\s*단서|체인\s*로그를?\s*소화|주워\s*온\s*(?:단서|건)|건진\s*단서|덜\s*소화된\s*신호|내\s*장부|장부에\s*남긴다|장부에\s*넣지\s*않는다|장부에\s*올리지\s*않는다|진화에\s*쓸\s*단서|바로\s*먹을\s*만한|삼키지\s*않|삼키기엔|한\s*번\s*더\s*씹|천천히\s*소화|입에\s*(?:넣|걸린)|허기|사냥|냄새가\s*남|오늘\s*단서로\s*남긴|바로\s*믿기엔\s*이르|끝까지\s*남는\s*쪽만\s*(?:단서|남긴)|단서로\s*친다|단서로\s*치지\s*않는다|메모에\s*남긴다|보류한다|쉽게\s*믿지\s*않는다|서두르지\s*않는다)/i;
 const LEAD_ISSUE_DOMAIN_TOKEN_KO =
   /(프로토콜|업그레이드|검증자|거버넌스|생태계|커뮤니티|실사용|사용자|규제|정책|컴플라이언스|온체인|체인|지갑|거래소|유동성|호가|호가창|주문|체결|멤풀|고래|스테이블|달러|금리|위험선호|거시|매크로|ETF|롤업|L2|디파이|크립토|블록체인|BTC|ETH|SOL|XRP)/i;
 const LEAD_ISSUE_DOMAIN_TOKEN_EN =
@@ -553,13 +553,32 @@ function normalizeRequiredTrendTokens(tokens: string[] | undefined): string[] {
   return [...new Set(normalized)].slice(0, 8);
 }
 
+function expandRequiredTrendTokenAliases(token: string): string[] {
+  const normalized = sanitizeTweetText(token).toLowerCase();
+  if (!normalized) return [];
+  const aliases = new Set<string>([normalized]);
+  const groups: Array<[RegExp, string[]]> = [
+    [/(regulation|policy|compliance|sec|cftc|court|lawsuit)/, ["규제", "정책", "당국", "집행", "법원", "컴플라이언스"]],
+    [/(protocol|upgrade|validator|consensus|mainnet|testnet|rollup|firedancer)/, ["프로토콜", "업그레이드", "검증자", "합의", "메인넷", "테스트넷"]],
+    [/(ecosystem|wallet|usage|user|community|developer|adoption|app)/, ["생태계", "지갑", "사용", "사용자", "커뮤니티", "개발자", "실사용"]],
+    [/(macro|rates|inflation|dollar|usd|eur|dxy|cpi|fed|ecb)/, ["매크로", "금리", "물가", "달러", "환율", "거시"]],
+    [/(onchain|chain|stable|whale|mempool|address|flow|tvl)/, ["온체인", "체인", "스테이블", "고래", "멤풀", "주소", "자금"]],
+    [/(exchange|liquidity|orderbook|execution|volume)/, ["거래소", "유동성", "체결", "주문", "거래량"]],
+  ];
+  for (const [pattern, mapped] of groups) {
+    if (pattern.test(normalized)) {
+      mapped.forEach((item) => aliases.add(item));
+    }
+  }
+  if (normalized.startsWith("$")) aliases.add(normalized.slice(1));
+  return [...aliases];
+}
+
 function containsAnyTrendToken(text: string, requiredTrendTokens: string[]): boolean {
   if (!requiredTrendTokens.length) return true;
   const normalizedText = sanitizeTweetText(text).toLowerCase();
   return requiredTrendTokens.some((token) => {
-    if (normalizedText.includes(token)) return true;
-    if (token.startsWith("$") && normalizedText.includes(token.slice(1))) return true;
-    return false;
+    return expandRequiredTrendTokenAliases(token).some((alias) => normalizedText.includes(alias));
   });
 }
 

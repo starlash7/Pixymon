@@ -43,6 +43,7 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       ENFORCE_KOREAN_POSTS: "true",
       AUTONOMY_MAX_BUDGET_UTILIZATION: "0.9",
       AUTONOMY_RISK_BLOCK_SCORE: "8",
+      ALLOW_FALLBACK_AUTO_PUBLISH: "true",
       POST_GENERATION_MAX_ATTEMPTS: "2",
       POST_MIN_INTERVAL_MINUTES: "120",
       MAX_POSTS_PER_CYCLE: "1",
@@ -104,6 +105,7 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.engagement.enforceKoreanPosts, true);
       assert.equal(config.engagement.autonomyMaxBudgetUtilization, 0.9);
       assert.equal(config.engagement.autonomyRiskBlockScore, 8);
+      assert.equal(config.engagement.allowFallbackAutoPublish, true);
       assert.equal(config.engagement.postMinIntervalMinutes, 120);
       assert.equal(config.engagement.maxPostsPerCycle, 1);
       assert.equal(config.engagement.nutrientMinDigestScore, 0.62);
@@ -166,6 +168,7 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       NUTRIENT_MIN_DIGEST_SCORE: "invalid",
       NUTRIENT_MAX_INTAKE_PER_CYCLE: "invalid",
       SENTIMENT_MAX_RATIO_24H: "invalid",
+      ALLOW_FALLBACK_AUTO_PUBLISH: "invalid",
       X_API_COST_GUARD_ENABLED: "invalid",
       X_API_DAILY_MAX_USD: "invalid",
       X_API_ESTIMATED_READ_COST_USD: "invalid",
@@ -217,6 +220,7 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.engagement.enforceKoreanPosts, true);
       assert.equal(config.engagement.autonomyMaxBudgetUtilization, 0.92);
       assert.equal(config.engagement.autonomyRiskBlockScore, 7);
+      assert.equal(config.engagement.allowFallbackAutoPublish, false);
       assert.equal(config.xApiCost.enabled, true);
       assert.equal(config.xApiCost.dailyMaxUsd, 0.1);
       assert.equal(config.xApiCost.estimatedReadCostUsd, 0.012);

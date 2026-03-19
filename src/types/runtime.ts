@@ -6,6 +6,7 @@ export interface EngagementRuntimeSettings {
   postGenerationMaxAttempts: number;
   postMaxChars: number;
   postMinLength: number;
+  allowFallbackAutoPublish: boolean;
   postMinIntervalMinutes: number;
   maxPostsPerCycle: number;
   nutrientMinDigestScore: number;

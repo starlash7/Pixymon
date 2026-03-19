@@ -190,10 +190,18 @@ export async function searchRecentTrendTweets(
     typeof rules.blockSuspiciousPromo === "boolean"
       ? rules.blockSuspiciousPromo
       : DEFAULT_TREND_TWEET_SEARCH_RULES.blockSuspiciousPromo;
+  const resolvedRules: TrendTweetSearchRules = {
+    minSourceTrust,
+    minScore,
+    minEngagement,
+    maxAgeHours,
+    requireRootPost,
+    blockSuspiciousPromo,
+  };
   const cooldownRemainingMs = getTrendSearchCooldownRemainingMs();
   if (cooldownRemainingMs > 0) {
     console.log(`[TREND] search endpoint cooldown active (${Math.ceil(cooldownRemainingMs / 60000)}m 남음)`);
-    return [];
+    return searchCuratedTimelineFallbackTweets(twitter, Math.min(count, 12), resolvedRules);
   }
 
   try {
@@ -284,7 +292,7 @@ export async function searchRecentTrendTweets(
     if (isSearchTimelineFallbackError(error)) {
       activateTrendSearchCooldown();
       console.log("[TREND] search endpoint unavailable, proactive reply 검색을 잠시 중단");
-      return [];
+      return searchCuratedTimelineFallbackTweets(twitter, Math.min(count, 12), resolvedRules);
     }
     console.log(`[TREND] 검색 실패: ${error.message || "unknown"}`);
     return [];

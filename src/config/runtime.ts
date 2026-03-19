@@ -69,6 +69,7 @@ export const DEFAULT_ENGAGEMENT_SETTINGS: EngagementRuntimeSettings = {
   postGenerationMaxAttempts: 2,
   postMaxChars: 220,
   postMinLength: 20,
+  allowFallbackAutoPublish: false,
   postMinIntervalMinutes: 60,
   maxPostsPerCycle: 1,
   nutrientMinDigestScore: 0.5,
@@ -319,6 +320,10 @@ export function loadRuntimeConfig(): RuntimeConfig {
       DEFAULT_ENGAGEMENT_SETTINGS.postMinLength,
       10,
       120
+    ),
+    allowFallbackAutoPublish: parseBoolean(
+      process.env.ALLOW_FALLBACK_AUTO_PUBLISH,
+      DEFAULT_ENGAGEMENT_SETTINGS.allowFallbackAutoPublish
     ),
     postMinIntervalMinutes: parseIntInRange(
       process.env.POST_MIN_INTERVAL_MINUTES,
