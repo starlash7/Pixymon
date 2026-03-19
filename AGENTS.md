@@ -6,7 +6,9 @@
 
 1. 본 파일(`AGENTS.md`)
 2. `docs/agent-workflow.md`
-3. 기타 보조 문서
+3. `docs/plan.md`
+4. `docs/skills-guidelines.md`
+5. 기타 보조 문서
 
 규칙이 충돌하면 위 순서를 우선한다.
 
@@ -63,3 +65,5 @@ git push origin main
 - [ ] `main` 반영은 통합 담당만 수행했는가
 - [ ] 빌드를 통과했는가
 - [ ] 머지 완료 브랜치를 삭제했는가
+- [ ] 작업 시작 전에 `docs/plan.md`의 현재 모드와 제약을 확인했는가
+- [ ] 작업이 skill 성격이면 `docs/skills-guidelines.md` 규칙을 따랐는가

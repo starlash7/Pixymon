@@ -10,6 +10,7 @@
 4. 통합은 `merge` 또는 `cherry-pick`(커밋 SHA 기준)으로 진행한다.
 5. `main` 반영 전마다 빌드/테스트를 실행한다.
 6. `main` 반영이 끝난 작업 브랜치는 삭제한다.
+7. 작업 시작 전 `docs/plan.md`와 `docs/skills-guidelines.md`를 먼저 확인한다.
 
 ## Branch Strategy
 
@@ -106,3 +107,5 @@ git branch -d feat/<task>
 - [ ] 통합 담당 워크스페이스만 `main`을 갱신했는가
 - [ ] `main` 반영 전 빌드/테스트를 통과했는가
 - [ ] 완료 브랜치를 삭제했는가
+- [ ] `docs/plan.md`의 작업 모드(`HOLD SCOPE` / `EXPANSION` / `REDUCTION`)를 선언했는가
+- [ ] skill 성격 작업이면 gotchas / scripts / references / verification 경로를 먼저 정했는가
