@@ -46,6 +46,7 @@ import {
   planEventEvidenceAct,
   validateEventEvidenceContract,
 } from "./engagement/event-evidence.js";
+import { buildKoIdentityWriterCandidate } from "./engagement/identity-writer.js";
 import {
   buildAdaptivePolicy,
   clamp,
@@ -4710,40 +4711,6 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     recentReflectionHint || philosophyFrame || signatureBelief || selfNarrative || intentLine || "",
     58
   );
-  const normalizeKoConceptToken = (token: string): string => {
-    const base = token.replace(/(이|가|은|는|을|를|와|과|보다|에서|으로|로|의|도|만|까지|부터)$/u, "");
-    const alias: Record<string, string> = {
-      인센티브: "보상",
-      토큰: "보상",
-      토큰보상: "보상",
-      커뮤니티설계: "커뮤니티",
-      관계설계: "관계",
-      사용자행동: "행동",
-      행동방식: "행동",
-      내러티브: "서사",
-      설명가능한합의: "합의",
-    };
-    return alias[base] || base;
-  };
-  const extractKoConceptTokens = (text: string): string[] =>
-    sanitizeTweetText(text)
-      .replace(/[.!?,]/g, " ")
-      .split(/\s+/)
-      .map((item) => item.replace(/[^가-힣A-Za-z0-9]/g, ""))
-      .map((item) => normalizeKoConceptToken(item))
-      .filter((item) => item.length >= 2)
-      .slice(0, 10);
-  const sharesKoConceptFrame = (a: string, b: string): boolean => {
-    if (!a || !b) return false;
-    const aTokens = extractKoConceptTokens(a);
-    const bTokens = extractKoConceptTokens(b);
-    if (aTokens.length === 0 || bTokens.length === 0) return false;
-    const overlapCount = aTokens.filter((token) => bTokens.includes(token)).length;
-    const aHasComparator = /(보다|먼저|길다|오래|중요|버티)/.test(a);
-    const bHasComparator = /(보다|먼저|길다|오래|중요|버티)/.test(b);
-    return overlapCount >= 2 || (overlapCount >= 1 && aHasComparator && bHasComparator);
-  };
-  const allowAbstractOverlay = !(input.language === "ko" && (headlineLooksEnglishHeavy || headlineWasLocalized));
   const lane = input.laneHint || inferTrendLaneFromText(headlineBase);
   const recentOpeningCounts = buildOpeningCountMap(
     input.recentPosts.map((post) => post.content),
@@ -5057,243 +5024,31 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     }
   };
 
-  const buildDirectKoPreviewThesis = (mode: string, offset: number): string => {
-    const normalizedScene = normalizeKoContractHeadline(headlineBase, `preview|${mode}|${offset}|thesis`);
-    const stripped = sanitizeTweetText(normalizedScene)
-      .replace(/^(?:오늘은|이번엔|이번에는|지금은|요즘은|가끔은)\s+/u, "")
-      .replace(/[.!?]+$/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const questionStem = stripped
-      .replace(/(?:부터|까지)?\s*(?:다시\s*)?(?:본다|확인한다|살핀다|짚는다|따진다|가늠한다|지켜본다|검증한다)$/u, "")
-      .replace(/\s*(?:부터|까지)\s*$/u, "")
-      .trim();
-    const modeOpenerPool: Record<string, string[]> = {
-      "micro-note": ["핵심 쟁점은", "지금 판단은", "먼저 볼 건"],
-      "split-note": ["이번 판단은", "지금 갈리는 건", "오늘 확인할 건"],
-      "identity-journal": ["내가 지금 붙드는 쟁점은", "지금 내 장부에 올릴지 말지 갈리는 건", "이번 메모의 출발점은"],
-      "philosophy-note": ["결국 남는 질문은", "핵심은", "이 장면의 쟁점은"],
-      "interaction-experiment": ["오늘 질문은", "지금 확인할 질문은", "이번에 가를 질문은"],
-      "meta-reflection": ["내가 다시 의심하는 건", "이번에 다시 보는 쟁점은", "익숙한 설명이 깨지는 지점은"],
-      "fable-essay": ["핵심은", "지금 판단을 가르는 건", "이번 장면의 쟁점은"],
-    };
-    const directLanePool: Record<TrendLane, string[]> = {
-      protocol: [
-        "프로토콜 평가는 발표가 아니라 운영 반응에서 갈린다.",
-        "업그레이드 얘기는 실제 운영이 버틸 때만 근거가 된다.",
-        "프로토콜 해석은 코드보다 운영 흔적이 남을 때 설득력이 생긴다.",
-      ],
-      ecosystem: [
-        "생태계 서사는 사용 흔적이 붙을 때만 의미가 있다.",
-        "실사용이 안 남으면 생태계 얘기는 과장에 가깝다.",
-        "사람이 실제로 남지 않으면 생태계 서사는 오래 못 간다.",
-      ],
-      regulation: [
-        "정책 해석은 기사보다 현장 반응이 더 정확하다.",
-        "규제 뉴스는 행동이 붙기 전까지는 해석일 뿐이다.",
-        "규제 기사는 빠르게 돌지만 판단은 집행 흔적이 붙을 때만 가능하다.",
-      ],
-      macro: [
-        "거시 뉴스는 체인 안쪽 흐름을 바꿀 때만 의미가 커진다.",
-        "달러와 금리 얘기는 자금 습관이 바뀔 때만 근거가 된다.",
-        "큰 뉴스는 시끄럽지만 실제 자금 흐름이 바뀌지 않으면 해석 가치가 낮다.",
-      ],
-      onchain: [
-        "온체인 신호는 하루를 버틸 때만 근거가 된다.",
-        "체인 안쪽 흔적은 오래 남을 때만 읽을 가치가 생긴다.",
-        "주소와 자금 흐름은 금방 식지 않을 때만 판단 근거가 된다.",
-      ],
-      "market-structure": [
-        "시장 구조는 분위기보다 주문이 버티는지에서 갈린다.",
-        "차트보다 실제 체결이 남아야 판단할 수 있다.",
-        "호가가 시끄러워도 실제 돈이 안 붙으면 해석을 서두를 이유가 없다.",
-      ],
-    };
-    const openerPool = modeOpenerPool[mode] || modeOpenerPool["micro-note"];
-    const opener = openerPool[(seedBase + offset) % openerPool.length];
-    const useQuestionStem =
-      questionStem &&
-      !looksMostlyLatin(questionStem) &&
-      questionStem.length >= 10 &&
-      !detectNarrativeSurfaceIssue(questionStem, "ko") &&
-      !/(부터\s*먼저|먼저\s*다시|장면부터|질문부터)/.test(questionStem) &&
-      /(는지|인지|일지|할지|될지|붙는지|남는지|이어지는지|갈리는지|버티는지|무너지는지|실리는지|흐르는지)$/.test(
-        questionStem
-      );
-    if (useQuestionStem) {
-      return `${opener} ${questionStem}다.`;
-    }
-    if (
-      stripped &&
-      !detectNarrativeSurfaceIssue(stripped, "ko") &&
-      !looksMostlyLatin(stripped) &&
-      hasKoPredicateEnding(stripped) &&
-      stripped.length >= 14 &&
-      !/(본다|확인한다|살핀다|짚는다|따진다|가늠한다|지켜본다|부터\s*먼저다|먼저다)$/u.test(stripped)
-    ) {
-      return `${stripped}.`;
-    }
-    const pool = directLanePool[lane];
-    return pool[(seedBase + offset) % pool.length];
-  };
-
-  const buildDirectKoEvidenceLine = (mode: string, offset: number): string => {
-    const anchorLooksClause = (anchor: string): boolean =>
-      /(는지|인지|일지|할지|될지|붙는지|남는지|이어지는지|갈리는지|버티는지|무너지는지)$/.test(
-        sanitizeTweetText(anchor).replace(/[.!?]+$/g, "").trim()
-      );
-    const clauseLike = anchorLooksClause(primaryAnchor) || anchorLooksClause(secondaryAnchor);
-    const poolByMode: Record<string, string[]> = {
-      "micro-note": [
-        `근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-        `지금 확인하는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-      ],
-      "split-note": [
-        `먼저 볼 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-        `판단을 가르는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-      ],
-      "identity-journal": [
-        `내가 지금 붙드는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-        `오늘 장부 앞에 먼저 놓는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-      ],
-      "philosophy-note": [
-        `이 판단의 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-        `결국 확인할 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-      ],
-      "interaction-experiment": [
-        `지금 질문에 붙는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-        `먼저 대조할 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-      ],
-      "meta-reflection": [
-        `이번에도 다시 보는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-        `익숙한 설명을 다시 가르는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-      ],
-      "fable-essay": [
-        `결국 남는 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-        `이 장면을 버티게 할 근거는 ${primaryAnchor}와 ${secondaryAnchor}이다.`,
-      ],
-    };
-    if (clauseLike) {
-      const clausePool = [
-        `먼저 보는 건 ${primaryAnchor}다. 이어서 ${secondaryAnchor}도 같이 본다.`,
-        `${primaryAnchor}부터 확인한다. ${secondaryAnchor}가 끝까지 남는지도 본다.`,
-        `${primaryAnchor}를 먼저 보고, ${secondaryAnchor}가 같은 방향인지 이어서 확인한다.`,
-      ];
-      return clausePool[(seedBase + offset) % clausePool.length];
-    }
-    const pool = poolByMode[mode] || poolByMode["micro-note"];
-    return pool[(seedBase + offset) % pool.length];
-  };
-
-  const buildDirectKoActionLine = (offset: number): string => {
-    const poolByLane: Record<TrendLane, string[]> = {
-      protocol: [
-        "지금은 발표보다 운영 반응이 실제로 붙는지 확인한다.",
-        "지금 확인할 건 업그레이드 얘기보다 운영 흔적이 버티는지다.",
-      ],
-      ecosystem: [
-        "지금은 말보다 사용 흔적이 실제로 이어지는지 확인한다.",
-        "지금 확인할 건 서사보다 사람이 다시 돌아오는지다.",
-      ],
-      regulation: [
-        "지금은 기사보다 집행 흔적이 실제로 붙는지 확인한다.",
-        "지금 확인할 건 정책 해석보다 현장 반응이 남는지다.",
-      ],
-      macro: [
-        "지금은 뉴스보다 자금 흐름이 실제로 바뀌는지 확인한다.",
-        "지금 확인할 건 거시 뉴스보다 체인 안쪽 습관이 바뀌는지다.",
-      ],
-      onchain: [
-        "지금은 체인 안쪽 흔적이 하루를 버티는지 확인한다.",
-        "지금 확인할 건 주소와 자금 흐름이 금방 식지 않는지다.",
-      ],
-      "market-structure": [
-        "지금은 분위기보다 실제 체결이 붙는지 확인한다.",
-        "지금 확인할 건 화면 열기보다 주문이 실제로 남는지다.",
-      ],
-    };
-    const pool = poolByLane[lane];
-    return pool[(seedBase + offset) % pool.length];
-  };
-
-  const buildDirectKoJudgmentLine = (offset: number): string => {
-    const poolByLane: Record<TrendLane, string[]> = {
-      protocol: [
-        "운영이 버텨야 장부에 남긴다.",
-        "로그가 버티지 못하면 장부에 올리지 않는다.",
-      ],
-      ecosystem: [
-        "사용 흔적이 남아야 장부에 올린다.",
-        "사람이 돌아오지 않으면 장부에 남기지 않는다.",
-      ],
-      regulation: [
-        "집행이 붙어야 장부에 올린다.",
-        "행동이 없으면 장부에 남기지 않는다.",
-      ],
-      macro: [
-        "자금 습관이 바뀔 때만 장부에 남긴다.",
-        "체인 안쪽까지 닿지 않으면 장부에 올리지 않는다.",
-      ],
-      onchain: [
-        "하루를 버틴 흔적만 장부에 남긴다.",
-        "금방 식는 신호는 장부에 올리지 않는다.",
-      ],
-      "market-structure": [
-        "실제 체결이 붙을 때만 장부에 올린다.",
-        "돈이 남지 않으면 장부에 남기지 않는다.",
-      ],
-    };
-    const pool = poolByLane[lane];
-    return pool[(seedBase + offset) % pool.length];
-  };
-
-  const buildDirectKoFalsifierLine = (mode: string, offset: number): string => {
-    const genericPool = [
-      "둘이 엇갈리면 이 해석은 보류한다.",
-      "한쪽만 남으면 오늘 결론은 미룬다.",
-      "행동이 안 붙으면 여기서 다시 읽는다.",
-      "근거 하나가 비면 이 판단은 바로 접는다.",
-    ];
-    const modePoolMap: Record<string, string[]> = {
-      "interaction-experiment": [
-        "둘이 엇갈리면 이 질문은 처음부터 다시 잡는다.",
-        "한쪽만 남으면 오늘 가설은 폐기한다.",
-      ],
-      "meta-reflection": [
-        "반대 근거가 더 오래 남으면 설명을 버린다.",
-        "예상과 다르면 이 해석은 여기서 접는다.",
-      ],
-      "philosophy-note": [
-        "둘 중 하나만 버티면 다시 본다.",
-        "근거 하나가 무너지면 이 결론은 설명력이 없다.",
-      ],
-    };
-    const pool = modePoolMap[mode] || genericPool;
-    return pool[(seedBase + offset) % pool.length];
-  };
-
   const buildDirectKoPreviewCandidate = (
     offset: number,
-    variant: number,
+    _variant: number,
     mode: string,
     charBudget: number,
     ask?: string
   ): string => {
-    const thesis = buildDirectKoPreviewThesis(mode, offset);
-    const evidence = buildDirectKoEvidenceLine(mode, offset + 1);
-    const action = buildDirectKoActionLine(offset + 2);
-    const judgment = buildDirectKoJudgmentLine(offset + 3);
-    const falsifier = buildDirectKoFalsifierLine(mode, offset + 4);
     const askText =
-      mode === "interaction-experiment" && ask ? resolveContextualQuestion(ask, thesis, "ko") : "";
-    const lines = [thesis, evidence, action, `${judgment} ${falsifier}`]
-      .map((line) => sanitizeTweetText(line))
-      .filter(Boolean);
-    if (askText) {
-      lines.push(askText);
-    }
-    const merged = finalizeGeneratedText(lines.join(" "), "ko", charBudget);
-    return sanitizeTweetText(merged);
+      mode === "interaction-experiment"
+        ? resolveContextualQuestion(ask || interactionMission || activeQuestion || "", headlineBase, "ko")
+        : "";
+    return buildKoIdentityWriterCandidate({
+      headline: headlineBase,
+      primaryAnchor,
+      secondaryAnchor,
+      lane,
+      mode,
+      worldviewHint,
+      signatureBelief,
+      recentReflection: recentReflectionHint || philosophyFrame,
+      interactionMission: askText,
+      activeQuestion,
+      maxChars: charBudget,
+      seedHint: `${seedBase}|${offset}|${mode}`,
+    });
   };
 
   const composeKo = (offset: number, variant: number, mode: string, charBudget: number, ask?: string): string => {
