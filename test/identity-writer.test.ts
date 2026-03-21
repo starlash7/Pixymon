@@ -81,3 +81,35 @@ test("buildKoIdentityWriterCandidate uses evaluative voice instead of checklist 
   assert.match(text, /(홍보 문구|광고 냄새|과열이지 성장은 아니다|좋은 포스터여도 오래 못 간다|절반짜리다)/);
   assert.doesNotMatch(text, /먼저 본다\.\s*확인한다\.\s*미룬다/);
 });
+
+test("buildKoIdentityWriterCandidate varies layout and cadence across variants", () => {
+  const variants = new Set(
+    Array.from({ length: 4 }, (_, variant) =>
+      buildKoIdentityWriterCandidate({
+        ...baseInput,
+        lane: "market-structure",
+        mode: "identity-journal",
+        primaryAnchor: "큰 주문 소화",
+        secondaryAnchor: "돈이 어디로 몰리는지",
+        seedHint: "identity-writer:variation",
+      }, variant)
+    )
+  );
+
+  assert.ok(variants.size >= 3);
+});
+
+test("buildKoIdentityWriterCandidate uses lane-aware question prompts", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "protocol",
+    mode: "interaction-experiment",
+    primaryAnchor: "검증자 안정성",
+    secondaryAnchor: "복구 시간 분포",
+    seedHint: "identity-writer:protocol-question",
+  });
+
+  assert.match(text, /\?$/);
+  assert.match(text, /(로그|운영 흔적|약속)/);
+  assert.doesNotMatch(text, /어떤 근거를 먼저 버리겠나/);
+});

@@ -3,6 +3,15 @@ import { finalizeGeneratedText, normalizeQuestionTail, stableSeedForPrelude } fr
 import { TrendLane } from "../../types/agent.js";
 
 type KoWriterFrame = "claim-note" | "field-note" | "cross-exam" | "quest";
+type WriterSegment =
+  | "scene"
+  | "lead"
+  | "evidence"
+  | "instinct"
+  | "attitude"
+  | "decision"
+  | "consequence"
+  | "question";
 
 export interface KoIdentityWriterInput {
   headline: string;
@@ -176,26 +185,32 @@ const CONSEQUENCE_BY_LANE: Record<TrendLane, string[]> = {
   protocol: [
     "반대편이 더 오래 버티면 설명을 갈아엎는다.",
     "운영 반응이 비는 순간 이 얘기는 효력을 잃는다.",
+    "복구 흔적이 비면 이 발표는 금방 낡은 문장이 된다.",
   ],
   ecosystem: [
     "재방문이 꺼지는 순간 그 서사는 바로 식는다.",
     "사용 흔적이 끊기면 미련 없이 지운다.",
+    "사람이 흩어지는 순간 그 열기는 포스터 값밖에 못 한다.",
   ],
   regulation: [
     "반대편이 더 오래 버티면 기사보다 행동 편을 든다.",
     "집행이 비는 순간 해설은 힘을 잃는다.",
+    "행동이 안 남는 순간 이 뉴스는 금방 낡은 기사로 돌아간다.",
   ],
   macro: [
     "자금 흐름이 안 붙으면 거시 해설은 여기서 멈춘다.",
     "체인 안쪽이 그대로면 이 장면은 뉴스 이상이 아니다.",
+    "배치가 그대로면 큰 해설도 금방 공기처럼 흩어진다.",
   ],
   onchain: [
     "하루를 못 넘기면 나는 이 숫자를 그냥 흘려보낸다.",
     "둘이 엇갈리면 오래 붙잡지 않는다.",
+    "다음 날까지 못 남으면 그 숫자는 그냥 스쳐 간다.",
   ],
   "market-structure": [
     "체결이 못 버티면 화면 열기도 함께 값이 떨어진다.",
     "주문이 비면 이 과열은 금방 가벼워진다.",
+    "돈이 빠지는 순간 그 자신감은 바로 얇아진다.",
   ],
 };
 
@@ -215,12 +230,12 @@ const ATTITUDE_BY_LANE: Record<TrendLane, string[]> = {
     "로그보다 박수가 먼저 나오는 업그레이드는 늘 경계한다.",
   ],
   ecosystem: [
-    "재방문이 없는 커뮤니티 열기는 대개 캠페인으로 끝난다.",
+    "재방문이 비는 커뮤니티 열기는 대개 캠페인으로 끝난다.",
     "사람이 남지 않는데 서사만 큰 생태계는 오래 기억할 가치가 없다.",
   ],
   regulation: [
     "기사만 큰 규제 해설은 제일 먼저 의심한다.",
-    "집행 흔적이 없는 규제 논평은 오래 붙잡지 않는다.",
+    "집행 흔적조차 안 남은 규제 논평은 오래 붙잡지 않는다.",
   ],
   macro: [
     "배치가 안 바뀌는데 해설만 큰 날은 오래 말할 가치가 없다.",
@@ -242,6 +257,108 @@ const QUESTION_FALLBACKS = [
   "같은 장면을 반대로 읽는다면 어느 쪽부터 의심하겠나?",
   "이 읽기가 틀렸다면 가장 먼저 무너질 건 무엇 같나?",
 ];
+
+const QUESTION_BY_LANE: Record<TrendLane, string[]> = {
+  protocol: [
+    "이 업그레이드가 빈말이 아니려면 어떤 로그가 먼저 남아야 한다고 보나?",
+    "너라면 여기서 발표보다 먼저 붙잡을 운영 흔적을 무엇으로 잡겠나?",
+    "이 약속이 진짜라면 가장 늦게까지 버텨야 할 근거는 뭐라고 보나?",
+  ],
+  ecosystem: [
+    "너라면 여기서 사람을 붙잡는 근거와 홍보 문구를 어떻게 가르겠나?",
+    "이 장면이 성장인지 과열인지 가르는 첫 기준은 뭐라고 보나?",
+    "사용이 남는지 보려면 어느 흔적부터 지워 보겠나?",
+  ],
+  regulation: [
+    "기사와 행동이 갈릴 때 너는 어느 쪽부터 버리겠나?",
+    "이 규제 뉴스가 기사 이상이 되려면 어떤 집행이 먼저 붙어야 한다고 보나?",
+    "해설 대신 행동을 보려면 여기서 무엇부터 의심하겠나?",
+  ],
+  macro: [
+    "이 거시 해설이 진짜 방향이라면 어느 자금 습관이 먼저 바뀌어야 한다고 보나?",
+    "큰 뉴스 말고 배치 변화를 본다면 어디서부터 잘라 보겠나?",
+    "이 장면을 거꾸로 읽는다면 어떤 자금 흐름부터 의심하겠나?",
+  ],
+  onchain: [
+    "이 숫자가 잡음이 아니라 신호라면 무엇이 하루 뒤에도 남아야 한다고 보나?",
+    "온체인 숫자를 믿기 전에 여기서 먼저 떨어져 나갈 근거는 뭐라고 보나?",
+    "이 장면이 진짜라면 끝까지 버텨야 할 흔적은 어디라고 보나?",
+  ],
+  "market-structure": [
+    "이 과열이 연출이 아니라면 어떤 체결이 마지막까지 남아야 한다고 보나?",
+    "화면 열기 말고 진짜 돈을 보려면 여기서 뭘 먼저 버리겠나?",
+    "이 자신감이 빈 껍데기라면 가장 먼저 빠질 흔적은 뭐라고 보나?",
+  ],
+};
+
+const SCENE_OPENERS = [
+  "지금 자꾸 눈에 밟히는 건 {H}이다.",
+  "오늘 오래 남는 건 {H}이다.",
+  "이번 흐름에서 제일 걸리는 건 {H}이다.",
+  "지금 적어 둘 만한 건 {H}이다.",
+];
+
+const ANCHOR_SCENE_BY_LANE: Record<TrendLane, string[]> = {
+  protocol: [
+    "{A}와 {B}의 연결",
+    "{A}와 {B}가 엇갈리는 지점",
+    "{A}와 {B} 사이의 느린 차이",
+  ],
+  ecosystem: [
+    "{A}와 {B}의 온도 차",
+    "{A}와 {B}가 따로 노는 장면",
+    "{A}와 {B} 사이의 거리",
+  ],
+  regulation: [
+    "{A}와 {B} 사이의 틈",
+    "{A}와 {B}가 따로 움직이는 장면",
+    "{A}와 {B}의 시차",
+  ],
+  macro: [
+    "{A}와 {B}의 시차",
+    "{A}와 {B}가 다른 속도로 움직이는 장면",
+    "{A}와 {B} 사이의 느린 간격",
+  ],
+  onchain: [
+    "{A}와 {B}의 지속성 차이",
+    "{A}와 {B}가 하루 뒤에 갈리는 장면",
+    "{A}와 {B} 중 더 오래 남는 쪽",
+  ],
+  "market-structure": [
+    "{A}와 {B}의 엇갈림",
+    "{A}와 {B} 사이의 균열",
+    "{A}와 {B}가 다른 편에 선 장면",
+  ],
+};
+
+const SOUL_HINT_POOLS = {
+  recovery: [
+    "무너진 뒤에 무엇이 복구되는지가 결국 신뢰를 가른다.",
+    "복구 기록은 늘 약속보다 늦게 나오지만 훨씬 오래 남는다.",
+    "회복 방식이 엉키면 좋은 설명도 금방 값을 잃는다.",
+  ],
+  evidence: [
+    "근사한 설명보다 끝까지 버티는 근거 하나가 훨씬 낫다.",
+    "좋은 해설보다 오래 남는 흔적 하나가 훨씬 정확하다.",
+    "보기 좋은 문장보다 끝까지 안 무너지는 근거가 더 쓸모 있다.",
+  ],
+  action: [
+    "말보다 행동이 늦게 붙는 날엔 결론도 늦게 내린다.",
+    "실행이 안 붙으면 좋은 설명도 절반쯤은 광고다.",
+    "행동이 따라오지 않는 순간 해설은 금방 얇아진다.",
+  ],
+  caution: [
+    "빨리 맞히는 것보다 늦게 틀리는 편이 낫다고 본다.",
+    "서둘러 맞는 척하는 것보다 늦게 인정하는 쪽이 덜 틀린다.",
+    "확신을 서두르는 날일수록 틀린 해설이 오래 남는다.",
+  ],
+  creature: [
+    "쉽게 삼켜지는 설명은 대개 다시 뱉게 된다.",
+    "한입에 삼켜지는 서사는 오래 못 버틴다.",
+    "너무 잘 삼켜지는 설명은 대개 다시 올라온다.",
+  ],
+  default: PIXYMON_INSTINCTS,
+};
 
 
 const ANCHOR_REWRITES: Array<[RegExp, string]> = [
@@ -295,6 +412,34 @@ function summarizeAnchor(anchor: string): string {
   return cleaned;
 }
 
+function summarizeHeadline(headline: string): string {
+  const cleaned = sanitizeClause(headline)
+    .replace(/^오늘\s+/u, "")
+    .replace(/^지금\s+/u, "")
+    .replace(/^이번\s+/u, "")
+    .trim();
+  if (!cleaned) return "";
+  return cleaned
+    .replace(/사이에\s+틈이\s+나는지$/u, "사이의 틈")
+    .replace(/같은\s+방향으로\s+가는지$/u, "의 방향")
+    .replace(/같은\s+편인지$/u, "의 정렬")
+    .replace(/운영\s+흔적으로\s+이어지는지$/u, "와 운영 흔적의 연결")
+    .replace(/실제로\s+따라오는지$/u, "의 추종")
+    .replace(/먼저\s+달아오르는지$/u, "의 과열")
+    .replace(/살핀다$|짚는다$|본다$|의심한다$|경계한다$|가른다$|묻는다$/u, "")
+    .replace(/는지$/u, "는 장면")
+    .replace(/인지$/u, "인 장면")
+    .replace(/일지$/u, "일 장면")
+    .replace(/될지$/u, "될 장면")
+    .replace(/붙는지$/u, "붙는 장면")
+    .replace(/남는지$/u, "남는 장면")
+    .replace(/갈리는지$/u, "갈리는 장면")
+    .replace(/버티는지$/u, "버티는 장면")
+    .replace(/무너지는지$/u, "무너지는 장면")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function resolveWriterFrame(mode: string, seed: number): KoWriterFrame {
   if (mode === "interaction-experiment") return "quest";
   if (mode === "meta-reflection") return "cross-exam";
@@ -324,27 +469,41 @@ function pickAttitudeLine(lane: TrendLane, seed: number, lead: string): string {
 function rewriteSoulHint(input: KoIdentityWriterInput, seed: number): string {
   const source = sanitizeClause(input.recentReflection || input.signatureBelief || input.worldviewHint || "");
   if (!source) {
-    return pick(PIXYMON_INSTINCTS, seed, 3);
+    return pick(SOUL_HINT_POOLS.default, seed, 3);
   }
   if (/복구|회복|recovery/i.test(source)) {
-    return "무너진 뒤 어떻게 복구하는지가 결국 신뢰를 만든다.";
+    return pick(SOUL_HINT_POOLS.recovery, seed, 5);
   }
   if (/설명|서사/.test(source) && /근거|흔적|행동/.test(source)) {
-    return "근사한 설명보다 끝까지 버티는 근거 하나가 훨씬 낫다.";
+    return pick(SOUL_HINT_POOLS.evidence, seed, 7);
   }
   if (/행동|집행|실행/.test(source)) {
-    return "말보다 행동이 늦게 붙는 날엔 결론도 늦게 내린다.";
+    return pick(SOUL_HINT_POOLS.action, seed, 11);
   }
   if (/믿|서두르|보류/.test(source)) {
-    return "빨리 맞히는 것보다 늦게 틀리는 편이 낫다고 본다.";
+    return pick(SOUL_HINT_POOLS.caution, seed, 13);
   }
   if (/장부|먹은 단서|진화/.test(source)) {
-    return pick(PIXYMON_INSTINCTS, seed, 7);
+    return pick(SOUL_HINT_POOLS.creature, seed, 17);
   }
   if (source.length <= 38 && !/[A-Za-z]{5,}/.test(source)) {
     return source.endsWith("다") ? `${source}.` : `${source}다.`;
   }
-  return pick(PIXYMON_INSTINCTS, seed, 11);
+  return pick(SOUL_HINT_POOLS.default, seed, 19);
+}
+
+function buildSceneLine(
+  input: KoIdentityWriterInput,
+  seed: number,
+  primaryAnchor: string,
+  secondaryAnchor: string
+): string {
+  const scene = summarizeHeadline(input.headline);
+  const needsAnchorFallback = !scene || /(는지|인지|일지|될지|붙는지|남는지|갈리는지|버티는지|무너지는지)$/.test(scene);
+  const sceneCore = needsAnchorFallback
+    ? fill(pick(ANCHOR_SCENE_BY_LANE[input.lane], seed, 29), primaryAnchor, secondaryAnchor)
+    : scene;
+  return pick(SCENE_OPENERS, seed, 23).replaceAll("{H}", sceneCore);
 }
 
 function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
@@ -353,33 +512,94 @@ function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
     const compact = raw.length > 68 ? `${raw.slice(0, 64).trim()}...` : raw;
     return normalizeQuestionTail(compact, "ko");
   }
-  return pick(QUESTION_FALLBACKS, seed, 13);
+  const lanePool = QUESTION_BY_LANE[input.lane];
+  if (lanePool?.length) {
+    return pick(lanePool, seed, 13);
+  }
+  return pick(QUESTION_FALLBACKS, seed, 17);
 }
 
 function joinCandidate(lines: string[], maxChars: number): string {
   return finalizeGeneratedText(lines.filter(Boolean).join(" "), "ko", maxChars);
 }
 
-function maybeAddCharacterLine(
-  baseLines: string[],
-  instinct: string,
-  attitude: string,
-  maxChars: number,
-  seed: number,
-  frame: KoWriterFrame
-): string[] {
-  const preferred = frame === "cross-exam" ? attitude : seed % 2 === 0 ? instinct : attitude;
-  if (!preferred || (frame !== "cross-exam" && seed % 5 === 0)) return baseLines;
-  const next = seed % 2 === 0
-    ? [baseLines[0], preferred, ...baseLines.slice(1)]
-    : [...baseLines.slice(0, 2), preferred, ...baseLines.slice(2)];
-  const candidate = joinCandidate(next, maxChars);
-  if (candidate.length <= maxChars) return next;
-  if (frame === "cross-exam" && instinct && instinct !== preferred) {
-    const fallback = [baseLines[0], instinct, ...baseLines.slice(1)];
-    if (joinCandidate(fallback, maxChars).length <= maxChars) return fallback;
+function materializeLayout(layout: WriterSegment[], segments: Record<WriterSegment, string>, maxChars: number): string[] {
+  const lines: string[] = [];
+  for (const key of layout) {
+    const candidate = sanitizeClause(segments[key] || "");
+    if (!candidate) continue;
+    const previous = lines[lines.length - 1] || "";
+    if (previous && (previous === candidate || hasSimilarCadence(previous, candidate))) continue;
+    lines.push(candidate.endsWith("?") ? candidate : `${candidate}.`);
+    if (joinCandidate(lines, maxChars).length > maxChars) {
+      lines.pop();
+      break;
+    }
   }
-  return baseLines;
+  return lines;
+}
+
+function rotateLayouts(layouts: WriterSegment[][], seed: number): WriterSegment[][] {
+  const offset = seed % layouts.length;
+  return [...layouts.slice(offset), ...layouts.slice(0, offset)];
+}
+
+function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][] {
+  if (frame === "quest") {
+    return [
+      ["scene", "attitude", "evidence", "question"],
+      ["lead", "evidence", "decision", "question"],
+      ["scene", "instinct", "decision", "question"],
+      ["attitude", "evidence", "consequence", "question"],
+    ];
+  }
+
+  if (mode === "meta-reflection") {
+    return frame === "cross-exam"
+      ? [
+          ["attitude", "evidence", "decision", "consequence"],
+          ["scene", "attitude", "evidence", "consequence"],
+          ["lead", "attitude", "decision", "consequence"],
+          ["scene", "evidence", "decision", "consequence"],
+        ]
+      : [
+          ["scene", "attitude", "evidence", "decision"],
+          ["lead", "evidence", "attitude", "consequence"],
+          ["attitude", "evidence", "decision", "consequence"],
+        ];
+  }
+
+  if (mode === "philosophy-note") {
+    return [
+      ["lead", "instinct", "evidence", "decision"],
+      ["scene", "instinct", "evidence", "consequence"],
+      ["attitude", "instinct", "evidence", "decision"],
+      ["lead", "evidence", "instinct", "consequence"],
+    ];
+  }
+
+  if (mode === "identity-journal") {
+    return frame === "field-note"
+      ? [
+          ["scene", "instinct", "evidence", "decision"],
+          ["lead", "evidence", "attitude", "consequence"],
+          ["scene", "evidence", "attitude", "decision"],
+          ["lead", "instinct", "evidence", "consequence"],
+        ]
+      : [
+          ["scene", "attitude", "evidence", "decision"],
+          ["lead", "instinct", "evidence", "consequence"],
+          ["scene", "evidence", "decision", "consequence"],
+          ["attitude", "evidence", "instinct", "decision"],
+        ];
+  }
+
+  return [
+    ["scene", "evidence", "decision", "consequence"],
+    ["lead", "attitude", "evidence", "decision"],
+    ["lead", "instinct", "evidence", "consequence"],
+    ["attitude", "evidence", "decision", "consequence"],
+  ];
 }
 
 export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, variant = 0): string {
@@ -391,22 +611,39 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const frame = resolveWriterFrame(input.mode, seed + variant);
   const leadPool = frame === "cross-exam" ? CROSS_EXAM_BY_LANE[input.lane] : frame === "field-note" ? FIELD_NOTES_BY_LANE[input.lane] : CLAIM_BY_LANE[input.lane];
   const lead = pick(leadPool, seed, variant);
+  const scene = buildSceneLine(input, seed + variant, primaryAnchor, secondaryAnchor);
   const evidence = fill(pick(EVIDENCE_BY_LANE[input.lane], seed, variant + 3), primaryAnchor, secondaryAnchor);
   const instinct = rewriteSoulHint(input, seed + 17);
   const attitude = pickAttitudeLine(input.lane, seed + variant, lead);
   const decision = pick(DECISION_BY_LANE[input.lane], seed, variant + 5);
   const consequence = pick(CONSEQUENCE_BY_LANE[input.lane], seed, variant + 9);
   const question = buildQuestion(input, seed + 19);
-
-  const frameLines: Record<KoWriterFrame, string[]> = {
-    "claim-note": [lead, evidence, `${decision} ${consequence}`],
-    "field-note": [lead, evidence, `${decision} ${consequence}`],
-    "cross-exam": [lead, evidence, `${decision} ${consequence}`],
-    quest: [lead, evidence, decision, question],
+  const segments: Record<WriterSegment, string> = {
+    scene,
+    lead,
+    evidence,
+    instinct,
+    attitude,
+    decision,
+    consequence,
+    question,
   };
 
-  const enriched = frame === "quest" ? frameLines[frame] : maybeAddCharacterLine(frameLines[frame], instinct, attitude, input.maxChars, seed + variant, frame);
-  let candidate = joinCandidate(enriched, input.maxChars);
+  const layouts = rotateLayouts(buildFrameLayouts(frame, input.mode), seed + variant);
+  let candidate = "";
+  for (const layout of layouts) {
+    const lines = materializeLayout(layout, segments, input.maxChars);
+    if (!lines.length) continue;
+    const draft = joinCandidate(lines, input.maxChars);
+    if (draft) {
+      candidate = draft;
+      break;
+    }
+  }
+  if (!candidate) {
+    const fallbackLines = materializeLayout(["lead", "evidence", "decision", frame === "quest" ? "question" : "consequence"], segments, input.maxChars);
+    candidate = joinCandidate(fallbackLines, input.maxChars);
+  }
 
   if (frame === "quest" && !/[?؟]$/.test(candidate)) {
     const appended = sanitizeTweetText(`${candidate} ${question}`);
