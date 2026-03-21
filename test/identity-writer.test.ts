@@ -20,9 +20,9 @@ test("buildKoIdentityWriterCandidate writes direct korean prose without raw frag
     seedHint: "identity-writer:direct",
   });
 
-  assert.match(text, /(장부|먹은 단서|다음 판단 재료)/);
+  assert.match(text, /(집행|행동|믿는다|결론|흔적|근거)/);
   assert.doesNotMatch(text, /sat\/vB|Bitcoin sold off first|시간차부터 잰다|호가창 바깥/);
-  assert.doesNotMatch(text, /오늘 주워 온 건|입에 넣기엔 아직 거친 장면/);
+  assert.doesNotMatch(text, /오늘 주워 온 건|입에 넣기엔 아직 거친 장면|장부에|먹은 단서|다음 판단 재료/);
 });
 
 test("buildKoIdentityWriterCandidate can end with a concrete audience question in interaction mode", () => {
@@ -48,6 +48,21 @@ test("buildKoIdentityWriterCandidate keeps market-structure prose thesis-driven"
   });
 
   assert.match(text, /(주문|체결|거래소)/);
-  assert.match(text, /(장부|먹은 단서|다음 판단 재료|다시 읽는다)/);
+  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다)/);
+  assert.doesNotMatch(text, /장부에|먹은 단서|다음 판단 재료|다시 읽는다/);
   assert.doesNotMatch(text, /차트보다 실제 체결이 남아야 판단할 수 있다\.\s+차트보다 실제 체결이 남아야 판단할 수 있다/);
+});
+
+test("buildKoIdentityWriterCandidate rewrites clause-like anchors into natural noun phrases", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "ecosystem",
+    mode: "interaction-experiment",
+    primaryAnchor: "체인 안쪽 사용",
+    secondaryAnchor: "실제 사용자가 다시 돌아오는지",
+    seedHint: "identity-writer:ecosystem-anchor",
+  });
+
+  assert.match(text, /재방문 흐름/);
+  assert.doesNotMatch(text, /는지가 남는지|가까가|돌아오는지가/);
 });
