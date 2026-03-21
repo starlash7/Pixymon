@@ -113,3 +113,16 @@ test("buildKoIdentityWriterCandidate uses lane-aware question prompts", () => {
   assert.match(text, /(로그|운영 흔적|약속)/);
   assert.doesNotMatch(text, /어떤 근거를 먼저 버리겠나/);
 });
+
+test("buildKoIdentityWriterCandidate can surface lane fixation instead of generic instinct", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "market-structure",
+    mode: "meta-reflection",
+    primaryAnchor: "큰 주문 소화",
+    secondaryAnchor: "돈이 어디로 몰리는지",
+    seedHint: "identity-writer:fixation",
+  }, 2);
+
+  assert.match(text, /(체결|돈이 안 붙은 자신감|화면 열기보다 오래 보는 건 결국 체결)/);
+});

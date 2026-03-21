@@ -9,6 +9,7 @@ type WriterSegment =
   | "evidence"
   | "instinct"
   | "attitude"
+  | "fixation"
   | "decision"
   | "consequence"
   | "question";
@@ -251,6 +252,33 @@ const ATTITUDE_BY_LANE: Record<TrendLane, string[]> = {
   ],
 };
 
+const FIXATION_BY_LANE: Record<TrendLane, string[]> = {
+  protocol: [
+    "끝내 믿는 쪽은 발표가 아니라 복구 속도다.",
+    "업그레이드 서사보다 오래 보는 건 결국 운영 기록이다.",
+  ],
+  ecosystem: [
+    "열기보다 오래 붙잡는 건 결국 재방문이다.",
+    "사람을 남기지 못한 서사는 대개 홍보 문구로 끝난다.",
+  ],
+  regulation: [
+    "규제 뉴스보다 오래 남는 건 결국 집행 흔적이다.",
+    "기사 한 장보다 집행 하나가 훨씬 늦고 정확하다.",
+  ],
+  macro: [
+    "큰 뉴스보다 끝까지 보는 건 결국 자금 배치다.",
+    "거시 해설보다 오래 남는 건 자금 습관 쪽이다.",
+  ],
+  onchain: [
+    "하루를 넘기는 숫자만 겨우 단서 취급을 한다.",
+    "온체인에선 결국 오래 버틴 흔적만 내 손에 남는다.",
+  ],
+  "market-structure": [
+    "화면 열기보다 오래 보는 건 결국 체결이다.",
+    "돈이 안 붙은 자신감은 늘 제일 먼저 버린다.",
+  ],
+};
+
 const QUESTION_FALLBACKS = [
   "이 장면을 뒤집는 첫 신호를 어디서 찾겠나?",
   "너라면 여기서 먼저 믿지 않을 근거는 뭐겠나?",
@@ -292,10 +320,10 @@ const QUESTION_BY_LANE: Record<TrendLane, string[]> = {
 };
 
 const SCENE_OPENERS = [
-  "지금 자꾸 눈에 밟히는 건 {H}이다.",
-  "오늘 오래 남는 건 {H}이다.",
-  "이번 흐름에서 제일 걸리는 건 {H}이다.",
-  "지금 적어 둘 만한 건 {H}이다.",
+  "지금 자꾸 눈에 밟히는 건 {Q} 점이다.",
+  "오늘 오래 남는 건 {Q} 사실이다.",
+  "이번 흐름에서 제일 걸리는 건 {Q} 문제다.",
+  "지금 적어 둘 만한 건 {Q} 신호다.",
 ];
 
 const ANCHOR_SCENE_BY_LANE: Record<TrendLane, string[]> = {
@@ -379,6 +407,13 @@ const ANCHOR_REWRITES: Array<[RegExp, string]> = [
 
 function pick<T>(pool: T[], seed: number, offset = 0): T {
   return pool[(seed + offset) % pool.length];
+}
+
+function hasBatchim(text: string): boolean {
+  const last = text[text.length - 1];
+  const code = last?.charCodeAt(0) ?? 0;
+  if (code < 0xac00 || code > 0xd7a3) return false;
+  return (code - 0xac00) % 28 !== 0;
 }
 
 function sanitizeClause(text: string): string {
@@ -466,6 +501,13 @@ function pickAttitudeLine(lane: TrendLane, seed: number, lead: string): string {
   return pick(pool, seed + 1, 21);
 }
 
+function pickFixationLine(lane: TrendLane, seed: number, lead: string, attitude: string): string {
+  const pool = FIXATION_BY_LANE[lane];
+  const first = pick(pool, seed, 25);
+  if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude)) return first;
+  return pick(pool, seed + 1, 25);
+}
+
 function rewriteSoulHint(input: KoIdentityWriterInput, seed: number): string {
   const source = sanitizeClause(input.recentReflection || input.signatureBelief || input.worldviewHint || "");
   if (!source) {
@@ -503,7 +545,8 @@ function buildSceneLine(
   const sceneCore = needsAnchorFallback
     ? fill(pick(ANCHOR_SCENE_BY_LANE[input.lane], seed, 29), primaryAnchor, secondaryAnchor)
     : scene;
-  return pick(SCENE_OPENERS, seed, 23).replaceAll("{H}", sceneCore);
+  const quoted = `${sceneCore}${hasBatchim(sceneCore) ? "이라는" : "라는"}`;
+  return pick(SCENE_OPENERS, seed, 23).replaceAll("{Q}", quoted);
 }
 
 function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
@@ -548,33 +591,33 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][
   if (frame === "quest") {
     return [
       ["scene", "attitude", "evidence", "question"],
-      ["lead", "evidence", "decision", "question"],
+      ["lead", "fixation", "decision", "question"],
       ["scene", "instinct", "decision", "question"],
-      ["attitude", "evidence", "consequence", "question"],
+      ["fixation", "evidence", "consequence", "question"],
     ];
   }
 
   if (mode === "meta-reflection") {
     return frame === "cross-exam"
       ? [
-          ["attitude", "evidence", "decision", "consequence"],
+          ["attitude", "fixation", "evidence", "consequence"],
           ["scene", "attitude", "evidence", "consequence"],
-          ["lead", "attitude", "decision", "consequence"],
-          ["scene", "evidence", "decision", "consequence"],
+          ["lead", "fixation", "decision", "consequence"],
+          ["scene", "evidence", "fixation", "decision"],
         ]
       : [
           ["scene", "attitude", "evidence", "decision"],
-          ["lead", "evidence", "attitude", "consequence"],
-          ["attitude", "evidence", "decision", "consequence"],
+          ["lead", "evidence", "fixation", "consequence"],
+          ["attitude", "evidence", "fixation", "decision"],
         ];
   }
 
   if (mode === "philosophy-note") {
     return [
       ["lead", "instinct", "evidence", "decision"],
-      ["scene", "instinct", "evidence", "consequence"],
+      ["scene", "fixation", "evidence", "consequence"],
       ["attitude", "instinct", "evidence", "decision"],
-      ["lead", "evidence", "instinct", "consequence"],
+      ["lead", "evidence", "fixation", "consequence"],
     ];
   }
 
@@ -583,13 +626,13 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][
       ? [
           ["scene", "instinct", "evidence", "decision"],
           ["lead", "evidence", "attitude", "consequence"],
-          ["scene", "evidence", "attitude", "decision"],
+          ["scene", "fixation", "evidence", "decision"],
           ["lead", "instinct", "evidence", "consequence"],
         ]
       : [
           ["scene", "attitude", "evidence", "decision"],
           ["lead", "instinct", "evidence", "consequence"],
-          ["scene", "evidence", "decision", "consequence"],
+          ["scene", "evidence", "fixation", "consequence"],
           ["attitude", "evidence", "instinct", "decision"],
         ];
   }
@@ -598,7 +641,7 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][
     ["scene", "evidence", "decision", "consequence"],
     ["lead", "attitude", "evidence", "decision"],
     ["lead", "instinct", "evidence", "consequence"],
-    ["attitude", "evidence", "decision", "consequence"],
+    ["fixation", "evidence", "decision", "consequence"],
   ];
 }
 
@@ -615,6 +658,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const evidence = fill(pick(EVIDENCE_BY_LANE[input.lane], seed, variant + 3), primaryAnchor, secondaryAnchor);
   const instinct = rewriteSoulHint(input, seed + 17);
   const attitude = pickAttitudeLine(input.lane, seed + variant, lead);
+  const fixation = pickFixationLine(input.lane, seed + variant, lead, attitude);
   const decision = pick(DECISION_BY_LANE[input.lane], seed, variant + 5);
   const consequence = pick(CONSEQUENCE_BY_LANE[input.lane], seed, variant + 9);
   const question = buildQuestion(input, seed + 19);
@@ -624,6 +668,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     evidence,
     instinct,
     attitude,
+    fixation,
     decision,
     consequence,
     question,
