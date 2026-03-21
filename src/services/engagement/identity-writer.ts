@@ -208,6 +208,34 @@ const PIXYMON_INSTINCTS = [
   "말보다 행동이 늦게 붙는 날엔 결론도 늦게 내린다.",
 ];
 
+
+const ATTITUDE_BY_LANE: Record<TrendLane, string[]> = {
+  protocol: [
+    "나는 박수보다 복구 기록에 더 오래 매달린다.",
+    "로그보다 박수가 먼저 나오는 업그레이드는 늘 경계한다.",
+  ],
+  ecosystem: [
+    "재방문이 없는 커뮤니티 열기는 대개 캠페인으로 끝난다.",
+    "사람이 남지 않는데 서사만 큰 생태계는 오래 기억할 가치가 없다.",
+  ],
+  regulation: [
+    "기사만 큰 규제 해설은 제일 먼저 의심한다.",
+    "집행 흔적이 없는 규제 논평은 오래 붙잡지 않는다.",
+  ],
+  macro: [
+    "배치가 안 바뀌는데 해설만 큰 날은 오래 말할 가치가 없다.",
+    "돈이 안 움직인 거시 해설은 절반쯤 소음으로 본다.",
+  ],
+  onchain: [
+    "하루도 못 버틴 온체인 숫자는 장식에 가깝다.",
+    "예쁜 수치가 빨리 식는 날은 더 오래 의심한다.",
+  ],
+  "market-structure": [
+    "체결이 빠진 자신감은 화면 안에서만 커진다.",
+    "돈이 안 붙은 과열은 제일 빨리 버린다.",
+  ],
+};
+
 const QUESTION_FALLBACKS = [
   "이 장면을 뒤집는 첫 신호를 어디서 찾겠나?",
   "너라면 여기서 먼저 믿지 않을 근거는 뭐겠나?",
@@ -275,6 +303,24 @@ function resolveWriterFrame(mode: string, seed: number): KoWriterFrame {
   return ["claim-note", "field-note", "cross-exam"][(seed % 3)] as KoWriterFrame;
 }
 
+function hasSimilarCadence(left: string, right: string): boolean {
+  const normalize = (text: string) => sanitizeClause(text).replace(/\s+/g, " ");
+  const a = normalize(left);
+  const b = normalize(right);
+  if (!a || !b) return false;
+  const aTail = a.split(" ").slice(-1)[0];
+  const bTail = b.split(" ").slice(-1)[0];
+  if (aTail && aTail === bTail) return true;
+  return /(경계한다|의심한다|믿지 않는다|힘을 잃는다|오래 못 간다|가깝다|멈춘다)$/.test(a) && /(경계한다|의심한다|믿지 않는다|힘을 잃는다|오래 못 간다|가깝다|멈춘다)$/.test(b) && aTail === bTail;
+}
+
+function pickAttitudeLine(lane: TrendLane, seed: number, lead: string): string {
+  const pool = ATTITUDE_BY_LANE[lane];
+  const first = pick(pool, seed, 21);
+  if (!hasSimilarCadence(first, lead)) return first;
+  return pick(pool, seed + 1, 21);
+}
+
 function rewriteSoulHint(input: KoIdentityWriterInput, seed: number): string {
   const source = sanitizeClause(input.recentReflection || input.signatureBelief || input.worldviewHint || "");
   if (!source) {
@@ -314,13 +360,26 @@ function joinCandidate(lines: string[], maxChars: number): string {
   return finalizeGeneratedText(lines.filter(Boolean).join(" "), "ko", maxChars);
 }
 
-function maybeAddInstinct(baseLines: string[], instinct: string, maxChars: number, seed: number): string[] {
-  if (!instinct || seed % 5 === 0) return baseLines;
+function maybeAddCharacterLine(
+  baseLines: string[],
+  instinct: string,
+  attitude: string,
+  maxChars: number,
+  seed: number,
+  frame: KoWriterFrame
+): string[] {
+  const preferred = frame === "cross-exam" ? attitude : seed % 2 === 0 ? instinct : attitude;
+  if (!preferred || (frame !== "cross-exam" && seed % 5 === 0)) return baseLines;
   const next = seed % 2 === 0
-    ? [baseLines[0], instinct, ...baseLines.slice(1)]
-    : [...baseLines.slice(0, 2), instinct, ...baseLines.slice(2)];
+    ? [baseLines[0], preferred, ...baseLines.slice(1)]
+    : [...baseLines.slice(0, 2), preferred, ...baseLines.slice(2)];
   const candidate = joinCandidate(next, maxChars);
-  return candidate.length <= maxChars ? next : baseLines;
+  if (candidate.length <= maxChars) return next;
+  if (frame === "cross-exam" && instinct && instinct !== preferred) {
+    const fallback = [baseLines[0], instinct, ...baseLines.slice(1)];
+    if (joinCandidate(fallback, maxChars).length <= maxChars) return fallback;
+  }
+  return baseLines;
 }
 
 export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, variant = 0): string {
@@ -334,6 +393,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const lead = pick(leadPool, seed, variant);
   const evidence = fill(pick(EVIDENCE_BY_LANE[input.lane], seed, variant + 3), primaryAnchor, secondaryAnchor);
   const instinct = rewriteSoulHint(input, seed + 17);
+  const attitude = pickAttitudeLine(input.lane, seed + variant, lead);
   const decision = pick(DECISION_BY_LANE[input.lane], seed, variant + 5);
   const consequence = pick(CONSEQUENCE_BY_LANE[input.lane], seed, variant + 9);
   const question = buildQuestion(input, seed + 19);
@@ -345,7 +405,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     quest: [lead, evidence, decision, question],
   };
 
-  const enriched = frame === "quest" ? frameLines[frame] : maybeAddInstinct(frameLines[frame], instinct, input.maxChars, seed + variant);
+  const enriched = frame === "quest" ? frameLines[frame] : maybeAddCharacterLine(frameLines[frame], instinct, attitude, input.maxChars, seed + variant, frame);
   let candidate = joinCandidate(enriched, input.maxChars);
 
   if (frame === "quest" && !/[?؟]$/.test(candidate)) {
