@@ -66,3 +66,18 @@ test("buildKoIdentityWriterCandidate rewrites clause-like anchors into natural n
   assert.match(text, /재방문 흐름/);
   assert.doesNotMatch(text, /는지가 남는지|가까가|돌아오는지가/);
 });
+
+
+test("buildKoIdentityWriterCandidate uses evaluative voice instead of checklist verbs in ecosystem mode", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "ecosystem",
+    mode: "identity-journal",
+    primaryAnchor: "체인 안쪽 사용",
+    secondaryAnchor: "실제 사용자가 다시 돌아오는지",
+    seedHint: "identity-writer:ecosystem-evaluative",
+  });
+
+  assert.match(text, /(홍보 문구|광고 냄새|과열이지 성장은 아니다|좋은 포스터여도 오래 못 간다|절반짜리다)/);
+  assert.doesNotMatch(text, /먼저 본다\.\s*확인한다\.\s*미룬다/);
+});
