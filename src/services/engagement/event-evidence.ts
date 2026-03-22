@@ -269,7 +269,7 @@ export function planEventEvidenceAct(params: {
   events: TrendEvent[];
   evidence: OnchainEvidence[];
   recentPosts: RecentPostRecord[];
-  recentNarrativeThreads?: Array<{ lane: TrendLane; focus?: string; headline?: string }>;
+  recentNarrativeThreads?: Array<{ lane: TrendLane; focus?: string; sceneFamily?: string; headline?: string }>;
   laneUsage?: LaneUsageWindow;
   requireOnchainEvidence?: boolean;
   requireCrossSourceEvidence?: boolean;
@@ -360,15 +360,18 @@ export function planEventEvidenceAct(params: {
       const priceEvidencePenalty = estimatePriceEvidencePenalty(pair.evidence, event.lane);
       const eventEvidenceMismatchPenalty = estimateEventEvidenceMismatchPenalty(event, pair.evidence);
       const focus = resolvePlannerFocus(event.lane, pair.evidence);
+      const sceneFamily = resolvePlannerSceneFamily(event.lane, focus, pair.evidence);
       const recentFocusPenalty = estimateRecentNarrativeFocusPenalty(
         event.lane,
         focus,
+        sceneFamily,
         params.recentNarrativeThreads || []
       );
       const plannerWarnings = buildPlannerWarnings({
         event,
         pair: pair.evidence,
         focus,
+        sceneFamily,
         hasCrossSourceEvidence: pair.hasCrossSourceEvidence,
         evidenceSourceDiversity: pair.evidenceSourceDiversity,
         recentNarrativeThreads: params.recentNarrativeThreads || [],
@@ -391,6 +394,7 @@ export function planEventEvidenceAct(params: {
       return {
         event,
         focus,
+        sceneFamily,
         evidence: pair.evidence,
         hasOnchainEvidence: pair.hasOnchainEvidence,
         hasCrossSourceEvidence: pair.hasCrossSourceEvidence,
@@ -414,6 +418,7 @@ export function planEventEvidenceAct(params: {
   return {
     lane: preferred.event.lane,
     focus: preferred.focus,
+    sceneFamily: preferred.sceneFamily,
     event: preferred.event,
     evidence: preferred.evidence,
     hasOnchainEvidence: preferred.hasOnchainEvidence,
@@ -430,30 +435,37 @@ export function planEventEvidenceAct(params: {
 function estimateRecentNarrativeFocusPenalty(
   lane: TrendLane,
   focus: PlannerFocus,
-  recentThreads: Array<{ lane: TrendLane; focus?: string; headline?: string }>
+  sceneFamily: string,
+  recentThreads: Array<{ lane: TrendLane; focus?: string; sceneFamily?: string; headline?: string }>
 ): number {
   if (!recentThreads.length) return 0;
   const recent = recentThreads.slice(0, 6);
   const exactFocusRepeats = recent.filter((item) => item.lane === lane && (item.focus || "general") === focus).length;
+  const sameSceneFamilyRepeats = recent.filter(
+    (item) => item.lane === lane && item.sceneFamily && item.sceneFamily === sceneFamily
+  ).length;
   const sameLaneRepeats = recent.filter((item) => item.lane === lane).length;
   let penalty = 0;
   if (exactFocusRepeats >= 1) penalty += 0.12;
   if (exactFocusRepeats >= 2) penalty += 0.08;
+  if (sameSceneFamilyRepeats >= 1) penalty += 0.12;
+  if (sameSceneFamilyRepeats >= 2) penalty += 0.08;
   if (sameLaneRepeats >= 3) penalty += 0.05;
   if (focus === "general") penalty += 0.06;
-  return clampNumber(penalty, 0, 0.28, 0);
+  return clampNumber(penalty, 0, 0.36, 0);
 }
 
 function buildPlannerWarnings(params: {
   event: TrendEvent;
   pair: OnchainEvidence[];
   focus: PlannerFocus;
+  sceneFamily: string;
   hasCrossSourceEvidence: boolean;
   evidenceSourceDiversity: number;
-  recentNarrativeThreads: Array<{ lane: TrendLane; focus?: string; headline?: string }>;
+  recentNarrativeThreads: Array<{ lane: TrendLane; focus?: string; sceneFamily?: string; headline?: string }>;
 }): string[] {
   const warnings = new Set<string>();
-  const { event, pair, focus } = params;
+  const { event, pair, focus, sceneFamily } = params;
   if (focus === "general") warnings.add("focus-general");
   if (pairIsTooGenericForLane(pair, event.lane)) warnings.add("generic-evidence");
   if (!pairSupportsLaneSemantics(pair, event.lane)) warnings.add("semantic-mismatch");
@@ -466,6 +478,13 @@ function buildPlannerWarnings(params: {
     )
   ) {
     warnings.add("focus-repeat");
+  }
+  if (
+    params.recentNarrativeThreads.some(
+      (item) => item.lane === event.lane && item.sceneFamily && item.sceneFamily === sceneFamily
+    )
+  ) {
+    warnings.add("scene-repeat");
   }
   return [...warnings];
 }
@@ -2069,6 +2088,54 @@ function resolvePlannerFocus(lane: TrendLane, pair: OnchainEvidence[]): PlannerF
   }
 
   return "general";
+}
+
+function resolvePlannerSceneFacet(item: OnchainEvidence, lane: TrendLane): string {
+  const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+  if (lane === "ecosystem") {
+    if (/(개발자|빌더|builder|developer)/.test(normalized)) return "builder";
+    if (/(재방문|잔류|retention|returning|sticky)/.test(normalized)) return "retention";
+    if (/(지갑|wallet|실사용|usage|사용 흔적)/.test(normalized)) return "usage";
+    if (/(커뮤니티|community|열기|광고|홍보|hype)/.test(normalized)) return "community";
+    if (/(예치 자금|자금 복귀|capital|tvl)/.test(normalized)) return "capital";
+  }
+  if (lane === "regulation") {
+    if (/(법원|소송|판결|court|lawsuit)/.test(normalized)) return "court";
+    if (/(집행|현장 반응|execution)/.test(normalized)) return "execution";
+    if (/(etf|심사|승인|policy|regulation|당국|sec|cftc)/.test(normalized)) return "policy";
+    if (/(대기 자금|자금 흐름|capital)/.test(normalized)) return "capital";
+  }
+  if (lane === "protocol") {
+    if (/(메인넷|launch|출시|예치 자금|복귀 자금)/.test(normalized)) return "launch";
+    if (/(검증자|validator|합의|consensus)/.test(normalized)) return "validator";
+    if (/(복구|recovery|장애)/.test(normalized)) return "recovery";
+    if (/(테스트넷|testnet|업그레이드|rollup|firedancer)/.test(normalized)) return "rollout";
+  }
+  if (lane === "onchain") {
+    if (/(고래|큰손|whale|주소 이동|exchange flow|거래소 자금)/.test(normalized)) return "flow";
+    if (/(수수료|멤풀|거래 대기|거래 적체|network fee|mempool)/.test(normalized)) return "congestion";
+    if (/(스테이블|대기 자금|관망 자금|stablecoin|capital)/.test(normalized)) return "capital";
+    if (/(활성 지갑|address activity|사용 지갑|usage|tvl)/.test(normalized)) return "usage";
+  }
+  if (lane === "market-structure") {
+    if (/(현물 체결|체결|settlement|spot)/.test(normalized)) return "settlement";
+    if (/(호가|orderbook|깊이|depth|유동성|liquidity)/.test(normalized)) return "depth";
+    if (/(자금 쏠림|capital|자금 흐름|funding)/.test(normalized)) return "capital";
+    if (/(거래량|volume|주문 소화|execution)/.test(normalized)) return "execution";
+  }
+  if (lane === "macro") {
+    if (/(달러|dxy|usd|eur)/.test(normalized)) return "fx";
+    if (/(금리|fed|ecb|rates|treasury)/.test(normalized)) return "rates";
+    if (/(물가|inflation|cpi)/.test(normalized)) return "inflation";
+    if (/(자금 흐름|capital)/.test(normalized)) return "capital";
+  }
+  return classifyNarrativeBucket(item);
+}
+
+function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: OnchainEvidence[]): string {
+  const facets = [...new Set(pair.map((item) => resolvePlannerSceneFacet(item, lane)).filter(Boolean))].sort().slice(0, 2);
+  const facetKey = facets.length > 0 ? facets.join("+") : "generic";
+  return `${lane}:${focus}:${facetKey}`;
 }
 
 function estimateNarrativeBucketBonus(pair: OnchainEvidence[], lane: TrendLane): number {

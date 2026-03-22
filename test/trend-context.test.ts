@@ -2099,12 +2099,20 @@ test("planEventEvidenceAct surfaces planner focus and repeat warning for same la
     events,
     evidence,
     recentPosts: [],
-    recentNarrativeThreads: [{ lane: "ecosystem", focus: "builder", headline: "직전에도 빌더 잔류를 물고 있었다" }],
+    recentNarrativeThreads: [
+      {
+        lane: "ecosystem",
+        focus: "builder",
+        sceneFamily: "ecosystem:builder:builder+settlement",
+        headline: "직전에도 빌더 잔류를 물고 있었다",
+      },
+    ],
   });
 
   assert.ok(plan);
   assert.equal(plan?.focus, "builder");
-  assert.match(String(plan?.plannerWarnings.join("|")), /focus-repeat|structural-fallback/);
+  assert.match(String(plan?.plannerWarnings.join("|")), /focus-repeat|scene-repeat|structural-fallback/);
+  assert.match(String(plan?.sceneFamily || ""), /^ecosystem:builder:/);
   assert.ok((plan?.plannerScore || 0) > 0);
 });
 
@@ -2174,4 +2182,81 @@ test("planEventEvidenceAct avoids general focus when sharper builder pair exists
   assert.ok(plan);
   assert.notEqual(plan?.focus, "general");
   assert.equal(plan?.focus, "builder");
+});
+
+test("planEventEvidenceAct rotates away from recently used builder scene family when another sharp family exists", () => {
+  const createdAt = new Date().toISOString();
+  const events = [
+    {
+      id: "event-ecosystem-builder",
+      lane: "ecosystem" as const,
+      headline: "개발자 잔류가 실제 사용으로 번지는지 본다",
+      summary: "Builder momentum should survive beyond the first headline.",
+      source: "evidence:structural-fallback",
+      trust: 0.82,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      keywords: ["개발자", "실사용"],
+    },
+  ];
+  const evidence = [
+    {
+      id: "ev-builder",
+      lane: "ecosystem" as const,
+      nutrientId: "n-builder",
+      source: "news" as const,
+      label: "개발자 잔류",
+      value: "유지",
+      summary: "행사가 지나도 개발자가 계속 남는지 보는 단서다.",
+      trust: 0.84,
+      freshness: 0.92,
+      capturedAt: createdAt,
+      digestScore: 0.82,
+    },
+    {
+      id: "ev-capital",
+      lane: "market-structure" as const,
+      nutrientId: "n-capital",
+      source: "onchain" as const,
+      label: "예치 자금 복귀",
+      value: "확대",
+      summary: "행사가 끝난 뒤에도 자금이 다시 붙는지 보는 단서다.",
+      trust: 0.82,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      digestScore: 0.8,
+    },
+    {
+      id: "ev-usage",
+      lane: "ecosystem" as const,
+      nutrientId: "n-usage",
+      source: "onchain" as const,
+      label: "체인 안쪽 사용",
+      value: "유지",
+      summary: "실사용이 한 주 뒤에도 남는지 보는 단서다.",
+      trust: 0.85,
+      freshness: 0.93,
+      capturedAt: createdAt,
+      digestScore: 0.84,
+    },
+  ];
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts: [],
+    recentNarrativeThreads: [
+      {
+        lane: "ecosystem",
+        focus: "builder",
+        sceneFamily: "ecosystem:builder:builder+settlement",
+        headline: "직전에는 개발자 잔류와 예치 자금 복귀를 같이 물고 있었다",
+      },
+    ],
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.focus, "builder");
+  assert.notEqual(plan?.sceneFamily, "ecosystem:builder:builder+settlement");
+  assert.match(String(plan?.sceneFamily || ""), /^ecosystem:builder:/);
 });

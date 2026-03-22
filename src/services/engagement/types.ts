@@ -43,6 +43,7 @@ export interface LaneUsageWindow {
 export interface EventEvidencePlan {
   lane: TrendLane;
   focus: string;
+  sceneFamily?: string;
   event: TrendEvent;
   evidence: OnchainEvidence[];
   hasOnchainEvidence: boolean;

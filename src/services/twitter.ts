@@ -64,6 +64,7 @@ interface PostTweetOptions {
 interface PostTweetMetadata {
   lane?: TrendLane;
   focus?: string;
+  sceneFamily?: string;
   eventId?: string;
   eventHeadline?: string;
   evidenceIds?: string[];

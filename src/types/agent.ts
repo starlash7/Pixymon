@@ -127,6 +127,7 @@ export interface NarrativeThread {
   headline: string;
   mode?: NarrativeMode;
   focus?: string;
+  sceneFamily?: string;
   activityCount: number;
   evidenceIds: string[];
   openedAt: string;
