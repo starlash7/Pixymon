@@ -3,6 +3,7 @@ import { finalizeGeneratedText, normalizeQuestionTail, stableSeedForPrelude } fr
 import { TrendLane } from "../../types/agent.js";
 
 type KoWriterFrame = "claim-note" | "field-note" | "cross-exam" | "quest";
+type WriterFocus = "retention" | "hype" | "execution" | "liquidity" | "durability" | "general";
 type WriterSegment =
   | "scene"
   | "lead"
@@ -256,6 +257,7 @@ const ATTITUDE_BY_LANE: Record<TrendLane, string[]> = {
   "market-structure": [
     "체결이 빠진 자신감은 화면 안에서만 커진다.",
     "돈이 안 붙은 과열은 제일 빨리 버린다.",
+    "체결보다 분위기가 먼저 커진 과열은 오래 붙잡지 않는다.",
   ],
 };
 
@@ -283,7 +285,66 @@ const FIXATION_BY_LANE: Record<TrendLane, string[]> = {
   "market-structure": [
     "화면 열기보다 오래 보는 건 결국 체결이다.",
     "돈이 안 붙은 자신감은 늘 제일 먼저 버린다.",
+    "끝까지 확인하는 건 결국 체결이 남는지 여부다.",
   ],
+};
+
+const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    retention: [
+      "사람이 남는지부터 보지 않으면 생태계 서사에 쉽게 속는다.",
+      "재방문이 빠진 열기는 대개 캠페인으로 끝난다.",
+      "잔류를 못 만드는 열기는 결국 포스터처럼 식는다.",
+    ],
+    hype: [
+      "서사만 큰 생태계는 대개 광고 문구부터 진해진다.",
+      "홍보가 사용보다 먼저 커지는 날은 오래 믿지 않는다.",
+      "커뮤니티 열기만 요란한 날은 제일 늦게 믿는다.",
+    ],
+  },
+  regulation: {
+    execution: [
+      "집행이 없는 규제 해설은 결국 기사 톤만 남긴다.",
+      "현장 흔적이 비는 규제 논평은 오래 붙잡지 않는다.",
+      "정책 문장이 커질수록 집행 빈칸부터 더 세게 본다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "체결보다 호가가 먼저 커진 과열은 금방 값이 빠진다.",
+      "돈이 안 붙은 열기는 대부분 화면에서 끝난다.",
+      "자금이 안 남는 자신감은 오래 못 간다.",
+    ],
+  },
+};
+
+const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    retention: [
+      "결국 오래 붙드는 건 재방문과 잔류다.",
+      "남는 사람 수가 이 생태계 얘기의 값을 정한다.",
+      "재방문이 없으면 큰 서사도 반쪽이다.",
+    ],
+    hype: [
+      "서사가 커질수록 실제 사용 흔적은 더 차갑게 본다.",
+      "홍보보다 늦게 남는 사용 흔적만 손에 남긴다.",
+      "광고 냄새가 짙어질수록 사람 흔적부터 다시 센다.",
+    ],
+  },
+  regulation: {
+    execution: [
+      "결국 기사보다 오래 남는 건 집행 흔적 쪽이다.",
+      "규제 뉴스의 값은 집행이 붙는 순간에야 정해진다.",
+      "행동으로 안 번지면 규제 뉴스는 대개 기사로 남는다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "결국 오래 보는 건 호가가 아니라 체결 잔상이다.",
+      "돈이 남는지 여부가 이 과열의 본색을 가른다.",
+      "자금이 붙지 않으면 그 자신감은 장면값밖에 없다.",
+    ],
+  },
 };
 
 const QUESTION_FALLBACKS = [
@@ -354,6 +415,9 @@ const SCENE_OPENERS = [
   "오늘 오래 남는 건 {Q} 사실이다.",
   "이번 흐름에서 제일 걸리는 건 {Q} 문제다.",
   "지금 적어 둘 만한 건 {Q} 신호다.",
+  "{Q} 쪽에서 말과 흐름이 갈린다.",
+  "오늘은 {Q} 장면부터 적어 둔다.",
+  "{Q} 이야기가 이상하리만치 오래 남는다.",
 ];
 
 const ANCHOR_SCENE_BY_LANE: Record<TrendLane, string[]> = {
@@ -526,15 +590,41 @@ function hasSimilarCadence(left: string, right: string): boolean {
   return /(경계한다|의심한다|믿지 않는다|힘을 잃는다|오래 못 간다|가깝다|멈춘다)$/.test(a) && /(경계한다|의심한다|믿지 않는다|힘을 잃는다|오래 못 간다|가깝다|멈춘다)$/.test(b) && aTail === bTail;
 }
 
-function pickAttitudeLine(lane: TrendLane, seed: number, lead: string): string {
-  const pool = ATTITUDE_BY_LANE[lane];
+function resolveWriterFocus(input: KoIdentityWriterInput, primaryAnchor: string, secondaryAnchor: string): WriterFocus {
+  const merged = sanitizeTweetText(
+    [input.headline, primaryAnchor, secondaryAnchor, input.worldviewHint, input.signatureBelief, input.recentReflection]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+  );
+
+  if (input.lane === "ecosystem") {
+    if (/(재방문|돌아오|머무|잔류|사용자|이용자|유저|실사용)/.test(merged)) return "retention";
+    if (/(서사|홍보|광고|커뮤니티|열기|캠페인)/.test(merged)) return "hype";
+  }
+  if (input.lane === "regulation" && /(집행|현장|행동|기사|정책|규제|논평|해설)/.test(merged)) {
+    return "execution";
+  }
+  if (input.lane === "market-structure" && /(호가|체결|주문|자금|과열|유동성|돈)/.test(merged)) {
+    return "liquidity";
+  }
+  if (input.lane === "onchain" && /(지속|하루|버티|숫자|신호|흔적)/.test(merged)) {
+    return "durability";
+  }
+  return "general";
+}
+
+function pickAttitudeLine(lane: TrendLane, focus: WriterFocus, seed: number, lead: string): string {
+  const focusPool = FOCUS_ATTITUDE_BY_LANE[lane]?.[focus] || [];
+  const pool = [...focusPool, ...ATTITUDE_BY_LANE[lane]];
   const first = pick(pool, seed, 21);
   if (!hasSimilarCadence(first, lead)) return first;
   return pick(pool, seed + 1, 21);
 }
 
-function pickFixationLine(lane: TrendLane, seed: number, lead: string, attitude: string): string {
-  const pool = FIXATION_BY_LANE[lane];
+function pickFixationLine(lane: TrendLane, focus: WriterFocus, seed: number, lead: string, attitude: string): string {
+  const focusPool = FOCUS_FIXATION_BY_LANE[lane]?.[focus] || [];
+  const pool = [...focusPool, ...FIXATION_BY_LANE[lane]];
   const first = pick(pool, seed, 25);
   if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude)) return first;
   return pick(pool, seed + 1, 25);
@@ -585,6 +675,9 @@ function buildSceneLine(
   const sceneCore = needsAnchorFallback
     ? fill(pick(ANCHOR_SCENE_BY_LANE[input.lane], seed, 29), primaryAnchor, secondaryAnchor)
     : scene;
+  if (!needsAnchorFallback && sceneCore.length <= 42 && !/(사실|문제|신호|장면|지점|거리|온도 차|시차|틈|엇갈림|균열)$/.test(sceneCore)) {
+    return sceneCore;
+  }
   const quoted = `${sceneCore}${hasBatchim(sceneCore) ? "이라는" : "라는"}`;
   return pick(SCENE_OPENERS, seed, 23).replaceAll("{Q}", quoted);
 }
@@ -691,14 +784,15 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   );
   const primaryAnchor = summarizeAnchor(input.primaryAnchor);
   const secondaryAnchor = summarizeAnchor(input.secondaryAnchor);
+  const focus = resolveWriterFocus(input, primaryAnchor, secondaryAnchor);
   const frame = resolveWriterFrame(input.mode, seed + variant);
   const leadPool = frame === "cross-exam" ? CROSS_EXAM_BY_LANE[input.lane] : frame === "field-note" ? FIELD_NOTES_BY_LANE[input.lane] : CLAIM_BY_LANE[input.lane];
   const lead = pick(leadPool, seed, variant);
   const scene = buildSceneLine(input, seed + variant, primaryAnchor, secondaryAnchor);
   const evidence = fill(pick(EVIDENCE_BY_LANE[input.lane], seed, variant + 3), primaryAnchor, secondaryAnchor);
   const instinct = rewriteSoulHint(input, seed + 17);
-  const attitude = pickAttitudeLine(input.lane, seed + variant, lead);
-  const fixation = pickFixationLine(input.lane, seed + variant, lead, attitude);
+  const attitude = pickAttitudeLine(input.lane, focus, seed + variant, lead);
+  const fixation = pickFixationLine(input.lane, focus, seed + variant, lead, attitude);
   const stamp = pickModeStamp(input.mode, seed + variant, lead, attitude);
   const decision = pick(DECISION_BY_LANE[input.lane], seed, variant + 5);
   const consequence = pick(CONSEQUENCE_BY_LANE[input.lane], seed, variant + 9);

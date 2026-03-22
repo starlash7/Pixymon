@@ -82,6 +82,32 @@ test("buildKoIdentityWriterCandidate uses evaluative voice instead of checklist 
   assert.doesNotMatch(text, /먼저 본다\.\s*확인한다\.\s*미룬다/);
 });
 
+test("buildKoIdentityWriterCandidate splits ecosystem voice by retention versus hype focus", () => {
+  const retention = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "ecosystem",
+    mode: "identity-journal",
+    headline: "사람들이 실제로 머무는 체인과 밖에서 도는 서사가 맞물리는지 살핀다",
+    primaryAnchor: "체인 안쪽 사용",
+    secondaryAnchor: "재방문 흐름",
+    seedHint: "identity-writer:ecosystem-retention",
+  });
+
+  const hype = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "ecosystem",
+    mode: "identity-journal",
+    headline: "서사만 커지고 실제 사용은 비는 날이 아닌지 살핀다",
+    primaryAnchor: "커뮤니티 열기",
+    secondaryAnchor: "체인 안쪽 사용",
+    seedHint: "identity-writer:ecosystem-hype",
+  });
+
+  assert.notEqual(retention.split(".")[0]?.trim(), hype.split(".")[0]?.trim());
+  assert.match(retention, /(재방문|잔류|사람이 남|사용자)/);
+  assert.match(hype, /(홍보|광고|서사|캠페인)/);
+});
+
 test("buildKoIdentityWriterCandidate varies layout and cadence across variants", () => {
   const variants = new Set(
     Array.from({ length: 4 }, (_, variant) =>
