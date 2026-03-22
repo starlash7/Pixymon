@@ -1579,42 +1579,104 @@ function buildStructuralHeadlineFromEvidence(
   const a = humanizeStructuralEvidenceLabel(primary.label);
   const b = humanizeStructuralEvidenceLabel(secondary.label);
   const pair = joinKoPair(a, b);
+  const focus = resolvePlannerFocus(lane, [primary, secondary]);
   const seed = stableSeed(`${lane}|${a}|${b}|headline`);
 
+  const focusPoolByLane: Partial<Record<TrendLane, Partial<Record<PlannerFocus, string[]>>>> = {
+    ecosystem: {
+      retention: [
+        `${pair}를 보면 사람이 실제로 남는지 갈린다`,
+        `${pair}가 엇갈리면 생태계 열기보다 잔류 쪽이 더 정확해진다`,
+        `${pair}, 이 두 신호가 같이 버텨야 생태계 서사도 살아남는다`,
+      ],
+      builder: [
+        `${pair}를 보면 개발 기세가 서사 대신 구조로 남는지 갈린다`,
+        `${pair}, 이 두 신호가 같이 붙어야 생태계 기세도 실체를 얻는다`,
+        `${pair}가 같이 남지 않으면 생태계 얘기도 금방 헐거워진다`,
+      ],
+      hype: [
+        `${pair}를 보면 홍보 열기와 실제 사용이 갈라지는지 드러난다`,
+        `${pair}, 이 두 신호가 엇갈리면 생태계 서사도 과열 쪽으로 기운다`,
+        `${pair}가 같이 남지 않으면 큰 생태계 문장도 오래 못 간다`,
+      ],
+    },
+    regulation: {
+      execution: [
+        `${pair}를 보면 정책 문장이 기사에서 끝나는지 갈린다`,
+        `${pair}, 이 두 신호가 같이 남아야 규제 뉴스도 기사값을 벗어난다`,
+        `${pair}가 엇갈리면 규제 해석보다 집행 빈칸이 더 크게 보인다`,
+      ],
+      court: [
+        `${pair}를 보면 법원 기사와 실제 돈의 방향이 갈린다`,
+        `${pair}, 이 두 신호가 같이 남아야 소송 뉴스도 기사값을 벗어난다`,
+        `${pair}가 엇갈리면 판결 기사보다 자금 반응이 더 정확해진다`,
+      ],
+    },
+    protocol: {
+      durability: [
+        `${pair}를 보면 업그레이드 얘기가 운영으로 내려오는지 갈린다`,
+        `${pair}, 이 두 신호가 같이 버텨야 프로토콜 신뢰도 성립한다`,
+        `${pair}가 엇갈리면 릴리스 노트보다 복구 기록이 더 크게 남는다`,
+      ],
+      launch: [
+        `${pair}를 보면 메인넷 박수와 실제 복귀가 갈린다`,
+        `${pair}, 이 두 신호가 같이 붙어야 출시 서사도 반쪽을 벗어난다`,
+        `${pair}가 엇갈리면 메인넷 발표보다 복귀 자금이 더 정확해진다`,
+      ],
+    },
+    onchain: {
+      durability: [
+        `${pair}를 보면 튄 숫자와 버틴 흔적이 갈린다`,
+        `${pair}, 이 두 신호가 같이 남아야 온체인 숫자도 단서가 된다`,
+        `${pair}가 엇갈리면 예쁜 수치보다 오래 남은 흔적이 더 정확하다`,
+      ],
+      flow: [
+        `${pair}를 보면 주소 흔적과 자금 방향이 갈린다`,
+        `${pair}, 이 두 신호가 같이 남아야 고래 움직임도 반쪽을 벗어난다`,
+        `${pair}가 엇갈리면 주소 숫자보다 자금 방향이 더 정확해진다`,
+      ],
+    },
+    "market-structure": {
+      liquidity: [
+        `${pair}를 보면 분위기와 실제 돈이 갈린다`,
+        `${pair}, 이 두 신호가 같이 남아야 과열도 구조 변화가 된다`,
+        `${pair}가 엇갈리면 화면 열기보다 체결 쪽이 더 정확해진다`,
+      ],
+      settlement: [
+        `${pair}를 보면 거래량 숫자와 실제 깊이가 갈린다`,
+        `${pair}, 이 두 신호가 같이 남아야 체결 반응도 구조가 된다`,
+        `${pair}가 엇갈리면 숫자보다 호가 두께가 더 정확해진다`,
+      ],
+    },
+  };
   const poolByLane: Record<TrendLane, string[]> = {
     protocol: [
-      `프로토콜 판단은 ${pair}, 이 조합이 함께 남는지에 달렸다`,
       `${pair}를 보면 업그레이드 얘기가 운영으로 이어지는지 갈린다`,
       `${pair}, 이 두 신호가 같이 버텨야 프로토콜 얘기도 성립한다`,
     ],
     ecosystem: [
-      `생태계 판단은 ${pair}, 이 조합이 실제 사용으로 이어지는지에 달렸다`,
-      `${pair}를 보면 사람이 실제로 남는지 갈린다`,
-      `${pair}, 이 두 신호가 약하면 생태계 서사도 더 밀지 않는다`,
+      `${pair}를 보면 생태계 서사가 실제 사용으로 이어지는지 갈린다`,
+      `${pair}, 이 두 신호가 약하면 생태계 얘기도 더 밀지 않는다`,
     ],
     regulation: [
-      `규제 해석은 ${pair}, 이 조합이 실제 반응으로 이어지는지에 달렸다`,
-      `${pair}를 보면 정책 문장이 기사에서 끝나는지 갈린다`,
+      `${pair}를 보면 규제 해석이 기사에서 끝나는지 갈린다`,
       `${pair}, 이 두 신호가 버티지 못하면 규제 해석도 오늘은 보류한다`,
     ],
     macro: [
-      `매크로 해석은 ${pair}, 이 조합이 체인 안쪽까지 닿는지에 달렸다`,
       `${pair}를 보면 큰 뉴스가 실제 자금 습관을 바꾸는지 갈린다`,
       `${pair}, 이 두 신호가 약하면 거시 뉴스도 오늘 근거가 되지 못한다`,
     ],
     onchain: [
-      `온체인 판단은 ${pair}, 이 조합이 함께 남는지에 달렸다`,
       `${pair}를 보면 체인 안쪽 흐름이 금방 식는지 갈린다`,
       `${pair}, 이 두 신호가 버티지 못하면 오늘 온체인 해석은 보류한다`,
     ],
     "market-structure": [
-      `시장 구조 판단은 ${pair}, 이 조합이 실제 돈으로 남는지에 달렸다`,
       `${pair}를 보면 분위기가 아니라 체결이 남는지 갈린다`,
       `${pair}, 이 두 신호가 비면 차트 얘기도 오늘은 보류해야 한다`,
     ],
   };
-
-  return sanitizeTweetText(poolByLane[lane][seed % poolByLane[lane].length]).slice(0, 140);
+  const pool = focusPoolByLane[lane]?.[focus] || poolByLane[lane];
+  return sanitizeTweetText(pool[seed % pool.length]).slice(0, 140);
 }
 
 function buildStructuralSummaryFromEvidence(
@@ -1625,6 +1687,30 @@ function buildStructuralSummaryFromEvidence(
   const a = humanizeStructuralEvidenceLabel(primary.label);
   const b = humanizeStructuralEvidenceLabel(secondary.label);
   const pair = joinKoPair(a, b);
+  const focus = resolvePlannerFocus(lane, [primary, secondary]);
+  const focusPoolByLane: Partial<Record<TrendLane, Partial<Record<PlannerFocus, string[]>>>> = {
+    ecosystem: {
+      builder: [`지금은 ${pair}, 이 조합이 사람과 코드, 자금까지 같이 남는지부터 본다.`],
+      retention: [`지금은 ${pair}, 이 조합이 반응이 아니라 잔류로 이어지는지부터 본다.`],
+      hype: [`지금은 ${pair}, 이 조합이 홍보 열기를 넘어 실제 사용까지 남는지부터 본다.`],
+    },
+    regulation: {
+      court: [`지금은 ${pair}, 이 조합이 법원 뉴스가 아니라 실제 돈의 방향으로 번지는지부터 본다.`],
+      execution: [`지금은 ${pair}, 이 조합이 기사 문장을 넘어 행동으로 이어지는지부터 본다.`],
+    },
+    protocol: {
+      launch: [`지금은 ${pair}, 이 조합이 메인넷 박수를 넘어 실제 복귀로 이어지는지부터 본다.`],
+      durability: [`지금은 ${pair}, 이 조합이 발표가 아니라 운영 기록으로 남는지부터 본다.`],
+    },
+    onchain: {
+      flow: [`지금은 ${pair}, 이 조합이 주소 숫자가 아니라 자금 방향으로 이어지는지부터 본다.`],
+      durability: [`지금은 ${pair}, 이 조합이 체인 안쪽에서 같이 버티는지부터 본다.`],
+    },
+    "market-structure": {
+      settlement: [`지금은 ${pair}, 이 조합이 거래량 숫자가 아니라 실제 깊이로 남는지부터 본다.`],
+      liquidity: [`지금은 ${pair}, 이 조합이 분위기가 아니라 실제 돈으로 남는지부터 본다.`],
+    },
+  };
   const poolByLane: Record<TrendLane, string[]> = {
     protocol: [`지금은 ${pair}, 이 조합이 실제 운영 반응으로 남는지부터 본다.`],
     ecosystem: [`지금은 ${pair}, 이 조합이 사람들의 실제 사용으로 이어지는지부터 본다.`],
@@ -1633,8 +1719,8 @@ function buildStructuralSummaryFromEvidence(
     onchain: [`지금은 ${pair}, 이 조합이 체인 안쪽에서 같이 남는지부터 본다.`],
     "market-structure": [`지금은 ${pair}, 이 조합이 분위기가 아니라 실제 체결로 남는지부터 본다.`],
   };
-
-  return sanitizeTweetText(poolByLane[lane][0]).slice(0, 180);
+  const pool = focusPoolByLane[lane]?.[focus] || poolByLane[lane];
+  return sanitizeTweetText(pool[0]).slice(0, 180);
 }
 
 function humanizeStructuralEvidenceLabel(label: string): string {
@@ -1781,6 +1867,158 @@ function selectEvidencePairForLane(
   };
 }
 
+type NarrativeBucket =
+  | "legal"
+  | "capital"
+  | "usage"
+  | "retention"
+  | "ops"
+  | "execution"
+  | "liquidity"
+  | "durability"
+  | "heat"
+  | "whale"
+  | "settlement"
+  | "generic";
+
+type PlannerFocus =
+  | "retention"
+  | "builder"
+  | "hype"
+  | "execution"
+  | "court"
+  | "launch"
+  | "durability"
+  | "flow"
+  | "liquidity"
+  | "settlement"
+  | "general";
+
+function classifyNarrativeBucket(item: OnchainEvidence): NarrativeBucket {
+  const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+  if (/(법원|소송|당국|정책|규제|etf|sec|cftc|심사|승인|집행|court|lawsuit|policy|regulation|compliance)/.test(normalized)) {
+    return "legal";
+  }
+  if (/(스테이블|대기 자금|거래소 유입|거래소 이탈|netflow|exchange flow|자금 흐름|capital)/.test(normalized)) {
+    return "capital";
+  }
+  if (/(고래|큰손|whale)/.test(normalized)) {
+    return "whale";
+  }
+  if (/(재방문|잔류|돌아오|retention|returning|sticky)/.test(normalized)) {
+    return "retention";
+  }
+  if (/(활성 지갑|사용 지갑|실사용|사용 흔적|usage|wallet|address activity|active address|tvl|잠긴 자금)/.test(normalized)) {
+    return "usage";
+  }
+  if (/(예치 자금|현물 체결|호가 유동성|체결 유동성)/.test(normalized)) {
+    return "settlement";
+  }
+  if (/(검증자|복구|업그레이드|메인넷|테스트넷|합의|firedancer|validator|recovery|consensus|rollup)/.test(normalized)) {
+    return "ops";
+  }
+  if (/(주문|체결|호가|유동성|orderbook|liquidity|funding|open interest|현물 체결)/.test(normalized)) {
+    return "liquidity";
+  }
+  if (/(멤풀|수수료|거래 대기|주소 이동|고래|durability|지속성)/.test(normalized)) {
+    return "durability";
+  }
+  if (/(커뮤니티 열기|광고|홍보|가격 쏠림|가격 반응|과열|hype|heat|community)/.test(normalized)) {
+    return "heat";
+  }
+  if (/(집행 흔적|현장 반응|행동)/.test(normalized)) {
+    return "execution";
+  }
+  return "generic";
+}
+
+function resolvePlannerFocus(lane: TrendLane, pair: OnchainEvidence[]): PlannerFocus {
+  const buckets = pair.map((item) => classifyNarrativeBucket(item));
+  const has = (bucket: NarrativeBucket) => buckets.includes(bucket);
+  const merged = sanitizeTweetText(pair.map((item) => `${item.label} ${item.summary}`).join(" | ")).toLowerCase();
+
+  if (lane === "ecosystem") {
+    if (/(개발자|빌드|예치 자금|tvl|잠긴 자금)/.test(merged) || (has("usage") && has("settlement"))) return "builder";
+    if (has("retention")) return "retention";
+    if (has("heat")) return "hype";
+  }
+  if (lane === "regulation") {
+    if (/(법원|소송|판결|court|lawsuit)/.test(merged)) return "court";
+    if (has("legal") && (has("execution") || has("capital"))) return "execution";
+  }
+  if (lane === "protocol") {
+    if (/(메인넷|launch|준비도|복귀 자금|예치 자금)/.test(merged) || (has("ops") && (has("capital") || has("settlement")))) {
+      return "launch";
+    }
+    if (has("ops")) return "durability";
+  }
+  if (lane === "onchain") {
+    if (has("whale") || /(고래|거래소 자금|자금 방향)/.test(merged)) return "flow";
+    if (has("durability")) return "durability";
+  }
+  if (lane === "market-structure") {
+    if (has("settlement") || /(호가 유동성|현물 체결|깊이)/.test(merged)) return "settlement";
+    if (has("liquidity")) return "liquidity";
+  }
+
+  return "general";
+}
+
+function estimateNarrativeBucketBonus(pair: OnchainEvidence[], lane: TrendLane): number {
+  const buckets = pair.map((item) => classifyNarrativeBucket(item));
+  const distinct = new Set(buckets).size;
+  const focus = resolvePlannerFocus(lane, pair);
+  let bonus = 0;
+
+  if (distinct >= 2) bonus += 0.08;
+  if (buckets.includes("generic")) bonus -= 0.08;
+
+  const has = (bucket: NarrativeBucket) => buckets.includes(bucket);
+
+  if (lane === "ecosystem") {
+    if (has("retention") && has("usage")) bonus += 0.18;
+    if (has("heat") && has("usage")) bonus += 0.1;
+    if (has("retention") && has("capital")) bonus += 0.08;
+    if (focus === "builder") bonus += 0.14;
+    if (focus === "retention") bonus += 0.08;
+    if (focus === "hype") bonus += 0.04;
+    if (has("heat") && !has("usage") && !has("retention")) bonus -= 0.12;
+    if (focus === "general") bonus -= 0.12;
+  }
+  if (lane === "regulation") {
+    if (has("legal") && (has("capital") || has("execution") || has("usage"))) bonus += 0.18;
+    if (has("legal") && has("whale")) bonus += 0.08;
+    if (focus === "court") bonus += 0.12;
+    if (focus === "execution") bonus += 0.06;
+    if (has("legal") && has("generic")) bonus -= 0.1;
+    if (focus === "general") bonus -= 0.1;
+  }
+  if (lane === "protocol") {
+    if (has("ops") && (has("usage") || has("durability") || has("capital") || has("settlement"))) bonus += 0.16;
+    if (focus === "launch") bonus += 0.12;
+    if (focus === "durability") bonus += 0.06;
+    if (has("ops") && has("generic")) bonus -= 0.08;
+    if (focus === "general") bonus -= 0.1;
+  }
+  if (lane === "onchain") {
+    if (has("durability") && (has("capital") || has("usage") || has("whale"))) bonus += 0.16;
+    if (focus === "flow") bonus += 0.12;
+    if (focus === "durability") bonus += 0.06;
+    if (has("durability") && has("generic")) bonus -= 0.08;
+    if (focus === "general") bonus -= 0.08;
+  }
+  if (lane === "market-structure") {
+    if (has("liquidity") && (has("capital") || has("heat") || has("settlement"))) bonus += 0.16;
+    if (focus === "settlement") bonus += 0.12;
+    if (focus === "liquidity") bonus += 0.06;
+    if (focus === "general") bonus -= 0.1;
+  }
+  if (lane === "macro") {
+    if (has("capital") || has("usage")) bonus += 0.06;
+  }
+
+  return clampNumber(bonus, -0.2, 0.28, 0);
+}
 function pairSupportsLaneSemantics(pair: OnchainEvidence[], lane: TrendLane): boolean {
   if (lane === "onchain") return true;
   const merged = sanitizeTweetText(
@@ -1826,10 +2064,14 @@ function estimateGenericEvidencePairPenalty(pair: OnchainEvidence[], lane: Trend
     /체인\s*수수료|네트워크\s*수수료|밀린\s*거래|멤풀|mempool/i.test(merged);
   const hasGenericMarket =
     /시장\s*반응|가격\s*반응|알트\s*가격\s*반응|외부\s*뉴스\s*흐름/i.test(merged);
-  if (!(hasGenericOnchain && hasGenericMarket)) return 0;
-  if (lane === "market-structure") return 0.12;
-  if (lane === "onchain") return 0.08;
-  return 0.24;
+  const genericLabelCount = pair.filter((item) => isGenericLaneEvidenceLabel(item.label)).length;
+  let penalty = 0;
+  if (hasGenericOnchain && hasGenericMarket) {
+    penalty += lane === "market-structure" ? 0.12 : lane === "onchain" ? 0.08 : 0.24;
+  }
+  if (genericLabelCount >= 2) penalty += 0.1;
+  else if (genericLabelCount === 1) penalty += 0.04;
+  return penalty;
 }
 
 function buildEvidenceAnchorTokens(evidence: OnchainEvidence): string[] {

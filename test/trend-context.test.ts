@@ -1318,6 +1318,108 @@ test("buildStructuralFallbackEventsFromEvidence prefers specific directional evi
   assert.doesNotMatch(events[0].headline, /대기 자금 흐름|거래소 쪽 자금 이동/);
 });
 
+test("buildStructuralFallbackEventsFromEvidence uses builder-specific ecosystem headlines", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "news",
+      category: "ecosystem",
+      label: "개발자 커뮤니티 반응",
+      value: "증가",
+      evidence: "Developer participation kept climbing across consumer apps.",
+      trust: 0.81,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.79 },
+    },
+    {
+      id: "n2",
+      source: "onchain",
+      category: "tvl",
+      label: "TVL 유입",
+      value: "+$220M",
+      evidence: "Locked capital returned alongside the developer push.",
+      trust: 0.84,
+      freshness: 0.92,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.82 },
+    },
+  ]);
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 2);
+  const ecosystemEvent = events.find((event) => event.lane === "ecosystem");
+  assert.ok(ecosystemEvent);
+  assert.match(ecosystemEvent.headline, /개발 기세|예치 자금|생태계 기세|실체/);
+  assert.doesNotMatch(ecosystemEvent.headline, /생태계 판단은|생태계 서사가 실제 사용으로 이어지는지/);
+});
+
+test("planEventEvidenceAct prefers builder ecosystem pair over generic community pair", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:ecosystem:builder",
+        lane: "ecosystem",
+        headline: "생태계 기세가 실제 구조로 남는지 본다",
+        summary: "개발 기세와 예치 자금이 함께 남는지 본다.",
+        source: "news:coindesk-rss",
+        trust: 0.76,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["생태계", "개발", "예치"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+      id: "n1",
+      source: "news",
+      category: "ecosystem",
+      label: "개발자 커뮤니티 반응",
+      value: "증가",
+      evidence: "Developer participation kept climbing across consumer apps.",
+        trust: 0.83,
+        freshness: 0.92,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.8 },
+      },
+      {
+        id: "n2",
+        source: "onchain",
+        category: "tvl",
+        label: "TVL 유입",
+        value: "+$180M",
+        evidence: "Locked capital returned as builders kept shipping.",
+        trust: 0.82,
+        freshness: 0.91,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.79 },
+      },
+      {
+        id: "n3",
+        source: "news",
+        category: "ecosystem",
+        label: "커뮤니티 반응",
+        value: "과열",
+        evidence: "Community chatter grew faster than actual onchain follow-through.",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.7 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  const labels = plan?.evidence.map((item) => item.label) || [];
+  assert.ok(labels.includes("개발자 잔류"));
+  assert.ok(labels.includes("예치 자금 복귀"));
+  assert.equal(labels.includes("커뮤니티 반응"), false);
+});
+
 test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence pair", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({
