@@ -87,6 +87,7 @@ import { recordNarrativeObservation } from "./narrative-observer.js";
 import { XReadGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 import {
   buildNarrativePlan,
+  NarrativePlan,
   NarrativeRecentPost,
   validateNarrativeNovelty,
 } from "./narrative-os.js";
@@ -867,6 +868,7 @@ export async function postTrendUpdate(
     let postText: string | null = null;
     let generationAttempts = 0;
     let usedFallback = false;
+    let fallbackKind: PostFallbackKind = "none";
     let latestFailReason = "";
 
     const recentContext =
@@ -1640,11 +1642,22 @@ Rules:
     }
 
     if (!postText) {
-      let fallbackPost: string | null = buildEventEvidenceFallbackPost(
-        eventPlan,
+      const fallbackVariants = Array.from({ length: 4 }, (_, index) =>
+        buildEventEvidenceFallbackPost(
+          eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          narrativePlan.mode,
+          index
+        )
+      ).filter(Boolean);
+      let fallbackPost: string | null = selectBestFallbackVariant(
+        fallbackVariants,
+        recentBriefingPosts as NarrativeRecentPost[],
+        narrativePlan,
         runtimeSettings.postLanguage,
         runtimeSettings.postMaxChars,
-        narrativePlan.mode
+        `${eventPlan.event.id}|fallback|${narrativePlan.mode}`
       );
       let fallbackNoveltyScore = 0;
       if (fallbackPost) {
@@ -1820,6 +1833,7 @@ Rules:
           }
           postText = fallbackPost;
           usedFallback = true;
+          fallbackKind = "deterministic";
           console.log("[POST] LLM 재시도 실패, deterministic fallback으로 전환");
         } else {
           console.log(`[POST] fallback 실패: ${fallbackQuality.reason}`);
@@ -1829,7 +1843,16 @@ Rules:
     }
 
     if (!postText) {
-      const hardFallback = buildHardContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+      const hardFallback = selectBestFallbackVariant(
+        Array.from({ length: 4 }, (_, index) =>
+          buildHardContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars, index)
+        ).filter(Boolean),
+        recentBriefingPosts as NarrativeRecentPost[],
+        narrativePlan,
+        runtimeSettings.postLanguage,
+        runtimeSettings.postMaxChars,
+        `${eventPlan.event.id}|hard`
+      );
       if (hardFallback) {
         const repairedHardFallback = finalizeGeneratedText(
           ensureLeadIssueAnchor(
@@ -1860,6 +1883,7 @@ Rules:
         if (hardQuality.ok) {
           postText = repairedHardFallback;
           usedFallback = true;
+          fallbackKind = "hard";
           console.log("[POST] hard fallback 사용");
         } else {
           latestFailReason = `hard-fallback:${hardQuality.reason || "quality-fail"}`;
@@ -1868,7 +1892,16 @@ Rules:
     }
 
     if (!postText) {
-      const rescueFallback = buildRescueContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+      const rescueFallback = selectBestFallbackVariant(
+        Array.from({ length: 4 }, (_, index) =>
+          buildRescueContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars, index)
+        ).filter(Boolean),
+        recentBriefingPosts as NarrativeRecentPost[],
+        narrativePlan,
+        runtimeSettings.postLanguage,
+        runtimeSettings.postMaxChars,
+        `${eventPlan.event.id}|rescue`
+      );
       if (rescueFallback) {
         const repairedRescueFallback = finalizeGeneratedText(
           ensureLeadIssueAnchor(
@@ -1911,6 +1944,7 @@ Rules:
         if (rescueQuality.ok || rescueSoftPass) {
           postText = repairedRescueFallback;
           usedFallback = true;
+          fallbackKind = "rescue";
           console.log("[POST] rescue fallback 사용");
         } else {
           latestFailReason = `rescue-fallback:${rescueQuality.reason || "quality-fail"}`;
@@ -1919,14 +1953,25 @@ Rules:
     }
 
     if (!postText) {
-      const emergencyFallback = buildEmergencyContractPost(
-        eventPlan,
+      const emergencyFallback = selectBestFallbackVariant(
+        Array.from({ length: 3 }, (_, index) =>
+          buildEmergencyContractPost(
+            eventPlan,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            index
+          )
+        ).filter(Boolean),
+        recentBriefingPosts as NarrativeRecentPost[],
+        narrativePlan,
         runtimeSettings.postLanguage,
-        runtimeSettings.postMaxChars
+        runtimeSettings.postMaxChars,
+        `${eventPlan.event.id}|emergency`
       );
       if (emergencyFallback) {
         postText = emergencyFallback;
         usedFallback = true;
+        fallbackKind = "emergency";
         console.log("[POST] emergency fallback 사용");
       }
     }
@@ -1943,15 +1988,15 @@ Rules:
       return false;
     }
 
-    if (usedFallback && !TEST_NO_EXTERNAL_CALLS && !runtimeSettings.allowFallbackAutoPublish) {
+    if (usedFallback && !TEST_NO_EXTERNAL_CALLS && !allowLiveFallbackPublish(fallbackKind, runtimeSettings.allowFallbackAutoPublish)) {
       memory.recordPostGeneration({
         timezone,
         retryCount: Math.max(0, generationAttempts - 1),
         usedFallback: true,
         success: false,
-        failReason: "fallback-autopublish-disabled",
+        failReason: `fallback-autopublish-disabled:${fallbackKind}`,
       });
-      console.log("[POST] fallback 발행 차단: auto-publish disabled");
+      console.log(`[POST] fallback 발행 차단: auto-publish disabled (${fallbackKind})`);
       return false;
     }
 
@@ -2022,6 +2067,8 @@ Rules:
           runtimeSettings.postMaxChars,
           "post"
         );
+        usedFallback = true;
+        fallbackKind = "rescue";
         const rescueContract = validateEventEvidenceContract(postText, eventPlan);
         if (!rescueContract.ok) {
           const emergencyAtDispatch = buildEmergencyContractPost(
@@ -2036,9 +2083,22 @@ Rules:
               runtimeSettings.postMaxChars,
               "post"
             );
+            fallbackKind = "emergency";
           }
         }
       }
+    }
+
+    if (usedFallback && !TEST_NO_EXTERNAL_CALLS && !allowLiveFallbackPublish(fallbackKind, runtimeSettings.allowFallbackAutoPublish)) {
+      memory.recordPostGeneration({
+        timezone,
+        retryCount: Math.max(0, generationAttempts - 1),
+        usedFallback: true,
+        success: false,
+        failReason: `fallback-autopublish-disabled:${fallbackKind}:dispatch`,
+      });
+      console.log(`[POST] dispatch fallback 발행 차단: auto-publish disabled (${fallbackKind})`);
+      return false;
     }
 
     const tweetId = await postTweet(twitter, postText, "briefing", {
@@ -5663,7 +5723,8 @@ function buildIdentityFallbackPost(
     evidence: Array<{ label: string; value: string }>;
   },
   variant: "hard" | "rescue" | "emergency",
-  maxChars: number
+  maxChars: number,
+  variantIndex: number = 0
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
@@ -5688,18 +5749,18 @@ function buildIdentityFallbackPost(
     onchain: "하루도 못 버틴 숫자는 장식으로 본다",
     "market-structure": "돈이 안 붙은 자신감은 제일 먼저 버린다",
   };
-  return buildKoIdentityWriterCandidate({
-    headline: buildPixymonSceneHeadline(eventPlan, variant),
-    primaryAnchor: formatEvidenceToken(a.label, a.value, 24) || a.label,
-    secondaryAnchor: formatEvidenceToken(b.label, b.value, 24) || b.label,
+    return buildKoIdentityWriterCandidate({
+      headline: buildPixymonSceneHeadline(eventPlan, variant),
+      primaryAnchor: formatEvidenceToken(a.label, a.value, 24) || a.label,
+      secondaryAnchor: formatEvidenceToken(b.label, b.value, 24) || b.label,
     lane: eventPlan.lane,
     mode: modeByVariant[variant],
-    worldviewHint: worldviewByLane[eventPlan.lane],
-    signatureBelief: signatureByLane[eventPlan.lane],
-    recentReflection: worldviewByLane[eventPlan.lane],
-    maxChars,
-    seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback`,
-  });
+      worldviewHint: worldviewByLane[eventPlan.lane],
+      signatureBelief: signatureByLane[eventPlan.lane],
+      recentReflection: worldviewByLane[eventPlan.lane],
+      maxChars,
+      seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}`,
+    }, variantIndex);
 }
 
 function buildHardContractPost(
@@ -5709,7 +5770,8 @@ function buildHardContractPost(
     evidence: Array<{ label: string; value: string }>;
   },
   language: "ko" | "en",
-  maxChars: number
+  maxChars: number,
+  variantIndex: number = 0
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
@@ -5721,7 +5783,7 @@ function buildHardContractPost(
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "ko") {
-    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "hard", maxChars), language, maxChars);
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "hard", maxChars, variantIndex), language, maxChars);
   }
 
   if (language === "en") {
@@ -5737,7 +5799,7 @@ function buildHardContractPost(
     return finalizeGeneratedText(base, language, maxChars);
   }
 
-  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|hard|${eventPlan.lane}`);
+  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|hard|${eventPlan.lane}|${variantIndex}`);
   const conceptLine = buildPixymonConceptLine(eventPlan, "hard");
   const repeatsAnchorsInHeadline =
     [aToken, bToken].filter((token) => token.length >= 4 && headline.includes(token)).length >= 2;
@@ -5760,7 +5822,8 @@ function buildRescueContractPost(
     evidence: Array<{ label: string; value: string }>;
   },
   language: "ko" | "en",
-  maxChars: number
+  maxChars: number,
+  variantIndex: number = 0
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
@@ -5772,7 +5835,7 @@ function buildRescueContractPost(
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "ko") {
-    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "rescue", maxChars), language, maxChars);
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "rescue", maxChars, variantIndex), language, maxChars);
   }
 
   if (language === "en") {
@@ -5788,7 +5851,7 @@ function buildRescueContractPost(
     return finalizeGeneratedText(base, language, maxChars);
   }
 
-  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|rescue|${eventPlan.lane}`);
+  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|rescue|${eventPlan.lane}|${variantIndex}`);
   const conceptLine = buildPixymonConceptLine(eventPlan, "rescue");
   const repeatsAnchorsInHeadline =
     [aToken, bToken].filter((token) => token.length >= 4 && headline.includes(token)).length >= 2;
@@ -5811,7 +5874,8 @@ function buildEmergencyContractPost(
     evidence: Array<{ label: string; value: string }>;
   },
   language: "ko" | "en",
-  maxChars: number
+  maxChars: number,
+  variantIndex: number = 0
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
@@ -5823,7 +5887,7 @@ function buildEmergencyContractPost(
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "ko") {
-    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "emergency", maxChars), language, maxChars);
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "emergency", maxChars, variantIndex), language, maxChars);
   }
 
   if (language === "en") {
@@ -5831,7 +5895,7 @@ function buildEmergencyContractPost(
     return finalizeGeneratedText(base, language, maxChars);
   }
 
-  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|${eventPlan.lane}`);
+  const seed = stableSeedForPrelude(`${headline}|${aToken}|${bToken}|${eventPlan.lane}|${variantIndex}`);
   const conceptLine = buildPixymonConceptLine(eventPlan, "emergency");
   const repeatsAnchorsInHeadline =
     [aToken, bToken].filter((token) => token.length >= 4 && headline.includes(token)).length >= 2;
@@ -5854,6 +5918,60 @@ interface PostDiversityGuard {
   altTokens: string[];
   ruleLineKo: string;
   ruleLineEn: string;
+}
+
+type PostFallbackKind = "none" | "deterministic" | "hard" | "rescue" | "emergency";
+
+function selectBestFallbackVariant(
+  candidates: string[],
+  recentPosts: NarrativeRecentPost[],
+  narrativePlan: NarrativePlan,
+  language: "ko" | "en",
+  maxChars: number,
+  deconflictSeed: string
+): string | null {
+  if (candidates.length === 0) return null;
+  const recentContents = recentPosts.map((post) => post.content);
+  let best: { text: string; score: number } | null = null;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const raw = String(candidates[index] || "").trim();
+    if (!raw) continue;
+    const text = deconflictOpening(raw, recentContents, language, maxChars, `${deconflictSeed}|${index}`);
+    const surfaceIssue = detectNarrativeSurfaceIssue(text, language);
+    const novelty = validateNarrativeNovelty(text, recentPosts, narrativePlan);
+    const normalized = sanitizeTweetText(text).toLowerCase();
+    const openingKey = normalized.slice(0, 28);
+    const endingKey = normalized.slice(-28);
+    const openingRepeats = recentPosts
+      .slice(-12)
+      .filter((post) => sanitizeTweetText(post.content).toLowerCase().slice(0, 28) === openingKey).length;
+    const endingRepeats = recentPosts
+      .slice(-12)
+      .filter((post) => sanitizeTweetText(post.content).toLowerCase().slice(-28) === endingKey).length;
+    const score =
+      novelty.score -
+      (surfaceIssue ? 0.45 : 0) -
+      openingRepeats * 0.14 -
+      endingRepeats * 0.1 -
+      (startsWithFearGreedTemplate(text) ? 0.5 : 0);
+
+    if (!best || score > best.score) {
+      best = { text, score };
+    }
+  }
+
+  if (!best || best.score < 0.3) {
+    return null;
+  }
+
+  return best.text;
+}
+
+function allowLiveFallbackPublish(kind: PostFallbackKind, allowFallbackAutoPublish: boolean): boolean {
+  if (kind === "none") return true;
+  if (allowFallbackAutoPublish) return true;
+  return kind === "deterministic";
 }
 
 function buildPostDiversityGuard(

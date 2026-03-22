@@ -32,6 +32,22 @@ function runCommand(command, args) {
   }
 }
 
+function findPixymonProcesses() {
+  const rows = runCommand("ps", ["-Ao", "pid=,command="])
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return rows.filter((line) => {
+    const normalized = line.replace(/\s+/g, " ");
+    return (
+      /(?:^|\s)node\s+.*\/dist\/index\.js(?:\s|$)/.test(normalized) ||
+      /(?:^|\s)(?:bash|zsh)\s+.*run-pixymon-local\.sh(?:\s|$)/.test(normalized) ||
+      /run-pixymon-local\.sh(?:\s|$)/.test(normalized)
+    );
+  });
+}
+
 function readJsonLines(filePath) {
   if (!fs.existsSync(filePath)) return [];
   const raw = fs.readFileSync(filePath, "utf8");
@@ -120,6 +136,13 @@ const budgetSummary = [
 ].join(" | ");
 addCheck("OK", "Daily cost caps", budgetSummary);
 
+const fallbackAutoPublish = boolString(process.env.ALLOW_FALLBACK_AUTO_PUBLISH);
+if (fallbackAutoPublish === "true") {
+  addCheck("WARN", "Fallback auto-publish", "ALLOW_FALLBACK_AUTO_PUBLISH=true; recommended false for week test");
+} else {
+  addCheck("OK", "Fallback auto-publish", `ALLOW_FALLBACK_AUTO_PUBLISH=${process.env.ALLOW_FALLBACK_AUTO_PUBLISH || "false"} (deterministic-only live fallback policy)`);
+}
+
 const launchAgentExists = fs.existsSync(launchAgentPath);
 addCheck(launchAgentExists ? "OK" : "WARN", "LaunchAgent file", launchAgentExists ? launchAgentPath : "missing com.pixymon.agent.plist");
 
@@ -132,8 +155,7 @@ const legacyLoaded = launchctlList.includes(legacyLaunchAgentLabel);
 addCheck(currentLoaded ? "WARN" : "OK", "Current LaunchAgent loaded", currentLoaded ? `${launchAgentLabel} is loaded; stop it before a clean week-test start` : "not loaded");
 addCheck(legacyLoaded ? "FAIL" : "OK", "Legacy LaunchAgent loaded", legacyLoaded ? `${legacyLaunchAgentLabel} is loaded` : "not loaded");
 
-const pgrepOutput = runCommand("pgrep", ["-fal", "node dist/index.js|run-pixymon-local.sh"]);
-const processLines = pgrepOutput.split("\n").map((line) => line.trim()).filter(Boolean);
+const processLines = findPixymonProcesses();
 if (processLines.length === 0) {
   addCheck("OK", "Pixymon processes", "no live process running");
 } else if (processLines.length === 1) {
@@ -169,9 +191,11 @@ const recentLogLines = readRecentLogTail(logPath);
 const noPostCount = recentLogLines.filter((line) => /\[POST\] 스킵|\[POST-GUARD\] 글 발행 스킵|NO_POST/.test(line)).length;
 const duplicateLockCount = recentLogLines.filter((line) => /\[LOCK\] 실행 중단: 다른 인스턴스가 이미 실행 중|\[POST-GUARD\] 다른 인스턴스가 글 발행 중/.test(line)).length;
 const searchUnavailableCount = recentLogLines.filter((line) => /search endpoint unavailable|search endpoint cooldown active/.test(line)).length;
+const fallbackSignalCount = recentLogLines.filter((line) => /\[POST\] .*fallback 사용|fallback 발행 차단/.test(line)).length;
 addCheck(noPostCount > 0 ? "WARN" : "OK", "Recent no-post signals", `${noPostCount} hit(s) in last ${recentLogLines.length} log lines`);
 addCheck(duplicateLockCount > 0 ? "WARN" : "OK", "Recent duplicate-run signals", `${duplicateLockCount} hit(s) in last ${recentLogLines.length} log lines`);
 addCheck(searchUnavailableCount > 0 ? "WARN" : "OK", "Recent social entitlement signals", `${searchUnavailableCount} hit(s) in last ${recentLogLines.length} log lines`);
+addCheck(fallbackSignalCount > 0 ? "WARN" : "OK", "Recent fallback signals", `${fallbackSignalCount} hit(s) in last ${recentLogLines.length} log lines`);
 
 const failures = checks.filter((row) => row.status === "FAIL");
 const warnings = checks.filter((row) => row.status === "WARN");

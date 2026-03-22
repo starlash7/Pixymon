@@ -473,7 +473,8 @@ export function buildEventEvidenceFallbackPost(
   plan: EventEvidencePlan,
   language: "ko" | "en",
   maxChars: number = 220,
-  mode?: NarrativeMode
+  mode?: NarrativeMode,
+  variant: number = 0
 ): string {
   const stripKoHeadlinePrefix = (text: string): string => {
     let output = String(text || "").trim();
@@ -601,8 +602,8 @@ export function buildEventEvidenceFallbackPost(
       signatureBelief: signatureByLane[plan.lane],
       recentReflection: worldviewByLane[plan.lane],
       maxChars,
-      seedHint: `${plan.event.id}|fallback|${narrativeMode}`,
-    });
+      seedHint: `${plan.event.id}|fallback|${narrativeMode}|${variant}`,
+    }, variant);
   }
 
   const enTemplates: Record<NarrativeMode, string[]> = {
@@ -981,20 +982,20 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
     }
     return rewrite("업그레이드 운영 반응", "", "코드 변화가 실제 운영 흐름으로 이어지는지 확인할 장면이다.");
   }
-  if (/ai agent|visa|prediction market|wallet|adoption|community|developer|ecosystem|app/.test(normalized)) {
+  if (/ai agent|visa|prediction market|wallet|adoption|community|developer|builder|ecosystem|app|지갑|채택|커뮤니티|개발자|빌더|생태계|앱|실사용|사용/.test(normalized)) {
     if (/visa/.test(normalized)) {
       return rewrite("Visa 실사용", "", "결제 인프라 쪽 얘기가 실제 사용 흐름까지 번지는지 볼 장면이다.");
     }
     if (/prediction market/.test(normalized)) {
       return rewrite("예측시장 사용", "", "예측시장 쪽 사용 습관이 실제 거래 행동을 바꾸는지 볼 장면이다.");
     }
-    if (/wallet/.test(normalized)) {
+    if (/wallet|지갑/.test(normalized)) {
       return rewrite("지갑 재방문", "", "지갑 안쪽 사용 습관이 서사보다 먼저 바뀌는지 볼 장면이다.");
     }
-    if (/developer/.test(normalized)) {
+    if (/developer|builder|개발자|빌더/.test(normalized)) {
       return rewrite("개발자 잔류", "", "개발자 쪽 움직임이 실제 생태계 습관으로 번지는지 볼 장면이다.");
     }
-    if (/community/.test(normalized)) {
+    if (/community|커뮤니티/.test(normalized)) {
       return rewrite("커뮤니티 잔류", "", "커뮤니티 열기가 실제로 남는 사람 수로 이어지는지 볼 장면이다.");
     }
     return rewrite("실사용 잔류", "", "사람이 실제로 남는 흐름이 커지는지 볼 만한 장면이다.");
@@ -1287,9 +1288,23 @@ function isMarketStructureSpecificEvidence(item: OnchainEvidence): boolean {
 }
 
 function isGenericLaneEvidenceLabel(label: string): boolean {
-  return /^(시장 반응|가격 반응|가격 움직임|알트 쪽 움직임|실사용 실험|실사용 흐름|실사용 흔적|실사용 잔류|사용으로 남는 흔적|규제 쪽 실제 움직임|규제 반응|규제 일정|규제 쪽 일정|규제 집행 일정|프로토콜 변화 신호|업그레이드 진행|업그레이드 운영 반응|외부 뉴스 흐름|외부 뉴스 반응|업계 스트레스 신호|업계 스트레스|업계 스트레스 확대|가격 분위기|체인 안쪽 사용|체인 사용|거래 대기|큰손 움직임|대기 자금|대기 자금 흐름|거래소 쪽 자금 이동|지갑 안쪽 사용|개발자 반응|커뮤니티 반응|검증자 반응|테스트넷·메인넷 흐름|금리 기대 변화|달러 흐름|거시 흐름 변화|거시 압력 변화|ETF 쪽 일정|SEC·CFTC 움직임|법원 쪽 일정)$/i.test(
-    sanitizeTweetText(label)
-  );
+  const normalized = sanitizeTweetText(label);
+  if (
+    /^(시장 반응|가격 반응|가격 움직임|알트 쪽 움직임|실사용 실험|실사용 흐름|실사용 흔적|실사용 잔류|사용으로 남는 흔적|규제 쪽 실제 움직임|규제 반응|규제 일정|규제 쪽 일정|규제 집행 일정|프로토콜 변화 신호|업그레이드 진행|업그레이드 운영 반응|외부 뉴스 흐름|외부 뉴스 반응|업계 스트레스 신호|업계 스트레스|업계 스트레스 확대|가격 분위기|체인 안쪽 사용|체인 사용|거래 대기|큰손 움직임|대기 자금|대기 자금 흐름|거래소 쪽 자금 이동|지갑 안쪽 사용|개발자 반응|커뮤니티 반응|커뮤니티 잔류|실사용 잔류|검증자 반응|테스트넷·메인넷 흐름|금리 기대 변화|달러 흐름|거시 흐름 변화|거시 압력 변화|ETF 쪽 일정|SEC·CFTC 움직임|법원 쪽 일정|실사용 반응|자금 쏠림 방향|재방문 흐름|집행 흔적|현장 반응|체인 바깥 반응)$/i.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+  if (
+    /(흐름|반응|일정|흔적|방향)$/.test(normalized) &&
+    !/(개발자 잔류|예치 자금 복귀|현물 체결 재가동|거래소 자금 관망|고래 주소 재가동|법원 판결 일정|ETF 심사 흐름|호가 유동성 식음|검증자 안정성|복구 속도)/.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function estimateEvidenceSpecificity(item: OnchainEvidence, lane: TrendLane): number {
@@ -1305,6 +1320,9 @@ function estimateEvidenceSpecificity(item: OnchainEvidence, lane: TrendLane): nu
   }
   if (/(체인 안쪽 사용|실사용 흔적|대기 자금 흐름|거래소 쪽 자금 이동|규제 반응|규제 일정|업그레이드 진행|외부 뉴스 반응|가격 반응)/.test(label)) {
     score -= 0.12;
+  }
+  if (/(자금 쏠림 방향|재방문 흐름|집행 흔적|현장 반응|커뮤니티 잔류|실사용 잔류)/.test(label)) {
+    score -= 0.1;
   }
   if (item.value && !/^(?:포착|감지|정상화|안정|중립|과열 가능성|컷 기대 지연|이동 포착|observed)$/i.test(item.value.trim())) {
     score += 0.05;
@@ -1816,6 +1834,8 @@ function selectEvidencePairForLane(
         pair.reduce((sum, item) => sum + estimateEvidenceSpecificity(item, lane), 0) / pair.length;
       const weakEvidencePenalty = estimateWeakEvidencePenalty(pair);
       const genericPairPenalty = estimateGenericEvidencePairPenalty(pair, lane);
+      const focus = resolvePlannerFocus(lane, pair);
+      const narrativeBucketBonus = estimateNarrativeBucketBonus(pair, lane);
       if (pairIsTooGenericForLane(pair, lane)) continue;
       if (lane === "market-structure" && !semanticSupport) continue;
       if (lane !== "onchain" && lane !== "market-structure" && !semanticSupport && genericPairPenalty >= 0.1) {
@@ -1824,10 +1844,22 @@ function selectEvidencePairForLane(
       if (lane !== "onchain" && lane !== "market-structure" && laneMatchCount === 0 && genericPairPenalty >= 0.2) {
         continue;
       }
+      if (lane !== "macro" && focus === "general" && (genericPairPenalty >= 0.08 || specificityScore < 0.58)) {
+        continue;
+      }
+      if (
+        lane === "ecosystem" &&
+        focus === "retention" &&
+        pair.some((item) => /(커뮤니티 잔류|실사용 잔류|커뮤니티 반응|체인 안쪽 사용)/.test(item.label)) &&
+        genericPairPenalty >= 0.08
+      ) {
+        continue;
+      }
       const score =
         baseScore +
         laneMatchCount * 0.18 +
         specificityScore * 0.36 +
+        narrativeBucketBonus +
         (hasOnchainEvidence ? 0.06 : 0) +
         (hasCrossSourceEvidence ? 0.04 : 0) -
         (semanticSupport ? 0 : 0.16) -
@@ -1851,6 +1883,9 @@ function selectEvidencePairForLane(
       return null;
     }
     const fallback = ranked.slice(0, 2);
+    if (fallback.length < 2 || pairIsTooGenericForLane(fallback, lane)) {
+      return null;
+    }
     return {
       evidence: fallback,
       hasOnchainEvidence: fallback.some((item) => item.source === "onchain"),
@@ -1938,7 +1973,7 @@ function resolvePlannerFocus(lane: TrendLane, pair: OnchainEvidence[]): PlannerF
   const merged = sanitizeTweetText(pair.map((item) => `${item.label} ${item.summary}`).join(" | ")).toLowerCase();
 
   if (lane === "ecosystem") {
-    if (/(개발자|빌드|예치 자금|tvl|잠긴 자금)/.test(merged) || (has("usage") && has("settlement"))) return "builder";
+    if (/(개발자|빌드)/.test(merged) || (has("usage") && has("settlement"))) return "builder";
     if (has("retention")) return "retention";
     if (has("heat")) return "hype";
   }
@@ -2069,8 +2104,8 @@ function estimateGenericEvidencePairPenalty(pair: OnchainEvidence[], lane: Trend
   if (hasGenericOnchain && hasGenericMarket) {
     penalty += lane === "market-structure" ? 0.12 : lane === "onchain" ? 0.08 : 0.24;
   }
-  if (genericLabelCount >= 2) penalty += 0.1;
-  else if (genericLabelCount === 1) penalty += 0.04;
+  if (genericLabelCount >= 2) penalty += 0.14;
+  else if (genericLabelCount === 1) penalty += 0.08;
   return penalty;
 }
 

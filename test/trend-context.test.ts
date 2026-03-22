@@ -1420,6 +1420,82 @@ test("planEventEvidenceAct prefers builder ecosystem pair over generic community
   assert.equal(labels.includes("커뮤니티 반응"), false);
 });
 
+test("planEventEvidenceAct rejects generic ecosystem bridge pair when sharper builder pair exists", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:ecosystem:builder",
+        lane: "ecosystem",
+        headline: "개발자 잔류와 자금 복귀가 같이 남는 쪽을 본다",
+        summary: "생태계가 기사보다 구조로 남는지 가르는 장면이다.",
+        source: "news:rss",
+        trust: 0.81,
+        freshness: 0.92,
+        capturedAt: createdAt,
+        keywords: ["builder", "developer", "capital"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n1",
+        source: "news",
+        category: "ecosystem",
+        label: "커뮤니티 반응",
+        value: "확대",
+        evidence: "Community reaction expanded before durable usage showed up.",
+        trust: 0.79,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.72 },
+      },
+      {
+        id: "n2",
+        source: "onchain",
+        category: "usage",
+        label: "체인 안쪽 사용",
+        value: "확대",
+        evidence: "Usage expanded, but the label is still generic and weak.",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.73 },
+      },
+      {
+        id: "n3",
+        source: "news",
+        category: "ecosystem",
+        label: "개발자 잔류",
+        value: "유지",
+        evidence: "Core builders stayed active after the initial narrative wave.",
+        trust: 0.84,
+        freshness: 0.94,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.81 },
+      },
+      {
+        id: "n4",
+        source: "onchain",
+        category: "tvl",
+        label: "예치 자금 복귀",
+        value: "복귀",
+        evidence: "Deposited capital returned alongside continued builder activity.",
+        trust: 0.85,
+        freshness: 0.95,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.82 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  const labels = plan?.evidence.map((item) => item.label) || [];
+  assert.deepEqual(labels, ["개발자 잔류", "예치 자금 복귀"]);
+});
+
 test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence pair", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({

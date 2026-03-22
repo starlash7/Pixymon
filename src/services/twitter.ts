@@ -200,8 +200,10 @@ export async function searchRecentTrendTweets(
   };
   const cooldownRemainingMs = getTrendSearchCooldownRemainingMs();
   if (cooldownRemainingMs > 0) {
-    console.log(`[TREND] search endpoint cooldown active (${Math.ceil(cooldownRemainingMs / 60000)}m 남음)`);
-    return searchCuratedTimelineFallbackTweets(twitter, Math.min(count, 12), resolvedRules);
+    console.log(
+      `[TREND] search endpoint cooldown active (${Math.ceil(cooldownRemainingMs / 60000)}m 남음), proactive reply는 중단 상태 유지`
+    );
+    return [];
   }
 
   try {
@@ -291,8 +293,8 @@ export async function searchRecentTrendTweets(
   } catch (error: any) {
     if (isSearchTimelineFallbackError(error)) {
       activateTrendSearchCooldown();
-      console.log("[TREND] search endpoint unavailable, proactive reply 검색을 잠시 중단");
-      return searchCuratedTimelineFallbackTweets(twitter, Math.min(count, 12), resolvedRules);
+      console.log("[TREND] search endpoint unavailable, proactive reply 검색을 완전히 중단");
+      return [];
     }
     console.log(`[TREND] 검색 실패: ${error.message || "unknown"}`);
     return [];

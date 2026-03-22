@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { __trendTargetTest } from "../src/services/twitter.ts";
+import { __trendTargetTest, searchRecentTrendTweets } from "../src/services/twitter.ts";
 
 test("isPreferredTrendReplyTarget rejects low-follower unverified account", () => {
   const ok = __trendTargetTest.isPreferredTrendReplyTarget(
@@ -160,4 +160,19 @@ test("trend search cooldown helper reports remaining time", () => {
   assert.ok(__trendTargetTest.getTrendSearchCooldownRemainingMs(now) >= 29_000);
   __trendTargetTest.setTrendSearchCooldownUntilForTest(0);
   assert.equal(__trendTargetTest.getTrendSearchCooldownRemainingMs(now), 0);
+});
+
+test("searchRecentTrendTweets returns empty while entitlement cooldown is active", async () => {
+  const now = Date.now();
+  __trendTargetTest.setTrendSearchCooldownUntilForTest(now + 30_000);
+  const rows = await searchRecentTrendTweets({} as any, ["crypto"], 10, {
+    minSourceTrust: 0.45,
+    minScore: 3.2,
+    minEngagement: 12,
+    maxAgeHours: 24,
+    requireRootPost: true,
+    blockSuspiciousPromo: true,
+  });
+  assert.deepEqual(rows, []);
+  __trendTargetTest.setTrendSearchCooldownUntilForTest(0);
 });
