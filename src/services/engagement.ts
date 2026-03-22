@@ -1497,7 +1497,8 @@ Rules:
           }
         );
         if (!llmResult) {
-          rejectionFeedback = "llm budget local-only";
+          rejectionFeedback = "llm unavailable or local-only";
+          latestFailReason = rejectionFeedback;
           continue;
         }
 

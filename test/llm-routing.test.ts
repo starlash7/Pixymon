@@ -5,7 +5,9 @@ import {
   CLAUDE_RESEARCH_MODEL,
   buildPromptCachingParams,
   resolveClaudeModelForKind,
+  shouldGracefullySkipClaudeRequest,
   shouldUsePromptCaching,
+  summarizeClaudeRequestError,
 } from "../src/services/llm.ts";
 
 test("resolveClaudeModelForKind routes cheap surfaces to research model", () => {
@@ -89,4 +91,21 @@ test("buildPromptCachingParams can mark first shared user prefix as cacheable", 
   const sharedBlock = params.messages?.[0]?.content?.[0];
   assert.equal(sharedBlock?.type, "text");
   assert.equal(sharedBlock?.cache_control?.type, "ephemeral");
+});
+
+test("shouldGracefullySkipClaudeRequest treats low-credit failures as local fallback signals", () => {
+  const error = {
+    status: 400,
+    message: "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
+  };
+  assert.equal(shouldGracefullySkipClaudeRequest(error), true);
+  assert.match(summarizeClaudeRequestError(error), /status=400/i);
+});
+
+test("shouldGracefullySkipClaudeRequest keeps unrelated validation failures fatal", () => {
+  const error = {
+    status: 400,
+    message: "messages.1.content is required",
+  };
+  assert.equal(shouldGracefullySkipClaudeRequest(error), false);
 });

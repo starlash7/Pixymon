@@ -73,7 +73,11 @@ export function evaluateAutonomyGovernor(input: AutonomyGovernorInput): Autonomy
     level = "block";
   }
 
-  if (input.runtimeSettings.requireCrossSourceEvidence && !input.eventPlan.hasCrossSourceEvidence) {
+  if (
+    input.runtimeSettings.requireCrossSourceEvidence &&
+    !input.eventPlan.hasCrossSourceEvidence &&
+    !isStrongOnchainStructuralFallback(input.eventPlan)
+  ) {
     reasons.push("missing_cross_source_evidence");
     level = "block";
   }
@@ -119,6 +123,36 @@ export function evaluateAutonomyGovernor(input: AutonomyGovernorInput): Autonomy
       assertiveTone,
     },
   };
+}
+
+function isStrongOnchainStructuralFallback(plan: EventEvidencePlan): boolean {
+  if (plan.lane !== "onchain" || plan.event.source !== "evidence:structural-fallback") {
+    return false;
+  }
+  if (!plan.hasOnchainEvidence || plan.evidence.length < 2) {
+    return false;
+  }
+
+  const genericLabels = [
+    "시장 반응",
+    "규제 일정",
+    "현장 반응",
+    "체인 안쪽 사용",
+    "커뮤니티 반응",
+    "대기 자금 흐름",
+    "자금 쏠림 방향",
+    "집행 흔적",
+  ];
+  const weakValuePatterns = [/24h/i, /24시간/, /변동/, /도미넌스/, /공포/, /탐욕/, /시총/, /sat\/vB/i];
+
+  return plan.evidence.every((item) => {
+    const label = String(item.label || "").trim();
+    const combined = `${label} ${String(item.value || "").trim()}`;
+    return (
+      !genericLabels.some((token) => label.includes(token)) &&
+      !weakValuePatterns.some((pattern) => pattern.test(combined))
+    );
+  });
 }
 
 function computeRiskScore(lines: string[]): number {

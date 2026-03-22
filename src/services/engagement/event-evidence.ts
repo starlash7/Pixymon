@@ -843,18 +843,18 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
             : direction;
       const label =
         backlogDirection === "up"
-          ? "쌓이는 거래 대기 압박"
+          ? "쌓이는 밀린 거래 압박"
           : backlogDirection === "down"
-            ? "풀리는 거래 대기 압박"
-            : "중립 거래 대기 압박";
+            ? "풀리는 밀린 거래 압박"
+            : "중립 거래 적체";
       return rewrite(
         label,
         "",
         backlogDirection === "up"
-          ? "대기 거래 압박이 실제 체결 지연으로 이어지는지 볼 장면이다."
+          ? "밀린 거래 압박이 실제 체결 지연으로 이어지는지 볼 장면이다."
           : backlogDirection === "down"
             ? "밀린 거래 압박이 빠르게 해소되는지 확인할 장면이다."
-            : "대기 거래 압박이 중립권에서 머무는지 확인할 장면이다."
+            : "밀린 거래 압박이 중립권에서 머무는지 확인할 장면이다."
       );
     }
     if (/고래|whale|대형주소|large wallet/.test(normalized)) {
@@ -877,18 +877,18 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
     if (/스테이블|stablecoin|stable flow|stable supply/.test(normalized)) {
       const label =
         direction === "up"
-          ? "대기 자금 유입"
+          ? "관망 자금 유입"
           : direction === "down"
-            ? "대기 자금 이탈"
-            : "대기 자금 정체";
+            ? "관망 자금 이탈"
+            : "관망 자금 정체";
       return rewrite(
         label,
         "",
         direction === "up"
-          ? "대기 자금이 실제 위험 선호로 번지는지 볼 장면이다."
+          ? "관망 자금이 실제 위험 선호로 번지는지 볼 장면이다."
           : direction === "down"
-            ? "대기 자금이 빠지며 체인 안쪽 열기가 식는지 볼 장면이다."
-            : "대기 자금이 아직 방향을 만들지 못한 채 머무는지 볼 장면이다."
+            ? "관망 자금이 빠지며 체인 안쪽 열기가 식는지 볼 장면이다."
+            : "관망 자금이 아직 방향을 만들지 못한 채 머무는지 볼 장면이다."
       );
     }
     if (/거래소 순유입|exchange netflow|netflow/.test(normalized)) {
@@ -1283,7 +1283,7 @@ function estimateWeakEvidencePenalty(pair: OnchainEvidence[]): number {
 
 function isFeeLikeEvidence(item: OnchainEvidence): boolean {
   const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
-  return /(네트워크\s*수수료|체인\s*수수료|체인\s*사용|멤풀|대기\s*거래|거래\s*대기|mempool|network fee|backlog)/.test(
+  return /(네트워크\s*수수료|체인\s*수수료|체인\s*사용|멤풀|대기\s*거래|거래\s*대기|밀린\s*거래|거래\s*적체|mempool|network fee|backlog)/.test(
     normalized
   );
 }
@@ -1298,7 +1298,7 @@ function isMarketStructureSpecificEvidence(item: OnchainEvidence): boolean {
 function isGenericLaneEvidenceLabel(label: string): boolean {
   const normalized = sanitizeTweetText(label);
   if (
-    /^(시장 반응|가격 반응|가격 움직임|알트 쪽 움직임|실사용 실험|실사용 흐름|실사용 흔적|실사용 잔류|사용으로 남는 흔적|규제 쪽 실제 움직임|규제 반응|규제 일정|규제 쪽 일정|규제 집행 일정|프로토콜 변화 신호|업그레이드 진행|업그레이드 운영 반응|외부 뉴스 흐름|외부 뉴스 반응|업계 스트레스 신호|업계 스트레스|업계 스트레스 확대|가격 분위기|체인 안쪽 사용|체인 사용|거래 대기|큰손 움직임|대기 자금|대기 자금 흐름|거래소 쪽 자금 이동|지갑 안쪽 사용|개발자 반응|커뮤니티 반응|커뮤니티 잔류|실사용 잔류|검증자 반응|테스트넷·메인넷 흐름|금리 기대 변화|달러 흐름|거시 흐름 변화|거시 압력 변화|ETF 쪽 일정|SEC·CFTC 움직임|법원 쪽 일정|실사용 반응|자금 쏠림 방향|재방문 흐름|집행 흔적|현장 반응|체인 바깥 반응)$/i.test(
+    /^(시장 반응|가격 반응|가격 움직임|알트 쪽 움직임|실사용 실험|실사용 흐름|실사용 흔적|실사용 잔류|사용으로 남는 흔적|규제 쪽 실제 움직임|규제 반응|규제 일정|규제 쪽 일정|규제 집행 일정|프로토콜 변화 신호|업그레이드 진행|업그레이드 운영 반응|외부 뉴스 흐름|외부 뉴스 반응|업계 스트레스 신호|업계 스트레스|업계 스트레스 확대|가격 분위기|체인 안쪽 사용|체인 사용|거래 대기|밀린 거래|거래 적체|큰손 움직임|대기 자금|대기 자금 흐름|관망 자금|관망 자금 흐름|거래소 쪽 자금 이동|지갑 안쪽 사용|개발자 반응|커뮤니티 반응|커뮤니티 잔류|실사용 잔류|검증자 반응|테스트넷·메인넷 흐름|금리 기대 변화|달러 흐름|거시 흐름 변화|거시 압력 변화|ETF 쪽 일정|SEC·CFTC 움직임|법원 쪽 일정|실사용 반응|자금 쏠림 방향|재방문 흐름|집행 흔적|현장 반응|체인 바깥 반응)$/i.test(
       normalized
     )
   ) {
@@ -1323,10 +1323,10 @@ function estimateEvidenceSpecificity(item: OnchainEvidence, lane: TrendLane): nu
   let score = 0.42;
 
   if (isGenericLaneEvidenceLabel(label)) score -= 0.18;
-  if (/(유입|이탈|확대|둔화|강세|약세|압박|정체|심사|승인|신청|소송|법원|집행|검증자|복구|재방문|잔류|체결|호가|유동성|대기 자금|거래소 쪽 자금|큰손 움직임)/.test(label)) {
+  if (/(유입|이탈|확대|둔화|강세|약세|압박|정체|심사|승인|신청|소송|법원|집행|검증자|복구|재방문|잔류|체결|호가|유동성|대기 자금|관망 자금|거래소 쪽 자금|큰손 움직임|밀린 거래|거래 적체)/.test(label)) {
     score += 0.24;
   }
-  if (/(체인 안쪽 사용|실사용 흔적|대기 자금 흐름|거래소 쪽 자금 이동|규제 반응|규제 일정|업그레이드 진행|외부 뉴스 반응|가격 반응)/.test(label)) {
+  if (/(체인 안쪽 사용|실사용 흔적|대기 자금 흐름|관망 자금 흐름|거래소 쪽 자금 이동|규제 반응|규제 일정|업그레이드 진행|외부 뉴스 반응|가격 반응)/.test(label)) {
     score -= 0.12;
   }
   if (/(자금 쏠림 방향|재방문 흐름|집행 흔적|현장 반응|커뮤니티 잔류|실사용 잔류)/.test(label)) {
@@ -1341,7 +1341,7 @@ function estimateEvidenceSpecificity(item: OnchainEvidence, lane: TrendLane): nu
     ecosystem: /(재방문|잔류|커뮤니티|개발자|지갑|실사용|사용|앱)/,
     regulation: /(규제|정책|법원|소송|당국|etf|심사|승인|집행)/,
     macro: /(달러|금리|물가|inflation|rates|dxy|usd|eur)/,
-    onchain: /(체인 사용|거래 대기|대기 자금|거래소 쪽 자금|큰손|주소|온체인|멤풀|스테이블)/,
+    onchain: /(체인 사용|거래 대기|밀린 거래|거래 적체|대기 자금|관망 자금|거래소 쪽 자금|큰손|주소|온체인|멤풀|스테이블)/,
     "market-structure": /(체결|호가|유동성|주문|거래량|펀딩|funding|orderbook|exchange)/,
   };
 
@@ -1408,7 +1408,7 @@ function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): bool
     if (concreteCount < 2) return true;
     if (!pair.some((item) => isMarketStructureSpecificEvidence(item))) return true;
     if (
-      pair.some((item) => /(대기 자금 흐름|가격 반응|가격 움직임|가격 분위기|시장 반응)/.test(item.label)) &&
+      pair.some((item) => /(대기 자금 흐름|관망 자금 흐름|가격 반응|가격 움직임|가격 분위기|시장 반응)/.test(item.label)) &&
       !hasSpecificMarketStructureEvidence
     ) {
       return true;
@@ -1446,7 +1446,7 @@ function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): bool
         })) ||
       pair.every((item) => {
         const normalized = sanitizeTweetText(`${item.label} ${item.summary}`).toLowerCase();
-        return /(체인 사용|거래 대기|네트워크 수수료|멤풀|가격 반응|가격 움직임|대기 자금 흐름|etf 심사 흐름|규제 일정|규제 반응)/.test(
+        return /(체인 사용|거래 대기|밀린 거래|거래 적체|네트워크 수수료|멤풀|가격 반응|가격 움직임|대기 자금 흐름|관망 자금 흐름|etf 심사 흐름|규제 일정|규제 반응)/.test(
           normalized
         );
       })

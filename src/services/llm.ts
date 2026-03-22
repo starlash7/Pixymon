@@ -309,13 +309,24 @@ export async function requestBudgetedClaudeMessage(
     ...params,
     model: selectedModel,
   };
-  const message = usePromptCaching
-    ? await claude.beta.promptCaching.messages.create(
-        buildPromptCachingParams(requestParams, {
-          cacheSharedPrefix: options.cacheSharedPrefix,
-        })
-      ) as ClaudeMessageResponse
-    : await claude.messages.create(requestParams) as ClaudeMessageResponse;
+  let message: ClaudeMessageResponse;
+  try {
+    message = usePromptCaching
+      ? await claude.beta.promptCaching.messages.create(
+          buildPromptCachingParams(requestParams, {
+            cacheSharedPrefix: options.cacheSharedPrefix,
+          })
+        ) as ClaudeMessageResponse
+      : await claude.messages.create(requestParams) as ClaudeMessageResponse;
+  } catch (error) {
+    if (shouldGracefullySkipClaudeRequest(error)) {
+      console.warn(
+        `[LLM-BUDGET] ${options.kind} Claude 요청 스킵: ${summarizeClaudeRequestError(error)}`
+      );
+      return null;
+    }
+    throw error;
+  }
   const usage = message.usage;
   const recorded = anthropicBudget.recordUsage({
     timezone,
@@ -337,6 +348,32 @@ export async function requestBudgetedClaudeMessage(
     model: selectedModel,
     mode: budgetMode.mode,
   };
+}
+
+export function shouldGracefullySkipClaudeRequest(error: unknown): boolean {
+  const summary = summarizeClaudeRequestError(error).toLowerCase();
+  if (!summary) return false;
+  if (summary.includes("credit balance is too low")) return true;
+  if (summary.includes("plans & billing")) return true;
+  if (summary.includes("purchase credits")) return true;
+  if (summary.includes("insufficient credits")) return true;
+  if (summary.includes("rate limit")) return true;
+  if (summary.includes("overloaded")) return true;
+  return false;
+}
+
+export function summarizeClaudeRequestError(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return String(error ?? "unknown");
+  }
+  const row = error as {
+    status?: number;
+    message?: string;
+    error?: { message?: string };
+  };
+  const status = Number.isFinite(row.status) ? `status=${row.status}` : "";
+  const message = String(row.message || row.error?.message || "").trim();
+  return [status, message].filter(Boolean).join(" ").trim() || "unknown";
 }
 
 function disableAnthropicDebugLogs(): void {

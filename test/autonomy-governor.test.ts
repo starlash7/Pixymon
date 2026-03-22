@@ -136,3 +136,38 @@ test("autonomy governor warns on high risk narrative without assertive claim", (
   assert.equal(decision.level, "warn");
   assert.ok(decision.reasons.some((reason) => reason.startsWith("risk_high_watch")));
 });
+
+test("autonomy governor allows strong onchain structural fallback without cross-source evidence", () => {
+  const input = buildBaseInput();
+  input.eventPlan.lane = "onchain";
+  input.eventPlan.event = {
+    ...input.eventPlan.event,
+    lane: "onchain",
+    source: "evidence:structural-fallback",
+    headline: "풀리는 거래 대기 압박과 대기 자금 이탈를 보면 튄 숫자와 버틴 흔적이 갈린다",
+  };
+  input.eventPlan.evidence = [
+    {
+      ...input.eventPlan.evidence[0],
+      lane: "onchain",
+      source: "onchain",
+      label: "풀리는 거래 대기 압박",
+      value: "",
+    },
+    {
+      ...input.eventPlan.evidence[1],
+      lane: "onchain",
+      source: "onchain",
+      label: "대기 자금 이탈",
+      value: "",
+    },
+  ];
+  input.eventPlan.hasOnchainEvidence = true;
+  input.eventPlan.hasCrossSourceEvidence = false;
+  input.eventPlan.evidenceSourceDiversity = 1;
+  const decision = evaluateAutonomyGovernor(input);
+  assert.equal(decision.allow, true);
+  assert.equal(decision.level, "warn");
+  assert.ok(!decision.reasons.includes("missing_cross_source_evidence"));
+  assert.ok(decision.reasons.includes("evidence_source_diversity_low"));
+});
