@@ -42,11 +42,14 @@ export interface LaneUsageWindow {
 
 export interface EventEvidencePlan {
   lane: TrendLane;
+  focus: string;
   event: TrendEvent;
   evidence: OnchainEvidence[];
   hasOnchainEvidence: boolean;
   hasCrossSourceEvidence: boolean;
   evidenceSourceDiversity: number;
+  plannerScore: number;
+  plannerWarnings: string[];
   laneUsage: LaneUsageWindow;
   laneProjectedRatio: number;
   laneQuotaLimited: boolean;

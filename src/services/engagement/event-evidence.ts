@@ -269,6 +269,7 @@ export function planEventEvidenceAct(params: {
   events: TrendEvent[];
   evidence: OnchainEvidence[];
   recentPosts: RecentPostRecord[];
+  recentNarrativeThreads?: Array<{ lane: TrendLane; focus?: string; headline?: string }>;
   laneUsage?: LaneUsageWindow;
   requireOnchainEvidence?: boolean;
   requireCrossSourceEvidence?: boolean;
@@ -358,6 +359,20 @@ export function planEventEvidenceAct(params: {
       const laneRepeatPenalty = lastLane && lastLane === event.lane ? 0.14 : 0;
       const priceEvidencePenalty = estimatePriceEvidencePenalty(pair.evidence, event.lane);
       const eventEvidenceMismatchPenalty = estimateEventEvidenceMismatchPenalty(event, pair.evidence);
+      const focus = resolvePlannerFocus(event.lane, pair.evidence);
+      const recentFocusPenalty = estimateRecentNarrativeFocusPenalty(
+        event.lane,
+        focus,
+        params.recentNarrativeThreads || []
+      );
+      const plannerWarnings = buildPlannerWarnings({
+        event,
+        pair: pair.evidence,
+        focus,
+        hasCrossSourceEvidence: pair.hasCrossSourceEvidence,
+        evidenceSourceDiversity: pair.evidenceSourceDiversity,
+        recentNarrativeThreads: params.recentNarrativeThreads || [],
+      });
       const coldStartExplorationJitter = laneUsage.totalPosts === 0 ? (Math.random() - 0.5) * 0.16 : 0;
       const score =
         event.trust * 0.3 +
@@ -369,16 +384,19 @@ export function planEventEvidenceAct(params: {
         headlineCommodityPenalty * 1.25 -
         (quotaLimited ? 0.35 : 0) -
         laneRepeatPenalty -
+        recentFocusPenalty -
         priceEvidencePenalty * 1.15 +
         eventEvidenceMismatchPenalty * -1.35 +
         coldStartExplorationJitter;
       return {
         event,
+        focus,
         evidence: pair.evidence,
         hasOnchainEvidence: pair.hasOnchainEvidence,
         hasCrossSourceEvidence: pair.hasCrossSourceEvidence,
         evidenceSourceDiversity: pair.evidenceSourceDiversity,
         score,
+        plannerWarnings,
         projectedRatio,
         quotaLimited,
       };
@@ -395,15 +413,61 @@ export function planEventEvidenceAct(params: {
   const preferred = pickWeightedPlanCandidate(explorationPool);
   return {
     lane: preferred.event.lane,
+    focus: preferred.focus,
     event: preferred.event,
     evidence: preferred.evidence,
     hasOnchainEvidence: preferred.hasOnchainEvidence,
     hasCrossSourceEvidence: preferred.hasCrossSourceEvidence,
     evidenceSourceDiversity: preferred.evidenceSourceDiversity,
+    plannerScore: Math.round(preferred.score * 1000) / 1000,
+    plannerWarnings: preferred.plannerWarnings,
     laneUsage,
     laneProjectedRatio: Math.round(preferred.projectedRatio * 1000) / 1000,
     laneQuotaLimited: preferred.quotaLimited,
   };
+}
+
+function estimateRecentNarrativeFocusPenalty(
+  lane: TrendLane,
+  focus: PlannerFocus,
+  recentThreads: Array<{ lane: TrendLane; focus?: string; headline?: string }>
+): number {
+  if (!recentThreads.length) return 0;
+  const recent = recentThreads.slice(0, 6);
+  const exactFocusRepeats = recent.filter((item) => item.lane === lane && (item.focus || "general") === focus).length;
+  const sameLaneRepeats = recent.filter((item) => item.lane === lane).length;
+  let penalty = 0;
+  if (exactFocusRepeats >= 1) penalty += 0.12;
+  if (exactFocusRepeats >= 2) penalty += 0.08;
+  if (sameLaneRepeats >= 3) penalty += 0.05;
+  if (focus === "general") penalty += 0.06;
+  return clampNumber(penalty, 0, 0.28, 0);
+}
+
+function buildPlannerWarnings(params: {
+  event: TrendEvent;
+  pair: OnchainEvidence[];
+  focus: PlannerFocus;
+  hasCrossSourceEvidence: boolean;
+  evidenceSourceDiversity: number;
+  recentNarrativeThreads: Array<{ lane: TrendLane; focus?: string; headline?: string }>;
+}): string[] {
+  const warnings = new Set<string>();
+  const { event, pair, focus } = params;
+  if (focus === "general") warnings.add("focus-general");
+  if (pairIsTooGenericForLane(pair, event.lane)) warnings.add("generic-evidence");
+  if (!pairSupportsLaneSemantics(pair, event.lane)) warnings.add("semantic-mismatch");
+  if (event.source === "evidence:structural-fallback") warnings.add("structural-fallback");
+  if (event.lane !== "onchain" && !params.hasCrossSourceEvidence) warnings.add("single-source");
+  if (params.evidenceSourceDiversity < 2) warnings.add("low-diversity");
+  if (
+    params.recentNarrativeThreads.some(
+      (item) => item.lane === event.lane && (item.focus || "general") === focus
+    )
+  ) {
+    warnings.add("focus-repeat");
+  }
+  return [...warnings];
 }
 
 export function validateEventEvidenceContract(
