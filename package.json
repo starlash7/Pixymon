@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "test": "PIXYMON_DATA_DIR=.test-data MEMORY_DATA_PATH=.test-data/memory.json NARRATIVE_AUDIT_LOG_PATH=.test-data/narrative-observation.ndjson NARRATIVE_AUDIT_SUMMARY_PATH=.test-data/narrative-phrase-audit.json OBSERVABILITY_EVENT_LOG_PATH=.test-data/metrics-events.ndjson node --import tsx --test test/*.test.ts",
     "audit:narrative": "node scripts/narrative-audit-report.mjs",
-    "samples:identity": "node --import tsx scripts/identity-samples.ts"
+    "samples:identity": "node --import tsx scripts/identity-samples.ts",
+    "preflight:week-test": "node scripts/preflight-week-test.mjs"
   },
   "keywords": [
     "ai-agent",
