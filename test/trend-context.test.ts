@@ -2051,6 +2051,72 @@ test("buildEventEvidenceFallbackPost keeps korean fallback direct and free of ra
   assert.doesNotMatch(text, /오늘은 이 장면부터|시간차부터 잰다|같은 화면에 둔다|sat\/vB|SEC and CFTC/);
 });
 
+test("buildEventEvidenceFallbackPost rewrites korean 구간 headline into direct scene prose", () => {
+  const createdAt = new Date().toISOString();
+  const plan = {
+    lane: "market-structure" as const,
+    event: {
+      id: "event-market-liquidity",
+      lane: "market-structure" as const,
+      headline: "호가 열기보다 체결이 늦게 남은 구간",
+      summary: "Orderbook heat outruns actual settlement.",
+      source: "evidence:structural-fallback",
+      trust: 0.81,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["호가", "체결"],
+    },
+    evidence: [
+      {
+        id: "ev-liquidity",
+        lane: "market-structure" as const,
+        nutrientId: "n-liquidity",
+        source: "onchain" as const,
+        label: "큰 주문 소화",
+        value: "둔화",
+        summary: "큰 주문이 깔끔하게 소화되지 못하고 남는지 보는 단서다.",
+        trust: 0.8,
+        freshness: 0.89,
+        capturedAt: createdAt,
+      },
+      {
+        id: "ev-capital",
+        lane: "market-structure" as const,
+        nutrientId: "n-capital",
+        source: "market" as const,
+        label: "자금 쏠림 방향",
+        value: "분산",
+        summary: "자금이 끝까지 한쪽으로 붙는지 보는 단서다.",
+        trust: 0.79,
+        freshness: 0.88,
+        capturedAt: createdAt,
+      },
+    ],
+    hasOnchainEvidence: true,
+    hasCrossSourceEvidence: true,
+    evidenceSourceDiversity: 2,
+    plannerScore: 0.64,
+    plannerWarnings: ["structural-fallback"],
+    laneUsage: {
+      totalPosts: 0,
+      byLane: {
+        protocol: 0,
+        ecosystem: 0,
+        regulation: 0,
+        macro: 0,
+        onchain: 0,
+        "market-structure": 0,
+      },
+    },
+    laneProjectedRatio: 1,
+    laneQuotaLimited: true,
+  };
+
+  const text = buildEventEvidenceFallbackPost(plan, "ko", 220, "philosophy-note");
+  assert.doesNotMatch(text, /실제로 이어지는지 다시|말에서 끝나는지 행동으로 이어지는지 다시|다시\.$/);
+  assert.match(text, /구간이 오늘 더 크게 남는다|결국 말과 흐름이 갈린다/);
+});
+
 test("planEventEvidenceAct surfaces planner focus and repeat warning for same lane thread family", () => {
   const createdAt = new Date().toISOString();
   const events = [
