@@ -242,6 +242,9 @@ interface SoulIntentPlan {
   fear: string;
   avoidancePattern: string;
   styleDirective: string;
+  obsessionLine: string;
+  grudgeLine: string;
+  continuityLine: string;
 }
 
 // 데이터 타입 정의
@@ -256,6 +259,7 @@ interface Tweet {
 
 interface TweetMeta {
   lane?: TrendLane;
+  focus?: string;
   eventId?: string;
   eventHeadline?: string;
   evidenceIds?: string[];
@@ -388,6 +392,7 @@ interface RecordNarrativeOutcomeInput {
   eventHeadline: string;
   evidenceIds: string[];
   mode?: NarrativeMode;
+  focus?: string;
   postText: string;
 }
 
@@ -944,6 +949,7 @@ export class MemoryService {
         eventId,
         headline,
         mode: this.normalizeNarrativeMode(row.mode),
+        focus: typeof row.focus === "string" && row.focus.trim() ? row.focus.trim().slice(0, 48) : undefined,
         activityCount: this.clampInt(row.activityCount, 1, 1000, 1),
         evidenceIds: this.normalizeEvidenceIds(row.evidenceIds),
         openedAt: typeof row.openedAt === "string" ? row.openedAt : new Date().toISOString(),
@@ -1017,6 +1023,8 @@ export class MemoryService {
     }
     const row = raw as Partial<TweetMeta>;
     const lane = this.normalizeTrendLane(row.lane);
+    const focus =
+      typeof row.focus === "string" && row.focus.trim() ? row.focus.trim().slice(0, 48) : undefined;
     const eventId = typeof row.eventId === "string" && row.eventId.trim() ? row.eventId.trim().slice(0, 80) : undefined;
     const eventHeadline =
       typeof row.eventHeadline === "string" && row.eventHeadline.trim()
@@ -1035,6 +1043,7 @@ export class MemoryService {
         : undefined;
     if (
       !lane &&
+      !focus &&
       !eventId &&
       !eventHeadline &&
       (!evidenceIds || evidenceIds.length === 0) &&
@@ -1045,6 +1054,7 @@ export class MemoryService {
     }
     return {
       lane,
+      focus,
       eventId,
       eventHeadline,
       evidenceIds: evidenceIds && evidenceIds.length > 0 ? evidenceIds : undefined,
@@ -1567,6 +1577,14 @@ export class MemoryService {
     };
   }
 
+  getRecentNarrativeThreads(limit: number = 6): NarrativeThread[] {
+    const size = this.clampInt(limit, 1, 20, 6);
+    return this.data.autonomyContext.narrativeThreads
+      .slice(-size)
+      .reverse()
+      .map((item) => ({ ...item, evidenceIds: [...item.evidenceIds] }));
+  }
+
   getAutonomyPromptContext(language: "ko" | "en" = "ko"): string {
     const autonomy = this.data.autonomyContext;
     const openHypotheses = autonomy.openHypotheses
@@ -1580,7 +1598,7 @@ export class MemoryService {
       const lines: string[] = ["### Autonomy Memory"];
       lines.push(`- Active threads: ${activeThreads.length}`);
       for (const thread of activeThreads) {
-        lines.push(`  - [${thread.lane}] ${thread.headline}`);
+        lines.push(`  - [${thread.lane}${thread.focus ? `/${thread.focus}` : ""}] ${thread.headline}`);
       }
       if (openHypotheses.length > 0) {
         lines.push("- Open hypotheses:");
@@ -1600,7 +1618,7 @@ export class MemoryService {
     const lines: string[] = ["### 자율성 메모리"];
     lines.push(`- 활성 스레드: ${activeThreads.length}개`);
     for (const thread of activeThreads) {
-      lines.push(`  - [${thread.lane}] ${thread.headline}`);
+      lines.push(`  - [${thread.lane}${thread.focus ? `/${thread.focus}` : ""}] ${thread.headline}`);
     }
     if (openHypotheses.length > 0) {
       lines.push("- 열린 가설:");
@@ -1942,9 +1960,13 @@ export class MemoryService {
     const form = this.pickNarrativeForm(soul);
     const question = this.pickActiveQuestion(soul.curiosity.openQuestions, laneHint, language);
     const fear = soul.shadow.fearOf;
+    const recentThreads = this.getRecentNarrativeThreads(6);
     const philosophyFrame = this.pickWorldviewItem(soul.worldview.philosophyNotes, laneHint);
     const bookFragment = this.pickWorldviewItem(soul.worldview.bookFragments, laneHint);
     const interactionMission = this.pickWorldviewItem(soul.worldview.interactionMissions, laneHint);
+    const obsessionLine = this.buildObsessionLine(language, laneHint, recentThreads);
+    const grudgeLine = this.buildGrudgeLine(language, laneHint);
+    const continuityLine = this.buildContinuityLine(language, laneHint, recentThreads);
     const styleDirective =
       language === "ko"
         ? `1인칭 시점, rhythm=${soul.style.rhythm}, 비유밀도=${Math.round(soul.style.metaphorDensity * 100)}%, 유머=${Math.round(soul.style.humorTemperature * 100)}%`
@@ -1968,7 +1990,95 @@ export class MemoryService {
       fear,
       avoidancePattern: soul.shadow.avoidancePattern,
       styleDirective,
+      obsessionLine,
+      grudgeLine,
+      continuityLine,
     };
+  }
+
+  private buildObsessionLine(
+    language: "ko" | "en",
+    laneHint: TrendLane | undefined,
+    recentThreads: NarrativeThread[]
+  ): string {
+    const sameLaneThread = recentThreads.find((item) => !laneHint || item.lane === laneHint);
+    const focus = sameLaneThread?.focus || laneHint || "market-structure";
+    const focusMapKo: Record<string, string> = {
+      builder: "코드가 아니라 개발자 잔류",
+      retention: "재방문과 잔류",
+      hype: "열기 뒤에 남는 사용자",
+      execution: "기사보다 집행 흔적",
+      court: "판결 기사보다 실제 자금 반응",
+      launch: "출시 박수보다 복귀 자금",
+      durability: "예쁘게 튄 숫자보다 끝까지 버틴 흔적",
+      flow: "주소 숫자보다 자금 방향",
+      liquidity: "호가보다 실제 체결",
+      settlement: "거래량보다 깊이와 체결",
+      onchain: "하루를 버틴 온체인 신호",
+      protocol: "릴리스보다 운영 로그",
+      ecosystem: "생태계 얘기보다 남은 사람",
+      regulation: "규제 기사보다 집행",
+      macro: "큰 해설보다 자금 습관 변화",
+      "market-structure": "분위기보다 실제 돈",
+    };
+    const focusMapEn: Record<string, string> = {
+      builder: "developer retention over launch theater",
+      retention: "returning users over loud reaction",
+      hype: "staying users behind the hype",
+      execution: "execution over policy prose",
+      court: "capital reaction over courtroom headlines",
+      launch: "returning capital over launch applause",
+      durability: "traces that survive a full day",
+      flow: "capital direction over address counts",
+      liquidity: "real fills over visible quotes",
+      settlement: "depth over printed volume",
+      onchain: "onchain traces that survive a day",
+      protocol: "operating logs over release prose",
+      ecosystem: "people who stay over ecosystem copy",
+      regulation: "enforcement over regulation headlines",
+      macro: "habit change over big macro explanations",
+      "market-structure": "real money over screen heat",
+    };
+    return language === "ko"
+      ? `지금 픽시몬이 끝까지 붙드는 건 ${focusMapKo[focus] || "끝까지 버틴 근거"}다.`
+      : `What Pixymon keeps biting is ${focusMapEn[focus] || "the clue that survives longest"}.`;
+  }
+
+  private buildGrudgeLine(language: "ko" | "en", laneHint: TrendLane | undefined): string {
+    const byLaneKo: Record<TrendLane, string> = {
+      protocol: "운영이 비어 있는데 릴리스 노트만 큰 서사를 제일 싫어한다.",
+      ecosystem: "사람은 안 남는데 커뮤니티 열기만 큰 얘기를 제일 싫어한다.",
+      regulation: "집행은 없는데 기사만 큰 규제 해설을 제일 싫어한다.",
+      macro: "배치가 안 바뀌는데 거시 해설만 커지는 장면을 제일 싫어한다.",
+      onchain: "하루도 못 버티는 온체인 숫자를 제일 안 믿는다.",
+      "market-structure": "체결은 없는데 자신감만 큰 화면을 제일 싫어한다.",
+    };
+    const byLaneEn: Record<TrendLane, string> = {
+      protocol: "Pixymon distrusts release notes that arrive without operating proof.",
+      ecosystem: "Pixymon distrusts heat that cannot keep people around.",
+      regulation: "Pixymon distrusts regulation commentary without enforcement.",
+      macro: "Pixymon distrusts big macro prose without changed behavior.",
+      onchain: "Pixymon distrusts onchain spikes that cannot survive a day.",
+      "market-structure": "Pixymon distrusts confidence that leaves no fill behind.",
+    };
+    const lane = laneHint || "market-structure";
+    return language === "ko" ? byLaneKo[lane] : byLaneEn[lane];
+  }
+
+  private buildContinuityLine(
+    language: "ko" | "en",
+    laneHint: TrendLane | undefined,
+    recentThreads: NarrativeThread[]
+  ): string {
+    const row = recentThreads.find((item) => !laneHint || item.lane === laneHint) || recentThreads[0];
+    if (!row) {
+      return language === "ko"
+        ? "이번에도 같은 허세가 반복되면 더 세게 물고 늘어진다."
+        : "If the same empty pattern repeats, Pixymon pushes harder.";
+    }
+    return language === "ko"
+      ? `직전 스레드 "${row.headline}"에서 걸린 지점을 이번에도 다시 확인한다.`
+      : `Pixymon carries forward the pressure point from "${row.headline}".`;
   }
 
   progressSoulStateAfterPost(input: {
@@ -2087,6 +2197,7 @@ export class MemoryService {
       headline: eventHeadline,
       evidenceIds: this.normalizeEvidenceIds(input.evidenceIds),
       mode: this.normalizeNarrativeMode(input.mode),
+      focus: typeof input.focus === "string" && input.focus.trim() ? input.focus.trim().slice(0, 48) : undefined,
     });
 
     const normalizedText = postText.replace(/\s+/g, " ").trim();
@@ -2776,6 +2887,7 @@ export class MemoryService {
     headline: string;
     evidenceIds: string[];
     mode?: NarrativeMode;
+    focus?: string;
   }): void {
     const now = new Date().toISOString();
     const existing = this.data.autonomyContext.narrativeThreads.find((item) => item.eventId === input.eventId);
@@ -2783,6 +2895,7 @@ export class MemoryService {
       existing.lane = input.lane;
       existing.headline = input.headline;
       existing.mode = input.mode || existing.mode;
+      existing.focus = input.focus || existing.focus;
       existing.activityCount += 1;
       existing.updatedAt = now;
       existing.evidenceIds = [...new Set([...existing.evidenceIds, ...input.evidenceIds])].slice(0, 8);
@@ -2795,6 +2908,7 @@ export class MemoryService {
       eventId: input.eventId,
       headline: input.headline,
       mode: input.mode,
+      focus: input.focus,
       activityCount: 1,
       evidenceIds: input.evidenceIds.slice(0, 8),
       openedAt: now,

@@ -51,6 +51,9 @@ function buildBaseInput() {
       hasOnchainEvidence: true,
       hasCrossSourceEvidence: true,
       evidenceSourceDiversity: 2,
+      focus: "general",
+      plannerScore: 1,
+      plannerWarnings: [],
       laneUsage: {
         totalPosts: 3,
         byLane: {

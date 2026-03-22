@@ -36,6 +36,9 @@ export interface KoIdentityWriterInput {
   worldviewHint?: string;
   signatureBelief?: string;
   recentReflection?: string;
+  obsessionLine?: string;
+  grudgeLine?: string;
+  continuityLine?: string;
   interactionMission?: string;
   activeQuestion?: string;
   maxChars: number;
@@ -1427,7 +1430,15 @@ function pickFixationLine(
 }
 
 function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed: number): string {
-  const source = sanitizeClause(input.recentReflection || input.signatureBelief || input.worldviewHint || "");
+  const source = sanitizeClause(
+    input.obsessionLine ||
+      input.grudgeLine ||
+      input.continuityLine ||
+      input.recentReflection ||
+      input.signatureBelief ||
+      input.worldviewHint ||
+      ""
+  );
   const focusPool = FOCUS_SOUL_HINT_POOLS[input.lane]?.[focus];
   if (focusPool?.length) {
     return pick(focusPool, seed, 2);

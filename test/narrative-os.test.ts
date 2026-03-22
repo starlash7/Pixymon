@@ -47,6 +47,9 @@ function baseEventPlan() {
     hasOnchainEvidence: true,
     hasCrossSourceEvidence: true,
     evidenceSourceDiversity: 2,
+    focus: "general",
+    plannerScore: 1,
+    plannerWarnings: [],
     laneUsage: {
       totalPosts: 4,
       byLane: {

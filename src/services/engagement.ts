@@ -251,6 +251,10 @@ export async function proactiveEngagement(
   const runtimeSettings = resolveEngagementSettings(settings);
 
   console.log(`\n[ENGAGE] 트렌드 기반 인게이지먼트 시작... (목표 ${goal}개)`);
+  if (!TEST_NO_EXTERNAL_CALLS && getTrendSearchCooldownRemainingMs() > 0) {
+    console.log("[ENGAGE] proactive reply 비활성: search entitlement cooldown");
+    return 0;
+  }
 
   const sourceTrustUpdates: Array<{ sourceKey: string; delta: number; reason: string; fallback?: number }> = [];
 
@@ -719,12 +723,14 @@ export async function postTrendUpdate(
     let soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage);
     const recentReflectionText = cycleReflectionHint || memory.getLatestDigestReflectionMemo()?.text;
     const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
+    const recentNarrativeThreads = memory.getRecentNarrativeThreads(6);
     const eventEvidence = buildOnchainEvidence([...feedNutrients, ...trend.nutrients], 16);
     let candidateEvents = trend.events;
     let eventPlan = planEventEvidenceAct({
       events: candidateEvents,
       evidence: eventEvidence,
       recentPosts: recentBriefingPosts,
+      recentNarrativeThreads,
       laneUsage: laneUsageWindow,
       requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
       requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
@@ -741,6 +747,7 @@ export async function postTrendUpdate(
           events: candidateEvents,
           evidence: eventEvidence,
           recentPosts: recentBriefingPosts,
+          recentNarrativeThreads,
           laneUsage: laneUsageWindow,
           requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
           requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
@@ -753,6 +760,7 @@ export async function postTrendUpdate(
             events: syntheticEvents,
             evidence: eventEvidence,
             recentPosts: recentBriefingPosts,
+            recentNarrativeThreads,
             laneUsage: laneUsageWindow,
             requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
             requireCrossSourceEvidence: false,
@@ -781,6 +789,7 @@ export async function postTrendUpdate(
           events: replannableEvents,
           evidence: eventEvidence,
           recentPosts: recentBriefingPosts,
+          recentNarrativeThreads,
           laneUsage: laneUsageWindow,
           requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
           requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
@@ -796,6 +805,24 @@ export async function postTrendUpdate(
       soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage, eventPlan.lane);
     }
 
+    if (eventPlan) {
+      const plannerGate = evaluatePlannerPublishReadiness(eventPlan, recentNarrativeThreads);
+      console.log(
+        `[PLAN] focus=${eventPlan.focus} score=${eventPlan.plannerScore.toFixed(3)} warnings=${eventPlan.plannerWarnings.join(",") || "none"}`
+      );
+      if (!plannerGate.allow) {
+        memory.recordPostGeneration({
+          timezone,
+          retryCount: 0,
+          usedFallback: false,
+          success: false,
+          failReason: toReasonCode(`planner-thin:${plannerGate.reason}`),
+        });
+        console.log(`[PLAN] 발행 차단: ${plannerGate.reason}`);
+        return false;
+      }
+    }
+
     if (!eventPlan) {
       if (TEST_MODE) {
         const previewHeadline = trend.headlines[0] || "오늘은 단일 이벤트 확정이 어려운 장세";
@@ -809,6 +836,9 @@ export async function postTrendUpdate(
           recentPosts: recentBriefingPosts,
           recentReflection: recentReflectionText,
           intentLine: soulIntent.intentLine,
+          obsessionLine: soulIntent.obsessionLine,
+          grudgeLine: soulIntent.grudgeLine,
+          continuityLine: soulIntent.continuityLine,
           activeQuestion: soulIntent.activeQuestion,
           interactionMission: soulIntent.interactionMission,
           philosophyFrame: soulIntent.philosophyFrame,
@@ -974,6 +1004,9 @@ export async function postTrendUpdate(
         recentPosts: recentBriefingPosts,
         recentReflection: recentReflectionText,
         intentLine: soulIntent.intentLine,
+        obsessionLine: soulIntent.obsessionLine,
+        grudgeLine: soulIntent.grudgeLine,
+        continuityLine: soulIntent.continuityLine,
         activeQuestion: soulIntent.activeQuestion,
         interactionMission: soulIntent.interactionMission,
         philosophyFrame: soulIntent.philosophyFrame,
@@ -1316,6 +1349,9 @@ export async function postTrendUpdate(
 - 보조 욕구: ${soulIntent.secondaryDesire}
 - 두려움: ${soulIntent.fear}
 - 회피 패턴: ${soulIntent.avoidancePattern}
+- 집착선: ${soulIntent.obsessionLine}
+- 혐오/압력선: ${soulIntent.grudgeLine}
+- 연속성 메모: ${soulIntent.continuityLine}
 - 열린 질문: ${soulIntent.activeQuestion}
 - 대화 유도 질문: ${soulIntent.interactionMission}
 - 철학 프레임: ${soulIntent.philosophyFrame}
@@ -1397,6 +1433,9 @@ Character intent (highest priority):
 - Secondary desire: ${soulIntent.secondaryDesire}
 - Fear: ${soulIntent.fear}
 - Avoidance pattern: ${soulIntent.avoidancePattern}
+- Obsession line: ${soulIntent.obsessionLine}
+- Pressure line: ${soulIntent.grudgeLine}
+- Continuity note: ${soulIntent.continuityLine}
 - Open question: ${soulIntent.activeQuestion}
 - Community prompt: ${soulIntent.interactionMission}
 - Philosophy frame: ${soulIntent.philosophyFrame}
@@ -2071,6 +2110,19 @@ Rules:
       console.log(`[POST] autonomy governor 경고: ${autonomyDecision.reasons.join("|")}`);
     }
 
+    const fallbackPublishGate = evaluateFallbackPublishReadiness(eventPlan, fallbackKind, usedFallback);
+    if (usedFallback && !fallbackPublishGate.allow) {
+      memory.recordPostGeneration({
+        timezone,
+        retryCount: Math.max(0, generationAttempts - 1),
+        usedFallback: true,
+        success: false,
+        failReason: toReasonCode(`fallback-thin:${fallbackPublishGate.reason}`),
+      });
+      console.log(`[POST] fallback 발행 차단: ${fallbackPublishGate.reason}`);
+      return false;
+    }
+
     postText = finalizeNarrativeSurface(
       applyNarrativeLayout(postText, runtimeSettings.postLanguage, runtimeSettings.postMaxChars),
       runtimeSettings.postLanguage,
@@ -2169,11 +2221,12 @@ Rules:
       timezone,
       xApiCostSettings,
       createKind: "post:briefing",
-      metadata: {
-        lane: eventPlan.lane,
-        eventId: eventPlan.event.id,
-        eventHeadline: eventPlan.event.headline,
-        evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
+        metadata: {
+          lane: eventPlan.lane,
+          focus: eventPlan.focus,
+          eventId: eventPlan.event.id,
+          eventHeadline: eventPlan.event.headline,
+          evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
         narrativeMode: narrativePlan.mode,
       },
     });
@@ -2197,6 +2250,7 @@ Rules:
     memory.recordCognitiveActivity("social", 2);
     memory.recordNarrativeOutcome({
       lane: eventPlan.lane,
+      focus: eventPlan.focus,
       eventId: eventPlan.event.id,
       eventHeadline: eventPlan.event.headline,
       evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
@@ -3044,7 +3098,11 @@ export async function runDailyQuotaCycle(
   }
 
   const postGoal = Math.max(2, Math.floor(target * 0.25));
-  const replyGoal = Math.max(1, Math.min(3, Math.floor(target * 0.3)));
+  const proactiveReplyAvailable = TEST_NO_EXTERNAL_CALLS || getTrendSearchCooldownRemainingMs() <= 0;
+  const replyGoal = proactiveReplyAvailable ? Math.max(1, Math.min(3, Math.floor(target * 0.3))) : 0;
+  if (!proactiveReplyAvailable) {
+    console.log("[SOCIAL] proactive reply 경로 비활성: search entitlement cooldown, 이번 사이클은 quote/post 우선");
+  }
 
   while (executed < maxActions && remaining > 0) {
     if (!canActWithDigest) {
@@ -3055,10 +3113,10 @@ export async function runDailyQuotaCycle(
     const before = executed;
     const todayPosts = memory.getTodayPostCount(timezone);
     const todayReplies = memory.getTodayReplyCount(timezone);
-    const reserveReplyWindow = todayReplies === 0;
+    const reserveReplyWindow = proactiveReplyAvailable && todayReplies === 0;
     const canQuoteInCycle = quotesCreatedThisCycle < 1 && !reserveReplyWindow;
     const canPostInCycle = postsCreatedThisCycle < runtimeSettings.maxPostsPerCycle;
-    const needReplies = todayReplies < replyGoal;
+    const needReplies = proactiveReplyAvailable && todayReplies < replyGoal;
     const shouldLeadWithPost = canPostInCycle && todayPosts < postGoal && postsCreatedThisCycle === 0;
     const actionOrder: Array<"post" | "reply" | "quote"> = [];
 
@@ -3092,6 +3150,7 @@ export async function runDailyQuotaCycle(
       }
 
       if (action === "reply") {
+        if (!proactiveReplyAvailable) continue;
         const replied = await proactiveEngagement(
           twitter,
           claude,
@@ -4742,6 +4801,9 @@ interface BuildPreviewFallbackCandidatesInput {
   recentPosts: Array<{ content: string }>;
   recentReflection?: string;
   intentLine?: string;
+  obsessionLine?: string;
+  grudgeLine?: string;
+  continuityLine?: string;
   activeQuestion?: string;
   interactionMission?: string;
   philosophyFrame?: string;
@@ -5191,6 +5253,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       worldviewHint,
       signatureBelief,
       recentReflection: recentReflectionHint || philosophyFrame,
+      obsessionLine: input.obsessionLine,
+      grudgeLine: input.grudgeLine,
+      continuityLine: input.continuityLine,
       interactionMission: askText,
       activeQuestion,
       maxChars: charBudget,
@@ -6083,6 +6148,50 @@ function allowLiveFallbackPublish(kind: PostFallbackKind, allowFallbackAutoPubli
   if (kind === "none") return true;
   if (allowFallbackAutoPublish) return true;
   return kind === "deterministic";
+}
+
+function evaluatePlannerPublishReadiness(
+  plan: EventEvidencePlan,
+  recentThreads: Array<{ lane: TrendLane; focus?: string }>
+): { allow: boolean; reason?: string } {
+  const warnings = new Set(plan.plannerWarnings || []);
+  const sameFocusRepeats = recentThreads.filter(
+    (item) => item.lane === plan.lane && (item.focus || "general") === plan.focus
+  ).length;
+  if (plan.focus === "general") warnings.add("focus-general");
+  if (plan.plannerScore < 0.7) warnings.add("score-thin");
+  if (sameFocusRepeats >= 2) warnings.add("focus-saturated");
+  if (warnings.has("focus-general")) return { allow: false, reason: "focus-general" };
+  if (warnings.has("generic-evidence")) return { allow: false, reason: "generic-evidence" };
+  if (warnings.has("semantic-mismatch")) return { allow: false, reason: "semantic-mismatch" };
+  if (warnings.has("score-thin")) return { allow: false, reason: "planner-score-thin" };
+  if (warnings.has("focus-saturated")) return { allow: false, reason: "focus-saturated" };
+  if (
+    warnings.has("structural-fallback") &&
+    plan.lane !== "onchain" &&
+    plan.plannerScore < 0.9
+  ) {
+    return { allow: false, reason: "structural-fallback-thin" };
+  }
+  return { allow: true };
+}
+
+function evaluateFallbackPublishReadiness(
+  plan: EventEvidencePlan,
+  kind: PostFallbackKind,
+  usedFallback: boolean
+): { allow: boolean; reason?: string } {
+  if (!usedFallback || kind === "none") return { allow: true };
+  const warningSet = new Set(plan.plannerWarnings || []);
+  if (plan.focus === "general") return { allow: false, reason: "fallback-on-general-focus" };
+  if (warningSet.has("generic-evidence")) return { allow: false, reason: "fallback-on-generic-evidence" };
+  if (warningSet.has("semantic-mismatch")) return { allow: false, reason: "fallback-on-semantic-mismatch" };
+  if (kind !== "deterministic") return { allow: false, reason: `fallback-kind-${kind}` };
+  if (warningSet.has("structural-fallback") && plan.plannerScore < 0.96) {
+    return { allow: false, reason: "fallback-on-thin-structural-plan" };
+  }
+  if (plan.plannerScore < 0.86) return { allow: false, reason: "fallback-on-thin-plan" };
+  return { allow: true };
 }
 
 function buildPostDiversityGuard(

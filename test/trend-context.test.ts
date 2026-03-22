@@ -284,6 +284,9 @@ test("validateEventEvidenceContract enforces event + two evidence anchors", () =
     hasOnchainEvidence: true,
     hasCrossSourceEvidence: true,
     evidenceSourceDiversity: 2,
+    focus: "general",
+    plannerScore: 1,
+    plannerWarnings: [],
     laneUsage: {
       totalPosts: 4,
       byLane: {
@@ -392,6 +395,9 @@ test("fallback post humanizes raw evidence into pixymon-facing Korean", () => {
     hasOnchainEvidence: true,
     hasCrossSourceEvidence: true,
     evidenceSourceDiversity: 2,
+    focus: "general",
+    plannerScore: 1,
+    plannerWarnings: [],
     laneUsage: { totalPosts: 0, byLane: { protocol: 0, ecosystem: 0, regulation: 0, macro: 0, onchain: 0, "market-structure": 0 } },
     laneProjectedRatio: 0.15,
     laneQuotaLimited: false,
@@ -446,6 +452,9 @@ test("validateEventEvidenceContract accepts localized event anchor for english h
     hasOnchainEvidence: true,
     hasCrossSourceEvidence: true,
     evidenceSourceDiversity: 2,
+    focus: "general",
+    plannerScore: 1,
+    plannerWarnings: [],
     laneUsage: {
       totalPosts: 2,
       byLane: {
@@ -680,6 +689,9 @@ test("buildEventEvidenceFallbackPost uses humanized anchors for raw english evid
       hasOnchainEvidence: true,
       hasCrossSourceEvidence: true,
       evidenceSourceDiversity: 2,
+      focus: "general",
+      plannerScore: 1,
+      plannerWarnings: [],
       laneUsage: {
         totalPosts: 0,
         byLane: {
@@ -846,6 +858,9 @@ test("buildEventEvidenceFallbackPost avoids label-style opener leakage", () => {
       hasOnchainEvidence: true,
       hasCrossSourceEvidence: true,
       evidenceSourceDiversity: 2,
+      focus: "general",
+      plannerScore: 1,
+      plannerWarnings: [],
       laneUsage: {
         totalPosts: 0,
         byLane: {
@@ -914,6 +929,9 @@ test("buildEventEvidenceFallbackPost uses stronger pixymon cue and drops old fal
       hasOnchainEvidence: true,
       hasCrossSourceEvidence: true,
       evidenceSourceDiversity: 2,
+      focus: "general",
+      plannerScore: 1,
+      plannerWarnings: [],
       laneUsage: {
         totalPosts: 0,
         byLane: {
@@ -1110,6 +1128,9 @@ test("validateEventEvidenceContract accepts lane anchor when evidence anchors ar
     hasOnchainEvidence: true,
     hasCrossSourceEvidence: true,
     evidenceSourceDiversity: 2,
+    focus: "general",
+    plannerScore: 1,
+    plannerWarnings: [],
     laneUsage: {
       totalPosts: 0,
       byLane: {
@@ -1177,6 +1198,9 @@ test("validateEventEvidenceContract accepts paraphrased price evidence aliases",
     hasOnchainEvidence: true,
     hasCrossSourceEvidence: true,
     evidenceSourceDiversity: 2,
+    focus: "general",
+    plannerScore: 1,
+    plannerWarnings: [],
     laneUsage: {
       totalPosts: 0,
       byLane: {
@@ -2003,6 +2027,9 @@ test("buildEventEvidenceFallbackPost keeps korean fallback direct and free of ra
     hasOnchainEvidence: true,
     hasCrossSourceEvidence: true,
     evidenceSourceDiversity: 2,
+    focus: "general",
+    plannerScore: 1,
+    plannerWarnings: [],
     laneUsage: {
       totalPosts: 0,
       byLane: {
@@ -2022,4 +2049,129 @@ test("buildEventEvidenceFallbackPost keeps korean fallback direct and free of ra
   assert.doesNotMatch(text, /근거는|지금 보는 근거는|내가 먼저 확인할 건/);
   assert.match(text, /기사|반쪽|집행|현장/);
   assert.doesNotMatch(text, /오늘은 이 장면부터|시간차부터 잰다|같은 화면에 둔다|sat\/vB|SEC and CFTC/);
+});
+
+test("planEventEvidenceAct surfaces planner focus and repeat warning for same lane thread family", () => {
+  const createdAt = new Date().toISOString();
+  const events = [
+    {
+      id: "event-builder",
+      lane: "ecosystem" as const,
+      headline: "개발자 잔류와 예치 자금 복귀가 같이 버티는지 본다",
+      summary: "Builder momentum needs both returning developers and returning capital.",
+      source: "evidence:structural-fallback",
+      trust: 0.81,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["개발자", "예치", "복귀"],
+    },
+  ];
+  const evidence = [
+    {
+      id: "ev-builder",
+      lane: "ecosystem" as const,
+      nutrientId: "n-builder",
+      source: "news" as const,
+      label: "개발자 잔류",
+      value: "유지",
+      summary: "빌드 열기가 지나도 개발자가 계속 남는지 보는 단서다.",
+      trust: 0.82,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      digestScore: 0.8,
+    },
+    {
+      id: "ev-settlement",
+      lane: "market-structure" as const,
+      nutrientId: "n-settlement",
+      source: "onchain" as const,
+      label: "예치 자금 복귀",
+      value: "확대",
+      summary: "행사가 끝난 뒤에도 자금이 다시 붙는지 보는 단서다.",
+      trust: 0.79,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      digestScore: 0.77,
+    },
+  ];
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts: [],
+    recentNarrativeThreads: [{ lane: "ecosystem", focus: "builder", headline: "직전에도 빌더 잔류를 물고 있었다" }],
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.focus, "builder");
+  assert.match(String(plan?.plannerWarnings.join("|")), /focus-repeat|structural-fallback/);
+  assert.ok((plan?.plannerScore || 0) > 0);
+});
+
+test("planEventEvidenceAct avoids general focus when sharper builder pair exists", () => {
+  const createdAt = new Date().toISOString();
+  const events = [
+    {
+      id: "event-ecosystem",
+      lane: "ecosystem" as const,
+      headline: "생태계 서사가 실제 잔류로 이어지는지 본다",
+      summary: "Retention and builder proof matter more than generic community heat.",
+      source: "evidence:structural-fallback",
+      trust: 0.8,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["생태계", "잔류"],
+    },
+  ];
+  const evidence = [
+    {
+      id: "ev-builder",
+      lane: "ecosystem" as const,
+      nutrientId: "n-builder",
+      source: "news" as const,
+      label: "개발자 잔류",
+      value: "유지",
+      summary: "빌드 열기가 지나도 개발자가 계속 남는지 보는 단서다.",
+      trust: 0.82,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      digestScore: 0.8,
+    },
+    {
+      id: "ev-capital",
+      lane: "market-structure" as const,
+      nutrientId: "n-capital",
+      source: "onchain" as const,
+      label: "예치 자금 복귀",
+      value: "확대",
+      summary: "행사가 끝난 뒤에도 자금이 다시 붙는지 보는 단서다.",
+      trust: 0.79,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      digestScore: 0.77,
+    },
+    {
+      id: "ev-generic",
+      lane: "ecosystem" as const,
+      nutrientId: "n-generic",
+      source: "news" as const,
+      label: "커뮤니티 반응",
+      value: "과열",
+      summary: "커뮤니티 반응만 뜨거워진 구간이다.",
+      trust: 0.68,
+      freshness: 0.8,
+      capturedAt: createdAt,
+      digestScore: 0.55,
+    },
+  ];
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts: [],
+  });
+
+  assert.ok(plan);
+  assert.notEqual(plan?.focus, "general");
+  assert.equal(plan?.focus, "builder");
 });
