@@ -79,10 +79,10 @@ const CROSS_EXAM_BY_LANE: Record<TrendLane, string[]> = {
   ],
   macro: [
     "거시 해설이 넘칠수록 체인 안쪽 습관이 실제로 바뀌었는지는 더 늦게 인정한다.",
-    "큰 뉴스가 나왔다고 바로 방향을 바꾸지 않는다. 자금은 늘 더 느리다.",
+    "큰 뉴스가 나왔다고 바로 방향을 바꾸지 않는다.",
   ],
   onchain: [
-    "예쁘게 튄 온체인 숫자는 쉽게 못 믿는다. 오래 남는 쪽만 단서가 된다.",
+    "예쁘게 튄 온체인 숫자는 쉽게 못 믿는다.",
     "온체인 신호가 반짝일수록 하루 뒤에도 남는지부터 가른다.",
   ],
   "market-structure": [
@@ -324,11 +324,17 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "결국 오래 붙드는 건 재방문과 잔류다.",
       "남는 사람 수가 이 생태계 얘기의 값을 정한다.",
       "돌아오는 사람이 없으면 큰 서사도 절반 아래로 내려간다.",
+      "끝까지 남은 건 반응이 아니라 다음 날 다시 들어온 사람 수다.",
+      "잔류가 빠진 열기는 결국 하루짜리 구경거리로 끝난다.",
+      "반응보다 남은 사람 수가 결국 이 장면의 값을 정한다.",
+      "재방문이 비는 순간 화려한 설명도 급하게 얇아진다.",
     ],
     hype: [
       "문구가 커질수록 실제 사용 흔적은 더 차갑게 다뤄야 한다.",
       "홍보 문장 뒤에 늦게 남는 사용 흔적만 손에 남긴다.",
       "광고 냄새가 짙어질수록 사람 흔적부터 끝까지 다시 센다.",
+      "서사가 먼저 부풀수록 실제 사용 흔적은 더 의심스럽게 본다.",
+      "설명만 커진 날일수록 마지막에 남는 건 사용 흔적뿐이다.",
     ],
   },
   regulation: {
@@ -336,6 +342,10 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "결국 기사보다 오래 남는 건 집행 흔적 쪽이다.",
       "규제 뉴스의 값은 집행이 붙는 순간에야 정해진다.",
       "행동으로 안 번지면 규제 뉴스는 대개 기사로 남는다.",
+      "해설이 커질수록 결국 남는 쪽은 집행 흔적 하나다.",
+      "기사 톤이 커져도 집행이 비면 결국 뉴스 값이 꺼진다.",
+      "집행 빈칸이 크면 그 규제 뉴스는 결국 기사 문장으로 되돌아간다.",
+      "기사 톤이 앞설수록 결국 집행 빈칸이 뉴스 값을 다시 깎는다.",
     ],
   },
   "market-structure": {
@@ -343,6 +353,22 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "결국 오래 보는 건 호가가 아니라 체결 잔상이다.",
       "돈이 남는지 여부가 이 과열의 본색을 가른다.",
       "자금이 붙지 않으면 그 자신감은 장면값밖에 없다.",
+      "화면보다 오래 남는 건 결국 체결이 붙은 자리다.",
+      "유동성은 말보다 늦게 남고 그래서 더 정확하다.",
+    ],
+  },
+  protocol: {
+    durability: [
+      "결국 남는 건 발표가 아니라 장애 뒤 복구 기록 쪽이다.",
+      "박수보다 오래 버티는 건 운영 로그 한 줄이다.",
+      "설명보다 오래 가는 건 결국 복구 속도다.",
+    ],
+  },
+  onchain: {
+    durability: [
+      "끝내 손에 남는 건 튄 숫자가 아니라 버틴 흔적이다.",
+      "반짝인 숫자보다 하루 뒤에도 남은 흔적이 훨씬 값이 세다.",
+      "온체인에선 결국 오래 버틴 쪽만 근거 취급을 받는다.",
     ],
   },
 };
@@ -353,6 +379,8 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "사람이 남는지 못 남는지가 결국 생태계 얘기의 값을 정한다.",
       "생태계가 오래 가는지 아닌지는 결국 재방문에서 갈린다.",
       "커뮤니티의 진짜 온도는 결국 돌아오는 사람 수에서 드러난다.",
+      "돌아오는 사람을 못 만들면 큰 생태계 서사도 금방 얇아진다.",
+      "남는 사람 수가 줄어드는 순간 생태계 설명은 바로 힘이 빠진다.",
     ],
     hype: [
       "서사만 불어나고 사용이 비면 그 생태계는 금방 종이처럼 얇아진다.",
@@ -395,6 +423,7 @@ const FOCUS_EVIDENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "{A}가 움직여도 {B}가 안 붙으면 그 뉴스는 아직 기사값밖에 못 한다.",
       "{A}만 커지고 {B}가 비면 정책 해설이 현장보다 앞서간다.",
       "{A}가 보여도 {B}가 비면 그 규제 뉴스는 아직 바깥에서만 돈다.",
+      "{A}가 요란해도 {B}가 비면 그 규제 뉴스는 아직 기사 안에 갇혀 있다.",
     ],
   },
   "market-structure": {
@@ -599,7 +628,84 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
       "온체인 숫자는 오래 남는 쪽만 겨우 단서 취급을 받는다.",
       "반짝인 숫자보다 다음 날까지 버틴 흔적이 훨씬 비싸다.",
       "수치의 값은 지속 시간이 대신 정산한다.",
+      "튀는 숫자는 많지만 다음 날까지 버티는 쪽은 늘 적다.",
+      "온체인 숫자의 값은 결국 얼마나 오래 남았는지가 대신 말한다.",
     ],
+  },
+};
+
+const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
+  Record<TrendLane, Partial<Record<WriterFocus, Partial<Record<string, string[]>>>>>
+> = {
+  ecosystem: {
+    retention: {
+      "identity-journal": [
+        "끝내 믿게 되는 건 떠들썩한 반응보다 다시 돌아온 사람 수다.",
+        "재방문이 남는 쪽이 결국 생태계 얘기의 값을 다시 정한다.",
+        "잔류가 붙은 장면만 시간이 지나도 생태계 서사로 남는다.",
+        "다시 들어오는 사람 수가 붙지 않으면 좋은 반응도 금방 얇아진다.",
+      ],
+      "meta-reflection": [
+        "반응보다 잔류가 늦게 움직이고 그래서 더 오래 진실을 붙든다.",
+        "남는 사람 수가 꺾이는 순간 좋은 설명도 바로 얇아진다.",
+      ],
+    },
+    hype: {
+      "identity-journal": [
+        "문구가 앞서는 날일수록 마지막에 남는 건 사용 흔적뿐이다.",
+        "광고가 커질수록 실제 사용 흔적의 값이 더 또렷해진다.",
+        "열기만 큰 날은 설명보다 사용 흔적이 훨씬 냉정하다.",
+        "캠페인이 커지는 날일수록 마지막에 살아남는 건 사용 흔적뿐이다.",
+      ],
+      "meta-reflection": [
+        "서사가 부풀수록 실제 사용 흔적은 더 늦고 더 차갑게 남는다.",
+        "문구만 커진 장면은 시간이 지나면 제일 먼저 비어 보인다.",
+      ],
+    },
+  },
+  regulation: {
+    execution: {
+      "meta-reflection": [
+        "규제 뉴스는 집행이 붙는 순간부터 기사값을 벗어난다.",
+        "정책 문장의 힘은 결국 집행 속도에서 다시 계산된다.",
+        "기사와 행동의 값은 집행 흔적이 남는 순간부터 벌어진다.",
+      ],
+      "identity-journal": [
+        "끝내 기억되는 건 정책 문장보다 집행 흔적 쪽이다.",
+        "집행이 붙은 규제 뉴스만 시간이 지나도 값이 남는다.",
+      ],
+    },
+  },
+  protocol: {
+    durability: {
+      "philosophy-note": [
+        "신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다.",
+        "업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다.",
+        "박수보다 오래 남는 건 결국 복구 로그 쪽이다.",
+      ],
+      "meta-reflection": [
+        "운영이 비는 순간 좋은 발표도 금방 문장값만 남긴다.",
+        "장애 뒤 복구 태도가 비면 업그레이드 서사도 바로 낡는다.",
+      ],
+    },
+  },
+  "market-structure": {
+    liquidity: {
+      "philosophy-note": [
+        "열기보다 늦게 남는 체결이 결국 이 장면의 값을 다시 매긴다.",
+        "돈이 붙은 자리는 화면보다 늦게 보이고 그래서 더 정확하다.",
+        "유동성의 진짜 표정은 결국 남은 체결 쪽에서 드러난다.",
+      ],
+    },
+  },
+  onchain: {
+    durability: {
+      "meta-reflection": [
+        "다음 날까지 남은 숫자만 온체인에선 겨우 말이 된다.",
+        "온체인 신호의 값은 결국 얼마나 오래 버텼는지가 계산한다.",
+        "반짝인 수치보다 하루 뒤에도 남은 흔적이 훨씬 비싸다.",
+      ],
+    },
   },
 };
 
@@ -726,11 +832,27 @@ function pick<T>(pool: T[], seed: number, offset = 0): T {
   return pool[(seed + offset) % pool.length];
 }
 
+function pickVariantLine(pool: string[], seed: number, variant: number, offset = 0): string {
+  const baseIndex = Math.abs(seed + offset) % pool.length;
+  return pool[(baseIndex + variant) % pool.length];
+}
+
 function pickPreferredLine(primaryPool: string[], fallbackPool: string[], seed: number, offset = 0): string {
   if (primaryPool.length > 0) {
     return pick(primaryPool, seed, offset);
   }
   return pick(fallbackPool, seed, offset);
+}
+
+function pickPreferredVariantLine(
+  primaryPool: string[],
+  fallbackPool: string[],
+  seed: number,
+  variant: number,
+  offset = 0
+): string {
+  const effectivePool = primaryPool.length > 0 ? primaryPool : fallbackPool;
+  return pickVariantLine(effectivePool, seed, variant, offset);
 }
 
 function hasBatchim(text: string): boolean {
@@ -870,22 +992,33 @@ function resolveWriterFocus(input: KoIdentityWriterInput, primaryAnchor: string,
   return "general";
 }
 
-function pickAttitudeLine(lane: TrendLane, focus: WriterFocus, seed: number, lead: string): string {
+function pickAttitudeLine(lane: TrendLane, focus: WriterFocus, seed: number, variant: number, lead: string): string {
   const focusPool = FOCUS_ATTITUDE_BY_LANE[lane]?.[focus] || [];
   const fallbackPool = ATTITUDE_BY_LANE[lane];
-  const first = pickPreferredLine(focusPool, fallbackPool, seed, 21);
+  const effectivePool = focusPool.length ? focusPool : fallbackPool;
+  const baseIndex = Math.abs(seed + 21) % effectivePool.length;
+  const first = effectivePool[(baseIndex + variant) % effectivePool.length];
   if (!hasSimilarCadence(first, lead) && !hasHeavyKeywordOverlap(first, lead)) return first;
-  return pickPreferredLine(focusPool, fallbackPool, seed + 1, 21);
+  return effectivePool[(baseIndex + variant + 1) % effectivePool.length];
 }
 
-function pickFixationLine(lane: TrendLane, focus: WriterFocus, seed: number, lead: string, attitude: string): string {
+function pickFixationLine(
+  lane: TrendLane,
+  focus: WriterFocus,
+  seed: number,
+  variant: number,
+  lead: string,
+  attitude: string
+): string {
   const focusPool = FOCUS_FIXATION_BY_LANE[lane]?.[focus] || [];
   const fallbackPool = FIXATION_BY_LANE[lane];
-  const first = pickPreferredLine(focusPool, fallbackPool, seed, 25);
+  const effectivePool = focusPool.length ? focusPool : fallbackPool;
+  const baseIndex = Math.abs(seed + 25) % effectivePool.length;
+  const first = effectivePool[(baseIndex + variant) % effectivePool.length];
   if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude) && !hasHeavyKeywordOverlap(first, lead)) {
     return first;
   }
-  return pickPreferredLine(focusPool, fallbackPool, seed + 1, 25);
+  return effectivePool[(baseIndex + variant + 1) % effectivePool.length];
 }
 
 function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed: number): string {
@@ -920,19 +1053,24 @@ function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed:
 
 function pickModeStampForLane(
   lane: TrendLane,
+  focus: WriterFocus,
   mode: string,
   seed: number,
+  variant: number,
   lead: string,
   attitude: string
 ): string {
+  const focusLanePool = FOCUS_MODE_STAMP_BY_LANE_AND_MODE[lane]?.[focus]?.[mode] || [];
   const lanePool = MODE_STAMP_BY_LANE_AND_MODE[lane]?.[mode] || [];
   const pool = lanePool.length ? lanePool : MODE_STAMP_BY_MODE[mode];
-  if (!pool?.length) return "";
-  const first = pick(pool, seed, 31);
+  const effectivePool = focusLanePool.length ? focusLanePool : pool;
+  if (!effectivePool?.length) return "";
+  const baseIndex = Math.abs(seed + 31) % effectivePool.length;
+  const first = effectivePool[(baseIndex + variant) % effectivePool.length];
   if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude) && !hasHeavyKeywordOverlap(first, lead)) {
     return first;
   }
-  return pick(pool, seed + 1, 31);
+  return effectivePool[(baseIndex + variant + 1) % effectivePool.length];
 }
 
 function buildSceneLine(
@@ -1014,6 +1152,14 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
         ["scene", "attitude", "decision", "consequence"],
       ];
     }
+    if (lane === "onchain" && focus === "durability") {
+      return [
+        ["attitude", "fixation", "evidence", "decision"],
+        ["scene", "instinct", "evidence", "consequence"],
+        ["lead", "stamp", "evidence", "decision"],
+        ["scene", "attitude", "consequence"],
+      ];
+    }
     return frame === "cross-exam"
       ? [
           ["attitude", "stamp", "evidence", "consequence"],
@@ -1052,7 +1198,7 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
             ["scene", "fixation", "evidence", "decision"],
             ["lead", "attitude", "evidence", "consequence"],
             ["scene", "stamp", "evidence", "decision"],
-            ["lead", "fixation", "consequence"],
+            ["attitude", "fixation", "evidence", "consequence"],
           ]
         : [
             ["lead", "fixation", "evidence", "decision"],
@@ -1093,9 +1239,10 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
 }
 
 export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, variant = 0): string {
-  const seed = stableSeedForPrelude(
-    `${input.seedHint || input.headline}|${input.primaryAnchor}|${input.secondaryAnchor}|${input.mode}|${input.lane}|${variant}`
+  const baseSeed = stableSeedForPrelude(
+    `${input.seedHint || input.headline}|${input.primaryAnchor}|${input.secondaryAnchor}|${input.mode}|${input.lane}`
   );
+  const seed = baseSeed + variant * 97;
   const primaryAnchor = summarizeAnchor(input.primaryAnchor);
   const secondaryAnchor = summarizeAnchor(input.secondaryAnchor);
   const focus = resolveWriterFocus(input, primaryAnchor, secondaryAnchor);
@@ -1107,22 +1254,22 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
       : frame === "field-note"
         ? focusLeadPool.length ? focusLeadPool : FIELD_NOTES_BY_LANE[input.lane]
         : focusLeadPool.length ? focusLeadPool : CLAIM_BY_LANE[input.lane];
-  const lead = pick(leadPool, seed, variant * 7 + 1);
+  const lead = pickVariantLine(leadPool, seed, variant, 7);
   const scene = buildSceneLine(input, focus, seed + variant * 5 + 1, primaryAnchor, secondaryAnchor);
   const focusEvidencePool = FOCUS_EVIDENCE_BY_LANE[input.lane]?.[focus] || [];
   const evidence = fill(
-    pickPreferredLine(focusEvidencePool, EVIDENCE_BY_LANE[input.lane], seed, variant * 11 + 3),
+    pickPreferredVariantLine(focusEvidencePool, EVIDENCE_BY_LANE[input.lane], seed, variant, 11),
     primaryAnchor,
     secondaryAnchor
   );
   const instinct = rewriteSoulHint(input, focus, seed + variant * 13 + 17);
-  const attitude = pickAttitudeLine(input.lane, focus, seed + variant * 17 + 1, lead);
-  const fixation = pickFixationLine(input.lane, focus, seed + variant * 19 + 1, lead, attitude);
-  const stamp = pickModeStampForLane(input.lane, input.mode, seed + variant * 23 + 1, lead, attitude);
+  const attitude = pickAttitudeLine(input.lane, focus, seed + variant * 17 + 1, variant, lead);
+  const fixation = pickFixationLine(input.lane, focus, seed + variant * 19 + 1, variant, lead, attitude);
+  const stamp = pickModeStampForLane(input.lane, focus, input.mode, seed + variant * 23 + 1, variant, lead, attitude);
   const focusDecisionPool = FOCUS_DECISION_BY_LANE[input.lane]?.[focus] || [];
-  const decision = pickPreferredLine(focusDecisionPool, DECISION_BY_LANE[input.lane], seed, variant * 29 + 5);
+  const decision = pickPreferredVariantLine(focusDecisionPool, DECISION_BY_LANE[input.lane], seed, variant, 29);
   const focusConsequencePool = FOCUS_CONSEQUENCE_BY_LANE[input.lane]?.[focus] || [];
-  const consequence = pickPreferredLine(focusConsequencePool, CONSEQUENCE_BY_LANE[input.lane], seed, variant * 31 + 9);
+  const consequence = pickPreferredVariantLine(focusConsequencePool, CONSEQUENCE_BY_LANE[input.lane], seed, variant, 31);
   const question = buildQuestion(input, seed + variant * 37 + 19);
   const segments: Record<WriterSegment, string> = {
     scene,

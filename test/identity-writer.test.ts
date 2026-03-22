@@ -48,7 +48,7 @@ test("buildKoIdentityWriterCandidate keeps market-structure prose thesis-driven"
   });
 
   assert.match(text, /(주문|체결|거래소)/);
-  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다|자금이 안 남은 자신감은 오래 못 간다|결국 오래 보는 건 호가가 아니라 체결 잔상이다|대충 맞은 설명일수록 현장에선 빨리 들통난다)/);
+  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다|자금이 안 남은 자신감은 오래 못 간다|결국 오래 보는 건 호가가 아니라 체결 잔상이다|대충 맞은 설명일수록 현장에선 빨리 들통난다|문제는 늘 제일 늦게 붙은 곳에서 커진다|돈이 붙은 자리는 화면보다 늦게 보이고 그래서 더 정확하다)/);
   assert.doesNotMatch(text, /장부에|먹은 단서|다음 판단 재료|다시 읽는다/);
   assert.doesNotMatch(text, /차트보다 실제 체결이 남아야 판단할 수 있다\.\s+차트보다 실제 체결이 남아야 판단할 수 있다/);
 });
@@ -78,7 +78,7 @@ test("buildKoIdentityWriterCandidate uses evaluative voice instead of checklist 
     seedHint: "identity-writer:ecosystem-evaluative",
   });
 
-  assert.match(text, /(홍보 문구|광고 냄새|과열이지 성장은 아니다|좋은 포스터여도 오래 못 간다|절반짜리다|사람을 못 붙잡|오래 못 간다|힘을 잃는다|사람이 남는지 못 남는지|생태계 서사에 쉽게 속는다|잔류가 비는 순간 그 열기는 오래 못 버틴다)/);
+  assert.match(text, /(홍보 문구|광고 냄새|과열이지 성장은 아니다|좋은 포스터여도 오래 못 간다|절반짜리다|사람을 못 붙잡|오래 못 간다|힘을 잃는다|사람이 남는지 못 남는지|생태계 서사에 쉽게 속는다|잔류가 비는 순간 그 열기는 오래 못 버틴다|재방문이 빠진 열기는 대개 캠페인으로 끝난다|남는 사람이 사라지는 순간 그 생태계 얘기도 절반이 날아간다)/);
   assert.doesNotMatch(text, /먼저 본다\.\s*확인한다\.\s*미룬다/);
 });
 
@@ -105,7 +105,7 @@ test("buildKoIdentityWriterCandidate splits ecosystem voice by retention versus 
 
   assert.notEqual(retention.split(".")[0]?.trim(), hype.split(".")[0]?.trim());
   assert.notEqual(retention.split(".")[1]?.trim(), hype.split(".")[1]?.trim());
-  assert.match(retention, /(재방문|잔류|사람이 남|사용자)/);
+  assert.match(retention, /(재방문|잔류|사람이 남|사용자|돌아오는 사람)/);
   assert.match(hype, /(홍보|광고|서사|캠페인)/);
 });
 
@@ -160,6 +160,50 @@ test("buildKoIdentityWriterCandidate varies layout and cadence across variants",
   );
 
   assert.ok(variants.size >= 3);
+});
+
+test("buildKoIdentityWriterCandidate diversifies second-sentence families across variants", () => {
+  const secondSentences = new Set(
+    Array.from({ length: 4 }, (_, variant) => {
+      const text = buildKoIdentityWriterCandidate(
+        {
+          ...baseInput,
+          lane: "ecosystem",
+          mode: "identity-journal",
+          headline: "서사만 커지고 실제 사용은 비는 날이 아닌지 살핀다",
+          primaryAnchor: "커뮤니티 열기",
+          secondaryAnchor: "체인 안쪽 사용",
+          seedHint: "identity-writer:second-sentence-diversity",
+        },
+        variant
+      );
+      return (text.split(/(?<=[.!?])\s+/u)[1] || "").trim();
+    }).filter(Boolean)
+  );
+
+  assert.ok(secondSentences.size >= 3);
+});
+
+test("buildKoIdentityWriterCandidate avoids onchain second-sentence collapse across variants", () => {
+  const secondSentences = new Set(
+    Array.from({ length: 4 }, (_, variant) => {
+      const text = buildKoIdentityWriterCandidate(
+        {
+          ...baseInput,
+          lane: "onchain",
+          mode: "meta-reflection",
+          headline: "튀는 숫자와 오래 버티는 흔적이 같은 편인지 본다",
+          primaryAnchor: "주소 이동",
+          secondaryAnchor: "대기 자금 흐름",
+          seedHint: "identity-writer:onchain-second-sentence",
+        },
+        variant
+      );
+      return (text.split(/(?<=[.!?])\s+/u)[1] || "").trim();
+    }).filter(Boolean)
+  );
+
+  assert.ok(secondSentences.size >= 3);
 });
 
 test("buildKoIdentityWriterCandidate uses lane-aware question prompts", () => {

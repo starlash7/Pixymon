@@ -343,7 +343,7 @@ test("structural fallback avoids raw fee/orderbook jargon in public headline", (
   assert.ok(events.length >= 1);
   const joined = events.map((item) => `${item.headline} ${item.summary}`).join(" ");
   assert.equal(/호가창|시간차|체인 수수료\s*6\s*sat\/vB/i.test(joined), false);
-  assert.equal(/체인 안쪽의 조용함|먼저 달아오른 표정|화면 분위기/i.test(joined), true);
+  assert.equal(/체인 사용 압박|대기 자금|큰손 움직임|가격 반응/i.test(joined), true);
 });
 
 test("fallback post humanizes raw evidence into pixymon-facing Korean", () => {
@@ -486,7 +486,7 @@ test("buildOnchainEvidence humanizes english-heavy evidence before planning", ()
   ]);
 
   assert.equal(evidence[0]?.label, "예측시장 사용");
-  assert.equal(evidence[0]?.value, "포착");
+  assert.equal(evidence[0]?.value, "");
   assert.match(String(evidence[0]?.summary || ""), /예측시장/);
 });
 
@@ -507,9 +507,44 @@ test("buildOnchainEvidence humanizes raw onchain fee evidence before planning", 
     },
   ]);
 
-  assert.equal(evidence[0]?.label, "체인 안쪽 사용");
-  assert.ok(/흐름/.test(String(evidence[0]?.value || "")));
+  assert.equal(evidence[0]?.label, "낮아진 체인 사용 압박");
+  assert.equal(String(evidence[0]?.value || ""), "");
   assert.equal(/sat\/vB/i.test(String(evidence[0]?.summary || "")), false);
+});
+
+test("buildOnchainEvidence keeps directional onchain evidence specific before planning", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "stablecoin-flow",
+      label: "스테이블코인 총공급 플로우",
+      value: "+$220M (+0.8%)",
+      evidence: "Stablecoin supply expanded through the session.",
+      direction: "up",
+      trust: 0.82,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.79 },
+    },
+    {
+      id: "n2",
+      source: "onchain",
+      category: "exchange-flow",
+      label: "거래소 순유입 프록시",
+      value: "0.84x (-11%)",
+      evidence: "Exchange flow ratio fell as funds moved away from venues.",
+      direction: "down",
+      trust: 0.8,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.76 },
+    },
+  ]);
+
+  const labels = evidence.map((item) => item.label);
+  assert.deepEqual(labels, ["대기 자금 유입", "거래소 쪽 자금 이탈"]);
 });
 
 test("buildTrendEvents reassigns lane after localized korean headline changes issue type", () => {
@@ -1209,7 +1244,7 @@ test("buildStructuralFallbackEventsFromEvidence builds structural events from on
   const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt);
 
   assert.ok(events.length >= 1);
-  assert.match(events[0].headline, /큰손 움직임|대기 자금 흐름/);
+  assert.match(events[0].headline, /큰손 움직임 확대|대기 자금 유입/);
   assert.doesNotMatch(events[0].headline, /24h 변동|도미넌스|시총|공포 지수/i);
 });
 
@@ -1244,6 +1279,43 @@ test("buildStructuralFallbackEventsFromEvidence skips pure price snapshot eviden
 
   const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt);
   assert.equal(events.length, 0);
+});
+
+test("buildStructuralFallbackEventsFromEvidence prefers specific directional evidence labels", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "n1",
+      source: "onchain",
+      category: "stablecoin-flow",
+      label: "스테이블코인 총공급 플로우",
+      value: "+$240M",
+      evidence: "Stablecoin supply expanded through the session.",
+      direction: "up",
+      trust: 0.84,
+      freshness: 0.91,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.81 },
+    },
+    {
+      id: "n2",
+      source: "onchain",
+      category: "exchange-flow",
+      label: "거래소 순유입 프록시",
+      value: "0.82x (-12%)",
+      evidence: "Exchange flow ratio fell as funds moved away from venues.",
+      direction: "down",
+      trust: 0.82,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.79 },
+    },
+  ]);
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 2);
+  assert.ok(events.length >= 1);
+  assert.match(events[0].headline, /대기 자금 유입|거래소 쪽 자금 이탈/);
+  assert.doesNotMatch(events[0].headline, /대기 자금 흐름|거래소 쪽 자금 이동/);
 });
 
 test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence pair", () => {
@@ -1310,7 +1382,7 @@ test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence
   assert.equal(plan?.hasCrossSourceEvidence, false);
   assert.deepEqual(
     plan?.evidence.map((item) => item.label),
-    ["체인 안쪽 사용", "밀린 거래"]
+    ["낮아진 체인 사용 압박", "풀리는 거래 대기 압박"]
   );
 });
 
@@ -1376,7 +1448,7 @@ test("planEventEvidenceAct keeps generic onchain event on non-price evidence pai
   assert.ok(plan);
   assert.deepEqual(
     plan?.evidence.map((item) => item.label),
-    ["체인 안쪽 사용", "밀린 거래"]
+    ["낮아진 체인 사용 압박", "풀리는 거래 대기 압박"]
   );
 });
 
@@ -1441,9 +1513,9 @@ test("planEventEvidenceAct avoids price-like evidence for ecosystem lane when st
 
   assert.ok(plan);
   const labels = plan?.evidence.map((item) => item.label) || [];
-  assert.deepEqual(labels[0], "큰손 움직임");
   assert.equal(labels.includes("ETH 24h 변동"), false);
-  assert.equal(labels.includes("실사용 흐름") || labels.includes("개발자 커뮤니티 반응") || labels.includes("개발자 반응"), true);
+  assert.equal(labels.includes("개발자 잔류") || labels.includes("실사용 잔류"), true);
+  assert.equal(labels.includes("큰손 움직임 확대") || labels.includes("큰손 움직임 둔화") || labels.includes("큰손 움직임 정체"), true);
 });
 
 test("planEventEvidenceAct avoids generic market reaction plus fee pair when lane-specific regulation evidence exists", () => {
@@ -1519,7 +1591,7 @@ test("planEventEvidenceAct avoids generic market reaction plus fee pair when lan
 
   assert.ok(plan);
   const labels = plan?.evidence.map((item) => item.label) || [];
-  assert.equal(labels.includes("규제 쪽 일정") || labels.includes("현장으로 번지는 규제 반응"), true);
+  assert.equal(labels.includes("규제 집행 일정") || labels.includes("당국 공조 신호"), true);
   assert.equal(labels.includes("먼저 달아오른 가격 분위기") && labels.includes("BTC 네트워크 수수료"), false);
 });
 
@@ -1631,8 +1703,8 @@ test("planEventEvidenceAct rejects regulation lane when evidence collapses to ge
       lane: "regulation" as const,
       nutrientId: "n-reg",
       source: "news" as const,
-      label: "규제 일정",
-      value: "포착",
+      label: "규제 집행 일정",
+      value: "",
       summary: "규제 해석보다 실제 집행 일정과 시장 반응의 간격을 볼 장면이다.",
       trust: 0.76,
       freshness: 0.88,
@@ -1657,8 +1729,8 @@ test("planEventEvidenceAct rejects regulation lane when evidence collapses to ge
       lane: "protocol" as const,
       nutrientId: "n-protocol",
       source: "news" as const,
-      label: "Firedancer 테스트 흐름",
-      value: "포착",
+      label: "Firedancer 검증자 반응",
+      value: "",
       summary: "검증자 쪽 기대가 실제 운영 반응으로 이어지는지 볼 장면이다.",
       trust: 0.79,
       freshness: 0.9,
@@ -1685,8 +1757,8 @@ test("buildStructuralFallbackEventsFromEvidence writes direct structural headlin
       lane: "onchain" as const,
       nutrientId: "n1",
       source: "onchain" as const,
-      label: "지갑 안쪽 사용",
-      value: "유지",
+      label: "지갑 재방문",
+      value: "",
       summary: "실사용 흔적이 초기 서사 뒤에도 남아 있는지 보는 단서다.",
       trust: 0.82,
       freshness: 0.91,
@@ -1711,7 +1783,7 @@ test("buildStructuralFallbackEventsFromEvidence writes direct structural headlin
   const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 2);
   assert.ok(events.length >= 1);
   const headline = events[0].headline;
-  assert.match(headline, /갈린다|달렸다|성립한다/);
+  assert.match(headline, /갈린다|달렸다|성립한다|더 밀지 않는다/);
   assert.doesNotMatch(headline, /뒤에|살핀다|짚는다|장면/);
 });
 

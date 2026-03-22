@@ -1,4 +1,4 @@
-import { NarrativeMode, OnchainEvidence, OnchainNutrient, TrendEvent, TrendLane } from "../../types/agent.js";
+import { NarrativeMode, OnchainEvidence, OnchainNutrient, SignalDirection, TrendEvent, TrendLane } from "../../types/agent.js";
 import { EventEvidencePlan, LaneUsageWindow, RecentPostRecord } from "./types.js";
 import { NewsItem } from "../blockchain-news.js";
 import { sanitizeTweetText } from "./quality.js";
@@ -201,11 +201,14 @@ export function buildStructuralFallbackEventsFromEvidence(
     const pool = dedupEvidence([...lanePool, ...onchainSupport]).filter((item) => !isLowSignalEvidenceForEvent(item));
     if (pool.length < 2) return null;
 
-    const primary = pool[0];
-    const secondary =
-      pool.find((item) => item.id !== primary.id && (item.source !== primary.source || item.lane !== primary.lane)) ||
-      pool[1];
-    if (!secondary) return null;
+    const pair = selectEvidencePairForLane(lane, pool, {
+      requireOnchainEvidence: lane === "onchain",
+      requireCrossSourceEvidence: false,
+    });
+    if (!pair) return null;
+
+    const [primary, secondary] = pair.evidence;
+    if (!primary || !secondary) return null;
 
     const trust = clampNumber((primary.trust + secondary.trust) / 2, 0.18, 0.96, 0.68);
     const freshness = clampNumber((primary.freshness + secondary.freshness) / 2, 0.18, 0.98, 0.74);
@@ -213,6 +216,8 @@ export function buildStructuralFallbackEventsFromEvidence(
     if (!headline || isLowQualityTrendHeadline(headline)) return null;
     const summary = buildStructuralSummaryFromEvidence(lane, primary, secondary);
     const keywords = [...extractHeadlineTokens(primary.label), ...extractHeadlineTokens(secondary.label)].slice(0, 6);
+    const specificity =
+      (estimateEvidenceSpecificity(primary, lane) + estimateEvidenceSpecificity(secondary, lane)) / 2;
 
     return {
       id: `event:fallback:${lane}:${normalizeHeadlineKey(primary.label)}:${normalizeHeadlineKey(secondary.label)}:${createdAt}`,
@@ -227,6 +232,7 @@ export function buildStructuralFallbackEventsFromEvidence(
       score:
         (primary.digestScore ?? 0.58) * primary.trust * primary.freshness +
         (secondary.digestScore ?? 0.58) * secondary.trust * secondary.freshness +
+        specificity * 0.28 +
         (primary.source === "onchain" || secondary.source === "onchain" ? 0.08 : 0),
     };
   })
@@ -777,6 +783,7 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
   const rawEvidence = sanitizeTweetText(nutrient.evidence || `${rawLabel} ${rawValue}`);
   const normalized = `${rawLabel} ${rawValue} ${rawEvidence}`.toLowerCase();
   const source = String(nutrient.source || "");
+  const direction = nutrient.direction || inferDirectionFromText(`${rawValue} ${rawEvidence}`);
 
   const rewrite = (label: string, value: string, summary: string) => ({
     label: sanitizeTweetText(label),
@@ -786,39 +793,120 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
 
   if (source === "onchain") {
     if (/수수료|sat\/vB|fee/.test(normalized)) {
+      const feeValue = extractSignedNumber(rawValue);
+      const feeDirection =
+        direction !== "flat"
+          ? direction
+          : typeof feeValue === "number"
+            ? feeValue >= 35
+              ? "up"
+              : feeValue <= 10
+                ? "down"
+                : "flat"
+            : direction;
+      const label =
+        feeDirection === "up"
+          ? "높아진 체인 사용 압박"
+          : feeDirection === "down"
+            ? "낮아진 체인 사용 압박"
+            : "중립 체인 사용 압박";
       return rewrite(
-        "체인 안쪽 사용",
+        label,
         "",
-        "체인 안쪽 사용이 잠깐 반짝이는지, 아니면 실제로 붙는지 볼 장면이다."
+        feeDirection === "up"
+          ? "체인 사용 압박이 실제 혼잡과 과열로 이어지는지 봐야 하는 장면이다."
+          : feeDirection === "down"
+            ? "체인 사용 압박이 빠르게 풀린 상태가 유지되는지 봐야 하는 장면이다."
+            : "체인 사용 압박이 아직 방향을 만들지 못한 구간인지 봐야 하는 장면이다."
       );
     }
     if (/멤풀|backlog|대기열|pending/.test(normalized)) {
+      const backlogValue = extractSignedNumber(rawValue);
+      const backlogDirection =
+        direction !== "flat"
+          ? direction
+          : typeof backlogValue === "number"
+            ? backlogValue > 150000
+              ? "up"
+              : backlogValue < 60000
+                ? "down"
+                : "flat"
+            : direction;
+      const label =
+        backlogDirection === "up"
+          ? "쌓이는 거래 대기 압박"
+          : backlogDirection === "down"
+            ? "풀리는 거래 대기 압박"
+            : "중립 거래 대기 압박";
       return rewrite(
-        "밀린 거래",
+        label,
         "",
-        "대기 중인 거래가 실제 압박으로 이어지는지 볼 장면이다."
+        backlogDirection === "up"
+          ? "대기 거래 압박이 실제 체결 지연으로 이어지는지 볼 장면이다."
+          : backlogDirection === "down"
+            ? "밀린 거래 압박이 빠르게 해소되는지 확인할 장면이다."
+            : "대기 거래 압박이 중립권에서 머무는지 확인할 장면이다."
       );
     }
     if (/고래|whale|대형주소|large wallet/.test(normalized)) {
+      const label =
+        direction === "up"
+          ? "큰손 움직임 확대"
+          : direction === "down"
+            ? "큰손 움직임 둔화"
+            : "큰손 움직임 정체";
       return rewrite(
-        "큰손 움직임",
+        label,
         "",
-        "큰손이 실제로 방향을 바꾸는지 볼 장면이다."
+        direction === "up"
+          ? "큰손 움직임이 실제 방향 전환으로 이어지는지 볼 장면이다."
+          : direction === "down"
+            ? "큰손 움직임이 식으면서 시장 주도권이 바뀌는지 볼 장면이다."
+            : "큰손 움직임이 아직 결론을 만들 정도로 커지지 않았는지 볼 장면이다."
       );
     }
     if (/스테이블|stablecoin|stable flow|stable supply/.test(normalized)) {
+      const label =
+        direction === "up"
+          ? "대기 자금 유입"
+          : direction === "down"
+            ? "대기 자금 이탈"
+            : "대기 자금 정체";
       return rewrite(
-        "대기 자금",
+        label,
         "",
-        "대기 자금이 붙는지 빠지는지 먼저 확인할 장면이다."
+        direction === "up"
+          ? "대기 자금이 실제 위험 선호로 번지는지 볼 장면이다."
+          : direction === "down"
+            ? "대기 자금이 빠지며 체인 안쪽 열기가 식는지 볼 장면이다."
+            : "대기 자금이 아직 방향을 만들지 못한 채 머무는지 볼 장면이다."
       );
     }
     if (/거래소 순유입|exchange netflow|netflow/.test(normalized)) {
+      const label =
+        direction === "up"
+          ? "거래소 쪽 자금 유입"
+          : direction === "down"
+            ? "거래소 쪽 자금 이탈"
+            : "거래소 쪽 자금 정체";
       return rewrite(
-        "거래소 쪽 자금",
-        "이동 포착",
-        "거래소 쪽 자금 이동이 실제 긴장으로 이어지는지 볼 장면이다."
+        label,
+        "",
+        direction === "up"
+          ? "거래소 쪽 자금이 실제 매도 압박으로 이어지는지 볼 장면이다."
+          : direction === "down"
+            ? "거래소 밖으로 빠지는 자금이 보관 전환인지 확인할 장면이다."
+            : "거래소 쪽 자금 흐름이 방향을 못 만드는지 확인할 장면이다."
       );
+    }
+    if (/active address|address activity|wallet activity/.test(normalized)) {
+      const label =
+        direction === "up" ? "사용 지갑 증가" : direction === "down" ? "사용 지갑 둔화" : "사용 지갑 정체";
+      return rewrite(label, "", "실사용이 실제로 다시 붙는지 볼 장면이다.");
+    }
+    if (/tvl/.test(normalized)) {
+      const label = direction === "up" ? "TVL 유입" : direction === "down" ? "TVL 이탈" : "TVL 정체";
+      return rewrite(label, "", "잠긴 자금이 실제로 돌아오는지 확인할 장면이다.");
     }
     return {
       label: applyKoNarrativeLexicon(rawLabel).trim() || rawLabel,
@@ -829,42 +917,69 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
 
   if (/fed|ecb|cpi|inflation|rates|treasury|dxy|usd|eur|eur\/usd|dollar/.test(normalized)) {
     if (/cpi|inflation/.test(normalized)) {
-      return rewrite("물가 압력", "포착", "물가 압력이 실제 위험 선호까지 번지는지 볼 장면이다.");
+      const label =
+        direction === "up"
+          ? "물가 압력 확대"
+          : direction === "down"
+            ? "물가 압력 완화"
+            : "물가 압력 정체";
+      return rewrite(label, "", "물가 압력이 실제 위험 선호까지 번지는지 볼 장면이다.");
     }
     if (/rates|fed|ecb|treasury/.test(normalized)) {
-      return rewrite("금리 기대 변화", "포착", "금리 기대 변화가 체인 안쪽 자금 태도까지 번지는지 볼 장면이다.");
+      const label =
+        direction === "up"
+          ? "금리 기대 상향"
+          : direction === "down"
+            ? "금리 기대 완화"
+            : "금리 기대 정체";
+      return rewrite(label, "", "금리 기대 변화가 체인 안쪽 자금 태도까지 번지는지 볼 장면이다.");
     }
     if (/dxy|usd|dollar|eur|eur\/usd/.test(normalized)) {
-      return rewrite("달러 흐름", "포착", "달러 흐름이 체인 안쪽 자금 성격까지 바꾸는지 볼 장면이다.");
+      const label =
+        direction === "up"
+          ? "달러 강세"
+          : direction === "down"
+            ? "달러 약세"
+            : "달러 정체";
+      return rewrite(label, "", "달러 흐름이 체인 안쪽 자금 성격까지 바꾸는지 볼 장면이다.");
     }
-    return rewrite("거시 흐름 변화", "포착", "거시 흐름 변화가 체인 안쪽 자금 태도까지 번지는지 볼 장면이다.");
+    return rewrite("거시 압력 변화", "", "거시 흐름 변화가 체인 안쪽 자금 태도까지 번지는지 볼 장면이다.");
   }
   if (/court|lawsuit|sec|cftc|policy|regulation|regulatory|compliance|etf/.test(normalized)) {
     if (/sec.+cftc|cftc.+sec/.test(normalized)) {
-      return rewrite("SEC·CFTC 움직임", "포착", "당국의 메시지가 실제 규칙 변화로 이어지는지 더 봐야 하는 장면이다.");
+      return rewrite("당국 공조 신호", "", "당국의 메시지가 실제 규칙 변화로 이어지는지 더 봐야 하는 장면이다.");
     }
     if (/etf/.test(normalized)) {
-      return rewrite("ETF 쪽 일정", "", "ETF 쪽 일정이 실제 기대와 자금 흐름까지 번지는지 확인할 장면이다.");
+      if (/approval|approve|승인/.test(normalized)) {
+        return rewrite("ETF 승인 기대", "", "ETF 승인 기대가 실제 자금 흐름까지 번지는지 확인할 장면이다.");
+      }
+      if (/filing|application|신청/.test(normalized)) {
+        return rewrite("ETF 신청 일정", "", "ETF 신청 일정이 실제 기대를 키우는지 확인할 장면이다.");
+      }
+      return rewrite("ETF 심사 일정", "", "ETF 심사 일정이 실제 기대와 자금 흐름까지 번지는지 확인할 장면이다.");
     }
     if (/court|lawsuit/.test(normalized)) {
-      return rewrite("법원 쪽 일정", "", "법원 쪽 일정이 해석보다 더 오래 남는지 볼 장면이다.");
+      if (/lawsuit|소송/.test(normalized)) {
+        return rewrite("소송 일정", "", "소송 일정이 해석보다 더 오래 남는지 볼 장면이다.");
+      }
+      return rewrite("법원 일정", "", "법원 일정이 해석보다 더 오래 남는지 볼 장면이다.");
     }
-    return rewrite("규제 쪽 일정", "", "규제 해석보다 실제 집행 일정과 시장 반응의 간격을 볼 장면이다.");
+    return rewrite("규제 집행 일정", "", "규제 해석보다 실제 집행 일정과 시장 반응의 간격을 볼 장면이다.");
   }
   if (/bankruptcy|chapter 11|liquidation|insolvency|distress|default/.test(normalized)) {
-    return rewrite("업계 스트레스", "감지", "업계 안쪽 압박이 실제 자금 이동으로 번지는지 확인할 장면이다.");
+    return rewrite("업계 스트레스 확대", "", "업계 안쪽 압박이 실제 자금 이동으로 번지는지 확인할 장면이다.");
   }
   if (/upgrade|mainnet|testnet|validator|consensus|throughput|firedancer|rollup|fork/.test(normalized)) {
     if (/firedancer/.test(normalized)) {
-      return rewrite("Firedancer 테스트 흐름", "포착", "검증자 쪽 기대가 실제 운영 반응으로 이어지는지 볼 장면이다.");
+      return rewrite("Firedancer 검증자 반응", "", "검증자 쪽 기대가 실제 운영 반응으로 이어지는지 볼 장면이다.");
     }
     if (/validator|consensus/.test(normalized)) {
-      return rewrite("검증자 반응", "포착", "검증자 쪽 움직임이 실제 운영 안정성으로 이어지는지 볼 장면이다.");
+      return rewrite("검증자 안정성", "", "검증자 쪽 움직임이 실제 운영 안정성으로 이어지는지 볼 장면이다.");
     }
     if (/mainnet|testnet/.test(normalized)) {
-      return rewrite("테스트넷·메인넷 흐름", "포착", "배포 일정이 실제 사용과 운영 반응까지 이어지는지 확인할 장면이다.");
+      return rewrite(/mainnet/.test(normalized) ? "메인넷 준비도" : "테스트넷 반응", "", "배포 일정이 실제 사용과 운영 반응까지 이어지는지 확인할 장면이다.");
     }
-    return rewrite("업그레이드 진행", "포착", "코드 변화가 실제 운영 흐름으로 이어지는지 확인할 장면이다.");
+    return rewrite("업그레이드 운영 반응", "", "코드 변화가 실제 운영 흐름으로 이어지는지 확인할 장면이다.");
   }
   if (/ai agent|visa|prediction market|wallet|adoption|community|developer|ecosystem|app/.test(normalized)) {
     if (/visa/.test(normalized)) {
@@ -874,12 +989,25 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
       return rewrite("예측시장 사용", "", "예측시장 쪽 사용 습관이 실제 거래 행동을 바꾸는지 볼 장면이다.");
     }
     if (/wallet/.test(normalized)) {
-      return rewrite("지갑 안쪽 사용", "", "지갑 안쪽 사용 습관이 서사보다 먼저 바뀌는지 볼 장면이다.");
+      return rewrite("지갑 재방문", "", "지갑 안쪽 사용 습관이 서사보다 먼저 바뀌는지 볼 장면이다.");
     }
     if (/developer/.test(normalized)) {
-      return rewrite("개발자 반응", "", "개발자 쪽 움직임이 실제 생태계 습관으로 번지는지 볼 장면이다.");
+      return rewrite("개발자 잔류", "", "개발자 쪽 움직임이 실제 생태계 습관으로 번지는지 볼 장면이다.");
     }
-    return rewrite("실사용 흔적", "", "사람이 실제로 남는 흐름이 커지는지 볼 만한 장면이다.");
+    if (/community/.test(normalized)) {
+      return rewrite("커뮤니티 잔류", "", "커뮤니티 열기가 실제로 남는 사람 수로 이어지는지 볼 장면이다.");
+    }
+    return rewrite("실사용 잔류", "", "사람이 실제로 남는 흐름이 커지는지 볼 만한 장면이다.");
+  }
+  if (/spot volume|volume/.test(normalized)) {
+    const label =
+      direction === "up" ? "현물 거래량 확대" : direction === "down" ? "현물 거래량 둔화" : "현물 거래량 정체";
+    return rewrite(label, "", "거래량이 실제 사용 열기까지 번지는지 볼 장면이다.");
+  }
+  if (/open interest|funding|liquidity|orderbook/.test(normalized)) {
+    const label =
+      direction === "up" ? "체결 쪽 유동성 확대" : direction === "down" ? "체결 쪽 유동성 둔화" : "체결 쪽 유동성 정체";
+    return rewrite(label, "", "체결 쪽 유동성이 실제 과열과 냉각을 가르는지 볼 장면이다.");
   }
   if (/xrp|sol|altcoin|breakout|bitcoin-led|broad move|surge|rally|pump/.test(normalized)) {
     if (/xrp/.test(normalized)) {
@@ -917,6 +1045,16 @@ function humanizeSignedOnchainValue(
   if (value > 0) return labels.positive;
   if (value < 0) return labels.negative;
   return labels.neutral;
+}
+
+function inferDirectionFromText(text: string): SignalDirection {
+  const normalized = sanitizeTweetText(text || "").toLowerCase();
+  if (!normalized) return "flat";
+  if (/[+]\s*[$€£₩]?\d|(?:^|[\s(])[+]\d/.test(normalized)) return "up";
+  if (/[-]\s*[$€£₩]?\d|(?:^|[\s(])-\d/.test(normalized)) return "down";
+  if (/(expanded|rose|grew|increase|surged|inflow|유입|증가|확대|상향)/.test(normalized)) return "up";
+  if (/(fell|drop|decrease|decline|outflow|유출|감소|둔화|완화|이탈|약세)/.test(normalized)) return "down";
+  return "flat";
 }
 
 function localizeTrendHeadline(headline: string, lane: TrendLane, summary: string): string {
@@ -1149,9 +1287,42 @@ function isMarketStructureSpecificEvidence(item: OnchainEvidence): boolean {
 }
 
 function isGenericLaneEvidenceLabel(label: string): boolean {
-  return /^(시장 반응|가격 반응|가격 움직임|알트 쪽 움직임|실사용 실험|실사용 흐름|사용으로 남는 흔적|규제 쪽 실제 움직임|규제 반응|규제 일정|프로토콜 변화 신호|업그레이드 진행|외부 뉴스 흐름|외부 뉴스 반응|업계 스트레스 신호|업계 스트레스|가격 분위기)$/i.test(
+  return /^(시장 반응|가격 반응|가격 움직임|알트 쪽 움직임|실사용 실험|실사용 흐름|실사용 흔적|실사용 잔류|사용으로 남는 흔적|규제 쪽 실제 움직임|규제 반응|규제 일정|규제 쪽 일정|규제 집행 일정|프로토콜 변화 신호|업그레이드 진행|업그레이드 운영 반응|외부 뉴스 흐름|외부 뉴스 반응|업계 스트레스 신호|업계 스트레스|업계 스트레스 확대|가격 분위기|체인 안쪽 사용|체인 사용|거래 대기|큰손 움직임|대기 자금|대기 자금 흐름|거래소 쪽 자금 이동|지갑 안쪽 사용|개발자 반응|커뮤니티 반응|검증자 반응|테스트넷·메인넷 흐름|금리 기대 변화|달러 흐름|거시 흐름 변화|거시 압력 변화|ETF 쪽 일정|SEC·CFTC 움직임|법원 쪽 일정)$/i.test(
     sanitizeTweetText(label)
   );
+}
+
+function estimateEvidenceSpecificity(item: OnchainEvidence, lane: TrendLane): number {
+  const label = sanitizeTweetText(item.label || "");
+  const merged = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
+  if (isLowSignalEvidenceForEvent(item)) return 0.05;
+
+  let score = 0.42;
+
+  if (isGenericLaneEvidenceLabel(label)) score -= 0.18;
+  if (/(유입|이탈|확대|둔화|강세|약세|압박|정체|심사|승인|신청|소송|법원|집행|검증자|복구|재방문|잔류|체결|호가|유동성|대기 자금|거래소 쪽 자금|큰손 움직임)/.test(label)) {
+    score += 0.24;
+  }
+  if (/(체인 안쪽 사용|실사용 흔적|대기 자금 흐름|거래소 쪽 자금 이동|규제 반응|규제 일정|업그레이드 진행|외부 뉴스 반응|가격 반응)/.test(label)) {
+    score -= 0.12;
+  }
+  if (item.value && !/^(?:포착|감지|정상화|안정|중립|과열 가능성|컷 기대 지연|이동 포착|observed)$/i.test(item.value.trim())) {
+    score += 0.05;
+  }
+
+  const laneSpecificByLane: Record<TrendLane, RegExp> = {
+    protocol: /(검증자|복구|메인넷|테스트넷|합의|firedancer|rollup|업그레이드)/,
+    ecosystem: /(재방문|잔류|커뮤니티|개발자|지갑|실사용|사용|앱)/,
+    regulation: /(규제|정책|법원|소송|당국|etf|심사|승인|집행)/,
+    macro: /(달러|금리|물가|inflation|rates|dxy|usd|eur)/,
+    onchain: /(체인 사용|거래 대기|대기 자금|거래소 쪽 자금|큰손|주소|온체인|멤풀|스테이블)/,
+    "market-structure": /(체결|호가|유동성|주문|거래량|펀딩|funding|orderbook|exchange)/,
+  };
+
+  if (laneSpecificByLane[lane].test(merged)) score += 0.12;
+  if (lane !== item.lane && item.source !== "onchain" && !laneSpecificByLane[lane].test(merged)) score -= 0.08;
+
+  return clampNumber(score, 0.05, 0.95, 0.42);
 }
 
 function isConcreteNarrativeEvidence(item: OnchainEvidence, lane: TrendLane): boolean {
@@ -1189,8 +1360,16 @@ function countConcreteNarrativeEvidence(pair: OnchainEvidence[], lane: TrendLane
 function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): boolean {
   const concreteCount = countConcreteNarrativeEvidence(pair, lane);
   const laneConcreteCount = pair.filter((item) => item.lane === lane && isConcreteNarrativeEvidence(item, lane)).length;
+  const semanticItemCount = pair.filter((item) => itemSupportsLaneSemantics(item, lane)).length;
+  const concreteOnchainSupportCount = pair.filter(
+    (item) =>
+      item.source === "onchain" &&
+      item.lane === "onchain" &&
+      !isLowSignalEvidenceForEvent(item) &&
+      !isGenericLaneEvidenceLabel(item.label)
+  ).length;
   if (lane === "onchain") {
-    return concreteCount < 1 || pair.every((item) => isFeeLikeEvidence(item)) || countPriceLikeEvidence(pair) >= 1;
+    return concreteCount < 1 || countPriceLikeEvidence(pair) >= 1;
   }
   const genericCount = pair.filter((item) => isGenericLaneEvidenceLabel(item.label)).length;
   const feeLikeCount = pair.filter((item) => isFeeLikeEvidence(item)).length;
@@ -1212,19 +1391,27 @@ function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): bool
   }
 
   if (lane === "protocol") {
-    return concreteCount < 2 || laneConcreteCount < 1 || (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0);
+    return (
+      semanticItemCount < 1 ||
+      (laneConcreteCount < 1 && concreteOnchainSupportCount === 0) ||
+      (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0 && semanticItemCount < 2)
+    );
   }
   if (lane === "ecosystem") {
-    return concreteCount < 2 || laneConcreteCount < 1 || (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0);
+    return (
+      semanticItemCount < 1 ||
+      (laneConcreteCount < 1 && concreteOnchainSupportCount === 0) ||
+      (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0 && semanticItemCount < 2)
+    );
   }
   if (lane === "regulation") {
     if (!pair.some((item) => item.lane === "regulation")) {
       return true;
     }
     return (
-      concreteCount < 2 ||
-      laneConcreteCount < 1 ||
-      (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0) ||
+      semanticItemCount < 1 ||
+      (laneConcreteCount < 1 && concreteOnchainSupportCount === 0) ||
+      (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0 && semanticItemCount < 2) ||
       (genericCount >= 1 &&
         laneSpecificCount === 0 &&
         pair.some((item) => {
@@ -1240,7 +1427,11 @@ function pairIsTooGenericForLane(pair: OnchainEvidence[], lane: TrendLane): bool
     );
   }
   if (lane === "macro") {
-    return concreteCount < 2 || laneConcreteCount < 1 || (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0);
+    return (
+      semanticItemCount < 1 ||
+      (laneConcreteCount < 1 && concreteOnchainSupportCount === 0) ||
+      (feeLikeCount >= 1 && genericCount >= 1 && laneSpecificCount === 0 && semanticItemCount < 2)
+    );
   }
 
   return false;
@@ -1387,38 +1578,39 @@ function buildStructuralHeadlineFromEvidence(
 ): string {
   const a = humanizeStructuralEvidenceLabel(primary.label);
   const b = humanizeStructuralEvidenceLabel(secondary.label);
+  const pair = joinKoPair(a, b);
   const seed = stableSeed(`${lane}|${a}|${b}|headline`);
 
   const poolByLane: Record<TrendLane, string[]> = {
     protocol: [
-      `프로토콜 판단은 ${a}와 ${b}가 함께 남는지에 달렸다`,
-      `${a}와 ${b}를 보면 업그레이드 얘기가 운영으로 이어지는지 갈린다`,
-      `${a}와 ${b}가 같이 버텨야 프로토콜 얘기도 성립한다`,
+      `프로토콜 판단은 ${pair}, 이 조합이 함께 남는지에 달렸다`,
+      `${pair}를 보면 업그레이드 얘기가 운영으로 이어지는지 갈린다`,
+      `${pair}, 이 두 신호가 같이 버텨야 프로토콜 얘기도 성립한다`,
     ],
     ecosystem: [
-      `생태계 판단은 ${a}와 ${b}가 실제 사용으로 이어지는지에 달렸다`,
-      `${a}와 ${b}를 보면 사람이 실제로 남는지 갈린다`,
-      `${a}와 ${b}가 약하면 생태계 서사도 더 밀지 않는다`,
+      `생태계 판단은 ${pair}, 이 조합이 실제 사용으로 이어지는지에 달렸다`,
+      `${pair}를 보면 사람이 실제로 남는지 갈린다`,
+      `${pair}, 이 두 신호가 약하면 생태계 서사도 더 밀지 않는다`,
     ],
     regulation: [
-      `규제 해석은 ${a}와 ${b}가 실제 반응으로 이어지는지에 달렸다`,
-      `${a}와 ${b}를 보면 정책 문장이 기사에서 끝나는지 갈린다`,
-      `${a}와 ${b}가 버티지 못하면 규제 해석도 오늘은 보류한다`,
+      `규제 해석은 ${pair}, 이 조합이 실제 반응으로 이어지는지에 달렸다`,
+      `${pair}를 보면 정책 문장이 기사에서 끝나는지 갈린다`,
+      `${pair}, 이 두 신호가 버티지 못하면 규제 해석도 오늘은 보류한다`,
     ],
     macro: [
-      `매크로 해석은 ${a}와 ${b}가 체인 안쪽까지 닿는지에 달렸다`,
-      `${a}와 ${b}를 보면 큰 뉴스가 실제 자금 습관을 바꾸는지 갈린다`,
-      `${a}와 ${b}가 약하면 거시 뉴스도 오늘 근거가 되지 못한다`,
+      `매크로 해석은 ${pair}, 이 조합이 체인 안쪽까지 닿는지에 달렸다`,
+      `${pair}를 보면 큰 뉴스가 실제 자금 습관을 바꾸는지 갈린다`,
+      `${pair}, 이 두 신호가 약하면 거시 뉴스도 오늘 근거가 되지 못한다`,
     ],
     onchain: [
-      `온체인 판단은 ${a}와 ${b}가 함께 남는지에 달렸다`,
-      `${a}와 ${b}를 보면 체인 안쪽 흐름이 금방 식는지 갈린다`,
-      `${a}와 ${b}가 버티지 못하면 오늘 온체인 해석은 보류한다`,
+      `온체인 판단은 ${pair}, 이 조합이 함께 남는지에 달렸다`,
+      `${pair}를 보면 체인 안쪽 흐름이 금방 식는지 갈린다`,
+      `${pair}, 이 두 신호가 버티지 못하면 오늘 온체인 해석은 보류한다`,
     ],
     "market-structure": [
-      `시장 구조 판단은 ${a}와 ${b}가 실제 돈으로 남는지에 달렸다`,
-      `${a}와 ${b}를 보면 분위기가 아니라 체결이 남는지 갈린다`,
-      `${a}와 ${b}가 비면 차트 얘기도 오늘은 보류해야 한다`,
+      `시장 구조 판단은 ${pair}, 이 조합이 실제 돈으로 남는지에 달렸다`,
+      `${pair}를 보면 분위기가 아니라 체결이 남는지 갈린다`,
+      `${pair}, 이 두 신호가 비면 차트 얘기도 오늘은 보류해야 한다`,
     ],
   };
 
@@ -1432,13 +1624,14 @@ function buildStructuralSummaryFromEvidence(
 ): string {
   const a = humanizeStructuralEvidenceLabel(primary.label);
   const b = humanizeStructuralEvidenceLabel(secondary.label);
+  const pair = joinKoPair(a, b);
   const poolByLane: Record<TrendLane, string[]> = {
-    protocol: [`지금은 ${a}와 ${b}가 실제 운영 반응으로 남는지부터 본다.`],
-    ecosystem: [`지금은 ${a}와 ${b}가 사람들의 실제 사용으로 이어지는지부터 본다.`],
-    regulation: [`지금은 ${a}와 ${b}가 기사 문장을 넘어 행동으로 이어지는지부터 본다.`],
-    macro: [`지금은 ${a}와 ${b}가 체인 안쪽 자금 습관까지 바꾸는지부터 본다.`],
-    onchain: [`지금은 ${a}와 ${b}가 체인 안쪽에서 같이 남는지부터 본다.`],
-    "market-structure": [`지금은 ${a}와 ${b}가 분위기가 아니라 실제 체결로 남는지부터 본다.`],
+    protocol: [`지금은 ${pair}, 이 조합이 실제 운영 반응으로 남는지부터 본다.`],
+    ecosystem: [`지금은 ${pair}, 이 조합이 사람들의 실제 사용으로 이어지는지부터 본다.`],
+    regulation: [`지금은 ${pair}, 이 조합이 기사 문장을 넘어 행동으로 이어지는지부터 본다.`],
+    macro: [`지금은 ${pair}, 이 조합이 체인 안쪽 자금 습관까지 바꾸는지부터 본다.`],
+    onchain: [`지금은 ${pair}, 이 조합이 체인 안쪽에서 같이 남는지부터 본다.`],
+    "market-structure": [`지금은 ${pair}, 이 조합이 분위기가 아니라 실제 체결로 남는지부터 본다.`],
   };
 
   return sanitizeTweetText(poolByLane[lane][0]).slice(0, 180);
@@ -1449,13 +1642,13 @@ function humanizeStructuralEvidenceLabel(label: string): string {
   if (!normalized) return "남은 단서";
 
   const exactMap: Array<[RegExp, string]> = [
-    [/^BTC 네트워크 수수료$/i, "체인 사용"],
-    [/^BTC 멤풀 대기열$/i, "거래 대기"],
-    [/^거래소 순유입 프록시$/i, "거래소 쪽 자금 이동"],
+    [/^BTC 네트워크 수수료$/i, "체인 사용 압박"],
+    [/^BTC 멤풀 대기열$/i, "거래 대기 압박"],
+    [/^거래소 순유입 프록시$/i, "거래소 쪽 자금 흐름"],
     [/^고래\/대형주소 활동 프록시$/i, "큰손 움직임"],
     [/^스테이블코인 총공급 플로우$/i, "대기 자금 흐름"],
-    [/^지갑 사용 흐름$/i, "지갑 안쪽 사용"],
-    [/^실사용 실험$/i, "실사용 흔적"],
+    [/^지갑 사용 흐름$/i, "지갑 재방문"],
+    [/^실사용 실험$/i, "실사용 잔류"],
   ];
 
   for (const [pattern, replacement] of exactMap) {
@@ -1467,8 +1660,8 @@ function humanizeStructuralEvidenceLabel(label: string): string {
   return applyKoNarrativeLexicon(normalized)
     .replace(/프록시/g, "흐름")
     .replace(/총공급\s*플로우/g, "공급 흐름")
-    .replace(/네트워크\s*수수료/g, "체인 사용")
-    .replace(/멤풀\s*대기열/g, "거래 대기")
+    .replace(/네트워크\s*수수료/g, "체인 사용 압박")
+    .replace(/멤풀\s*대기열/g, "거래 대기 압박")
     .replace(/^\$?BTC\s*/i, "")
     .trim();
 }
@@ -1481,6 +1674,9 @@ function selectEvidenceForLane(lane: TrendLane, evidence: OnchainEvidence[]): On
     const aPenalty = estimatePriceEvidencePenalty([a], lane);
     const bPenalty = estimatePriceEvidencePenalty([b], lane);
     if (aPenalty !== bPenalty) return aPenalty - bPenalty;
+    const aSpecificity = estimateEvidenceSpecificity(a, lane);
+    const bSpecificity = estimateEvidenceSpecificity(b, lane);
+    if (aSpecificity !== bSpecificity) return bSpecificity - aSpecificity;
     const aScore = (a.digestScore ?? 0.55) * a.trust * a.freshness;
     const bScore = (b.digestScore ?? 0.55) * b.trust * b.freshness;
     return bScore - aScore;
@@ -1518,17 +1714,20 @@ function selectEvidencePairForLane(
   for (let i = 0; i < ranked.length; i += 1) {
     for (let j = i + 1; j < ranked.length; j += 1) {
       const pair = [ranked[i], ranked[j]];
+      if (lane === "onchain" && pair.some((item) => item.source !== "onchain")) continue;
       const hasOnchainEvidence = pair.some((item) => item.source === "onchain");
       const sourceDiversity = new Set(pair.map((item) => item.source)).size;
       const hasCrossSourceEvidence = sourceDiversity >= 2;
       if (options.requireOnchainEvidence && !hasOnchainEvidence) continue;
-      if (options.requireCrossSourceEvidence && !hasCrossSourceEvidence) continue;
+      if (options.requireCrossSourceEvidence && lane !== "onchain" && !hasCrossSourceEvidence) continue;
       const semanticSupport = pairSupportsLaneSemantics(pair, lane);
       const laneMatchCount = pair.filter((item) => item.lane === lane).length;
       const baseScore = pair.reduce(
         (sum, item) => sum + (item.digestScore ?? 0.55) * item.trust * item.freshness,
         0
       );
+      const specificityScore =
+        pair.reduce((sum, item) => sum + estimateEvidenceSpecificity(item, lane), 0) / pair.length;
       const weakEvidencePenalty = estimateWeakEvidencePenalty(pair);
       const genericPairPenalty = estimateGenericEvidencePairPenalty(pair, lane);
       if (pairIsTooGenericForLane(pair, lane)) continue;
@@ -1542,6 +1741,7 @@ function selectEvidencePairForLane(
       const score =
         baseScore +
         laneMatchCount * 0.18 +
+        specificityScore * 0.36 +
         (hasOnchainEvidence ? 0.06 : 0) +
         (hasCrossSourceEvidence ? 0.04 : 0) -
         (semanticSupport ? 0 : 0.16) -
@@ -1592,13 +1792,17 @@ function pairSupportsLaneSemantics(pair: OnchainEvidence[], lane: TrendLane): bo
     ecosystem:
       /(생태계|실사용|사용자|지갑|커뮤니티|개발자|앱|adoption|usage|user|wallet|community|developer|ecosystem|app)/,
     regulation:
-      /(규제|정책|집행|컴플라이언스|etf|sec|cftc|policy|regulation|compliance|court|lawsuit)/,
+      /(규제|정책|집행|당국|법원|소송|심사|승인|컴플라이언스|etf|sec|cftc|policy|regulation|compliance|court|lawsuit)/,
     macro:
       /(달러|환율|금리|인플레이션|거시|매크로|달러 쪽 반응|fed|ecb|rates|inflation|usd|eur|dxy|treasury)/,
     "market-structure":
       /(시장구조|거래소|유동성|호가|주문|체결|거래량|슬리피지|funding|orderbook|liquidity|execution|volume|exchange flow|거래소 유입)/,
   };
   return byLane[lane].test(merged);
+}
+
+function itemSupportsLaneSemantics(item: OnchainEvidence, lane: TrendLane): boolean {
+  return pairSupportsLaneSemantics([item], lane);
 }
 
 function dedupEvidence(items: OnchainEvidence[]): OnchainEvidence[] {
@@ -1692,15 +1896,15 @@ function formatEvidenceAnchor(evidence: OnchainEvidence | undefined, language: "
   }
 
   const exactHumanized: Array<[RegExp, string]> = [
-    [/^BTC 네트워크 수수료$/i, "체인 사용"],
-    [/^BTC 멤풀 대기열$/i, "거래 대기"],
+    [/^BTC 네트워크 수수료$/i, "체인 사용 압박"],
+    [/^BTC 멤풀 대기열$/i, "거래 대기 압박"],
     [/^고래\/대형주소 활동 프록시$/i, "큰손 움직임"],
     [/^스테이블코인 총공급 플로우$/i, "대기 자금 흐름"],
-    [/^거래소 순유입 프록시$/i, "거래소 쪽 자금 이동"],
+    [/^거래소 순유입 프록시$/i, "거래소 쪽 자금 흐름"],
     [/^시장 반응$/i, "가격 반응"],
     [/^시장 반응 과열 가능성$/i, "먼저 달아오른 가격 반응"],
     [/^ETF 심사 흐름(?:\s*포착)?$/i, "ETF 심사 흐름"],
-    [/^실사용 실험$/i, "사용으로 남는 흔적"],
+    [/^실사용 실험$/i, "실사용 잔류"],
     [/^규제 쪽 실제 움직임(?:\s*포착)?$/i, "규제 반응"],
     [/^프로토콜 변화 신호$/i, "업그레이드 반응"],
     [/^업계 스트레스 신호$/i, "업계 스트레스"],
