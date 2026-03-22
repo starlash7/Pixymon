@@ -899,7 +899,9 @@ test("buildEventEvidenceFallbackPost uses stronger pixymon cue and drops old fal
   );
 
   assert.doesNotMatch(fallback, /오늘 손에 남은 건|뭐가 먼저 식는지만 따라간다|끝까지 버틴 쪽만 오늘 메모에 남긴다/);
-  assert.match(fallback, /(근거는|지금 보는 근거는|내가 먼저 확인할 건)/);
+  assert.doesNotMatch(fallback, /근거는|지금 보는 근거는|내가 먼저 확인할 건/);
+  assert.match(fallback, /광고|사람을 못 붙잡|실사용|재방문|사용 흔적/);
+  assert.doesNotMatch(fallback, /살아남/);
 });
 
 test("buildTrendEvents maps news rows into lane-tagged events", () => {
@@ -1773,7 +1775,7 @@ test("buildEventEvidenceFallbackPost keeps korean fallback direct and free of ra
   };
 
   const text = buildEventEvidenceFallbackPost(plan, "ko", 220, "identity-journal");
-  assert.match(text, /근거는|지금 보는 근거는|내가 먼저 확인할 건/);
-  assert.match(text, /버린다|보류한다|다시 읽는다/);
+  assert.doesNotMatch(text, /근거는|지금 보는 근거는|내가 먼저 확인할 건/);
+  assert.match(text, /기사|반쪽|집행|현장/);
   assert.doesNotMatch(text, /오늘은 이 장면부터|시간차부터 잰다|같은 화면에 둔다|sat\/vB|SEC and CFTC/);
 });

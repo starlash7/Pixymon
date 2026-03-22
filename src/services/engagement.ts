@@ -2515,6 +2515,10 @@ function formatEvidenceToken(label: string, value: string, maxChars: number): st
   const rawLabel = sanitizeTweetText(String(label || "").trim());
   const rawValue = sanitizeTweetText(String(value || "").trim());
   const merged = sanitizeTweetText([rawLabel, rawValue].filter(Boolean).join(" "));
+  const shouldKeepValue =
+    /^[-+]?[$€£₩]?\d/.test(rawValue) ||
+    /%|sat\/?vB|gwei|tx|wallet|mempool|ETF|SEC|CFTC|court|volume|liquidity|TVL/i.test(rawValue);
+  const compactMerged = sanitizeTweetText([rawLabel, shouldKeepValue ? rawValue : ""].filter(Boolean).join(" "));
   const exactHumanized: Array<[RegExp, string]> = [
     [/^(?:BTC 네트워크 수수료|체인 수수료)$/i, humanizeFeeEvidence(rawValue || merged)],
     [/^(?:BTC 멤풀 대기열|밀린 거래량)$/i, humanizeBacklogEvidence(rawValue || merged)],
@@ -2575,7 +2579,7 @@ function formatEvidenceToken(label: string, value: string, maxChars: number): st
     return "외부 뉴스 반응";
   }
 
-  return merged.slice(0, maxChars).trim();
+  return compactMerged.slice(0, maxChars).trim();
 }
 
 function extractSignedValue(text: string): number | null {
@@ -5143,17 +5147,20 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     { mode: "meta-reflection", baseOffset: 21, charBudgetRatio: 0.76 },
     { mode: "fable-essay", baseOffset: 25, charBudgetRatio: 1 },
   ];
+  const koIdentityCandidateModes = [
+    { mode: "identity-journal", baseOffset: 9, charBudgetRatio: 0.82 },
+    { mode: "philosophy-note", baseOffset: 13, charBudgetRatio: 0.72 },
+    { mode: "interaction-experiment", baseOffset: 17, charBudgetRatio: 0.9, askKo: contextualKoAsk, askEn: contextualEnAsk },
+    { mode: "meta-reflection", baseOffset: 21, charBudgetRatio: 0.76 },
+  ];
   const headlineAlreadyReadsAsScene =
     input.language === "ko" &&
     /(본다|짚는다|확인한다|살핀다|따진다|가늠한다|지켜본다)$/.test(headlineBase);
   const candidateModes =
-    input.language === "ko" && (headlineLooksEnglishHeavy || headlineWasLocalized || headlineAlreadyReadsAsScene)
-      ? baseCandidateModes.filter(
-          (config) =>
-            config.mode !== "philosophy-note" &&
-            config.mode !== "meta-reflection" &&
-            config.mode !== "interaction-experiment"
-        )
+    input.language === "ko"
+      ? (headlineLooksEnglishHeavy || headlineWasLocalized || headlineAlreadyReadsAsScene
+        ? koIdentityCandidateModes.filter((config) => config.mode !== "interaction-experiment")
+        : koIdentityCandidateModes)
       : baseCandidateModes;
 
   const rawCandidates: PreviewFallbackCandidate[] =
@@ -5649,6 +5656,52 @@ function buildPixymonDecisionLine(
   return byLane[eventPlan.lane][seed % byLane[eventPlan.lane].length];
 }
 
+function buildIdentityFallbackPost(
+  eventPlan: {
+    lane: TrendLane;
+    event: { id?: string; headline: string };
+    evidence: Array<{ label: string; value: string }>;
+  },
+  variant: "hard" | "rescue" | "emergency",
+  maxChars: number
+): string {
+  const [a, b] = eventPlan.evidence.slice(0, 2);
+  if (!a || !b) return "";
+  const modeByVariant = {
+    hard: "identity-journal",
+    rescue: "meta-reflection",
+    emergency: "philosophy-note",
+  } as const;
+  const worldviewByLane: Record<TrendLane, string> = {
+    protocol: "신뢰는 발표보다 운영 기록에서 늦게 쌓인다",
+    ecosystem: "사람이 남지 않으면 큰 서사도 금방 광고가 된다",
+    regulation: "정책 문장보다 집행 흔적이 더 늦고 정확하다",
+    macro: "큰 뉴스보다 자금 배치가 더 오래 진실을 끌고 간다",
+    onchain: "온체인 숫자는 오래 남을 때만 단서가 된다",
+    "market-structure": "화면 열기보다 실제 체결이 더 늦고 정확하다",
+  };
+  const signatureByLane: Record<TrendLane, string> = {
+    protocol: "박수보다 복구 속도를 오래 본다",
+    ecosystem: "재방문이 없는 열기는 오래 믿지 않는다",
+    regulation: "기사보다 행동 편에 더 오래 남는다",
+    macro: "해설보다 자금 습관 쪽을 더 늦게 믿는다",
+    onchain: "하루도 못 버틴 숫자는 장식으로 본다",
+    "market-structure": "돈이 안 붙은 자신감은 제일 먼저 버린다",
+  };
+  return buildKoIdentityWriterCandidate({
+    headline: buildPixymonSceneHeadline(eventPlan, variant),
+    primaryAnchor: formatEvidenceToken(a.label, a.value, 24) || a.label,
+    secondaryAnchor: formatEvidenceToken(b.label, b.value, 24) || b.label,
+    lane: eventPlan.lane,
+    mode: modeByVariant[variant],
+    worldviewHint: worldviewByLane[eventPlan.lane],
+    signatureBelief: signatureByLane[eventPlan.lane],
+    recentReflection: worldviewByLane[eventPlan.lane],
+    maxChars,
+    seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback`,
+  });
+}
+
 function buildHardContractPost(
   eventPlan: {
     lane: TrendLane;
@@ -5666,6 +5719,10 @@ function buildHardContractPost(
   const headline = language === "ko"
     ? buildPixymonSceneHeadline(eventPlan, "hard")
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
+
+  if (language === "ko") {
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "hard", maxChars), language, maxChars);
+  }
 
   if (language === "en") {
     const laneLead: Record<TrendLane, string> = {
@@ -5714,6 +5771,10 @@ function buildRescueContractPost(
     ? buildPixymonSceneHeadline(eventPlan, "rescue")
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
+  if (language === "ko") {
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "rescue", maxChars), language, maxChars);
+  }
+
   if (language === "en") {
     const laneLead: Record<TrendLane, string> = {
       protocol: "From the protocol side,",
@@ -5760,6 +5821,10 @@ function buildEmergencyContractPost(
   const headline = language === "ko"
     ? buildPixymonSceneHeadline(eventPlan, "emergency")
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
+
+  if (language === "ko") {
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "emergency", maxChars), language, maxChars);
+  }
 
   if (language === "en") {
     const base = `${headline}. I keep ${aToken} and ${bToken} together first. I check reaction order, and I drop this read if the path breaks.`;

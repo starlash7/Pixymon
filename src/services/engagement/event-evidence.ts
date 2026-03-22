@@ -3,6 +3,7 @@ import { EventEvidencePlan, LaneUsageWindow, RecentPostRecord } from "./types.js
 import { NewsItem } from "../blockchain-news.js";
 import { sanitizeTweetText } from "./quality.js";
 import { applyKoNarrativeLexicon } from "../narrative-lexicon.js";
+import { buildKoIdentityWriterCandidate } from "./identity-writer.js";
 
 const TREND_LANES: TrendLane[] = [
   "protocol",
@@ -564,37 +565,39 @@ export function buildEventEvidenceFallbackPost(
   const eventHeadline = language === "ko" ? humanizeKoEventHeadline(eventHeadlineRaw) : eventHeadlineRaw;
   const evidenceA = formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = formatEvidenceAnchor(plan.evidence[1], language);
-  const koPair = joinKoPair(evidenceA, evidenceB);
   const narrativeMode = resolveFallbackNarrativeMode(mode || inferNarrativeModeFromHeadline(eventHeadline));
   const seed = stableSeed(`${plan.event.id}|${eventHeadline}|${evidenceA}|${evidenceB}|${narrativeMode}`);
 
-  const koTemplates: Record<NarrativeMode, string[]> = {
-    "identity-journal": [
-      `${eventHeadline}.\n\n근거는 ${koPair}다.\n\n둘 중 하나라도 먼저 꺾이면 이 해석은 버린다.`,
-      `쟁점은 ${eventHeadline}.\n\n지금 보는 근거는 ${koPair}다.\n\n한쪽만 남으면 오늘 결론은 보류한다.`,
-      `${eventHeadline}.\n\n내가 먼저 확인할 건 ${koPair}다.\n\n엇갈리기 시작하면 여기서 다시 읽는다.`,
-    ],
-    "philosophy-note": [
-      `${eventHeadline}.\n\n설명은 근거를 대신하지 못한다. 그래서 ${koPair}를 먼저 본다.\n\n둘이 엇갈리면 이 판단은 성립하지 않는다.`,
-      `${eventHeadline}.\n\n말보다 중요한 건 ${koPair}가 끝까지 같은 방향으로 남는지다.\n\n다르면 이 생각은 바로 버린다.`,
-      `${eventHeadline}.\n\n이 판단이 설득력을 가지려면 ${koPair}가 함께 버텨야 한다.\n\n둘이 어긋나면 여기서 멈춘다.`,
-    ],
-    "interaction-experiment": [
-      `${eventHeadline}.\n\n지금 질문은 ${koPair} 중 어느 쪽이 먼저 흔들리느냐다.\n\n먼저 무너지는 쪽이 보이면 거기서 읽기를 바꾼다.`,
-      `${eventHeadline}.\n\n${koPair}를 같이 두면 어디부터 의심해야 할지가 보인다.\n\n너라면 어느 쪽부터 검증할지 궁금하다.`,
-      `${eventHeadline}.\n\n오늘 질문은 단순하다. ${koPair} 중 무엇이 먼저 버티지 못하느냐다.\n\n그 순간부터 해석을 다시 쓴다.`,
-    ],
-    "meta-reflection": [
-      `예전엔 먼저 튀는 신호를 곧바로 믿었다.\n\n지금 쟁점은 ${eventHeadline}.\n\n그래서 ${koPair}가 같이 버티는지 보고, 아니면 이 해석부터 버린다.`,
-      `${eventHeadline}.\n\n내가 자주 틀리는 건 먼저 그럴듯한 쪽을 믿는 순간이다.\n\n그래서 ${koPair}가 어긋나면 오늘 판단도 거기서 멈춘다.`,
-      `${eventHeadline}.\n\n이번엔 예쁜 설명보다 ${koPair}가 끝까지 남는지부터 확인한다.\n\n하나가 먼저 꺾이면 결론은 미룬다.`,
-    ],
-    "fable-essay": [
-      `${eventHeadline}.\n\n떠드는 쪽보다 버티는 쪽이 더 중요하다.\n\n오늘은 ${koPair}가 끝까지 남는지 보고, 아니면 조용히 접는다.`,
-      `${eventHeadline}.\n\n결국 남는 건 ${koPair}다.\n\n둘이 같이 버티지 못하면 오늘 판단도 여기서 멈춘다.`,
-      `${eventHeadline}.\n\n설명이 커질수록 확인할 건 줄어든다.\n\n그래서 ${koPair}만 같이 놓고 본다. 하나가 먼저 사라지면 여기서 접는다.`,
-    ],
-  };
+  if (language === "ko") {
+    const worldviewByLane: Record<TrendLane, string> = {
+      protocol: "신뢰는 발표보다 운영 기록에서 늦게 쌓인다",
+      ecosystem: "사람이 남지 않으면 큰 서사도 금방 광고가 된다",
+      regulation: "정책 문장보다 집행 흔적이 더 늦고 정확하다",
+      macro: "큰 뉴스보다 자금 배치가 더 오래 진실을 끌고 간다",
+      onchain: "온체인 숫자는 오래 남을 때만 단서가 된다",
+      "market-structure": "화면 열기보다 실제 체결이 더 늦고 정확하다",
+    };
+    const signatureByLane: Record<TrendLane, string> = {
+      protocol: "박수보다 복구 속도를 오래 본다",
+      ecosystem: "재방문이 없는 열기는 오래 믿지 않는다",
+      regulation: "기사보다 행동 편에 더 오래 남는다",
+      macro: "해설보다 자금 습관 쪽을 더 늦게 믿는다",
+      onchain: "하루도 못 버틴 숫자는 장식으로 본다",
+      "market-structure": "돈이 안 붙은 자신감은 제일 먼저 버린다",
+    };
+    return buildKoIdentityWriterCandidate({
+      headline: eventHeadline,
+      primaryAnchor: evidenceA,
+      secondaryAnchor: evidenceB,
+      lane: plan.lane,
+      mode: narrativeMode,
+      worldviewHint: worldviewByLane[plan.lane],
+      signatureBelief: signatureByLane[plan.lane],
+      recentReflection: worldviewByLane[plan.lane],
+      maxChars,
+      seedHint: `${plan.event.id}|fallback|${narrativeMode}`,
+    });
+  }
 
   const enTemplates: Record<NarrativeMode, string[]> = {
     "identity-journal": [
@@ -619,7 +622,7 @@ export function buildEventEvidenceFallbackPost(
     ],
   };
 
-  const pool = language === "ko" ? koTemplates[narrativeMode] : enTemplates[narrativeMode];
+  const pool = enTemplates[narrativeMode];
   const base = pool[seed % pool.length] || pool[0];
   return sanitizeTweetText(base).slice(0, Math.max(120, Math.min(280, Math.floor(maxChars))));
 }
@@ -1729,7 +1732,14 @@ function formatEvidenceAnchor(evidence: OnchainEvidence | undefined, language: "
     return "외부 뉴스 반응";
   }
 
-  const fallback = `${humanizeStructuralEvidenceLabel(evidence.label)} ${sanitizeTweetText(evidence.value || "")}`
+  const labelOnly = humanizeStructuralEvidenceLabel(evidence.label);
+  const rawValue = sanitizeTweetText(evidence.value || "").trim();
+  const keepValue =
+    /^[-+]?[$€£₩]?\d/.test(rawValue) ||
+    /%|sat\/?vB|gwei|tx|wallet|mempool|ETF|SEC|CFTC|court|volume|liquidity|TVL/i.test(rawValue);
+  const fallback = [labelOnly, keepValue ? rawValue : ""]
+    .filter(Boolean)
+    .join(" ")
     .replace(/\s+/g, " ")
     .trim();
   return fallback.slice(0, 70);

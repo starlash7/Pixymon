@@ -421,6 +421,7 @@ const SOUL_HINT_POOLS = {
 
 const ANCHOR_REWRITES: Array<[RegExp, string]> = [
   [/^체인\s*안쪽\s*사용$/u, "체인 안쪽 사용"],
+  [/^체인\s*사용$/u, "체인 안쪽 사용"],
   [/^규제\s*쪽\s*일정$/u, "규제 일정"],
   [/^실제\s*사용자가\s*다시\s*돌아오는지$/u, "재방문 흐름"],
   [/^다시\s*돌아오는\s*사람/u, "재방문 흐름"],
@@ -459,6 +460,7 @@ function summarizeAnchor(anchor: string): string {
     .replace(/\s*쪽\s*일정$/u, " 일정")
     .replace(/\s*쪽\s*움직임$/u, " 움직임")
     .replace(/\s*쪽\s*흐름$/u, " 흐름")
+    .replace(/\s*(포착|살아남|확대|증가|감소|회복|유지|급등|급락)$/u, "")
     .replace(/\s{2,}/g, " ")
     .trim();
   if (!cleaned) return "";
