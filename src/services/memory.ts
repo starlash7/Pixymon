@@ -260,6 +260,7 @@ interface Tweet {
 interface TweetMeta {
   lane?: TrendLane;
   focus?: string;
+  sceneFamily?: string;
   eventId?: string;
   eventHeadline?: string;
   evidenceIds?: string[];
@@ -393,6 +394,7 @@ interface RecordNarrativeOutcomeInput {
   evidenceIds: string[];
   mode?: NarrativeMode;
   focus?: string;
+  sceneFamily?: string;
   postText: string;
 }
 
@@ -950,6 +952,10 @@ export class MemoryService {
         headline,
         mode: this.normalizeNarrativeMode(row.mode),
         focus: typeof row.focus === "string" && row.focus.trim() ? row.focus.trim().slice(0, 48) : undefined,
+        sceneFamily:
+          typeof row.sceneFamily === "string" && row.sceneFamily.trim()
+            ? row.sceneFamily.trim().slice(0, 80)
+            : undefined,
         activityCount: this.clampInt(row.activityCount, 1, 1000, 1),
         evidenceIds: this.normalizeEvidenceIds(row.evidenceIds),
         openedAt: typeof row.openedAt === "string" ? row.openedAt : new Date().toISOString(),
@@ -1025,6 +1031,10 @@ export class MemoryService {
     const lane = this.normalizeTrendLane(row.lane);
     const focus =
       typeof row.focus === "string" && row.focus.trim() ? row.focus.trim().slice(0, 48) : undefined;
+    const sceneFamily =
+      typeof row.sceneFamily === "string" && row.sceneFamily.trim()
+        ? row.sceneFamily.trim().slice(0, 80)
+        : undefined;
     const eventId = typeof row.eventId === "string" && row.eventId.trim() ? row.eventId.trim().slice(0, 80) : undefined;
     const eventHeadline =
       typeof row.eventHeadline === "string" && row.eventHeadline.trim()
@@ -1044,6 +1054,7 @@ export class MemoryService {
     if (
       !lane &&
       !focus &&
+      !sceneFamily &&
       !eventId &&
       !eventHeadline &&
       (!evidenceIds || evidenceIds.length === 0) &&
@@ -1055,6 +1066,7 @@ export class MemoryService {
     return {
       lane,
       focus,
+      sceneFamily,
       eventId,
       eventHeadline,
       evidenceIds: evidenceIds && evidenceIds.length > 0 ? evidenceIds : undefined,
@@ -1598,7 +1610,9 @@ export class MemoryService {
       const lines: string[] = ["### Autonomy Memory"];
       lines.push(`- Active threads: ${activeThreads.length}`);
       for (const thread of activeThreads) {
-        lines.push(`  - [${thread.lane}${thread.focus ? `/${thread.focus}` : ""}] ${thread.headline}`);
+        lines.push(
+          `  - [${thread.lane}${thread.focus ? `/${thread.focus}` : ""}${thread.sceneFamily ? `/${thread.sceneFamily}` : ""}] ${thread.headline}`
+        );
       }
       if (openHypotheses.length > 0) {
         lines.push("- Open hypotheses:");
@@ -1618,7 +1632,9 @@ export class MemoryService {
     const lines: string[] = ["### 자율성 메모리"];
     lines.push(`- 활성 스레드: ${activeThreads.length}개`);
     for (const thread of activeThreads) {
-      lines.push(`  - [${thread.lane}${thread.focus ? `/${thread.focus}` : ""}] ${thread.headline}`);
+      lines.push(
+        `  - [${thread.lane}${thread.focus ? `/${thread.focus}` : ""}${thread.sceneFamily ? `/${thread.sceneFamily}` : ""}] ${thread.headline}`
+      );
     }
     if (openHypotheses.length > 0) {
       lines.push("- 열린 가설:");
@@ -2198,6 +2214,10 @@ export class MemoryService {
       evidenceIds: this.normalizeEvidenceIds(input.evidenceIds),
       mode: this.normalizeNarrativeMode(input.mode),
       focus: typeof input.focus === "string" && input.focus.trim() ? input.focus.trim().slice(0, 48) : undefined,
+      sceneFamily:
+        typeof input.sceneFamily === "string" && input.sceneFamily.trim()
+          ? input.sceneFamily.trim().slice(0, 80)
+          : undefined,
     });
 
     const normalizedText = postText.replace(/\s+/g, " ").trim();
@@ -2888,6 +2908,7 @@ export class MemoryService {
     evidenceIds: string[];
     mode?: NarrativeMode;
     focus?: string;
+    sceneFamily?: string;
   }): void {
     const now = new Date().toISOString();
     const existing = this.data.autonomyContext.narrativeThreads.find((item) => item.eventId === input.eventId);
@@ -2896,6 +2917,7 @@ export class MemoryService {
       existing.headline = input.headline;
       existing.mode = input.mode || existing.mode;
       existing.focus = input.focus || existing.focus;
+      existing.sceneFamily = input.sceneFamily || existing.sceneFamily;
       existing.activityCount += 1;
       existing.updatedAt = now;
       existing.evidenceIds = [...new Set([...existing.evidenceIds, ...input.evidenceIds])].slice(0, 8);
@@ -2909,6 +2931,7 @@ export class MemoryService {
       headline: input.headline,
       mode: input.mode,
       focus: input.focus,
+      sceneFamily: input.sceneFamily,
       activityCount: 1,
       evidenceIds: input.evidenceIds.slice(0, 8),
       openedAt: now,

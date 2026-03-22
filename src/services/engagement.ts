@@ -808,7 +808,7 @@ export async function postTrendUpdate(
     if (eventPlan) {
       const plannerGate = evaluatePlannerPublishReadiness(eventPlan, recentNarrativeThreads);
       console.log(
-        `[PLAN] focus=${eventPlan.focus} score=${eventPlan.plannerScore.toFixed(3)} warnings=${eventPlan.plannerWarnings.join(",") || "none"}`
+        `[PLAN] focus=${eventPlan.focus} scene=${eventPlan.sceneFamily} score=${eventPlan.plannerScore.toFixed(3)} warnings=${eventPlan.plannerWarnings.join(",") || "none"}`
       );
       if (!plannerGate.allow) {
         memory.recordPostGeneration({
@@ -2224,6 +2224,7 @@ Rules:
         metadata: {
           lane: eventPlan.lane,
           focus: eventPlan.focus,
+          sceneFamily: eventPlan.sceneFamily,
           eventId: eventPlan.event.id,
           eventHeadline: eventPlan.event.headline,
           evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
@@ -2251,6 +2252,7 @@ Rules:
     memory.recordNarrativeOutcome({
       lane: eventPlan.lane,
       focus: eventPlan.focus,
+      sceneFamily: eventPlan.sceneFamily,
       eventId: eventPlan.event.id,
       eventHeadline: eventPlan.event.headline,
       evidenceIds: eventPlan.evidence.map((item) => item.id).slice(0, 2),
@@ -6161,6 +6163,9 @@ function evaluatePlannerPublishReadiness(
   if (plan.focus === "general") warnings.add("focus-general");
   if (plan.plannerScore < 0.7) warnings.add("score-thin");
   if (sameFocusRepeats >= 2) warnings.add("focus-saturated");
+  if (warnings.has("scene-repeat") && plan.plannerScore < 0.9) {
+    return { allow: false, reason: "scene-repeat" };
+  }
   if (warnings.has("focus-general")) return { allow: false, reason: "focus-general" };
   if (warnings.has("generic-evidence")) return { allow: false, reason: "generic-evidence" };
   if (warnings.has("semantic-mismatch")) return { allow: false, reason: "semantic-mismatch" };
@@ -6186,6 +6191,9 @@ function evaluateFallbackPublishReadiness(
   if (plan.focus === "general") return { allow: false, reason: "fallback-on-general-focus" };
   if (warningSet.has("generic-evidence")) return { allow: false, reason: "fallback-on-generic-evidence" };
   if (warningSet.has("semantic-mismatch")) return { allow: false, reason: "fallback-on-semantic-mismatch" };
+  if (warningSet.has("scene-repeat") && plan.plannerScore < 0.96) {
+    return { allow: false, reason: "fallback-on-scene-repeat" };
+  }
   if (kind !== "deterministic") return { allow: false, reason: `fallback-kind-${kind}` };
   if (warningSet.has("structural-fallback") && plan.plannerScore < 0.96) {
     return { allow: false, reason: "fallback-on-thin-structural-plan" };
