@@ -78,7 +78,7 @@ test("buildKoIdentityWriterCandidate uses evaluative voice instead of checklist 
     seedHint: "identity-writer:ecosystem-evaluative",
   });
 
-  assert.match(text, /(홍보 문구|광고 냄새|과열이지 성장은 아니다|좋은 포스터여도 오래 못 간다|절반짜리다)/);
+  assert.match(text, /(홍보 문구|광고 냄새|과열이지 성장은 아니다|좋은 포스터여도 오래 못 간다|절반짜리다|사람을 못 붙잡|오래 못 간다|힘을 잃는다)/);
   assert.doesNotMatch(text, /먼저 본다\.\s*확인한다\.\s*미룬다/);
 });
 
@@ -106,6 +106,41 @@ test("buildKoIdentityWriterCandidate splits ecosystem voice by retention versus 
   assert.notEqual(retention.split(".")[0]?.trim(), hype.split(".")[0]?.trim());
   assert.match(retention, /(재방문|잔류|사람이 남|사용자)/);
   assert.match(hype, /(홍보|광고|서사|캠페인)/);
+});
+
+test("buildKoIdentityWriterCandidate repairs trailing 먼저 headline into direct regulation prose", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "regulation",
+    mode: "meta-reflection",
+    headline: "정책 문장보다 실제 반응이 어디서 갈라지는지 먼저 본다",
+    primaryAnchor: "규제 반응",
+    secondaryAnchor: "대기 자금 흐름",
+    worldviewHint: "정책 문장보다 집행 흔적이 더 늦고 정확하다",
+    signatureBelief: "기사보다 행동 편에 더 오래 남는다",
+    recentReflection: "행동이 따라오지 않는 순간 해설은 금방 얇아진다",
+    seedHint: "identity-writer:regulation-direct",
+  });
+
+  assert.doesNotMatch(text, /먼저\.\s*$/);
+  assert.match(text, /(기사|집행|행동|현장)/);
+});
+
+test("buildKoIdentityWriterCandidate gives market-structure liquidity focus a money-first ending", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "market-structure",
+    mode: "philosophy-note",
+    headline: "호가보다 체결이 늦게 진실을 말하는 날인지 본다",
+    primaryAnchor: "큰 주문 소화",
+    secondaryAnchor: "자금 쏠림 방향",
+    worldviewHint: "화면 열기보다 실제 체결이 더 늦고 정확하다",
+    signatureBelief: "돈이 안 붙은 자신감은 제일 먼저 버린다",
+    recentReflection: "좋은 해설보다 오래 남는 흔적 하나가 훨씬 정확하다",
+    seedHint: "identity-writer:liquidity-ending",
+  });
+
+  assert.match(text, /(돈|체결|연출|화면값|장면)/);
 });
 
 test("buildKoIdentityWriterCandidate varies layout and cadence across variants", () => {

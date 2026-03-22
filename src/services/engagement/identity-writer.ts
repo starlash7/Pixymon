@@ -347,6 +347,93 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
   },
 };
 
+const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    retention: [
+      "사람이 남는지 못 남는지가 결국 생태계 얘기의 값을 정한다.",
+      "생태계가 오래 가는지 아닌지는 결국 재방문에서 갈린다.",
+      "커뮤니티의 진짜 온도는 결국 돌아오는 사람 수에서 드러난다.",
+    ],
+    hype: [
+      "서사만 불어나고 사용이 비면 그 생태계는 금방 종이처럼 얇아진다.",
+      "열기만 큰 생태계는 결국 홍보 문구와 구별이 안 간다.",
+      "광고가 사람보다 먼저 커지는 생태계는 오래 못 간다.",
+    ],
+  },
+  regulation: {
+    execution: [
+      "규제 뉴스의 값은 결국 기사보다 집행에서 다시 매겨진다.",
+      "정책 문장과 실제 행동이 갈라지는 순간 해설은 값이 빠진다.",
+      "규제 얘기는 길어도 결국 집행이 붙지 않으면 기사로 남는다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "호가보다 체결이 늦게 진실을 말하는 날이 있다.",
+      "분위기가 아니라 실제 돈이 남아야 구조 변화라고 부를 수 있다.",
+      "유동성이 안 붙은 과열은 결국 화면 장면으로 끝난다.",
+    ],
+  },
+};
+
+const FOCUS_EVIDENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    retention: [
+      "{A}가 살아 있어도 {B}가 비면 결국 사람은 남지 않는다.",
+      "{A}가 뜨거워도 {B}가 비면 그 반응은 잔류로 이어지지 않는다.",
+      "{A}가 살아 있어도 {B}가 식으면 그 생태계는 겉열기만 남는다.",
+    ],
+    hype: [
+      "{A}만 커지고 {B}가 비면 그 열기는 결국 홍보 문장으로 돌아간다.",
+      "{A}가 요란해도 {B}가 비면 그 생태계는 포스터만 커진 셈이다.",
+      "{A}가 앞서도 {B}가 안 붙으면 사용보다 캠페인이 커진 날이다.",
+    ],
+  },
+  regulation: {
+    execution: [
+      "{A}가 움직여도 {B}가 안 붙으면 그 뉴스는 아직 기사값밖에 못 한다.",
+      "{A}만 커지고 {B}가 비면 정책 해설이 현장보다 앞서간다.",
+      "{A}가 보여도 {B}가 비면 그 규제 뉴스는 아직 바깥에서만 돈다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "{A}가 살아도 {B}가 비면 그 과열은 실제 돈까지 번진 게 아니다.",
+      "{A}가 보여도 {B}가 비면 화면 열기만 커졌다고 보는 편이 맞다.",
+      "{A}가 살아도 {B}가 안 붙으면 그 자신감은 체결 없는 분위기다.",
+    ],
+  },
+};
+
+const FOCUS_DECISION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    retention: [
+      "사람이 안 남으면 이 생태계 서사는 바로 값이 떨어진다.",
+      "잔류가 비면 좋은 설명도 여기서 힘을 잃는다.",
+      "돌아오는 사람이 없으면 이 얘기는 성장 대신 과열로 남는다.",
+    ],
+    hype: [
+      "사용이 안 붙으면 그 열기는 광고 쪽으로 분류한다.",
+      "홍보만 크면 이 서사는 미련 없이 과열 편에 둔다.",
+      "사람보다 서사가 먼저 커지면 이 얘기는 믿지 않는다.",
+    ],
+  },
+  regulation: {
+    execution: [
+      "집행이 안 붙으면 이 뉴스는 기사 단계에서 멈춘다.",
+      "행동이 비면 그 규제 해설은 여기서 바로 힘을 잃는다.",
+      "현장 반응이 없으면 그 정책 얘기는 아직 반쪽이다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "돈이 안 붙으면 이 과열은 화면값밖에 못 한다.",
+      "체결이 비면 그 자신감은 구조 변화 대신 장면으로 남는다.",
+      "실제 돈이 안 남으면 이 장면은 연출 편에 둔다.",
+    ],
+  },
+};
+
 const QUESTION_FALLBACKS = [
   "이 장면을 뒤집는 첫 신호를 어디서 찾겠나?",
   "너라면 여기서 먼저 믿지 않을 근거는 뭐겠나?",
@@ -567,13 +654,18 @@ function summarizeHeadline(headline: string): string {
     .replace(/갈리는지$/u, "갈리는 장면")
     .replace(/버티는지$/u, "버티는 장면")
     .replace(/무너지는지$/u, "무너지는 장면")
+    .replace(/\s*먼저$/u, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
-function resolveWriterFrame(mode: string, seed: number): KoWriterFrame {
+function resolveWriterFrame(mode: string, focus: WriterFocus, seed: number): KoWriterFrame {
   if (mode === "interaction-experiment") return "quest";
   if (mode === "meta-reflection") return "cross-exam";
+  if (mode === "identity-journal" && focus === "retention") return "field-note";
+  if (mode === "identity-journal" && focus === "hype") return "claim-note";
+  if (mode === "meta-reflection" && focus === "execution") return "cross-exam";
+  if (mode === "philosophy-note" && focus === "liquidity") return "claim-note";
   if (mode === "identity-journal") return seed % 2 === 0 ? "field-note" : "claim-note";
   if (mode === "philosophy-note") return seed % 2 === 0 ? "claim-note" : "cross-exam";
   return ["claim-note", "field-note", "cross-exam"][(seed % 3)] as KoWriterFrame;
@@ -671,7 +763,9 @@ function buildSceneLine(
   secondaryAnchor: string
 ): string {
   const scene = summarizeHeadline(input.headline);
-  const needsAnchorFallback = !scene || /(는지|인지|일지|될지|붙는지|남는지|갈리는지|버티는지|무너지는지)$/.test(scene);
+  const needsAnchorFallback =
+    !scene ||
+    /(는지|인지|일지|될지|붙는지|남는지|갈리는지|버티는지|무너지는지|먼저)$/.test(scene);
   const sceneCore = needsAnchorFallback
     ? fill(pick(ANCHOR_SCENE_BY_LANE[input.lane], seed, 29), primaryAnchor, secondaryAnchor)
     : scene;
@@ -785,16 +879,24 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const primaryAnchor = summarizeAnchor(input.primaryAnchor);
   const secondaryAnchor = summarizeAnchor(input.secondaryAnchor);
   const focus = resolveWriterFocus(input, primaryAnchor, secondaryAnchor);
-  const frame = resolveWriterFrame(input.mode, seed + variant);
-  const leadPool = frame === "cross-exam" ? CROSS_EXAM_BY_LANE[input.lane] : frame === "field-note" ? FIELD_NOTES_BY_LANE[input.lane] : CLAIM_BY_LANE[input.lane];
+  const frame = resolveWriterFrame(input.mode, focus, seed + variant);
+  const focusLeadPool = FOCUS_CLAIM_BY_LANE[input.lane]?.[focus] || [];
+  const leadPool =
+    frame === "cross-exam"
+      ? CROSS_EXAM_BY_LANE[input.lane]
+      : frame === "field-note"
+        ? [...focusLeadPool, ...FIELD_NOTES_BY_LANE[input.lane]]
+        : [...focusLeadPool, ...CLAIM_BY_LANE[input.lane]];
   const lead = pick(leadPool, seed, variant);
   const scene = buildSceneLine(input, seed + variant, primaryAnchor, secondaryAnchor);
-  const evidence = fill(pick(EVIDENCE_BY_LANE[input.lane], seed, variant + 3), primaryAnchor, secondaryAnchor);
+  const focusEvidencePool = FOCUS_EVIDENCE_BY_LANE[input.lane]?.[focus] || [];
+  const evidence = fill(pick([...focusEvidencePool, ...EVIDENCE_BY_LANE[input.lane]], seed, variant + 3), primaryAnchor, secondaryAnchor);
   const instinct = rewriteSoulHint(input, seed + 17);
   const attitude = pickAttitudeLine(input.lane, focus, seed + variant, lead);
   const fixation = pickFixationLine(input.lane, focus, seed + variant, lead, attitude);
   const stamp = pickModeStamp(input.mode, seed + variant, lead, attitude);
-  const decision = pick(DECISION_BY_LANE[input.lane], seed, variant + 5);
+  const focusDecisionPool = FOCUS_DECISION_BY_LANE[input.lane]?.[focus] || [];
+  const decision = pick([...focusDecisionPool, ...DECISION_BY_LANE[input.lane]], seed, variant + 5);
   const consequence = pick(CONSEQUENCE_BY_LANE[input.lane], seed, variant + 9);
   const question = buildQuestion(input, seed + 19);
   const segments: Record<WriterSegment, string> = {
