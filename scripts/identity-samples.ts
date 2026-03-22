@@ -94,6 +94,13 @@ type Sample = {
   secondSentence: string;
 };
 
+function parseVariantCount(argv: string[]): number {
+  const raw = argv.find((arg) => arg.startsWith("--variants="))?.split("=")[1];
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 4;
+  return Math.max(1, Math.min(16, Math.trunc(parsed)));
+}
+
 function splitSentences(text: string): string[] {
   return text
     .split(/(?<=[.!?])\s+/u)
@@ -101,10 +108,10 @@ function splitSentences(text: string): string[] {
     .filter(Boolean);
 }
 
-function generateSamples(): Sample[] {
+function generateSamples(variantCount: number): Sample[] {
   const samples: Sample[] = [];
   for (const item of cases) {
-    for (let variant = 0; variant < 4; variant += 1) {
+    for (let variant = 0; variant < variantCount; variant += 1) {
       const text = buildKoIdentityWriterCandidate(
         {
           ...item,
@@ -148,7 +155,8 @@ function buildMarkdown(samples: Sample[]): string {
 }
 
 function main() {
-  const samples = generateSamples();
+  const variantCount = parseVariantCount(process.argv.slice(2));
+  const samples = generateSamples(variantCount);
   const firstSentenceTop = countTop(samples.map((sample) => sample.firstSentence)).slice(0, 10);
   const secondSentenceTop = countTop(samples.map((sample) => sample.secondSentence)).slice(0, 10);
 
@@ -164,6 +172,7 @@ function main() {
     JSON.stringify(
       {
         sampleCount: samples.length,
+        variantCount,
         topFirstSentences: firstSentenceTop,
         topSecondSentences: secondSentenceTop,
       },
