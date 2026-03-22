@@ -74,6 +74,7 @@ import { buildDigestReflectionJob, buildLanguageRewriteJob } from "./llm-batch.j
 import type { BatchReadyClaudeJob } from "./llm-batch.js";
 import { llmBatchQueue } from "./llm-batch-queue.js";
 import {
+  EventEvidencePlan,
   AdaptivePolicy,
   CycleCacheMetrics,
   DailyQuotaOptions,
@@ -5978,11 +5979,23 @@ function isStrongOnchainStructuralPlan(plan: EventEvidencePlan): boolean {
   if (!plan.hasOnchainEvidence || plan.evidence.length < 2) {
     return false;
   }
-  return plan.evidence.every((item) => {
-    const label = String(item.label || "");
+  const genericLabels = [
+    "시장 반응",
+    "규제 일정",
+    "현장 반응",
+    "체인 안쪽 사용",
+    "커뮤니티 반응",
+    "대기 자금 흐름",
+    "자금 쏠림 방향",
+    "집행 흔적",
+  ];
+  const weakValuePatterns = [/24h/i, /24시간/, /변동/, /도미넌스/, /공포/, /탐욕/, /시총/, /sat\/vB/i];
+  return plan.evidence.every((item: EventEvidencePlan["evidence"][number]) => {
+    const label = String(item.label || "").trim();
+    const combined = `${label} ${String(item.value || "").trim()}`;
     return (
-      !/(시장 반응|규제 일정|현장 반응|체인 안쪽 사용|커뮤니티 반응|대기 자금 흐름|자금 쏠림 방향|집행 흔적)/.test(label) &&
-      !/(24h|24시간|변동|도미넌스|공포|탐욕|시총|sat\\/vB)/i.test(`${label} ${item.value || ""}`)
+      !genericLabels.some((token) => label.includes(token)) &&
+      !weakValuePatterns.some((pattern) => pattern.test(combined))
     );
   });
 }
