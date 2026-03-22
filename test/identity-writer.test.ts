@@ -48,7 +48,7 @@ test("buildKoIdentityWriterCandidate keeps market-structure prose thesis-driven"
   });
 
   assert.match(text, /(주문|체결|거래소)/);
-  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다)/);
+  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다)/);
   assert.doesNotMatch(text, /장부에|먹은 단서|다음 판단 재료|다시 읽는다/);
   assert.doesNotMatch(text, /차트보다 실제 체결이 남아야 판단할 수 있다\.\s+차트보다 실제 체결이 남아야 판단할 수 있다/);
 });
@@ -125,4 +125,17 @@ test("buildKoIdentityWriterCandidate can surface lane fixation instead of generi
   }, 2);
 
   assert.match(text, /(체결|돈이 안 붙은 자신감|화면 열기보다 오래 보는 건 결국 체결)/);
+});
+
+test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy mode", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "protocol",
+    mode: "philosophy-note",
+    primaryAnchor: "검증자 안정성",
+    secondaryAnchor: "복구 시간 분포",
+    seedHint: "identity-writer:mode-stamp",
+  }, 0);
+
+  assert.match(text, /(길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복)/);
 });

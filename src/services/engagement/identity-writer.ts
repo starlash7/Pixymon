@@ -6,6 +6,7 @@ type KoWriterFrame = "claim-note" | "field-note" | "cross-exam" | "quest";
 type WriterSegment =
   | "scene"
   | "lead"
+  | "stamp"
   | "evidence"
   | "instinct"
   | "attitude"
@@ -118,34 +119,40 @@ const FIELD_NOTES_BY_LANE: Record<TrendLane, string[]> = {
 
 const EVIDENCE_BY_LANE: Record<TrendLane, string[]> = {
   protocol: [
-    "{A}와 {B}를 같이 놓고 보면 발표가 운영으로 이어지는지 드러난다.",
+    "{A}가 살아도 {B}가 비면 그 업그레이드는 아직 운영까지 못 내려왔다.",
     "{A}는 살아 있는데 {B}가 비면 나는 그 업그레이드를 절반만 믿는다.",
     "{A}가 앞서도 {B}가 늦으면 그 발표는 아직 반쪽이다.",
+    "{A}만 번쩍이고 {B}가 비면 그 발표는 박수에서 멈춘다.",
   ],
   ecosystem: [
-    "{A}와 {B}를 같이 보면 서사와 사용이 같은 방향인지 드러난다.",
+    "{A}가 뜨거워도 {B}가 비면 그 열기는 사람을 못 붙잡는다.",
     "{A}가 살아 있어도 {B}가 비면 그 생태계 얘기는 절반짜리다.",
     "{A}가 뜨거워도 {B}가 비면 그 반응은 오래 못 간다.",
+    "{A}만 커지고 {B}가 비면 그 서사는 결국 홍보로 돌아간다.",
   ],
   regulation: [
-    "{A}와 {B}를 같이 보면 기사와 행동 사이의 간격이 드러난다.",
+    "{A}가 움직여도 {B}가 비면 그 뉴스는 아직 기사 단계에 머문다.",
     "{A}가 움직여도 {B}가 비면 그 뉴스는 아직 현장에 닿지 않은 셈이다.",
     "{A}가 커져도 {B}가 비면 그 뉴스는 아직 현장 밖에 머문다.",
+    "{A}만 커지고 {B}가 안 붙으면 해설이 행동보다 앞서간다.",
   ],
   macro: [
-    "{A}와 {B}를 같이 보면 해설과 자금 습관이 같은 쪽을 가리키는지 드러난다.",
+    "{A}가 커도 {B}가 그대로면 큰 뉴스는 아직 배치까지 못 건드렸다.",
     "{A}가 시끄러워도 {B}가 안 바뀌면 나는 그 거시 해설을 늦게 믿는다.",
     "{A}가 커도 {B}가 그대로면 돈은 아직 움직이지 않은 셈이다.",
+    "{A}만 요란하고 {B}가 가만하면 돈은 아직 다른 말을 한다.",
   ],
   onchain: [
-    "{A}와 {B}를 함께 보면 숫자보다 지속성이 어디에 붙는지 드러난다.",
+    "{A}가 튀어도 {B}가 금방 꺼지면 그 숫자는 아직 하루를 못 넘긴다.",
     "{A}가 튀어도 {B}가 금방 꺼지면 그 신호는 아직 잡음에 가깝다.",
     "{A}가 살아도 {B}가 못 버티면 신호보다 잡음 쪽이다.",
+    "{A}가 예뻐도 {B}가 비면 그 온체인 숫자는 아직 장식이다.",
   ],
   "market-structure": [
-    "{A}와 {B}를 같이 보면 화면 열기와 실제 돈이 같은 편인지 드러난다.",
+    "{A}가 살아 있는데 {B}가 비면 그 과열은 아직 화면 바깥으로 못 나왔다.",
     "{A}가 살아 있는데 {B}가 비면 나는 그 과열을 믿지 않는다.",
     "{A}가 출렁여도 {B}가 비면 그 과열은 화면 안에서만 돈다.",
+    "{A}만 튀고 {B}가 비면 그 자신감은 체결 없는 연출이다.",
   ],
 };
 
@@ -316,6 +323,29 @@ const QUESTION_BY_LANE: Record<TrendLane, string[]> = {
     "이 과열이 연출이 아니라면 어떤 체결이 마지막까지 남아야 한다고 보나?",
     "화면 열기 말고 진짜 돈을 보려면 여기서 뭘 먼저 버리겠나?",
     "이 자신감이 빈 껍데기라면 가장 먼저 빠질 흔적은 뭐라고 보나?",
+  ],
+};
+
+const MODE_STAMP_BY_MODE: Record<string, string[]> = {
+  "identity-journal": [
+    "결국 메모에 남는 건 끝까지 버틴 쪽뿐이다.",
+    "내가 오래 붙드는 건 늘 늦게 남는 쪽이다.",
+    "급하게 좋아 보인 장면은 늘 한 번 더 접어 둔다.",
+  ],
+  "meta-reflection": [
+    "대충 맞는 설명일수록 현장에선 빨리 들통난다.",
+    "문제는 늘 제일 늦게 붙는 곳에서 커진다.",
+    "겉이 맞아 보여도 밑단이 비면 금방 티가 난다.",
+  ],
+  "philosophy-note": [
+    "길게 보면 서사는 결국 운영 앞에서 값을 다시 매긴다.",
+    "오래 남는 건 해설보다 반복되는 습관 쪽이다.",
+    "결국 구조는 화려한 설명보다 느린 반복을 닮는다.",
+  ],
+  "interaction-experiment": [
+    "그래서 마지막에 남는 질문은 늘 하나뿐이다.",
+    "결국 여기서 갈리는 건 한 줄짜리 설명이 아니다.",
+    "그래서 이 장면은 질문으로 다시 물어야 한다.",
   ],
 };
 
@@ -534,6 +564,14 @@ function rewriteSoulHint(input: KoIdentityWriterInput, seed: number): string {
   return pick(SOUL_HINT_POOLS.default, seed, 19);
 }
 
+function pickModeStamp(mode: string, seed: number, lead: string, attitude: string): string {
+  const pool = MODE_STAMP_BY_MODE[mode];
+  if (!pool?.length) return "";
+  const first = pick(pool, seed, 31);
+  if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude)) return first;
+  return pick(pool, seed + 1, 31);
+}
+
 function buildSceneLine(
   input: KoIdentityWriterInput,
   seed: number,
@@ -590,34 +628,34 @@ function rotateLayouts(layouts: WriterSegment[][], seed: number): WriterSegment[
 function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][] {
   if (frame === "quest") {
     return [
-      ["scene", "attitude", "evidence", "question"],
+      ["scene", "stamp", "attitude", "question"],
       ["lead", "fixation", "decision", "question"],
       ["scene", "instinct", "decision", "question"],
-      ["fixation", "evidence", "consequence", "question"],
+      ["fixation", "evidence", "question"],
     ];
   }
 
   if (mode === "meta-reflection") {
     return frame === "cross-exam"
       ? [
-          ["attitude", "fixation", "evidence", "consequence"],
+          ["attitude", "stamp", "evidence", "consequence"],
           ["scene", "attitude", "evidence", "consequence"],
           ["lead", "fixation", "decision", "consequence"],
-          ["scene", "evidence", "fixation", "decision"],
+          ["scene", "stamp", "fixation", "decision"],
         ]
       : [
           ["scene", "attitude", "evidence", "decision"],
-          ["lead", "evidence", "fixation", "consequence"],
+          ["lead", "stamp", "fixation", "consequence"],
           ["attitude", "evidence", "fixation", "decision"],
         ];
   }
 
   if (mode === "philosophy-note") {
     return [
-      ["lead", "instinct", "evidence", "decision"],
+      ["lead", "stamp", "evidence", "decision"],
       ["scene", "fixation", "evidence", "consequence"],
       ["attitude", "instinct", "evidence", "decision"],
-      ["lead", "evidence", "fixation", "consequence"],
+      ["lead", "evidence", "stamp", "consequence"],
     ];
   }
 
@@ -625,21 +663,21 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][
     return frame === "field-note"
       ? [
           ["scene", "instinct", "evidence", "decision"],
-          ["lead", "evidence", "attitude", "consequence"],
+          ["lead", "stamp", "attitude", "consequence"],
           ["scene", "fixation", "evidence", "decision"],
           ["lead", "instinct", "evidence", "consequence"],
         ]
       : [
           ["scene", "attitude", "evidence", "decision"],
           ["lead", "instinct", "evidence", "consequence"],
-          ["scene", "evidence", "fixation", "consequence"],
+          ["scene", "stamp", "fixation", "consequence"],
           ["attitude", "evidence", "instinct", "decision"],
         ];
   }
 
   return [
     ["scene", "evidence", "decision", "consequence"],
-    ["lead", "attitude", "evidence", "decision"],
+    ["lead", "stamp", "evidence", "decision"],
     ["lead", "instinct", "evidence", "consequence"],
     ["fixation", "evidence", "decision", "consequence"],
   ];
@@ -659,12 +697,14 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const instinct = rewriteSoulHint(input, seed + 17);
   const attitude = pickAttitudeLine(input.lane, seed + variant, lead);
   const fixation = pickFixationLine(input.lane, seed + variant, lead, attitude);
+  const stamp = pickModeStamp(input.mode, seed + variant, lead, attitude);
   const decision = pick(DECISION_BY_LANE[input.lane], seed, variant + 5);
   const consequence = pick(CONSEQUENCE_BY_LANE[input.lane], seed, variant + 9);
   const question = buildQuestion(input, seed + 19);
   const segments: Record<WriterSegment, string> = {
     scene,
     lead,
+    stamp,
     evidence,
     instinct,
     attitude,
