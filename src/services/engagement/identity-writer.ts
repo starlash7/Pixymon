@@ -380,7 +380,7 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "생태계가 오래 가는지 아닌지는 결국 재방문에서 갈린다.",
       "커뮤니티의 진짜 온도는 결국 돌아오는 사람 수에서 드러난다.",
       "돌아오는 사람을 못 만들면 큰 생태계 서사도 금방 얇아진다.",
-      "남는 사람 수가 줄어드는 순간 생태계 설명은 바로 힘이 빠진다.",
+      "남는 사람 수가 줄어드는 순간 그 생태계 얘기는 바로 얇아진다.",
     ],
     hype: [
       "서사만 불어나고 사용이 비면 그 생태계는 금방 종이처럼 얇아진다.",
@@ -394,6 +394,7 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "규제 뉴스의 값은 결국 기사보다 집행에서 다시 매겨진다.",
       "정책 문장과 실제 행동이 갈라지는 순간 해설은 값이 빠진다.",
       "규제 얘기는 길어도 결국 집행이 붙지 않으면 기사로 남는다.",
+      "규제 얘기는 길어도 집행이 비면 금방 기사 톤으로 돌아간다.",
     ],
   },
   "market-structure": {
@@ -496,28 +497,28 @@ const FOCUS_CONSEQUENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writer
 const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
   ecosystem: {
     retention: [
-      "결국 걸리는 건 {Q} 쪽이다.",
-      "{Q} 문제가 오늘 생태계 얘기의 핵심이다.",
-      "오늘은 {Q} 지점이 제일 크게 남는다.",
+      "결국 걸리는 건 {Q}다.",
+      "{Q}가 오늘 생태계 얘기의 핵심이다.",
+      "오늘은 {Q}가 제일 크게 남는다.",
     ],
     hype: [
-      "{Q} 장면에서 서사와 사용이 갈린다.",
-      "오늘은 {Q} 쪽의 허세가 더 크게 보인다.",
-      "{Q} 문제부터 걷어내야 생태계 얘기가 맑아진다.",
+      "{Q}에서 서사와 사용이 갈린다.",
+      "오늘은 {Q}의 허세가 더 크게 보인다.",
+      "{Q}부터 걷어내야 생태계 얘기가 맑아진다.",
     ],
   },
   regulation: {
     execution: [
-      "{Q} 지점에서 기사와 행동이 갈린다.",
-      "오늘은 {Q} 쪽의 빈칸이 더 크게 보인다.",
-      "{Q} 문제를 보면 규제 뉴스의 값이 보인다.",
+      "{Q}에서 기사와 행동이 갈린다.",
+      "오늘은 {Q}의 빈칸이 더 크게 보인다.",
+      "{Q}를 보면 규제 뉴스의 값이 보인다.",
     ],
   },
   "market-structure": {
     liquidity: [
-      "{Q} 장면에서 분위기와 돈이 갈린다.",
-      "오늘은 {Q} 쪽에서 과열의 속내가 드러난다.",
-      "{Q} 문제를 보면 화면 열기의 한계가 보인다.",
+      "{Q}에서 분위기와 돈이 갈린다.",
+      "오늘은 {Q}에서 과열의 속내가 드러난다.",
+      "{Q}를 보면 화면 열기의 한계가 보인다.",
     ],
   },
 };
@@ -710,13 +711,13 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
 };
 
 const SCENE_OPENERS = [
-  "지금 자꾸 눈에 밟히는 건 {Q} 점이다.",
-  "오늘 오래 남는 건 {Q} 사실이다.",
-  "이번 흐름에서 제일 걸리는 건 {Q} 문제다.",
-  "지금 적어 둘 만한 건 {Q} 신호다.",
-  "{Q} 쪽에서 말과 흐름이 갈린다.",
-  "오늘은 {Q} 장면부터 적어 둔다.",
-  "{Q} 이야기가 이상하리만치 오래 남는다.",
+  "지금 걸리는 건 {Q}다.",
+  "오늘은 {Q}부터 적어 둔다.",
+  "이번 흐름에서 오래 남는 건 {Q}다.",
+  "메모에 남길 건 {Q} 신호다.",
+  "{Q}에서 말과 흐름이 갈린다.",
+  "오늘은 {Q}부터 붙잡는다.",
+  "{Q} 얘기가 자꾸 돌아온다.",
 ];
 
 const ANCHOR_SCENE_BY_LANE: Record<TrendLane, string[]> = {
@@ -1090,9 +1091,8 @@ function buildSceneLine(
   if (!needsAnchorFallback && sceneCore.length <= 42 && !/(사실|문제|신호|장면|지점|거리|온도 차|시차|틈|엇갈림|균열)$/.test(sceneCore)) {
     return sceneCore;
   }
-  const quoted = `${sceneCore}${hasBatchim(sceneCore) ? "이라는" : "라는"}`;
   const focusPool = FOCUS_SCENE_OPENERS_BY_LANE[input.lane]?.[focus] || [];
-  return pick([...focusPool, ...SCENE_OPENERS], seed, 23).replaceAll("{Q}", quoted);
+  return pick([...focusPool, ...SCENE_OPENERS], seed, 23).replaceAll("{Q}", sceneCore);
 }
 
 function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
