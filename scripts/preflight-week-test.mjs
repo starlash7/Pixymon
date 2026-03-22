@@ -151,7 +151,7 @@ if (fs.existsSync(runtimeLockPath)) {
 
 const latestQuota = findLatestQuotaCycle(metricsPath);
 if (!latestQuota) {
-  addCheck("WARN", "Latest quota cycle", `no quota_cycle metric found at ${metricsPath}`);
+  addCheck(processLines.length > 0 ? "WARN" : "OK", "Latest quota cycle", processLines.length > 0 ? `no quota_cycle metric found at ${metricsPath}` : "no quota_cycle metric found; clean start state");
 } else {
   const executed = latestQuota.executed ?? 0;
   const posts = latestQuota.activity?.posts ?? 0;
