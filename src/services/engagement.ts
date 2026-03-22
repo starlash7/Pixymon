@@ -747,6 +747,21 @@ export async function postTrendUpdate(
         if (eventPlan) {
           console.log(`[PLAN] structural fallback events 사용: ${syntheticEvents.map((item) => item.headline).join(" | ")}`);
         }
+        if (!eventPlan && runtimeSettings.requireCrossSourceEvidence) {
+          const relaxedStructuralPlan = planEventEvidenceAct({
+            events: syntheticEvents,
+            evidence: eventEvidence,
+            recentPosts: recentBriefingPosts,
+            laneUsage: laneUsageWindow,
+            requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
+            requireCrossSourceEvidence: false,
+          });
+          if (relaxedStructuralPlan && isStrongOnchainStructuralPlan(relaxedStructuralPlan)) {
+            candidateEvents = syntheticEvents;
+            eventPlan = relaxedStructuralPlan;
+            console.log("[PLAN] cross-source strict 모드에서 onchain structural fallback 한시 허용");
+          }
+        }
       }
     }
     if (
@@ -5955,6 +5970,22 @@ interface PostDiversityGuard {
 }
 
 type PostFallbackKind = "none" | "deterministic" | "hard" | "rescue" | "emergency";
+
+function isStrongOnchainStructuralPlan(plan: EventEvidencePlan): boolean {
+  if (plan.event.source !== "evidence:structural-fallback" || plan.lane !== "onchain") {
+    return false;
+  }
+  if (!plan.hasOnchainEvidence || plan.evidence.length < 2) {
+    return false;
+  }
+  return plan.evidence.every((item) => {
+    const label = String(item.label || "");
+    return (
+      !/(시장 반응|규제 일정|현장 반응|체인 안쪽 사용|커뮤니티 반응|대기 자금 흐름|자금 쏠림 방향|집행 흔적)/.test(label) &&
+      !/(24h|24시간|변동|도미넌스|공포|탐욕|시총|sat\\/vB)/i.test(`${label} ${item.value || ""}`)
+    );
+  });
+}
 
 function selectBestFallbackVariant(
   candidates: string[],
