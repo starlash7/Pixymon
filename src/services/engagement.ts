@@ -293,6 +293,11 @@ export async function proactiveEngagement(
       cache
     );
 
+    if (candidates.length === 0 && shouldAbortProactiveReplySearch()) {
+      console.log("[ENGAGE] proactive reply 검색 경로 중단: search entitlement cooldown");
+      return 0;
+    }
+
     if (candidates.length === 0) {
       if (secondaryKeywords.length > 0) {
         console.log("[ENGAGE] 1차 후보 없음, 장면 키워드만으로 2차 검색");
@@ -315,6 +320,11 @@ export async function proactiveEngagement(
           cache
         );
       }
+    }
+
+    if (candidates.length === 0 && shouldAbortProactiveReplySearch()) {
+      console.log("[ENGAGE] proactive reply 재검색 중단: search entitlement cooldown");
+      return 0;
     }
 
     if (candidates.length === 0) {
@@ -341,6 +351,11 @@ export async function proactiveEngagement(
       }
     }
 
+    if (candidates.length === 0 && shouldAbortProactiveReplySearch()) {
+      console.log("[ENGAGE] proactive reply 재검색 중단: search entitlement cooldown");
+      return 0;
+    }
+
     if (candidates.length === 0) {
       if (fallbackLaneKeywords.length > 0) {
         console.log("[ENGAGE] 3차 후보 없음, 레인 시드로 4차 검색");
@@ -363,6 +378,11 @@ export async function proactiveEngagement(
           cache
         );
       }
+    }
+
+    if (candidates.length === 0 && shouldAbortProactiveReplySearch()) {
+      console.log("[ENGAGE] proactive reply 재검색 중단: search entitlement cooldown");
+      return 0;
     }
 
     if (candidates.length === 0) {
@@ -389,6 +409,11 @@ export async function proactiveEngagement(
       }
     }
 
+    if (candidates.length === 0 && shouldAbortProactiveReplySearch()) {
+      console.log("[ENGAGE] proactive reply 재검색 중단: search entitlement cooldown");
+      return 0;
+    }
+
     if (candidates.length === 0) {
       console.log("[ENGAGE] 5차 후보 없음, 넓은 안전 키워드로 6차 검색");
       candidates = await getOrSearchTrendTweets(
@@ -409,6 +434,11 @@ export async function proactiveEngagement(
         },
         cache
       );
+    }
+
+    if (candidates.length === 0 && shouldAbortProactiveReplySearch()) {
+      console.log("[ENGAGE] proactive reply 재검색 중단: search entitlement cooldown");
+      return 0;
     }
 
     if (candidates.length === 0) {
@@ -4215,6 +4245,10 @@ function getReusablePersistedTrendTweets(key: string, count: number): any[] {
   });
   if (!sameKey && freshEnough.length < 3) return [];
   return freshEnough.slice(0, Math.max(6, Math.min(30, count)));
+}
+
+function shouldAbortProactiveReplySearch(): boolean {
+  return !TEST_NO_EXTERNAL_CALLS && getTrendSearchCooldownRemainingMs() > 0;
 }
 
 function buildTrendTweetCacheKey(

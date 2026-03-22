@@ -1496,7 +1496,7 @@ test("planEventEvidenceAct rejects generic ecosystem bridge pair when sharper bu
   assert.deepEqual(labels, ["개발자 잔류", "예치 자금 복귀"]);
 });
 
-test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence pair", () => {
+test("planEventEvidenceAct rejects cross-source-missing onchain structural fallback when cross-source is required", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({
     events: [
@@ -1555,13 +1555,7 @@ test("planEventEvidenceAct keeps onchain structural fallback on onchain evidence
     requireCrossSourceEvidence: true,
   });
 
-  assert.ok(plan);
-  assert.equal(plan?.lane, "onchain");
-  assert.equal(plan?.hasCrossSourceEvidence, false);
-  assert.deepEqual(
-    plan?.evidence.map((item) => item.label),
-    ["낮아진 체인 사용 압박", "풀리는 거래 대기 압박"]
-  );
+  assert.equal(plan, null);
 });
 
 test("planEventEvidenceAct keeps generic onchain event on non-price evidence pair", () => {

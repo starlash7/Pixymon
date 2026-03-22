@@ -307,6 +307,14 @@ export function planEventEvidenceAct(params: {
       if (!pair) {
         return null;
       }
+      if (
+        requireCrossSourceEvidence &&
+        event.source === "evidence:structural-fallback" &&
+        !pair.hasCrossSourceEvidence &&
+        pair.evidenceSourceDiversity < 2
+      ) {
+        return null;
+      }
       if (event.lane === "onchain" && countPriceLikeEvidence(pair.evidence) > 0) {
         const onchainOnlyPair = selectEvidencePairForLane(event.lane, evidence, {
           requireOnchainEvidence,
