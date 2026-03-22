@@ -22,7 +22,7 @@ test("buildKoIdentityWriterCandidate writes direct korean prose without raw frag
 
   assert.match(text, /(집행|행동|믿는다|결론|흔적|근거)/);
   assert.doesNotMatch(text, /sat\/vB|Bitcoin sold off first|시간차부터 잰다|호가창 바깥/);
-  assert.doesNotMatch(text, /오늘 주워 온 건|입에 넣기엔 아직 거친 장면|장부에|먹은 단서|다음 판단 재료/);
+  assert.doesNotMatch(text, /오늘 주워 온 건|입에 넣기엔 아직 거친 장면|장부에|먹은 단서|다음 판단 재료|얘기가 자꾸 돌아온다|값이 빠진다/);
 });
 
 test("buildKoIdentityWriterCandidate can end with a concrete audience question in interaction mode", () => {
@@ -245,4 +245,18 @@ test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy 
   }, 0);
 
   assert.match(text, /(신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다|업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다|박수보다 오래 남는 건 결국 복구 로그 쪽이다|복구 기록이 비면 좋은 업그레이드 문장도 금방 종이처럼 얇아진다|결국 배포 공지보다 오래 남는 건 장애 뒤의 운영 태도다|결국 남은 건 발표가 아니라 장애 뒤 복구 기록 쪽이다|신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다|업그레이드는 박수보다 장애 뒤의 태도로 평가된다|운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다|길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복)/);
+});
+
+test("buildKoIdentityWriterCandidate avoids stale ledger/value-drop phrasing in onchain mode", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "onchain",
+    mode: "meta-reflection",
+    headline: "튀는 숫자와 오래 남는 흔적이 같은 편인지 본다",
+    primaryAnchor: "낮아진 체인 사용 압박",
+    secondaryAnchor: "관망 자금 이탈",
+    seedHint: "identity-writer:no-stale-phrases",
+  }, 3);
+
+  assert.doesNotMatch(text, /장부에|값이 빠진다|얘기가 자꾸 돌아온다/);
 });

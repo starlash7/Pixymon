@@ -1955,8 +1955,8 @@ test("buildStructuralFallbackEventsFromEvidence writes direct structural headlin
   const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 2);
   assert.ok(events.length >= 1);
   const headline = events[0].headline;
-  assert.match(headline, /갈린다|달렸다|성립한다|더 밀지 않는다/);
-  assert.doesNotMatch(headline, /뒤에|살핀다|짚는다|장면/);
+  assert.match(headline, /갈린다|성립한다|얇아진다|오래 간다|못 간다|중요해진다/);
+  assert.doesNotMatch(headline, /를 보면|뒤에|살핀다|짚는다|장면/);
 });
 
 test("buildEventEvidenceFallbackPost keeps korean fallback direct and free of raw fragments", () => {

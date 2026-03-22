@@ -2079,6 +2079,11 @@ Rules:
     );
     const dispatchSurfaceIssue = detectNarrativeSurfaceIssue(postText, runtimeSettings.postLanguage);
     const dispatchContract = validateEventEvidenceContract(postText, eventPlan);
+    const dispatchNovelty = validateNarrativeNovelty(
+      postText,
+      recentBriefingPosts as NarrativeRecentPost[],
+      narrativePlan
+    );
     const dispatchQuality = evaluatePostQuality(
       postText,
       trend.marketData,
@@ -2096,10 +2101,22 @@ Rules:
         requirePixymonConceptSignal: true,
       }
     );
+    const dispatchSoftPass =
+      allowSoftQualityPass({
+        reason: dispatchQuality.reason,
+        noveltyScore: dispatchNovelty.score,
+        contractOk: dispatchContract.ok,
+      }) ||
+      (usedFallback &&
+        dispatchContract.ok &&
+        /픽시몬 컨셉 신호 부족/.test(String(dispatchQuality.reason || "")));
     const dispatchRescueReason =
       dispatchSurfaceIssue ||
       (!dispatchContract.ok ? `contract:${dispatchContract.reason}` : "") ||
-      (!dispatchQuality.ok ? `quality:${dispatchQuality.reason}` : "");
+      (!dispatchQuality.ok && !dispatchSoftPass ? `quality:${dispatchQuality.reason}` : "");
+    if (!dispatchQuality.ok && dispatchSoftPass) {
+      console.log(`[POST] dispatch 소프트 품질 허용: ${dispatchQuality.reason}`);
+    }
     if (dispatchRescueReason) {
       console.log(`[POST] dispatch 직전 rescue fallback 전환: ${dispatchRescueReason}`);
       const rescueAtDispatch = buildRescueContractPost(
@@ -3299,7 +3316,7 @@ function ensurePixymonConceptSignal(
   if (!normalized) return normalized;
   const hasConcept =
     language === "ko"
-      ? /(픽시몬|영양소|소화|진화|레벨|먹고|먹은|채집|주워\s*온|단서로\s*남긴|바로\s*믿기엔\s*이르|한\s*번\s*더\s*씹|천천히\s*소화|입에\s*넣기엔|장부에\s*(?:남긴|올린|넣는)|버틴\s*(?:흔적|근거)|보류한다)/.test(
+      ? /(픽시몬|영양소|소화|진화|레벨|먹고|먹은|채집|주워\s*온|단서로\s*남긴|바로\s*믿기엔\s*이르|한\s*번\s*더\s*(?:씹|의심)|천천히\s*소화|입에\s*넣기엔|장부에\s*(?:남긴|올린|넣는)|근거로\s*남긴|단서로\s*취급|버틴\s*(?:흔적|근거)|하루를\s*버틴\s*신호|보류한다)/.test(
           normalized
         )
       : /(pixymon|nutrient|digest|evolve|evolution|feed)/i.test(normalized);
@@ -3407,28 +3424,28 @@ function buildPixymonConceptCue(
 
   const poolByLane: Record<TrendLane, string[]> = {
     protocol: [
-      "업그레이드 얘기는 운영이 버텨야 장부에 남긴다.",
-      "발표보다 운영 흔적이 남아야 장부에 올린다.",
+      "업그레이드 얘기는 운영이 버텨야 근거로 남긴다.",
+      "발표보다 운영 흔적이 남아야 믿을 만해진다.",
     ],
     ecosystem: [
-      "사용 흔적이 남아야 장부에 올린다.",
-      "사람이 돌아오지 않으면 장부에 남기지 않는다.",
+      "사용 흔적이 남아야 근거로 남긴다.",
+      "사람이 돌아오지 않으면 설명을 더 늦게 믿는다.",
     ],
     regulation: [
-      "규제 뉴스는 집행이 붙어야 장부에 올린다.",
+      "규제 뉴스는 집행이 붙어야 근거로 남긴다.",
       "정책 문장은 행동이 따라와야 근거가 된다.",
     ],
     macro: [
-      "큰 뉴스는 자금 흐름이 바뀔 때만 장부에 남긴다.",
-      "체인 안쪽까지 닿지 않으면 오늘 판단에 올리지 않는다.",
+      "큰 뉴스는 자금 흐름이 바뀔 때만 근거로 남긴다.",
+      "체인 안쪽까지 닿지 않으면 오늘 판단에 넣지 않는다.",
     ],
     onchain: [
-      "온체인 신호는 하루를 버틸 때만 장부에 남긴다.",
-      "버틴 흔적만 다음 판단 근거로 올린다.",
+      "온체인 신호는 하루를 버틸 때만 근거로 남긴다.",
+      "버틴 숫자만 다음 판단 근거로 남긴다.",
     ],
     "market-structure": [
-      "차트보다 실제 체결이 붙어야 장부에 남긴다.",
-      "돈이 안 붙으면 오늘 판단 근거로 올리지 않는다.",
+      "차트보다 실제 체결이 붙어야 근거로 남긴다.",
+      "돈이 안 붙으면 오늘 판단 근거로 남기지 않는다.",
     ],
   };
   const pool = poolByLane[lane];
@@ -3453,12 +3470,12 @@ function buildShortPixymonConceptCue(lane: TrendLane, language: "ko" | "en"): st
   }
 
   const byLane: Record<TrendLane, string[]> = {
-    protocol: ["운영 흔적이 붙어야 장부에 올린다."],
-    ecosystem: ["사용 흔적이 남아야 장부에 올린다."],
-    regulation: ["집행이 붙어야 장부에 올린다."],
-    macro: ["자금 흐름이 바뀔 때만 장부에 남긴다."],
-    onchain: ["버틴 흔적만 장부에 남긴다."],
-    "market-structure": ["실제 체결이 붙어야 장부에 남긴다."],
+    protocol: ["운영 흔적이 붙어야 근거가 된다."],
+    ecosystem: ["사용 흔적이 남아야 근거가 된다."],
+    regulation: ["집행이 붙어야 근거가 된다."],
+    macro: ["자금 흐름이 바뀌어야 근거가 된다."],
+    onchain: ["버틴 숫자만 단서로 취급한다."],
+    "market-structure": ["실제 체결이 붙어야 근거가 된다."],
   };
   return byLane[lane][0];
 }
@@ -3470,7 +3487,7 @@ function injectInlineConceptKo(text: string, lane: TrendLane): string {
     return sanitizeTweetText(`${normalized} ${tail}`);
   }
   if (/^나는\s+/.test(normalized)) {
-    return sanitizeTweetText(normalized.replace(/^나는\s+/, "나는 이걸 한 번 더 씹어 보고 "));
+    return sanitizeTweetText(normalized.replace(/^나는\s+/, "나는 이걸 한 번 더 의심하고 "));
   }
   return sanitizeTweetText(`${normalized} ${tail}`);
 }
