@@ -48,7 +48,7 @@ test("buildKoIdentityWriterCandidate keeps market-structure prose thesis-driven"
   });
 
   assert.match(text, /(주문|체결|거래소)/);
-  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다)/);
+  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다|자금이 안 남은 자신감은 오래 못 간다|결국 오래 보는 건 호가가 아니라 체결 잔상이다|대충 맞은 설명일수록 현장에선 빨리 들통난다)/);
   assert.doesNotMatch(text, /장부에|먹은 단서|다음 판단 재료|다시 읽는다/);
   assert.doesNotMatch(text, /차트보다 실제 체결이 남아야 판단할 수 있다\.\s+차트보다 실제 체결이 남아야 판단할 수 있다/);
 });
@@ -78,7 +78,7 @@ test("buildKoIdentityWriterCandidate uses evaluative voice instead of checklist 
     seedHint: "identity-writer:ecosystem-evaluative",
   });
 
-  assert.match(text, /(홍보 문구|광고 냄새|과열이지 성장은 아니다|좋은 포스터여도 오래 못 간다|절반짜리다|사람을 못 붙잡|오래 못 간다|힘을 잃는다)/);
+  assert.match(text, /(홍보 문구|광고 냄새|과열이지 성장은 아니다|좋은 포스터여도 오래 못 간다|절반짜리다|사람을 못 붙잡|오래 못 간다|힘을 잃는다|사람이 남는지 못 남는지|생태계 서사에 쉽게 속는다|잔류가 비는 순간 그 열기는 오래 못 버틴다)/);
   assert.doesNotMatch(text, /먼저 본다\.\s*확인한다\.\s*미룬다/);
 });
 
@@ -124,6 +124,7 @@ test("buildKoIdentityWriterCandidate repairs trailing 먼저 headline into direc
   });
 
   assert.doesNotMatch(text, /먼저\.\s*$/);
+  assert.doesNotMatch(text, /기사보다 집행 흔적을 먼저 본다|실제 행동은 더 늦게 확인한다/);
   assert.match(text, /(기사|집행|행동|현장)/);
 });
 
@@ -186,7 +187,7 @@ test("buildKoIdentityWriterCandidate can surface lane fixation instead of generi
     seedHint: "identity-writer:fixation",
   }, 2);
 
-  assert.match(text, /(체결|돈이 안 붙은 자신감|화면 열기보다 오래 보는 건 결국 체결)/);
+  assert.match(text, /(체결|돈이 안 붙은 자신감|화면 열기보다 오래 보는 건 결국 체결|돈이 남는지 여부가 이 과열의 본색을 가른다)/);
 });
 
 test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy mode", () => {
@@ -199,5 +200,5 @@ test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy 
     seedHint: "identity-writer:mode-stamp",
   }, 0);
 
-  assert.match(text, /(길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복)/);
+  assert.match(text, /(신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다|업그레이드는 박수보다 장애 뒤의 태도로 평가된다|운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다|길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복)/);
 });

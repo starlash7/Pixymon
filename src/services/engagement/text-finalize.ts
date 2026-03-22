@@ -320,7 +320,9 @@ function correctKoParticles(text: string): string {
             ? pickParticle(word, "을", "를")
             : pickParticle(word, "과", "와");
     return `${word}${resolved}`;
-  });
+  })
+    .replace(/없은/g, "없는")
+    .replace(/있은/g, "있는");
 }
 
 function ensureTerminalPunctuation(text: string, maxChars: number): string {

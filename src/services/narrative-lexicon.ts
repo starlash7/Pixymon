@@ -52,7 +52,6 @@ const KO_NARRATIVE_REWRITE_RULES: NarrativeRewriteRule[] = [
   { label: "inside-smell", pattern: /체인 안쪽 냄새/g, replacement: "체인 안쪽 흐름" },
   { label: "footprints", pattern: /발자국/g, replacement: "움직임" },
   { label: "body-language", pattern: /몸짓/g, replacement: "실제 반응" },
-  { label: "temperature", pattern: /열기/g, replacement: "반응" },
   { label: "facial-expression", pattern: /표정/g, replacement: "반응" },
   { label: "hand-movement", pattern: /손놀림/g, replacement: "움직임" },
   { label: "ripple", pattern: /파문/g, replacement: "반응" },
@@ -119,6 +118,9 @@ export function applyKoNarrativeLexicon(text: string): string {
   }
   return sanitizeTweetText(
     output
+      .replace(/빈\s*반응다/g, "빈 반응이다")
+      .replace(/체결\s*없은/g, "체결 없는")
+      .replace(/반응보다\s*잔류가/g, "열기보다 잔류가")
       .replace(/사용와/g, "사용과")
       .replace(/사용를/g, "사용을")
       .replace(/사용가/g, "사용이")

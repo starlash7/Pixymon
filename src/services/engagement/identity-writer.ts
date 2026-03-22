@@ -74,16 +74,16 @@ const CROSS_EXAM_BY_LANE: Record<TrendLane, string[]> = {
     "열기만 남고 재방문이 비는 날은 홍보가 사용을 이긴 날이다.",
   ],
   regulation: [
-    "정책 문장이 큰 날일수록 나는 기사보다 집행 흔적을 먼저 본다.",
-    "규제 해석이 화려할수록 실제 행동은 더 늦게 확인한다.",
+    "정책 문장이 큰 날일수록 기사보다 집행 흔적 쪽에 더 무게를 둔다.",
+    "규제 해석이 화려할수록 실제 행동이 붙는 속도부터 차갑게 가른다.",
   ],
   macro: [
-    "거시 해설이 넘칠수록 체인 안쪽 습관이 정말 바뀌는지 더 늦게 믿는다.",
+    "거시 해설이 넘칠수록 체인 안쪽 습관이 실제로 바뀌었는지는 더 늦게 인정한다.",
     "큰 뉴스가 나왔다고 바로 방향을 바꾸지 않는다. 자금은 늘 더 느리다.",
   ],
   onchain: [
-    "예쁘게 튄 온체인 숫자는 쉽게 믿지 않는다. 오래 남는 쪽만 본다.",
-    "온체인 신호가 반짝일수록 하루 뒤에 남는지부터 다시 확인한다.",
+    "예쁘게 튄 온체인 숫자는 쉽게 못 믿는다. 오래 남는 쪽만 단서가 된다.",
+    "온체인 신호가 반짝일수록 하루 뒤에도 남는지부터 가른다.",
   ],
   "market-structure": [
     "화면만 뜨거운 날은 구조 변화보다 연출일 때가 많다.",
@@ -323,12 +323,12 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
     retention: [
       "결국 오래 붙드는 건 재방문과 잔류다.",
       "남는 사람 수가 이 생태계 얘기의 값을 정한다.",
-      "재방문이 없으면 큰 서사도 반쪽이다.",
+      "돌아오는 사람이 없으면 큰 서사도 절반 아래로 내려간다.",
     ],
     hype: [
-      "서사가 커질수록 실제 사용 흔적은 더 차갑게 본다.",
-      "홍보보다 늦게 남는 사용 흔적만 손에 남긴다.",
-      "광고 냄새가 짙어질수록 사람 흔적부터 다시 센다.",
+      "문구가 커질수록 실제 사용 흔적은 더 차갑게 다뤄야 한다.",
+      "홍보 문장 뒤에 늦게 남는 사용 흔적만 손에 남긴다.",
+      "광고 냄새가 짙어질수록 사람 흔적부터 끝까지 다시 센다.",
     ],
   },
   regulation: {
@@ -358,6 +358,7 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "서사만 불어나고 사용이 비면 그 생태계는 금방 종이처럼 얇아진다.",
       "열기만 큰 생태계는 결국 홍보 문구와 구별이 안 간다.",
       "광고가 사람보다 먼저 커지는 생태계는 오래 못 간다.",
+      "커뮤니티 반응만 커지고 사용이 비면 그 생태계는 결국 포스터에 가깝다.",
     ],
   },
   regulation: {
@@ -371,7 +372,7 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
     liquidity: [
       "호가보다 체결이 늦게 진실을 말하는 날이 있다.",
       "분위기가 아니라 실제 돈이 남아야 구조 변화라고 부를 수 있다.",
-      "유동성이 안 붙은 과열은 결국 화면 장면으로 끝난다.",
+      "유동성이 안 붙은 과열은 결국 화면 효과로 끝난다.",
     ],
   },
 };
@@ -430,6 +431,35 @@ const FOCUS_DECISION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "돈이 안 붙으면 이 과열은 화면값밖에 못 한다.",
       "체결이 비면 그 자신감은 구조 변화 대신 장면으로 남는다.",
       "실제 돈이 안 남으면 이 장면은 연출 편에 둔다.",
+    ],
+  },
+};
+
+const FOCUS_CONSEQUENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    retention: [
+      "재방문이 끊기는 순간 그 반응은 바로 홍보 문구 쪽으로 밀린다.",
+      "남는 사람이 사라지는 순간 그 생태계 얘기도 절반이 날아간다.",
+      "잔류가 비는 순간 그 열기는 오래 못 버틴다.",
+    ],
+    hype: [
+      "문구만 남는 순간 그 생태계 얘기는 광고 쪽으로 굳는다.",
+      "사용이 비는 순간 그 과열은 포스터처럼 납작해진다.",
+      "사람보다 문구가 오래 남으면 그 장면은 바로 식는다.",
+    ],
+  },
+  regulation: {
+    execution: [
+      "집행이 비는 순간 이 뉴스는 다시 기사 자리로 밀린다.",
+      "현장 반응이 끊기면 화려한 해설도 금방 얇아진다.",
+      "행동으로 안 번지는 순간 이 규제 뉴스는 오래 못 버틴다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "돈이 빠지는 순간 그 장면은 구조보다 연출에 가까워진다.",
+      "체결이 끊기면 화면 열기도 함께 얇아진다.",
+      "자금이 안 남는 순간 그 과열은 바로 값이 빠진다.",
     ],
   },
 };
@@ -524,6 +554,53 @@ const MODE_STAMP_BY_MODE: Record<string, string[]> = {
     "결국 여기서 갈리는 건 한 줄짜리 설명이 아니다.",
     "그래서 이 장면은 질문으로 다시 물어야 한다.",
   ],
+};
+
+const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<string, string[]>>>> = {
+  ecosystem: {
+    "identity-journal": [
+      "남는 건 늘 열기보다 잔류 쪽이다.",
+      "커뮤니티 얘기의 값은 결국 돌아오는 사람이 매긴다.",
+      "사람을 남기지 못한 열기는 결국 포스터 값밖에 못 한다.",
+      "끝까지 남는 건 문구가 아니라 다시 돌아온 사람 수다.",
+    ],
+    "meta-reflection": [
+      "겉열기는 빨리 붙지만 잔류는 훨씬 늦게 진실을 말한다.",
+      "사람이 빠진 뒤에야 서사의 진짜 값이 드러난다.",
+    ],
+  },
+  regulation: {
+    "meta-reflection": [
+      "규제 뉴스의 무게는 해설이 아니라 집행이 끝내 정한다.",
+      "행동으로 번지지 못한 규제 해설은 결국 기사 톤으로 돌아간다.",
+      "정책 문장이 커져도 집행이 비면 그 뉴스는 오래 못 버틴다.",
+    ],
+    "identity-journal": [
+      "결국 기억에 남는 건 기사 문장보다 집행 흔적 쪽이다.",
+      "집행이 비는 순간 규제 뉴스는 금방 힘이 빠진다.",
+    ],
+  },
+  "market-structure": {
+    "philosophy-note": [
+      "유동성은 분위기보다 훨씬 늦게 진짜 얼굴을 보여 준다.",
+      "체결은 언제나 호가보다 늦게 남고, 그래서 더 정확하다.",
+      "열기보다 오래 남는 건 결국 돈이 붙은 자리다.",
+    ],
+  },
+  protocol: {
+    "philosophy-note": [
+      "신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다.",
+      "업그레이드는 박수보다 장애 뒤의 태도로 평가된다.",
+      "운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다.",
+    ],
+  },
+  onchain: {
+    "meta-reflection": [
+      "온체인 숫자는 오래 남는 쪽만 겨우 단서 취급을 받는다.",
+      "반짝인 숫자보다 다음 날까지 버틴 흔적이 훨씬 비싸다.",
+      "수치의 값은 지속 시간이 대신 정산한다.",
+    ],
+  },
 };
 
 const SCENE_OPENERS = [
@@ -649,6 +726,13 @@ function pick<T>(pool: T[], seed: number, offset = 0): T {
   return pool[(seed + offset) % pool.length];
 }
 
+function pickPreferredLine(primaryPool: string[], fallbackPool: string[], seed: number, offset = 0): string {
+  if (primaryPool.length > 0) {
+    return pick(primaryPool, seed, offset);
+  }
+  return pick(fallbackPool, seed, offset);
+}
+
 function hasBatchim(text: string): boolean {
   const last = text[text.length - 1];
   const code = last?.charCodeAt(0) ?? 0;
@@ -696,13 +780,18 @@ function summarizeHeadline(headline: string): string {
     .trim();
   if (!cleaned) return "";
   return cleaned
+    .replace(/살핀다$|짚는다$|본다$|의심한다$|경계한다$|가른다$|묻는다$/u, "")
+    .replace(/날이\s+아닌지\s*$/u, "날처럼 보인다")
+    .replace(/장면이\s+아닌지\s*$/u, "장면처럼 보인다")
+    .replace(/문제가\s+아닌지\s*$/u, "문제처럼 보인다")
+    .replace(/신호가\s+아닌지\s*$/u, "신호처럼 보인다")
+    .replace(/아닌지\s*$/u, "처럼 보인다")
     .replace(/사이에\s+틈이\s+나는지$/u, "사이의 틈")
     .replace(/같은\s+방향으로\s+가는지$/u, "의 방향")
     .replace(/같은\s+편인지$/u, "의 정렬")
     .replace(/운영\s+흔적으로\s+이어지는지$/u, "와 운영 흔적의 연결")
     .replace(/실제로\s+따라오는지$/u, "의 추종")
     .replace(/먼저\s+달아오르는지$/u, "의 과열")
-    .replace(/살핀다$|짚는다$|본다$|의심한다$|경계한다$|가른다$|묻는다$/u, "")
     .replace(/는지$/u, "는 장면")
     .replace(/인지$/u, "인 장면")
     .replace(/일지$/u, "일 장면")
@@ -740,6 +829,14 @@ function hasSimilarCadence(left: string, right: string): boolean {
   return /(경계한다|의심한다|믿지 않는다|힘을 잃는다|오래 못 간다|가깝다|멈춘다)$/.test(a) && /(경계한다|의심한다|믿지 않는다|힘을 잃는다|오래 못 간다|가깝다|멈춘다)$/.test(b) && aTail === bTail;
 }
 
+function hasHeavyKeywordOverlap(left: string, right: string): boolean {
+  const keywords = ["서사", "사용", "재방문", "광고", "사람", "집행", "기사", "규제", "체결", "돈", "복구", "열기"];
+  const a = sanitizeClause(left);
+  const b = sanitizeClause(right);
+  const overlap = keywords.filter((keyword) => a.includes(keyword) && b.includes(keyword));
+  return overlap.length >= 2;
+}
+
 function resolveWriterFocus(input: KoIdentityWriterInput, primaryAnchor: string, secondaryAnchor: string): WriterFocus {
   const merged = sanitizeTweetText(
     [input.headline, primaryAnchor, secondaryAnchor, input.worldviewHint, input.signatureBelief, input.recentReflection]
@@ -747,10 +844,19 @@ function resolveWriterFocus(input: KoIdentityWriterInput, primaryAnchor: string,
       .join(" ")
       .toLowerCase()
   );
+  const sceneWeighted = sanitizeTweetText([input.headline, secondaryAnchor, primaryAnchor].filter(Boolean).join(" ").toLowerCase());
 
   if (input.lane === "ecosystem") {
-    if (/(재방문|돌아오|머무|잔류|사용자|이용자|유저|실사용)/.test(merged)) return "retention";
-    if (/(서사|홍보|광고|커뮤니티|열기|캠페인)/.test(merged)) return "hype";
+    const retentionHits =
+      (sceneWeighted.match(/재방문|돌아오|머무|잔류/g) || []).length * 2 +
+      (sceneWeighted.match(/사용자|이용자|유저|실사용/g) || []).length +
+      (merged.match(/재방문|돌아오|머무|잔류|사용자|이용자|유저|실사용/g) || []).length;
+    const hypeHits =
+      (sanitizeTweetText([input.headline, primaryAnchor].filter(Boolean).join(" ").toLowerCase()).match(/서사|홍보|광고|커뮤니티|열기|캠페인|포스터/g) || []).length * 2 +
+      (merged.match(/서사|홍보|광고|커뮤니티|열기|캠페인|말만\s*커지|포스터/g) || []).length;
+    if (hypeHits > retentionHits) return "hype";
+    if (retentionHits > 0) return "retention";
+    if (hypeHits > 0) return "hype";
   }
   if (input.lane === "regulation" && /(집행|현장|행동|기사|정책|규제|논평|해설)/.test(merged)) {
     return "execution";
@@ -766,18 +872,20 @@ function resolveWriterFocus(input: KoIdentityWriterInput, primaryAnchor: string,
 
 function pickAttitudeLine(lane: TrendLane, focus: WriterFocus, seed: number, lead: string): string {
   const focusPool = FOCUS_ATTITUDE_BY_LANE[lane]?.[focus] || [];
-  const pool = [...focusPool, ...ATTITUDE_BY_LANE[lane]];
-  const first = pick(pool, seed, 21);
-  if (!hasSimilarCadence(first, lead)) return first;
-  return pick(pool, seed + 1, 21);
+  const fallbackPool = ATTITUDE_BY_LANE[lane];
+  const first = pickPreferredLine(focusPool, fallbackPool, seed, 21);
+  if (!hasSimilarCadence(first, lead) && !hasHeavyKeywordOverlap(first, lead)) return first;
+  return pickPreferredLine(focusPool, fallbackPool, seed + 1, 21);
 }
 
 function pickFixationLine(lane: TrendLane, focus: WriterFocus, seed: number, lead: string, attitude: string): string {
   const focusPool = FOCUS_FIXATION_BY_LANE[lane]?.[focus] || [];
-  const pool = [...focusPool, ...FIXATION_BY_LANE[lane]];
-  const first = pick(pool, seed, 25);
-  if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude)) return first;
-  return pick(pool, seed + 1, 25);
+  const fallbackPool = FIXATION_BY_LANE[lane];
+  const first = pickPreferredLine(focusPool, fallbackPool, seed, 25);
+  if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude) && !hasHeavyKeywordOverlap(first, lead)) {
+    return first;
+  }
+  return pickPreferredLine(focusPool, fallbackPool, seed + 1, 25);
 }
 
 function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed: number): string {
@@ -810,11 +918,20 @@ function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed:
   return pick(SOUL_HINT_POOLS.default, seed, 19);
 }
 
-function pickModeStamp(mode: string, seed: number, lead: string, attitude: string): string {
-  const pool = MODE_STAMP_BY_MODE[mode];
+function pickModeStampForLane(
+  lane: TrendLane,
+  mode: string,
+  seed: number,
+  lead: string,
+  attitude: string
+): string {
+  const lanePool = MODE_STAMP_BY_LANE_AND_MODE[lane]?.[mode] || [];
+  const pool = lanePool.length ? lanePool : MODE_STAMP_BY_MODE[mode];
   if (!pool?.length) return "";
   const first = pick(pool, seed, 31);
-  if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude)) return first;
+  if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude) && !hasHeavyKeywordOverlap(first, lead)) {
+    return first;
+  }
   return pick(pool, seed + 1, 31);
 }
 
@@ -878,7 +995,7 @@ function rotateLayouts(layouts: WriterSegment[][], seed: number): WriterSegment[
   return [...layouts.slice(offset), ...layouts.slice(0, offset)];
 }
 
-function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][] {
+function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, focus: WriterFocus): WriterSegment[][] {
   if (frame === "quest") {
     return [
       ["scene", "stamp", "attitude", "question"],
@@ -889,6 +1006,14 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][
   }
 
   if (mode === "meta-reflection") {
+    if (lane === "regulation" && focus === "execution") {
+      return [
+        ["attitude", "evidence", "stamp", "consequence"],
+        ["scene", "fixation", "evidence", "decision"],
+        ["lead", "evidence", "stamp", "consequence"],
+        ["scene", "attitude", "decision", "consequence"],
+      ];
+    }
     return frame === "cross-exam"
       ? [
           ["attitude", "stamp", "evidence", "consequence"],
@@ -904,6 +1029,14 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][
   }
 
   if (mode === "philosophy-note") {
+    if (lane === "market-structure" && focus === "liquidity") {
+      return [
+        ["lead", "evidence", "stamp", "decision"],
+        ["attitude", "fixation", "evidence", "consequence"],
+        ["scene", "evidence", "stamp", "consequence"],
+        ["lead", "stamp", "evidence", "decision"],
+      ];
+    }
     return [
       ["lead", "stamp", "evidence", "decision"],
       ["scene", "fixation", "evidence", "consequence"],
@@ -913,6 +1046,29 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string): WriterSegment[][
   }
 
   if (mode === "identity-journal") {
+    if (lane === "ecosystem" && focus === "retention") {
+      return frame === "field-note"
+        ? [
+            ["scene", "fixation", "evidence", "decision"],
+            ["lead", "attitude", "evidence", "consequence"],
+            ["scene", "stamp", "evidence", "decision"],
+            ["lead", "fixation", "consequence"],
+          ]
+        : [
+            ["lead", "fixation", "evidence", "decision"],
+            ["scene", "attitude", "evidence", "consequence"],
+            ["lead", "stamp", "evidence", "decision"],
+            ["scene", "fixation", "consequence"],
+          ];
+    }
+    if (lane === "ecosystem" && focus === "hype") {
+      return [
+        ["lead", "attitude", "evidence", "decision"],
+        ["scene", "fixation", "evidence", "consequence"],
+        ["attitude", "stamp", "evidence", "decision"],
+        ["lead", "fixation", "consequence"],
+      ];
+    }
     return frame === "field-note"
       ? [
           ["scene", "instinct", "evidence", "decision"],
@@ -949,20 +1105,25 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     frame === "cross-exam"
       ? CROSS_EXAM_BY_LANE[input.lane]
       : frame === "field-note"
-        ? [...focusLeadPool, ...FIELD_NOTES_BY_LANE[input.lane]]
-        : [...focusLeadPool, ...CLAIM_BY_LANE[input.lane]];
-  const lead = pick(leadPool, seed, variant);
-  const scene = buildSceneLine(input, focus, seed + variant, primaryAnchor, secondaryAnchor);
+        ? focusLeadPool.length ? focusLeadPool : FIELD_NOTES_BY_LANE[input.lane]
+        : focusLeadPool.length ? focusLeadPool : CLAIM_BY_LANE[input.lane];
+  const lead = pick(leadPool, seed, variant * 7 + 1);
+  const scene = buildSceneLine(input, focus, seed + variant * 5 + 1, primaryAnchor, secondaryAnchor);
   const focusEvidencePool = FOCUS_EVIDENCE_BY_LANE[input.lane]?.[focus] || [];
-  const evidence = fill(pick([...focusEvidencePool, ...EVIDENCE_BY_LANE[input.lane]], seed, variant + 3), primaryAnchor, secondaryAnchor);
-  const instinct = rewriteSoulHint(input, focus, seed + 17);
-  const attitude = pickAttitudeLine(input.lane, focus, seed + variant, lead);
-  const fixation = pickFixationLine(input.lane, focus, seed + variant, lead, attitude);
-  const stamp = pickModeStamp(input.mode, seed + variant, lead, attitude);
+  const evidence = fill(
+    pickPreferredLine(focusEvidencePool, EVIDENCE_BY_LANE[input.lane], seed, variant * 11 + 3),
+    primaryAnchor,
+    secondaryAnchor
+  );
+  const instinct = rewriteSoulHint(input, focus, seed + variant * 13 + 17);
+  const attitude = pickAttitudeLine(input.lane, focus, seed + variant * 17 + 1, lead);
+  const fixation = pickFixationLine(input.lane, focus, seed + variant * 19 + 1, lead, attitude);
+  const stamp = pickModeStampForLane(input.lane, input.mode, seed + variant * 23 + 1, lead, attitude);
   const focusDecisionPool = FOCUS_DECISION_BY_LANE[input.lane]?.[focus] || [];
-  const decision = pick([...focusDecisionPool, ...DECISION_BY_LANE[input.lane]], seed, variant + 5);
-  const consequence = pick(CONSEQUENCE_BY_LANE[input.lane], seed, variant + 9);
-  const question = buildQuestion(input, seed + 19);
+  const decision = pickPreferredLine(focusDecisionPool, DECISION_BY_LANE[input.lane], seed, variant * 29 + 5);
+  const focusConsequencePool = FOCUS_CONSEQUENCE_BY_LANE[input.lane]?.[focus] || [];
+  const consequence = pickPreferredLine(focusConsequencePool, CONSEQUENCE_BY_LANE[input.lane], seed, variant * 31 + 9);
+  const question = buildQuestion(input, seed + variant * 37 + 19);
   const segments: Record<WriterSegment, string> = {
     scene,
     lead,
@@ -976,7 +1137,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     question,
   };
 
-  const layouts = rotateLayouts(buildFrameLayouts(frame, input.mode), seed + variant);
+  const layouts = rotateLayouts(buildFrameLayouts(frame, input.mode, input.lane, focus), seed + variant * 41 + 1);
   let candidate = "";
   for (const layout of layouts) {
     const lines = materializeLayout(layout, segments, input.maxChars);
