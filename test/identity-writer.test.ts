@@ -244,7 +244,7 @@ test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy 
     seedHint: "identity-writer:mode-stamp",
   }, 0);
 
-  assert.match(text, /(신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다|업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다|박수보다 오래 남는 건 결국 복구 로그 쪽이다|복구 기록이 비면 좋은 업그레이드 문장도 금방 종이처럼 얇아진다|결국 배포 공지보다 오래 남는 건 장애 뒤의 운영 태도다|결국 남은 건 발표가 아니라 장애 뒤 복구 기록 쪽이다|신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다|업그레이드는 박수보다 장애 뒤의 태도로 평가된다|운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다|길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복)/);
+  assert.match(text, /(신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다|업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다|박수보다 오래 남는 건 결국 복구 로그 쪽이다|복구 기록이 비면 좋은 업그레이드 문장도 금방 종이처럼 얇아진다|결국 배포 공지보다 오래 남는 건 장애 뒤의 운영 태도다|결국 남은 건 발표가 아니라 장애 뒤 복구 기록 쪽이다|신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다|업그레이드는 박수보다 장애 뒤의 태도로 평가된다|운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다|설명보다 오래 가는 건 결국 복구 속도다|장애 뒤 태도가 비는 업그레이드는 박수부터 의심한다|길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복)/);
 });
 
 test("buildKoIdentityWriterCandidate avoids stale ledger/value-drop phrasing in onchain mode", () => {
@@ -259,4 +259,20 @@ test("buildKoIdentityWriterCandidate avoids stale ledger/value-drop phrasing in 
   }, 3);
 
   assert.doesNotMatch(text, /장부에|값이 빠진다|얘기가 자꾸 돌아온다/);
+});
+
+test("buildKoIdentityWriterCandidate honors preferred focus when planner already chose builder", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "ecosystem",
+    mode: "identity-journal",
+    headline: "업그레이드 뒤 실제 움직임이 이어지는지 본다",
+    primaryAnchor: "사용으로 남은 흔적",
+    secondaryAnchor: "업그레이드 뒤 실제 움직임",
+    preferredFocus: "builder",
+    seedHint: "identity-writer:preferred-builder",
+  }, 1);
+
+  assert.match(text, /(개발자|빌드|코드|자금 복귀|예치 자금|빌더)/);
+  assert.doesNotMatch(text, /광고 냄새|홍보 문구|과열이지 성장은 아니다/);
 });

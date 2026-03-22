@@ -3,7 +3,7 @@ import { finalizeGeneratedText, normalizeQuestionTail, stableSeedForPrelude } fr
 import { TrendLane } from "../../types/agent.js";
 
 type KoWriterFrame = "claim-note" | "field-note" | "cross-exam" | "quest";
-type WriterFocus =
+export type WriterFocus =
   | "retention"
   | "hype"
   | "builder"
@@ -41,6 +41,7 @@ export interface KoIdentityWriterInput {
   continuityLine?: string;
   interactionMission?: string;
   activeQuestion?: string;
+  preferredFocus?: WriterFocus;
   maxChars: number;
   seedHint?: string;
 }
@@ -316,6 +317,11 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "개발자와 예치 자금이 같이 남지 않으면 생태계 기세도 오래 못 간다.",
       "빌드 흔적 없는 생태계 서사는 대개 너무 빨리 부풀어 오른다.",
       "개발자가 빠지는 생태계는 홍보 문구보다 먼저 기세가 꺼진다.",
+      "코드가 남는데 자금이 안 돌아오면 그 생태계 얘기는 오래 못 간다.",
+      "빌더는 버티는데 돈이 안 붙으면 그 기세는 겉돌기 쉽다.",
+      "개발 흔적만 남고 복귀 자금이 비면 그 생태계는 반쪽이다.",
+      "개발 흔적은 남는데 자금 복귀가 안 붙으면 그 서사는 금방 낡는다.",
+      "빌더와 예치 자금이 따로 노는 생태계 기세는 오래 못 간다.",
     ],
     hype: [
       "서사만 큰 생태계는 대개 광고 문구부터 진해진다.",
@@ -335,6 +341,8 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "판결 기사만 큰 날일수록 실제 자금 반응부터 더 차갑게 본다.",
       "소송 일정은 화려해도 돈이 안 움직이면 오래 붙잡지 않는다.",
       "법원 문장만 요란하고 돈이 잠잠하면 그 뉴스는 기사값으로 돌려보낸다.",
+      "판결 기사와 자금이 따로 놀기 시작하면 그 뉴스는 절반짜리다.",
+      "법원 해설이 길어질수록 실제 매수 자리가 붙는지부터 더 냉정하게 본다.",
     ],
   },
   protocol: {
@@ -343,12 +351,16 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "운영 로그 없이 커지는 릴리스 기대감은 길게 안 믿는다.",
       "장애 뒤 태도가 비는 업그레이드는 박수부터 의심한다.",
       "운영 기록 없이 부푼 업그레이드 서사는 제일 늦게 믿는다.",
+      "복구보다 박수부터 커지는 업그레이드는 운영보다 발표가 앞선 셈이다.",
+      "운영 반응이 비는데 릴리스 서사만 커지면 그 개선은 금방 낡는다.",
     ],
     launch: [
       "런치 박수만 크고 복귀 자금이 비면 그 출시는 바로 반쪽이다.",
       "메인넷 준비도만 높고 실제 복귀가 없으면 오래 붙잡지 않는다.",
       "출시 기세보다 늦게 붙는 운영 반응이 없으면 나는 바로 식힌다.",
       "메인넷 준비도만 요란하고 복귀 자금이 잠잠하면 그 출시는 얇다.",
+      "복귀 자금이 늦게 붙는 런치는 메인넷 발표보다 빈칸이 먼저 보인다.",
+      "메인넷 박수보다 복귀 자금이 늦게 붙는 날은 바로 경계한다.",
     ],
   },
   onchain: {
@@ -370,6 +382,10 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "체결보다 호가가 먼저 커진 과열은 금방 힘을 잃는다.",
       "돈이 안 붙은 열기는 대부분 화면에서 끝난다.",
       "자금이 안 남는 자신감은 오래 못 간다.",
+      "체결 자리가 비는데 호가만 두꺼워지면 그 열기는 화면값으로 끝난다.",
+      "돈이 붙지 않은 과열은 대개 차트보다 먼저 체결에서 들통난다.",
+      "호가 열기만 남고 실제 체결이 비면 그 장면은 구조보다 연출 쪽이다.",
+      "과열의 본색은 결국 체결 자리가 얼마나 남는지에서 갈린다.",
     ],
     settlement: [
       "거래량은 남는데 깊이가 비는 장면은 제일 늦게 믿는다.",
@@ -390,6 +406,8 @@ const FOCUS_CROSS_EXAM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterF
       "개발자와 자금이 따로 노는 생태계 기세는 오래 못 간다.",
       "코드는 남는데 자금이 안 돌아오면 그 생태계 얘기는 쉽게 낡는다.",
       "빌드 흔적 없이 부푼 생태계 서사는 금방 속이 빈다.",
+      "빌더가 남아도 복귀 자금이 비면 그 기세는 금방 홍보 문장으로 미끄러진다.",
+      "개발 흔적과 돈의 복귀가 어긋나는 날은 큰 생태계 얘기가 제일 쉽게 얇아진다.",
     ],
     hype: [
       "광고 문장이 사용 흔적보다 빨리 커지는 날은 늘 경계한다.",
@@ -409,6 +427,8 @@ const FOCUS_CROSS_EXAM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterF
       "소송 일정이 화려해도 자금 반응이 비면 그 장면은 오래 못 버틴다.",
       "법원 뉴스가 커질수록 실제 돈이 붙는지부터 더 냉정하게 본다.",
       "법원 문장만 요란하고 돈이 잠잠하면 그 뉴스는 기사값으로 돌려보낸다.",
+      "법원 문장이 긴 날일수록 매수 자리가 비는 순간을 더 먼저 의심한다.",
+      "판결 기사만 앞서고 ETF 대기 주문이 식으면 그 뉴스는 기사 이상이 아니다.",
     ],
   },
   protocol: {
@@ -417,6 +437,8 @@ const FOCUS_CROSS_EXAM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterF
       "복구 로그가 없는 박수는 업그레이드보다 홍보에 가깝다.",
       "장애 뒤 태도가 빈 릴리스는 길게 잡지 않는다.",
       "운영 기록 없이 부푼 업그레이드 서사는 제일 늦게 믿는다.",
+      "복구보다 박수가 먼저 커진 업그레이드는 대개 발표값으로 돌아간다.",
+      "운영 반응이 식은 릴리스는 박수보다 빨리 힘이 빠진다.",
     ],
     launch: [
       "메인넷 박수만 크고 복귀 자금이 비면 그 런치는 아직 종이다.",
@@ -476,6 +498,10 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "끝내 오래 남는 건 빌드 습관과 자금 복귀가 같이 붙은 자리다.",
       "발표가 아니라 남은 개발자와 복귀 자금이 생태계 기세를 증명한다.",
       "결국 손에 남는 건 코드 흔적과 자금 복귀의 동행 여부다.",
+      "빌더가 버틴 자리와 돈이 돌아온 자리가 같은지부터 끝까지 본다.",
+      "개발자 잔류와 자금 복귀가 같이 남은 장면만 구조로 취급한다.",
+      "코드가 붙은 자리와 돈이 돌아온 자리가 겹치는지부터 끝까지 확인한다.",
+      "개발 흔적과 자금 복귀가 한쪽으로 모이는 자리만 생태계 기세를 증명한다.",
     ],
     hype: [
       "문구가 커질수록 실제 사용 흔적은 더 차갑게 다뤄야 한다.",
@@ -504,6 +530,10 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "판결 기사보다 오래 남는 건 결국 자금 방향 쪽이다.",
       "법원 일정만 크고 돈이 비면 그 뉴스는 기사값밖에 못 한다.",
       "소송 뉴스는 자금 방향이 붙는 순간에야 기사 톤을 벗어난다.",
+      "판결 기사보다 매수 자리가 늦게 붙는 순간이 결국 이 뉴스의 본색을 드러낸다.",
+      "법원 일정과 자금 반응이 같은 편인지가 결국 판결 뉴스의 값을 정한다.",
+      "법원 해설보다 자금 반응이 늦게 붙는 자리에서 이 뉴스의 무게가 갈린다.",
+      "판결 뉴스의 본색은 결국 기사보다 늦게 붙는 돈의 태도에서 드러난다.",
     ],
   },
   "market-structure": {
@@ -513,6 +543,10 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "자금이 붙지 않으면 그 자신감은 장면값밖에 없다.",
       "화면보다 오래 남는 건 결국 체결이 붙은 자리다.",
       "유동성은 말보다 늦게 남고 그래서 더 정확하다.",
+      "호가가 두꺼워 보여도 체결 자리가 비면 그 과열은 금방 가벼워진다.",
+      "돈보다 분위기가 먼저 커지는 장면은 결국 체결에서 들통난다.",
+      "화면 열기보다 늦게 남은 체결 자리가 결국 과열의 본색을 드러낸다.",
+      "호가가 두꺼워도 체결 자리가 비면 그 자신감은 구조까지 못 간다.",
     ],
     settlement: [
       "결국 늦게 남는 건 체결량보다 호가 두께 쪽이다.",
@@ -528,11 +562,17 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "좋은 발표도 복구 기록이 비면 결국 종이 문장으로 접힌다.",
       "운영 로그가 비는 순간 화려한 업그레이드도 금방 발표값으로 줄어든다.",
       "끝까지 버틴 쪽은 릴리스 노트가 아니라 장애 뒤 복구 태도다.",
+      "결국 업그레이드의 본색은 복구 기록이 얼마나 늦게까지 남는지가 말한다.",
+      "발표가 아니라 장애 뒤의 운영 태도가 결국 이 개선 서사의 값을 매긴다.",
+      "복구 기록이 붙은 자리만 시간이 지나도 업그레이드 서사가 아니라 운영으로 남는다.",
+      "운영 태도가 비는 순간 좋은 발표도 바로 발표값만 남긴다.",
     ],
     launch: [
       "메인넷 준비도보다 늦게 남는 건 결국 운영과 자금 복귀다.",
       "런치 박수보다 오래 남는 건 결국 실제 복귀 자금 쪽이다.",
       "준비도만 높고 자금이 비면 그 출시는 반쪽짜리로 남는다.",
+      "런치의 본색은 결국 복귀 자금과 운영 반응이 같이 붙는지에서 갈린다.",
+      "메인넷 발표보다 늦게 붙는 복귀 자금이 결국 이 출시의 값을 정산한다.",
     ],
   },
   onchain: {
@@ -599,6 +639,8 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "판결 기사만 크고 돈이 안 움직이면 그 뉴스는 반쪽짜리다.",
       "법원 일정은 커도 자금이 비면 결국 기사값으로 남는다.",
       "소송 뉴스는 자금 방향이 붙는 순간에야 기사 톤을 벗어난다.",
+      "법원 해설보다 자금 반응이 늦게 붙는 자리에서 이 뉴스의 무게가 갈린다.",
+      "판결 뉴스의 본색은 결국 기사보다 늦게 붙는 돈의 태도에서 드러난다.",
     ],
   },
   "market-structure": {
@@ -609,6 +651,10 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "호가 두께와 큰 주문 소화가 따로 놀면 그 과열은 실제 돈보다 분위기 쪽이다.",
       "체결보다 호가 열기만 남는 장면은 구조 변화보다 연출 쪽에 가깝다.",
       "화면이 시끄러워도 돈이 안 남으면 그 장면은 바로 얇아진다.",
+      "호가 열기만 남고 실제 체결이 비면 그 장면은 구조보다 연출 쪽이다.",
+      "과열의 본색은 결국 체결 자리가 얼마나 남는지에서 갈린다.",
+      "화면 열기보다 늦게 남은 체결 자리가 결국 과열의 본색을 드러낸다.",
+      "호가가 두꺼워도 체결 자리가 비면 그 자신감은 구조까지 못 간다.",
     ],
     settlement: [
       "거래량은 남는데 깊이가 비는 날은 구조보다 연출에 가깝다.",
@@ -626,6 +672,8 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "메인넷 발표 뒤 복귀 자금이 늦으면 그 출시는 박수보다 빈칸이 먼저 보인다.",
       "출시 문장보다 늦게 남는 건 결국 복귀 자금의 태도다.",
       "복귀 자금이 안 붙는 메인넷 발표는 끝내 발표값으로 눌린다.",
+      "운영 반응이 늦게 붙는 메인넷 발표일수록 박수보다 복귀 자금이 더 중요해진다.",
+      "출시 서사는 빨라도 복귀 자금이 더디면 그 런치는 아직 종이 위에 머문다.",
     ],
   },
   onchain: {
@@ -653,6 +701,10 @@ const FOCUS_EVIDENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "개발자 잔류가 살아 있어도 {B}가 비면 그 생태계는 곧 헐거워진다.",
       "{A}가 남아도 {B}가 식으면 빌드 서사는 반쪽짜리다.",
       "{A}가 살아도 {B}가 비면 결국 코드와 자금이 따로 노는 셈이다.",
+      "{A}가 버텨도 {B}가 비면 빌더와 돈의 복귀가 다른 말을 하는 셈이다.",
+      "{A}가 살아도 {B}가 늦으면 그 생태계는 발표보다 복귀가 뒤처진 날이다.",
+      "{A}가 남아도 {B}가 더디면 그 생태계 기세는 구조보다 설명이 앞선 셈이다.",
+      "{A}가 붙어도 {B}가 식으면 그 빌드 서사는 돈의 복귀까지 못 내려왔다.",
     ],
     hype: [
       "{A}만 커지고 {B}가 비면 그 열기는 결국 홍보 문장으로 돌아간다.",
@@ -681,6 +733,8 @@ const FOCUS_EVIDENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "{A}가 살아도 {B}가 비면 그 과열은 실제 돈까지 번진 게 아니다.",
       "{A}가 보여도 {B}가 비면 화면 열기만 커졌다고 보는 편이 맞다.",
       "{A}가 살아도 {B}가 안 붙으면 그 자신감은 체결 없는 분위기다.",
+      "{A}가 보여도 {B}가 늦으면 그 과열은 아직 화면값만 큰 셈이다.",
+      "{A}가 버텨도 {B}가 빠지면 그 자신감은 돈보다 분위기 쪽으로 기운다.",
     ],
     settlement: [
       "{A}가 살아도 {B}가 비면 그 거래량은 깊이 없는 장면으로 남는다.",
@@ -693,6 +747,11 @@ const FOCUS_EVIDENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "{A}가 살아도 {B}가 비면 그 출시는 운영까지 못 내려왔다.",
       "{A}가 앞서도 {B}가 식으면 그 메인넷 얘기는 박수에서 멈춘다.",
       "{A}가 보여도 {B}가 비면 발표가 실제 복귀까지 번진 건 아니다.",
+      "{A}가 살아도 {B}가 늦으면 그 메인넷 얘기는 아직 운영까지 못 닿았다.",
+      "{A}가 남아도 {B}가 빠지면 그 출시는 발표가 복귀보다 앞선 셈이다.",
+      "{A}가 보여도 {B}가 더디면 그 런치 서사는 아직 종이 위에 머문다.",
+      "{A}가 살아도 {B}가 약하면 그 메인넷 뉴스는 준비도만 앞선 셈이다.",
+      "{A}가 보여도 {B}가 비는 순간 그 런치 서사는 운영보다 발표에 가깝다.",
     ],
   },
   onchain: {
@@ -852,6 +911,8 @@ const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writ
       "{Q}가 오늘 생태계 기세의 밑단을 드러낸다.",
       "{Q}에서 코드와 자금이 갈라진다.",
       "오늘은 {Q}의 헐거움이 더 크게 보인다.",
+      "{Q}에서 빌더와 돈의 복귀가 같은 편인지 갈린다.",
+      "{Q}가 오늘 생태계 기세의 빈칸을 드러낸다.",
     ],
     hype: [
       "{Q}에서 서사와 사용이 갈린다.",
@@ -871,6 +932,8 @@ const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writ
       "오늘은 {Q}에서 돈이 비는 자리가 먼저 보인다.",
       "{Q}가 법원 뉴스의 실제 값을 드러낸다.",
       "{Q}에서 판결 기사와 자금 반응이 갈린다.",
+      "{Q}에서 법원 기사와 매수 자리가 같은 편인지 갈린다.",
+      "{Q}가 오늘 판결 기사보다 돈의 태도를 더 크게 드러낸다.",
     ],
   },
   "market-structure": {
@@ -878,6 +941,8 @@ const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writ
       "{Q}에서 분위기와 돈이 갈린다.",
       "오늘은 {Q}에서 과열의 속내가 드러난다.",
       "{Q}를 보면 화면 열기의 한계가 보인다.",
+      "{Q}가 오늘 체결 없는 자신감의 빈칸을 드러낸다.",
+      "{Q}에서 호가 열기와 실제 체결이 다른 말을 한다.",
     ],
     settlement: [
       "{Q}에서 숫자와 깊이가 갈린다.",
@@ -886,6 +951,12 @@ const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writ
     ],
   },
   protocol: {
+    durability: [
+      "{Q}에서 발표와 복구 기록이 갈린다.",
+      "오늘은 {Q}에서 박수보다 복구 태도의 빈칸이 먼저 보인다.",
+      "{Q}가 업그레이드 발표의 실제 값을 드러낸다.",
+      "{Q}에서 운영 기록과 릴리스 문장이 다른 말을 한다.",
+    ],
     launch: [
       "{Q}에서 메인넷 박수와 실제 복귀가 갈린다.",
       "오늘은 {Q}의 빈칸이 런치 서사의 한계를 드러낸다.",
@@ -1051,6 +1122,8 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "남는 개발자와 남는 자금이 결국 생태계 서사를 현실로 바꾼다.",
         "빌드 습관과 예치 자금이 함께 남은 자리만 생태계 기세를 구조로 바꾼다.",
         "개발자와 복귀 자금이 같이 버틴 장면만 시간이 지나도 생태계 얘기로 남는다.",
+        "코드 흔적과 자금 복귀가 나란히 남은 자리만 끝내 생태계 구조로 버틴다.",
+        "빌더가 버틴 자리와 돈이 돌아온 자리가 같은 편일 때만 그 기세를 믿는다.",
       ],
       "meta-reflection": [
         "빌드 흔적이 끊기는 순간 좋은 생태계 서사도 금방 헐거워진다.",
@@ -1089,6 +1162,13 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "집행이 붙은 규제 뉴스만 시간이 지나도 값이 남는다.",
       ],
     },
+    court: {
+      "interaction-experiment": [
+        "판결 기사보다 늦게 붙는 자금 반응이 결국 이 장면의 무게를 정한다.",
+        "법원 일정이 길어져도 돈이 안 붙으면 그 뉴스는 끝내 기사값으로 돌아간다.",
+        "판결보다 돈의 방향이 늦게 진실을 말하는 날이 있다.",
+      ],
+    },
   },
   protocol: {
     durability: {
@@ -1098,6 +1178,9 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "박수보다 오래 남는 건 결국 복구 로그 쪽이다.",
         "복구 기록이 비면 좋은 업그레이드 문장도 금방 종이처럼 얇아진다.",
         "결국 배포 공지보다 오래 남는 건 장애 뒤의 운영 태도다.",
+        "복구 기록이 늦게 남는 자리에서 업그레이드 발표의 본색이 드러난다.",
+        "운영 로그는 늘 발표보다 느리지만 그래서 더 거짓말을 덜 한다.",
+        "장애 뒤 태도가 비는 순간 좋은 릴리스 문장도 곧 종이처럼 얇아진다.",
       ],
       "meta-reflection": [
         "운영이 비는 순간 좋은 발표도 금방 문장값만 남긴다.",
@@ -1117,6 +1200,8 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "호가보다 늦게 남는 체결 자리가 결국 이 장면의 본색을 드러낸다.",
         "실제 돈이 붙은 자리는 화면 열기보다 늦게 나오고 그래서 더 믿을 만하다.",
         "끝까지 남은 체결이 결국 화면 분위기의 값을 다시 깎거나 올린다.",
+        "체결이 늦게 남는 자리에서야 화면 열기의 본색이 드러난다.",
+        "호가보다 느린 체결 잔상이 결국 이 과열의 값을 다시 매긴다.",
       ],
     },
   },
@@ -1433,6 +1518,9 @@ function hasHeavyKeywordOverlap(left: string, right: string): boolean {
 }
 
 function resolveWriterFocus(input: KoIdentityWriterInput, primaryAnchor: string, secondaryAnchor: string): WriterFocus {
+  if (input.preferredFocus && input.preferredFocus !== "general") {
+    return input.preferredFocus;
+  }
   const merged = sanitizeTweetText(
     [input.headline, primaryAnchor, secondaryAnchor, input.worldviewHint, input.signatureBelief, input.recentReflection]
       .filter(Boolean)
@@ -1638,6 +1726,20 @@ function rotateLayouts(layouts: WriterSegment[][], seed: number): WriterSegment[
 
 function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, focus: WriterFocus): WriterSegment[][] {
   if (frame === "quest") {
+    if (lane === "regulation" && focus === "court") {
+      return [
+        ["lead", "stamp", "evidence", "question"],
+        ["attitude", "evidence", "decision", "question"],
+        ["fixation", "stamp", "decision", "question"],
+        ["lead", "attitude", "consequence", "question"],
+        ["stamp", "evidence", "consequence", "question"],
+        ["attitude", "stamp", "evidence", "question"],
+        ["fixation", "evidence", "decision", "question"],
+        ["lead", "evidence", "consequence", "question"],
+        ["attitude", "fixation", "question"],
+        ["stamp", "decision", "question"],
+      ];
+    }
     return [
       ["scene", "stamp", "attitude", "question"],
       ["lead", "fixation", "decision", "question"],
@@ -1678,12 +1780,30 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
   }
 
   if (mode === "philosophy-note") {
+    if (lane === "protocol" && focus === "durability") {
+      return [
+        ["lead", "stamp", "evidence", "decision"],
+        ["attitude", "stamp", "evidence", "consequence"],
+        ["stamp", "evidence", "decision", "consequence"],
+        ["fixation", "evidence", "stamp", "decision"],
+        ["attitude", "fixation", "evidence", "consequence"],
+        ["fixation", "stamp", "evidence", "consequence"],
+        ["lead", "evidence", "consequence"],
+        ["stamp", "fixation", "decision", "consequence"],
+        ["attitude", "evidence", "consequence"],
+      ];
+    }
     if (lane === "market-structure" && focus === "liquidity") {
       return [
         ["lead", "evidence", "stamp", "decision"],
         ["attitude", "fixation", "evidence", "consequence"],
-        ["scene", "evidence", "stamp", "consequence"],
         ["lead", "stamp", "evidence", "decision"],
+        ["stamp", "evidence", "decision", "consequence"],
+        ["fixation", "evidence", "stamp", "decision"],
+        ["attitude", "stamp", "evidence", "decision"],
+        ["fixation", "stamp", "evidence", "consequence"],
+        ["stamp", "fixation", "decision", "consequence"],
+        ["attitude", "evidence", "consequence"],
       ];
     }
     return [
@@ -1695,6 +1815,25 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
   }
 
   if (mode === "identity-journal") {
+    if (lane === "protocol" && focus === "launch") {
+      return frame === "field-note"
+        ? [
+            ["lead", "stamp", "evidence", "decision"],
+            ["fixation", "evidence", "consequence"],
+            ["scene", "attitude", "evidence", "decision"],
+            ["stamp", "evidence", "consequence"],
+            ["lead", "attitude", "decision", "consequence"],
+            ["scene", "fixation", "evidence", "consequence"],
+          ]
+        : [
+            ["stamp", "evidence", "decision", "consequence"],
+            ["lead", "fixation", "evidence", "decision"],
+            ["attitude", "evidence", "stamp", "consequence"],
+            ["scene", "attitude", "evidence", "decision"],
+            ["lead", "stamp", "evidence", "consequence"],
+            ["fixation", "evidence", "decision", "consequence"],
+          ];
+    }
     if (lane === "ecosystem" && focus === "retention") {
       return frame === "field-note"
         ? [
@@ -1713,16 +1852,24 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
     if (lane === "ecosystem" && focus === "builder") {
       return frame === "field-note"
         ? [
+            ["lead", "stamp", "evidence", "decision"],
             ["scene", "fixation", "evidence", "decision"],
-            ["lead", "stamp", "evidence", "consequence"],
+            ["attitude", "stamp", "evidence", "consequence"],
             ["scene", "attitude", "evidence", "decision"],
+            ["fixation", "evidence", "stamp", "consequence"],
             ["attitude", "fixation", "evidence", "consequence"],
+            ["lead", "evidence", "consequence"],
+            ["stamp", "evidence", "decision", "consequence"],
           ]
         : [
             ["lead", "attitude", "evidence", "decision"],
             ["scene", "stamp", "evidence", "consequence"],
             ["lead", "fixation", "evidence", "decision"],
             ["scene", "attitude", "consequence"],
+            ["stamp", "evidence", "decision", "consequence"],
+            ["fixation", "evidence", "consequence"],
+            ["attitude", "evidence", "decision", "consequence"],
+            ["lead", "evidence", "stamp", "consequence"],
           ];
     }
     if (lane === "ecosystem" && focus === "hype") {

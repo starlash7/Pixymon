@@ -3,7 +3,7 @@ import { EventEvidencePlan, LaneUsageWindow, RecentPostRecord } from "./types.js
 import { NewsItem } from "../blockchain-news.js";
 import { sanitizeTweetText } from "./quality.js";
 import { applyKoNarrativeLexicon } from "../narrative-lexicon.js";
-import { buildKoIdentityWriterCandidate } from "./identity-writer.js";
+import { buildKoIdentityWriterCandidate, type WriterFocus } from "./identity-writer.js";
 
 const TREND_LANES: TrendLane[] = [
   "protocol",
@@ -91,6 +91,20 @@ const EVIDENCE_TOKEN_STOP_WORDS = new Set([
   "고래",
   "수수료",
   ...parseCsvEnv(process.env.EVIDENCE_TOKEN_STOP_WORDS_EXTRA),
+]);
+
+const WRITER_FOCUS_SET = new Set<WriterFocus>([
+  "retention",
+  "hype",
+  "builder",
+  "execution",
+  "court",
+  "liquidity",
+  "settlement",
+  "durability",
+  "launch",
+  "flow",
+  "general",
 ]);
 
 export function buildTrendEvents(params: {
@@ -664,15 +678,62 @@ export function buildEventEvidenceFallbackPost(
     }
     return cleaned;
   };
+  const diversifyKoEventHeadlineByFocus = (text: string): string => {
+    if (language !== "ko") return text;
+    const focus = WRITER_FOCUS_SET.has(plan.focus as WriterFocus) ? (plan.focus as WriterFocus) : "general";
+    const cleaned = sanitizeTweetText(text || "").replace(/[.!?]+$/g, "").trim();
+    if (!cleaned) return text;
+    const pickFocusVariant = (...pool: string[]) => pool[(stableSeed(`${cleaned}|${plan.lane}|${focus}|${variant}`) + variant) % pool.length];
+    if (plan.event.source !== "evidence:structural-fallback") return text;
+    if (plan.lane === "protocol" && focus === "durability") {
+      return pickFocusVariant(
+        "복구 기록이 늦게 붙는 자리에서 발표와 운영이 갈린다",
+        "박수보다 복구 기록이 늦게 남는 날엔 운영 빈칸이 먼저 보인다",
+        "좋은 업그레이드 발표도 복구 기록이 비면 금방 종이처럼 얇아진다",
+        "운영 로그가 늦게 붙는 날일수록 업그레이드 발표의 본색이 드러난다"
+      );
+    }
+    if (plan.lane === "regulation" && focus === "court") {
+      return pickFocusVariant(
+        "판결 기사보다 돈의 방향이 늦게 진실을 말하는 날이 있다",
+        "법원 문장과 자금 반응이 엇갈리는 자리에서 뉴스 값이 갈린다",
+        "소송 일정은 커도 돈이 비면 그 판결 뉴스는 기사값으로 남는다",
+        "판결 해설보다 자금 반응이 늦게 붙는 순간 이 뉴스의 무게가 갈린다"
+      );
+    }
+    if (plan.lane === "market-structure" && focus === "liquidity") {
+      return pickFocusVariant(
+        "체결 없는 호가 열기는 결국 화면값으로 끝난다",
+        "호가 두께가 살아도 큰 주문 소화가 비면 과열은 연출 쪽이다",
+        "분위기보다 실제 체결이 늦게 남는 자리에서 구조와 연출이 갈린다",
+        "호가 열기만 큰 장면은 결국 체결 자리에서 본색이 드러난다"
+      );
+    }
+    if (plan.lane === "ecosystem" && focus === "builder") {
+      return pickFocusVariant(
+        "코드가 남아도 자금 복귀가 비면 그 생태계 기세는 금방 헐거워진다",
+        "개발 흔적과 복귀 자금이 엇갈리는 자리에서 생태계 서사의 밑단이 드러난다",
+        "빌더는 남는데 돈이 안 돌아오면 그 생태계 얘기는 반쪽이다",
+        "코드와 자금이 다른 말을 하기 시작하면 큰 생태계 서사는 빨리 낡는다"
+      );
+    }
+    return text;
+  };
 
   const eventHeadlineRaw = sanitizeTweetText(plan.event.headline).replace(/\.$/, "");
-  const eventHeadline = language === "ko" ? humanizeKoEventHeadline(eventHeadlineRaw) : eventHeadlineRaw;
+  const eventHeadline =
+    language === "ko"
+      ? diversifyKoEventHeadlineByFocus(humanizeKoEventHeadline(eventHeadlineRaw))
+      : eventHeadlineRaw;
   const evidenceA = formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = formatEvidenceAnchor(plan.evidence[1], language);
   const narrativeMode = resolveFallbackNarrativeMode(mode || inferNarrativeModeFromHeadline(eventHeadline));
   const seed = stableSeed(`${plan.event.id}|${eventHeadline}|${evidenceA}|${evidenceB}|${narrativeMode}`);
 
   if (language === "ko") {
+    const preferredFocus = WRITER_FOCUS_SET.has(plan.focus as WriterFocus)
+      ? (plan.focus as WriterFocus)
+      : undefined;
     const worldviewByLane: Record<TrendLane, string> = {
       protocol: "신뢰는 발표보다 운영 기록에서 늦게 쌓인다",
       ecosystem: "사람이 남지 않으면 큰 서사도 금방 광고가 된다",
@@ -694,6 +755,7 @@ export function buildEventEvidenceFallbackPost(
       primaryAnchor: evidenceA,
       secondaryAnchor: evidenceB,
       lane: plan.lane,
+      preferredFocus,
       mode: narrativeMode,
       worldviewHint: worldviewByLane[plan.lane],
       signatureBelief: signatureByLane[plan.lane],
