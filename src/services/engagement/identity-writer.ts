@@ -434,6 +434,35 @@ const FOCUS_DECISION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
   },
 };
 
+const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    retention: [
+      "결국 걸리는 건 {Q} 쪽이다.",
+      "{Q} 문제가 오늘 생태계 얘기의 핵심이다.",
+      "오늘은 {Q} 지점이 제일 크게 남는다.",
+    ],
+    hype: [
+      "{Q} 장면에서 서사와 사용이 갈린다.",
+      "오늘은 {Q} 쪽의 허세가 더 크게 보인다.",
+      "{Q} 문제부터 걷어내야 생태계 얘기가 맑아진다.",
+    ],
+  },
+  regulation: {
+    execution: [
+      "{Q} 지점에서 기사와 행동이 갈린다.",
+      "오늘은 {Q} 쪽의 빈칸이 더 크게 보인다.",
+      "{Q} 문제를 보면 규제 뉴스의 값이 보인다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "{Q} 장면에서 분위기와 돈이 갈린다.",
+      "오늘은 {Q} 쪽에서 과열의 속내가 드러난다.",
+      "{Q} 문제를 보면 화면 열기의 한계가 보인다.",
+    ],
+  },
+};
+
 const QUESTION_FALLBACKS = [
   "이 장면을 뒤집는 첫 신호를 어디서 찾겠나?",
   "너라면 여기서 먼저 믿지 않을 근거는 뭐겠나?",
@@ -567,6 +596,35 @@ const SOUL_HINT_POOLS = {
     "너무 잘 삼켜지는 설명은 대개 다시 올라온다.",
   ],
   default: PIXYMON_INSTINCTS,
+};
+
+const FOCUS_SOUL_HINT_POOLS: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    retention: [
+      "좋은 서사보다 다시 돌아오는 사람이 훨씬 정직하다.",
+      "열기보다 잔류가 더 오래 진실을 끌고 간다.",
+      "사용자가 돌아오지 않으면 멋진 설명도 오래 못 버틴다.",
+    ],
+    hype: [
+      "서사만 부풀수록 실제 사용 흔적은 더 차갑게 봐야 한다.",
+      "광고가 앞설수록 남는 건 대개 빈 열기다.",
+      "사람보다 문구가 먼저 커지는 장면은 오래 믿지 않는다.",
+    ],
+  },
+  regulation: {
+    execution: [
+      "규제 뉴스는 집행이 붙기 전까지 늘 반쪽짜리다.",
+      "행동이 안 붙은 정책 해설은 기사 톤을 벗어나지 못한다.",
+      "집행 빈칸이 큰 날일수록 좋은 해설도 얇아진다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "분위기보다 돈이 어디에 남는지가 결국 더 정확하다.",
+      "호가보다 체결이 늦게 남기는 흔적이 훨씬 정직하다.",
+      "자금이 안 붙은 열기는 오래 믿을 이유가 없다.",
+    ],
+  },
 };
 
 
@@ -722,8 +780,12 @@ function pickFixationLine(lane: TrendLane, focus: WriterFocus, seed: number, lea
   return pick(pool, seed + 1, 25);
 }
 
-function rewriteSoulHint(input: KoIdentityWriterInput, seed: number): string {
+function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed: number): string {
   const source = sanitizeClause(input.recentReflection || input.signatureBelief || input.worldviewHint || "");
+  const focusPool = FOCUS_SOUL_HINT_POOLS[input.lane]?.[focus];
+  if (focusPool?.length) {
+    return pick(focusPool, seed, 2);
+  }
   if (!source) {
     return pick(SOUL_HINT_POOLS.default, seed, 3);
   }
@@ -758,6 +820,7 @@ function pickModeStamp(mode: string, seed: number, lead: string, attitude: strin
 
 function buildSceneLine(
   input: KoIdentityWriterInput,
+  focus: WriterFocus,
   seed: number,
   primaryAnchor: string,
   secondaryAnchor: string
@@ -773,7 +836,8 @@ function buildSceneLine(
     return sceneCore;
   }
   const quoted = `${sceneCore}${hasBatchim(sceneCore) ? "이라는" : "라는"}`;
-  return pick(SCENE_OPENERS, seed, 23).replaceAll("{Q}", quoted);
+  const focusPool = FOCUS_SCENE_OPENERS_BY_LANE[input.lane]?.[focus] || [];
+  return pick([...focusPool, ...SCENE_OPENERS], seed, 23).replaceAll("{Q}", quoted);
 }
 
 function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
@@ -888,10 +952,10 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
         ? [...focusLeadPool, ...FIELD_NOTES_BY_LANE[input.lane]]
         : [...focusLeadPool, ...CLAIM_BY_LANE[input.lane]];
   const lead = pick(leadPool, seed, variant);
-  const scene = buildSceneLine(input, seed + variant, primaryAnchor, secondaryAnchor);
+  const scene = buildSceneLine(input, focus, seed + variant, primaryAnchor, secondaryAnchor);
   const focusEvidencePool = FOCUS_EVIDENCE_BY_LANE[input.lane]?.[focus] || [];
   const evidence = fill(pick([...focusEvidencePool, ...EVIDENCE_BY_LANE[input.lane]], seed, variant + 3), primaryAnchor, secondaryAnchor);
-  const instinct = rewriteSoulHint(input, seed + 17);
+  const instinct = rewriteSoulHint(input, focus, seed + 17);
   const attitude = pickAttitudeLine(input.lane, focus, seed + variant, lead);
   const fixation = pickFixationLine(input.lane, focus, seed + variant, lead, attitude);
   const stamp = pickModeStamp(input.mode, seed + variant, lead, attitude);

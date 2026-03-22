@@ -104,6 +104,7 @@ test("buildKoIdentityWriterCandidate splits ecosystem voice by retention versus 
   });
 
   assert.notEqual(retention.split(".")[0]?.trim(), hype.split(".")[0]?.trim());
+  assert.notEqual(retention.split(".")[1]?.trim(), hype.split(".")[1]?.trim());
   assert.match(retention, /(재방문|잔류|사람이 남|사용자)/);
   assert.match(hype, /(홍보|광고|서사|캠페인)/);
 });
