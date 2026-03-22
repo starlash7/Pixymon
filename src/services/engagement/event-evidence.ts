@@ -631,6 +631,12 @@ export function buildEventEvidenceFallbackPost(
         `오늘은 ${cleaned} 쪽으로 자꾸 다시 돌아오게 된다`
       );
     }
+    if (/구간$/.test(cleaned)) {
+      return rewriteVariant(
+        `${cleaned}이 오늘 더 크게 남는다`,
+        `${cleaned}에서 결국 말과 흐름이 갈린다`
+      );
+    }
     const decideMatch = cleaned.match(/^(.+?)[은는]\s+(.+?)에서\s+먼저\s+결정된다$/);
     if (decideMatch) {
       const left = decideMatch[1].trim();
