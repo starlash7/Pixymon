@@ -2177,7 +2177,22 @@ Rules:
         narrativeMode: narrativePlan.mode,
       },
     });
-    if (!tweetId) return false;
+    if (!tweetId) {
+      const actionMode = String(process.env.ACTION_MODE || "observe").trim().toLowerCase();
+      const failReason =
+        actionMode === "observe" || actionMode === "paper"
+          ? `post-skipped:${actionMode}`
+          : "post-create-null";
+      memory.recordPostGeneration({
+        timezone,
+        retryCount: Math.max(0, generationAttempts - 1),
+        usedFallback,
+        success: false,
+        failReason,
+      });
+      console.log(`[POST] 발행 미완료: ${failReason}`);
+      return false;
+    }
 
     memory.recordCognitiveActivity("social", 2);
     memory.recordNarrativeOutcome({

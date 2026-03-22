@@ -108,6 +108,11 @@ const envChecks = [
     title: "TEST_NO_EXTERNAL_CALLS off",
     ok: isFalseyFlag(process.env.TEST_NO_EXTERNAL_CALLS),
     failDetail: `TEST_NO_EXTERNAL_CALLS=${process.env.TEST_NO_EXTERNAL_CALLS || "(unset)"}`
+  },
+  {
+    title: "ACTION_MODE live",
+    ok: boolString(process.env.ACTION_MODE) === "live",
+    failDetail: `ACTION_MODE=${process.env.ACTION_MODE || "(unset)"}`
   }
 ];
 

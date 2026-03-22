@@ -1139,6 +1139,25 @@ export async function postTweet(
       console.log(`[2PC] prepare id=${commitId} mode=${actionMode} kind=${createKind}`);
     }
 
+    if (actionMode === "observe") {
+      console.log(`[2PC] observe-only id=${commitId} kind=${createKind} (live create skipped)`);
+      return null;
+    }
+
+    if (actionMode === "paper") {
+      console.log(`[2PC] paper-only id=${commitId} kind=${createKind} (simulated create)`);
+      const paperId = `paper_${Date.now()}`;
+      recordNarrativeObservation({
+        surface: type === "quote" ? "quote" : "post",
+        text: content,
+        language: detectLanguage(content),
+        lane: options.metadata?.lane,
+        narrativeMode: options.metadata?.narrativeMode,
+        fallbackKind: `${createKind}:paper`,
+      });
+      return paperId;
+    }
+
     const createGuard = xApiBudget.checkCreateAllowance({
       enabled: xApiCostSettings.enabled,
       timezone,
@@ -1166,9 +1185,11 @@ export async function postTweet(
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        console.log(`[2PC] send id=${commitId} attempt=${attempt} kind=${createKind}`);
         const tweet = quoteTweetId
           ? await twitter.v2.tweet({ text: content, quote_tweet_id: quoteTweetId })
           : await twitter.v2.tweet(content);
+        console.log(`[2PC] response id=${commitId} attempt=${attempt}`);
         if (ACTION_TWO_PHASE_COMMIT) {
           if (!tweet?.data?.id || String(tweet.data.id).trim().length === 0) {
             throw new Error("two-phase post-check failed: invalid tweet id");
