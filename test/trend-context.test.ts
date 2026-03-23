@@ -1378,6 +1378,178 @@ test("buildStructuralFallbackEventsFromEvidence uses builder-specific ecosystem 
   assert.doesNotMatch(ecosystemEvent.headline, /생태계 판단은|생태계 서사가 실제 사용으로 이어지는지/);
 });
 
+test("buildStructuralFallbackEventsFromEvidence emits multiple protocol structural families when sharp pairs exist", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = buildOnchainEvidence([
+    {
+      id: "p1",
+      source: "protocol",
+      category: "validator",
+      label: "검증자 안정성",
+      value: "유지",
+      evidence: "Validator stability held across the rollout.",
+      trust: 0.84,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.81 },
+    },
+    {
+      id: "p2",
+      source: "protocol",
+      category: "recovery",
+      label: "복구 속도",
+      value: "둔화",
+      evidence: "Recovery lagged the celebratory release narrative.",
+      trust: 0.82,
+      freshness: 0.88,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.78 },
+    },
+    {
+      id: "p3",
+      source: "protocol",
+      category: "launch",
+      label: "메인넷 준비도",
+      value: "상승",
+      evidence: "Launch readiness strengthened across operator notes.",
+      trust: 0.8,
+      freshness: 0.89,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.76 },
+    },
+    {
+      id: "p4",
+      source: "market",
+      category: "capital",
+      label: "복귀 자금",
+      value: "지연",
+      evidence: "Returning capital lagged the launch applause.",
+      trust: 0.79,
+      freshness: 0.87,
+      capturedAt: createdAt,
+      metadata: { digestScore: 0.74 },
+    },
+  ]);
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 4).filter((event) => event.lane === "protocol");
+  assert.ok(events.length >= 2);
+  assert.notEqual(events[0].headline, events[1].headline);
+  assert.ok(events.some((event) => /복구 기록|복구 태도|검증자/.test(event.headline)));
+  assert.ok(events.some((event) => /메인넷|복귀 자금|런치|출시/.test(event.headline)));
+});
+
+test("buildStructuralFallbackEventsFromEvidence keeps alternative court and liquidity scene families when evidence allows it", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "reg-court-a",
+      lane: "regulation" as const,
+      nutrientId: "n-reg-court-a",
+      source: "news" as const,
+      label: "법원 일정",
+      value: "집중",
+      summary: "Court calendar coverage dominated the cycle.",
+      trust: 0.83,
+      freshness: 0.91,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+    {
+      id: "reg-court-b",
+      lane: "regulation" as const,
+      nutrientId: "n-reg-court-b",
+      source: "onchain" as const,
+      label: "대기 자금 흐름",
+      value: "관망",
+      summary: "Waiting capital stayed cautious after the ruling hype.",
+      trust: 0.82,
+      freshness: 0.9,
+      digestScore: 0.74,
+      capturedAt: createdAt,
+    },
+    {
+      id: "reg-court-c",
+      lane: "regulation" as const,
+      nutrientId: "n-reg-court-c",
+      source: "news" as const,
+      label: "집행 흔적",
+      value: "지연",
+      summary: "Actual enforcement traces lagged behind the court narrative.",
+      trust: 0.8,
+      freshness: 0.88,
+      digestScore: 0.72,
+      capturedAt: createdAt,
+    },
+    {
+      id: "market-liquidity-a",
+      lane: "market-structure" as const,
+      nutrientId: "n-market-liquidity-a",
+      source: "onchain" as const,
+      label: "큰 주문 소화",
+      value: "둔화",
+      summary: "Large order absorption slowed beneath the heat.",
+      trust: 0.84,
+      freshness: 0.92,
+      digestScore: 0.77,
+      capturedAt: createdAt,
+    },
+    {
+      id: "market-liquidity-b",
+      lane: "market-structure" as const,
+      nutrientId: "n-market-liquidity-b",
+      source: "market" as const,
+      label: "자금 쏠림 방향",
+      value: "분산",
+      summary: "Capital concentration stayed scattered.",
+      trust: 0.82,
+      freshness: 0.9,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+    {
+      id: "market-liquidity-c",
+      lane: "market-structure" as const,
+      nutrientId: "n-market-liquidity-c",
+      source: "market" as const,
+      label: "호가 두께",
+      value: "약화",
+      summary: "Orderbook depth thinned despite louder reaction.",
+      trust: 0.81,
+      freshness: 0.89,
+      digestScore: 0.73,
+      capturedAt: createdAt,
+    },
+    {
+      id: "market-liquidity-d",
+      lane: "market-structure" as const,
+      nutrientId: "n-market-liquidity-d",
+      source: "market" as const,
+      label: "현물 체결",
+      value: "지연",
+      summary: "Spot settlement stayed slow as heat expanded.",
+      trust: 0.82,
+      freshness: 0.9,
+      digestScore: 0.74,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 8);
+  const families = new Set(
+    events
+      .map((item) => `${item.lane}:${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`)
+      .filter(Boolean)
+  );
+
+  assert.ok(families.has("regulation:court:capital+court"));
+  assert.ok(families.has("regulation:court:court+execution"));
+  assert.ok(
+    families.has("market-structure:liquidity:capital+depth") ||
+      families.has("market-structure:settlement:depth+settlement") ||
+      families.has("market-structure:settlement:execution+settlement")
+  );
+});
+
 test("planEventEvidenceAct prefers builder ecosystem pair over generic community pair", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({
