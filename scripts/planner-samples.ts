@@ -141,6 +141,7 @@ const cases: PlannerSampleCase[] = [
       evidence("eco-retention-a", "onchain", "onchain", "지갑 재방문", "확대", "실사용 흔적이 초기 서사 뒤에도 남아 있는지 보는 단서다."),
       evidence("eco-retention-b", "ecosystem", "news", "사용자 재방문 흐름", "확대", "서사 이후에도 다시 돌아오는 사용자가 실제로 늘었는지 보는 단서다."),
       evidence("eco-retention-c", "ecosystem", "news", "커뮤니티 반응", "과열", "커뮤니티 반응만 뜨거워진 구간이다.", 0.68, 0.8, 0.55),
+      evidence("eco-retention-d", "ecosystem", "onchain", "체인 안쪽 사용", "유지", "체인 안쪽 사용은 유지되지만 반응의 온도는 먼저 식고 있는 장면이다.", 0.8, 0.88, 0.72),
     ],
   },
   {
@@ -159,8 +160,9 @@ const cases: PlannerSampleCase[] = [
     ],
     evidence: [
       evidence("reg-court-a", "regulation", "news", "법원 일정", "집중", "Court calendar coverage dominated the news cycle."),
-      evidence("reg-court-b", "regulation", "onchain", "대기 자금 흐름", "관망", "Waiting capital stayed cautious despite the legal excitement."),
-      evidence("reg-court-c", "regulation", "market", "ETF 대기 주문", "정체", "ETF-related waiting orders did not expand with the court headline.", 0.77, 0.86, 0.69),
+      evidence("reg-court-b", "regulation", "news", "집행 흔적", "지연", "Actual enforcement traces lagged behind the court-driven narrative.", 0.82, 0.88, 0.76),
+      evidence("reg-court-c", "regulation", "onchain", "대기 자금 흐름", "관망", "Waiting capital stayed cautious despite the legal excitement.", 0.78, 0.87, 0.7),
+      evidence("reg-court-d", "regulation", "market", "ETF 대기 주문", "정체", "ETF-related waiting orders did not expand with the court headline.", 0.75, 0.85, 0.67),
     ],
   },
   {
@@ -181,6 +183,7 @@ const cases: PlannerSampleCase[] = [
       evidence("protocol-durability-a", "protocol", "onchain", "검증자 안정성", "유지", "Validator stability held during the rollout window."),
       evidence("protocol-durability-b", "protocol", "news", "복구 속도", "둔화", "Recovery speed lagged the celebratory rollout narrative."),
       evidence("protocol-durability-c", "protocol", "market", "운영 반응", "신중", "Operational response remained cautious despite headline optimism.", 0.76, 0.85, 0.7),
+      evidence("protocol-durability-d", "protocol", "news", "업그레이드 배포", "지연", "Upgrade rollout slipped behind the initial operator applause.", 0.79, 0.87, 0.73),
     ],
   },
   {
@@ -200,7 +203,7 @@ const cases: PlannerSampleCase[] = [
     evidence: [
       evidence("protocol-launch-a", "protocol", "news", "메인넷 준비도", "상승", "Mainnet readiness looked stronger across operator notes."),
       evidence("protocol-launch-b", "protocol", "onchain", "복귀 자금", "지연", "Returning capital did not re-enter at the same speed as launch headlines."),
-      evidence("protocol-launch-c", "protocol", "market", "배포 큐", "증가", "Release queue activity outpaced actual capital return.", 0.75, 0.84, 0.68),
+      evidence("protocol-launch-c", "protocol", "market", "업그레이드 배포 큐", "증가", "Upgrade rollout queue activity outpaced actual capital return.", 0.78, 0.86, 0.72),
     ],
   },
   {
@@ -221,6 +224,7 @@ const cases: PlannerSampleCase[] = [
       evidence("market-liquidity-a", "market-structure", "onchain", "큰 주문 소화", "둔화", "Large order absorption slowed beneath the heat on screen."),
       evidence("market-liquidity-b", "market-structure", "market", "자금 쏠림 방향", "분산", "Capital concentration stayed scattered instead of confirming the move."),
       evidence("market-liquidity-c", "market-structure", "market", "호가 두께", "약화", "Orderbook depth thinned despite louder reaction.", 0.79, 0.88, 0.72),
+      evidence("market-liquidity-d", "market-structure", "market", "현물 체결", "지연", "Spot settlement stayed slow even as the screen heat expanded.", 0.8, 0.89, 0.74),
     ],
   },
 ];
@@ -254,18 +258,26 @@ function generateSamples(variantCount: number): PlannerSample[] {
     const structuralEvents = buildStructuralFallbackEventsFromEvidence(item.evidence, createdAt, 3).filter(
       (candidate) => candidate.lane === item.lane
     );
-    const plan = planEventEvidenceAct({
-      events: [...structuralEvents, ...item.events],
-      evidence: item.evidence,
-      recentPosts: item.recentPosts || [],
-      recentNarrativeThreads: item.recentNarrativeThreads || [],
-    });
-
-    if (!plan) {
-      throw new Error(`planner returned null for case ${item.id}`);
-    }
+    const syntheticThreads: PlannerThread[] = [...(item.recentNarrativeThreads || [])];
 
     for (let variant = 0; variant < variantCount; variant += 1) {
+      const rotatedStructuralEvents = structuralEvents.length
+        ? structuralEvents.slice(variant % structuralEvents.length).concat(structuralEvents.slice(0, variant % structuralEvents.length))
+        : [];
+      const rotatedEvents = item.events.length
+        ? item.events.slice(variant % item.events.length).concat(item.events.slice(0, variant % item.events.length))
+        : [];
+      const plan = planEventEvidenceAct({
+        events: [...rotatedStructuralEvents, ...rotatedEvents],
+        evidence: item.evidence,
+        recentPosts: item.recentPosts || [],
+        recentNarrativeThreads: syntheticThreads.slice(-6),
+      });
+
+      if (!plan) {
+        throw new Error(`planner returned null for case ${item.id} variant ${variant}`);
+      }
+
       const text = buildEventEvidenceFallbackPost(plan, "ko", 260, item.mode, variant);
       const sentences = splitSentences(text);
       samples.push({
@@ -280,6 +292,12 @@ function generateSamples(variantCount: number): PlannerSample[] {
         text,
         firstSentence: sentences[0] || "",
         secondSentence: sentences[1] || "",
+      });
+      syntheticThreads.push({
+        lane: plan.lane,
+        focus: plan.focus,
+        sceneFamily: plan.sceneFamily || "",
+        headline: plan.event.headline,
       });
     }
   }

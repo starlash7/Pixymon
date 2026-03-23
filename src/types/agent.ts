@@ -66,6 +66,9 @@ export interface TrendEvent {
   freshness: number;
   capturedAt: string;
   keywords: string[];
+  focusHint?: string;
+  sceneFamilyHint?: string;
+  evidenceLabelHints?: string[];
 }
 
 export interface OnchainEvidence {
