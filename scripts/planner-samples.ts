@@ -39,6 +39,45 @@ type PlannerSample = {
   secondSentence: string;
 };
 
+function identityPressureForLane(lane: TrendLane) {
+  const map: Record<
+    TrendLane,
+    { obsessionLine: string; grudgeLine: string; continuityLine: string }
+  > = {
+    protocol: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 릴리스보다 운영 로그다.",
+      grudgeLine: "운영이 비어 있는데 릴리스 노트만 큰 서사를 제일 싫어한다.",
+      continuityLine: '직전 스레드 "릴리스 박수보다 복구 태도"에서 걸린 지점을 이번에도 다시 확인한다.',
+    },
+    ecosystem: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 재방문과 잔류다.",
+      grudgeLine: "사람은 안 남는데 커뮤니티 열기만 큰 얘기를 제일 싫어한다.",
+      continuityLine: '직전 스레드 "서사보다 남은 사람 수"에서 걸린 지점을 이번에도 다시 확인한다.',
+    },
+    regulation: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 기사보다 집행 흔적이다.",
+      grudgeLine: "집행은 없는데 기사만 큰 규제 해설을 제일 싫어한다.",
+      continuityLine: '직전 스레드 "판결 기사보다 실제 자금 반응"에서 걸린 지점을 이번에도 다시 확인한다.',
+    },
+    macro: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 큰 해설보다 자금 습관 변화다.",
+      grudgeLine: "배치가 안 바뀌는데 거시 해설만 커지는 장면을 제일 싫어한다.",
+      continuityLine: '직전 스레드 "해설보다 자금 습관"에서 걸린 지점을 이번에도 다시 확인한다.',
+    },
+    onchain: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 하루를 버틴 온체인 신호다.",
+      grudgeLine: "하루도 못 버티는 온체인 숫자를 제일 안 믿는다.",
+      continuityLine: '직전 스레드 "튀는 숫자보다 남은 흔적"에서 걸린 지점을 이번에도 다시 확인한다.',
+    },
+    "market-structure": {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 분위기보다 실제 돈이다.",
+      grudgeLine: "체결은 없는데 자신감만 큰 화면을 제일 싫어한다.",
+      continuityLine: '직전 스레드 "호가보다 실제 체결"에서 걸린 지점을 이번에도 다시 확인한다.',
+    },
+  };
+  return map[lane];
+}
+
 const createdAt = new Date().toISOString();
 
 function event(
@@ -288,6 +327,7 @@ function generateSamples(variantCount: number): PlannerSample[] {
         evidence: item.evidence,
         recentPosts: item.recentPosts || [],
         recentNarrativeThreads: syntheticThreads.slice(-6),
+        identityPressure: identityPressureForLane(item.lane),
       });
 
       if (!plan) {

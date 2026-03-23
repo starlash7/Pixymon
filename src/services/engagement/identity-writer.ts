@@ -19,6 +19,7 @@ type WriterSegment =
   | "scene"
   | "lead"
   | "stamp"
+  | "pressure"
   | "evidence"
   | "instinct"
   | "attitude"
@@ -348,6 +349,9 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "법원 문장보다 자금 반응이 늦게 붙는 날은 뉴스보다 현장을 믿는다.",
       "판결 기사만 앞서고 돈이 잠잠한 장면은 길게 잡을 이유가 없다.",
       "법원 일정이 커도 자금 반응이 비면 그 뉴스는 기사 무게를 못 넘긴다.",
+      "소송 해설만 커지고 자금이 비면 그 뉴스는 제자리에서 헛돈다.",
+      "판결 문장보다 늦게 붙는 돈이 없으면 그 뉴스는 곧 얇아진다.",
+      "법원 뉴스가 앞서도 돈의 방향이 안 잡히면 오래 들고 갈 이유가 없다.",
     ],
   },
   protocol: {
@@ -366,6 +370,9 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "메인넷 준비도만 요란하고 복귀 자금이 잠잠하면 그 출시는 얇다.",
       "복귀 자금이 늦게 붙는 런치는 메인넷 발표보다 빈칸이 먼저 보인다.",
       "메인넷 박수보다 복귀 자금이 늦게 붙는 날은 바로 경계한다.",
+      "출시 박수는 앞서는데 복귀 자금이 없으면 그 메인넷 얘기는 얇다.",
+      "준비도는 충분해 보여도 돈이 안 돌아오면 그 런치는 아직 종이 위다.",
+      "메인넷 문장만 앞서고 복귀가 늦으면 그 출시는 반쪽으로 본다.",
     ],
   },
   onchain: {
@@ -396,6 +403,9 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "거래량은 남는데 깊이가 비는 장면은 제일 늦게 믿는다.",
       "체결 숫자가 커도 호가 두께가 비면 그 열기는 오래 못 간다.",
       "깊이 없는 반응은 화면에만 남고 구조까지는 잘 못 간다.",
+      "현물 체결이 커도 호가가 비면 그 반응은 아직 구조를 못 만든다.",
+      "숫자만 남고 깊이가 사라진 장면은 연출 쪽으로 기운다.",
+      "거래량 반응이 살아도 호가가 비면 그 열기는 오래 못 버틴다.",
     ],
   },
 };
@@ -442,6 +452,9 @@ const FOCUS_CROSS_EXAM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterF
       "법원 해설이 커질수록 결국 돈이 어느 쪽으로 움직였는지만 남는다.",
       "소송 뉴스의 무게는 결국 법원 문장보다 자금 반응이 다시 정한다.",
       "판결보다 자금 반응이 늦게 붙는 날은 기사보다 현장 쪽을 더 오래 본다.",
+      "법원 뉴스는 길어도 결국 돈의 방향이 안 붙으면 기사값으로 돌아간다.",
+      "소송 문장보다 늦게 붙는 자금 반응이 결국 이 장면의 체급을 정한다.",
+      "판결 해설은 커도 돈이 잠잠하면 현장보다 기사 쪽으로 기운다.",
     ],
   },
   protocol: {
@@ -464,6 +477,9 @@ const FOCUS_CROSS_EXAM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterF
       "메인넷 문장보다 늦게 붙는 복귀 자금 쪽이 결국 더 솔직하다.",
       "출시 기세는 커도 복귀 자금이 더디면 그 런치는 아직 얇은 편이다.",
       "운영 반응이 붙지 않는 메인넷 발표는 박수보다 빈칸이 먼저 남는다.",
+      "메인넷 설명보다 자금 복귀가 늦는 장면은 바로 반쪽으로 분류한다.",
+      "출시 문장만 빠르고 복귀가 늦으면 그 메인넷 얘기는 아직 종이 위다.",
+      "런치 열기보다 늦게 붙는 자금 쪽이 없으면 그 출시는 오래 못 간다.",
     ],
   },
   onchain: {
@@ -490,6 +506,9 @@ const FOCUS_CROSS_EXAM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterF
       "거래량 숫자만 남고 깊이가 비면 그 장면은 구조보다 연출 쪽이다.",
       "호가 두께 없이 커진 거래량은 오래 못 믿는다.",
       "깊이 없는 체결 반응은 숫자만 번쩍인 장면으로 남는다.",
+      "현물 체결이 커도 깊이가 비면 그 장면은 화면 반응에 더 가깝다.",
+      "호가 두께가 빠진 거래량은 구조보다 분위기 쪽에 가깝다.",
+      "깊이 없는 거래량은 숫자만 남고 체급은 못 만든다.",
     ],
   },
 };
@@ -551,8 +570,11 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "소송 뉴스는 자금 방향이 붙는 순간에야 기사 톤을 벗어난다.",
       "판결 기사보다 매수 자리가 늦게 붙는 순간이 결국 이 뉴스의 본색을 드러낸다.",
       "법원 일정과 자금 반응이 같은 편인지가 결국 판결 뉴스의 값을 정한다.",
-      "법원 해설이 길어질수록 결국 남는 건 돈이 어느 쪽으로 기우는지다.",
+      "법원 해설이 길어질수록 결국 자금이 비는 자리가 더 크게 남는다.",
       "판결 뉴스의 본색은 결국 자금 반응이 어디서 멈추는지에서 드러난다.",
+      "법원 뉴스는 결국 돈이 붙는 자리를 만나야 기사값을 벗어난다.",
+      "판결 기사가 커도 돈의 방향이 비는 순간 그 뉴스 체급은 바로 내려간다.",
+      "소송 문장은 길어도 자금 반응이 비면 끝내 기사 쪽으로 되돌아간다.",
     ],
   },
   "market-structure": {
@@ -571,6 +593,9 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "결국 늦게 남는 건 체결량보다 호가 두께 쪽이다.",
       "깊이가 안 붙으면 큰 거래량도 금방 장면값으로 돌아간다.",
       "체결 숫자보다 호가 두께가 끝까지 남는지 먼저 본다.",
+      "거래량보다 깊이가 끝까지 붙는지 여부가 결국 이 반응의 무게를 정한다.",
+      "숫자보다 깊이가 남는 장면만 구조 변화로 기억해 둔다.",
+      "호가 두께가 남지 않으면 큰 거래량도 결국 장면값으로 돌아간다.",
     ],
   },
   protocol: {
@@ -658,7 +683,7 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "판결 기사만 크고 돈이 안 움직이면 그 뉴스는 반쪽짜리다.",
       "법원 일정은 커도 자금이 비면 결국 기사값으로 남는다.",
       "소송 뉴스는 자금 방향이 붙는 순간에야 기사 톤을 벗어난다.",
-      "법원 해설이 길수록 마지막에 남는 건 결국 돈이 어느 쪽으로 기우는지다.",
+      "법원 해설이 길수록 결국 드러나는 건 돈이 빠진 자리다.",
       "판결 뉴스의 본색은 결국 자금 반응이 어디서 멈추는지에서 드러난다.",
     ],
   },
@@ -858,6 +883,9 @@ const FOCUS_CONSEQUENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writer
       "재방문이 끊기는 순간 그 반응은 바로 홍보 문구 쪽으로 밀린다.",
       "남는 사람이 사라지는 순간 그 생태계 얘기도 절반이 날아간다.",
       "잔류가 비는 순간 그 열기는 오래 못 버틴다.",
+      "다시 돌아오는 손이 끊기는 순간 그 반응은 기세만 남긴다.",
+      "잔류가 비는 순간 큰 생태계 문장도 바로 광고 쪽으로 기운다.",
+      "사람이 다음 날 안 돌아오면 그 열기는 하루짜리 포스터로 남는다.",
     ],
     builder: [
       "코드와 자금이 갈라지는 순간 그 생태계 얘기도 금방 헐거워진다.",
@@ -1055,6 +1083,13 @@ const MODE_STAMP_BY_MODE: Record<string, string[]> = {
     "설명이 그럴듯할수록 비어 있는 밑단은 더 선명하게 드러난다.",
     "결국 끝에 비는 자리가 생기는 순간 이 장면의 체급도 다시 내려간다.",
     "마지막까지 비는 한 칸이 남는 순간 좋은 설명도 바로 납작해진다.",
+    "끝에 남은 빈칸 하나가 길게 늘어진 해설보다 훨씬 많은 걸 말한다.",
+    "좋은 설명도 마지막 칸이 비는 순간 갑자기 값이 싸진다.",
+    "대개 허세는 제일 늦게 붙어야 할 자리가 비는 순간 들통난다.",
+    "마지막까지 안 메워진 빈칸 하나가 결국 이 장면의 허세를 드러낸다.",
+    "늦게 붙어야 할 자리가 끝내 비면 설명은 거기서 체급이 내려간다.",
+    "그럴듯한 말도 마지막 칸이 안 메워지는 순간 갑자기 싸 보인다.",
+    "설명은 멀쩡해도 제일 늦게 붙는 자리가 비면 결국 거기서 무너진다.",
   ],
   "philosophy-note": [
     "길게 보면 서사는 결국 운영 앞에서 값을 다시 매긴다.",
@@ -1217,6 +1252,9 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "소송 문장과 돈의 방향이 엇갈리는 순간 이 뉴스는 기사에 가까워진다.",
         "판결 해설은 길어도 돈이 붙은 자리만 이 장면을 현장으로 끌어내린다.",
         "법원 뉴스는 결국 기사보다 늦게 움직인 자금 쪽에서 본색을 들킨다.",
+        "소송 해설은 길어도 돈이 붙지 않으면 끝내 기사 자리에서 못 벗어난다.",
+        "판결 기사보다 늦게 붙는 자금 방향이 결국 이 뉴스의 체급을 정산한다.",
+        "법원 뉴스의 무게는 결국 기사보다 돈이 어디서 움직였는지가 다시 매긴다.",
       ],
     },
   },
@@ -1260,6 +1298,9 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "출시 박수는 빨라도 복귀 자금이 붙는 속도가 결국 이 장면의 무게를 정산한다.",
         "메인넷 문장보다 복귀 자금이 남는지가 끝내 이 출시의 체급을 다시 쓴다.",
         "런치의 본색은 결국 준비도보다 늦게 붙는 운영 태도 쪽에서 드러난다.",
+        "메인넷 준비도보다 늦게 붙는 복귀 자금이 끝내 이 발표의 본색을 남긴다.",
+        "출시 서사의 값은 결국 복귀 자금과 운영 반응이 같이 남는지에서 갈린다.",
+        "메인넷 박수보다 늦게 붙는 돈의 복귀가 결국 이 런치의 진실을 정한다.",
       ],
     },
   },
@@ -1366,6 +1407,9 @@ const SOUL_HINT_POOLS = {
     "말보다 행동이 늦게 붙는 날엔 결론도 늦게 내린다.",
     "실행이 안 붙으면 좋은 설명도 절반쯤은 광고다.",
     "행동이 따라오지 않는 순간 해설은 금방 얇아진다.",
+    "실행이 비는 날엔 그럴듯한 설명도 금방 판촉 문장처럼 납작해진다.",
+    "행동이 따라붙지 않으면 큰 해설도 절반은 포장에 가깝다.",
+    "끝내 실행이 안 붙는 설명은 오래 붙잡을 이유가 없다.",
   ],
   caution: [
     "빨리 맞히는 것보다 늦게 틀리는 편이 낫다고 본다.",
@@ -1729,6 +1773,66 @@ function pickModeStampForLane(
   return effectivePool[(baseIndex + variant + 1) % effectivePool.length];
 }
 
+function buildPressureLine(
+  input: KoIdentityWriterInput,
+  focus: WriterFocus,
+  seed: number,
+  variant: number,
+  lead: string,
+  attitude: string
+): string {
+  const continuity = sanitizeClause(input.continuityLine || "");
+  const grudge = sanitizeClause(input.grudgeLine || "");
+  const obsession = sanitizeClause(input.obsessionLine || "");
+
+  const quotedContinuity = continuity.match(/"([^"]+)"/)?.[1]?.trim() || "";
+  const continuityCore = sanitizeClause(
+    quotedContinuity ||
+      continuity
+        .replace(/^직전\s*스레드\s*/u, "")
+        .replace(/^지난번\s*/u, "")
+        .replace(/에서\s*걸린\s*지점을\s*이번에도\s*다시\s*확인한다\.?$/u, "")
+        .replace(/^["']|["']$/g, "")
+        .trim()
+  );
+  const grudgeCore = sanitizeClause(
+    grudge
+      .replace(/^.*?(?:제일\s*싫어한다|싫어한다)\.?$/u, "")
+      .trim()
+  );
+  const obsessionCore = sanitizeClause(
+    obsession
+      .replace(/^지금\s*픽시몬이\s*끝까지\s*붙드는\s*건\s*/u, "")
+      .replace(/^끝까지\s*붙드는\s*건\s*/u, "")
+      .trim()
+  );
+
+  const pool = [
+    continuityCore ? `지난번에 걸렸던 건 결국 ${continuityCore} 쪽이었다.` : "",
+    continuityCore ? `이번에도 자꾸 같은 자리에서 ${continuityCore} 냄새가 올라온다.` : "",
+    continuityCore ? `지난번에 물어뜯던 빈칸이 이번에도 ${continuityCore} 자리에서 다시 보인다.` : "",
+    continuityCore ? `결국 이번에도 ${continuityCore} 자리의 빈칸이 제일 크게 남는다.` : "",
+    continuityCore ? `지난번에 제일 꺼림칙했던 것도 결국 ${continuityCore} 자리였다.` : "",
+    continuityCore ? `${continuityCore} 자리는 이번에도 제일 늦게 들통난다.` : "",
+    grudge ? `나는 ${grudge} 같은 장면을 늘 제일 늦게 믿는다.` : "",
+    grudge ? `${grudge} 같은 장면은 이번에도 먼저 잘라내고 시작한다.` : "",
+    grudge ? `${grudge} 같은 장면은 설명보다 빈칸이 먼저 커진다.` : "",
+    grudge ? `${grudge} 같은 장면은 시간이 갈수록 기사값만 남기기 쉽다.` : "",
+    obsessionCore ? `결국 이번에도 끝까지 붙드는 건 ${obsessionCore} 쪽이다.` : "",
+    obsessionCore ? `설명이 커져도 내가 끝까지 놓지 않는 건 ${obsessionCore} 쪽이다.` : "",
+    obsessionCore ? `끝에 남는 건 이번에도 ${obsessionCore} 자리다.` : "",
+    obsessionCore ? `이번에도 설명이 아니라 ${obsessionCore} 쪽이 마지막까지 버틴다.` : "",
+  ].filter(Boolean);
+
+  if (!pool.length) return "";
+  const baseIndex = Math.abs(seed + 43) % pool.length;
+  const first = pool[(baseIndex + variant) % pool.length];
+  if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude) && !hasHeavyKeywordOverlap(first, lead)) {
+    return first;
+  }
+  return pool[(baseIndex + variant + 1) % pool.length];
+}
+
 function buildSceneLine(
   input: KoIdentityWriterInput,
   focus: WriterFocus,
@@ -1855,12 +1959,14 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
     return frame === "cross-exam"
       ? [
           ["attitude", "stamp", "evidence", "consequence"],
+          ["pressure", "evidence", "consequence"],
           ["scene", "attitude", "evidence", "consequence"],
           ["lead", "fixation", "decision", "consequence"],
           ["scene", "stamp", "fixation", "decision"],
         ]
       : [
           ["scene", "attitude", "evidence", "decision"],
+          ["pressure", "evidence", "decision"],
           ["lead", "stamp", "fixation", "consequence"],
           ["attitude", "evidence", "fixation", "decision"],
         ];
@@ -1870,6 +1976,7 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
     if (lane === "protocol" && focus === "durability") {
       return [
         ["lead", "evidence", "decision", "consequence"],
+        ["pressure", "evidence", "consequence"],
         ["attitude", "stamp", "evidence", "consequence"],
         ["stamp", "evidence", "consequence"],
         ["fixation", "evidence", "stamp", "decision"],
@@ -1902,6 +2009,7 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
     }
     return [
       ["lead", "stamp", "evidence", "decision"],
+      ["pressure", "evidence", "decision"],
       ["scene", "fixation", "evidence", "consequence"],
       ["attitude", "instinct", "evidence", "decision"],
       ["lead", "evidence", "stamp", "consequence"],
@@ -1913,6 +2021,7 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
       return frame === "field-note"
         ? [
             ["lead", "stamp", "evidence", "decision"],
+            ["pressure", "evidence", "decision"],
             ["fixation", "evidence", "consequence"],
             ["scene", "attitude", "evidence", "decision"],
             ["stamp", "evidence", "consequence"],
@@ -1921,6 +2030,7 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
           ]
         : [
             ["stamp", "evidence", "decision", "consequence"],
+            ["pressure", "evidence", "consequence"],
             ["lead", "fixation", "evidence", "decision"],
             ["attitude", "evidence", "stamp", "consequence"],
             ["scene", "attitude", "evidence", "decision"],
@@ -1932,12 +2042,14 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
       return frame === "field-note"
         ? [
             ["scene", "fixation", "evidence", "decision"],
+            ["pressure", "evidence", "decision"],
             ["lead", "attitude", "evidence", "consequence"],
             ["scene", "stamp", "evidence", "decision"],
             ["attitude", "fixation", "evidence", "consequence"],
           ]
         : [
             ["lead", "fixation", "evidence", "decision"],
+            ["pressure", "evidence", "consequence"],
             ["scene", "attitude", "evidence", "consequence"],
             ["lead", "stamp", "evidence", "decision"],
             ["scene", "fixation", "consequence"],
@@ -1947,6 +2059,7 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
       return frame === "field-note"
         ? [
             ["lead", "stamp", "evidence", "decision"],
+            ["pressure", "evidence", "consequence"],
             ["scene", "fixation", "evidence", "decision"],
             ["attitude", "stamp", "evidence", "consequence"],
             ["scene", "attitude", "evidence", "decision"],
@@ -1957,6 +2070,7 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
           ]
         : [
             ["lead", "attitude", "evidence", "decision"],
+            ["pressure", "evidence", "decision"],
             ["scene", "stamp", "evidence", "consequence"],
             ["lead", "fixation", "evidence", "decision"],
             ["scene", "attitude", "consequence"],
@@ -1977,12 +2091,14 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
     return frame === "field-note"
       ? [
           ["scene", "instinct", "evidence", "decision"],
+          ["pressure", "evidence", "decision"],
           ["lead", "stamp", "attitude", "consequence"],
           ["scene", "fixation", "evidence", "decision"],
           ["lead", "instinct", "evidence", "consequence"],
         ]
       : [
           ["scene", "attitude", "evidence", "decision"],
+          ["pressure", "evidence", "consequence"],
           ["lead", "instinct", "evidence", "consequence"],
           ["scene", "stamp", "fixation", "consequence"],
           ["attitude", "evidence", "instinct", "decision"],
@@ -2028,6 +2144,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const attitude = pickAttitudeLine(input.lane, focus, selectionSeed + variant * 17 + 1, variant, lead);
   const fixation = pickFixationLine(input.lane, focus, selectionSeed + variant * 19 + 1, variant, lead, attitude);
   const stamp = pickModeStampForLane(input.lane, focus, input.mode, selectionSeed + variant * 23 + 1, variant, lead, attitude);
+  const pressure = buildPressureLine(input, focus, selectionSeed + variant * 29 + 1, variant, lead, attitude);
   const focusDecisionPool = FOCUS_DECISION_BY_LANE[input.lane]?.[focus] || [];
   const decision = pickPreferredVariantLine(focusDecisionPool, DECISION_BY_LANE[input.lane], selectionSeed, variant, 29);
   const focusConsequencePool = FOCUS_CONSEQUENCE_BY_LANE[input.lane]?.[focus] || [];
@@ -2037,6 +2154,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     scene,
     lead,
     stamp,
+    pressure,
     evidence,
     instinct,
     attitude,
