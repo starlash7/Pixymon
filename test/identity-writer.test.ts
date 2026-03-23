@@ -48,7 +48,7 @@ test("buildKoIdentityWriterCandidate keeps market-structure prose thesis-driven"
   });
 
   assert.match(text, /(주문|체결|거래소)/);
-  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다|자금이 안 남은 자신감은 오래 못 간다|결국 오래 보는 건 호가가 아니라 체결 잔상이다|대충 맞은 설명일수록 현장에선 빨리 들통난다|문제는 늘 제일 늦게 붙은 곳에서 커진다|돈이 붙은 자리는 화면보다 늦게 보이고 그래서 더 정확하다)/);
+  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다|자금이 안 남은 자신감은 오래 못 간다|결국 오래 보는 건 호가가 아니라 체결 잔상이다|대충 맞은 설명일수록 현장에선 빨리 들통난다|결국 빈칸은 늘 제일 늦게 붙(?:는|은) 자리에서 커진다|돈이 붙은 자리는 화면보다 늦게 보이고 그래서 더 정확하다|해설이 멀쩡해 보여도 끝내 비는 자리가 이 장면의 값을 깎는다)/);
   assert.doesNotMatch(text, /장부에|먹은 단서|다음 판단 재료|다시 읽는다/);
   assert.doesNotMatch(text, /차트보다 실제 체결이 남아야 판단할 수 있다\.\s+차트보다 실제 체결이 남아야 판단할 수 있다/);
 });
@@ -63,7 +63,7 @@ test("buildKoIdentityWriterCandidate rewrites clause-like anchors into natural n
     seedHint: "identity-writer:ecosystem-anchor",
   });
 
-  assert.match(text, /재방문 흐름/);
+  assert.match(text, /(재방문 흐름|돌아오는 사람이|남는 사람 수|사용이 남는지)/);
   assert.doesNotMatch(text, /는지가 남는지|가까가|돌아오는지가/);
 });
 

@@ -327,6 +327,7 @@ export function planEventEvidenceAct(params: {
     structurallyRichEvents.length >= 1 && commodityEvents.length >= 1 ? structurallyRichEvents : events;
   const scored = candidateEvents
     .map((event) => {
+      const recentNarrativeThreads = params.recentNarrativeThreads || [];
       let pairCandidates = selectEvidencePairCandidatesForLane(
         event.lane,
         evidence,
@@ -336,14 +337,19 @@ export function planEventEvidenceAct(params: {
         },
         6
       );
-      let pair = pairCandidates[0]
-        ? {
-            evidence: pairCandidates[0].evidence,
-            hasOnchainEvidence: pairCandidates[0].hasOnchainEvidence,
-            hasCrossSourceEvidence: pairCandidates[0].hasCrossSourceEvidence,
-            evidenceSourceDiversity: pairCandidates[0].evidenceSourceDiversity,
-          }
-        : null;
+      const pairCandidateRows = pairCandidates.map((candidate) => {
+        const repeatPenalty = estimateRecentNarrativeFocusPenalty(
+          event.lane,
+          candidate.focus,
+          candidate.sceneFamily,
+          recentNarrativeThreads
+        );
+        return {
+          ...candidate,
+          plannerPairScore: candidate.score - repeatPenalty * 0.7,
+        };
+      });
+      let pair = null;
       if (
         event.source === "evidence:structural-fallback" &&
         (event.sceneFamilyHint || event.focusHint || (event.evidenceLabelHints && event.evidenceLabelHints.length))
@@ -359,15 +365,31 @@ export function planEventEvidenceAct(params: {
         if (directLabelMatch.length >= 2) {
           const directPair = dedupEvidence(directLabelMatch).slice(0, 2);
           if (directPair.length >= 2) {
-            pair = {
+            const directFocus = resolvePlannerFocus(event.lane, directPair);
+            const directSceneFamily = resolvePlannerSceneFamily(event.lane, directFocus, directPair);
+            const directRepeatPenalty = estimateRecentNarrativeFocusPenalty(
+              event.lane,
+              directFocus,
+              directSceneFamily,
+              recentNarrativeThreads
+            );
+            pairCandidateRows.push({
               evidence: directPair,
               hasOnchainEvidence: directPair.some((item) => item.source === "onchain"),
               hasCrossSourceEvidence: new Set(directPair.map((item) => item.source)).size >= 2,
               evidenceSourceDiversity: new Set(directPair.map((item) => item.source)).size,
-            };
+              score: 0.92,
+              focus: directFocus,
+              sceneFamily: directSceneFamily,
+              plannerPairScore:
+                0.92 -
+                directRepeatPenalty * 0.7 +
+                (event.sceneFamilyHint === directSceneFamily ? 0.12 : 0) +
+                (event.focusHint === directFocus ? 0.08 : 0),
+            });
           }
         }
-        const hinted = pairCandidates.find((candidate) => {
+        const hinted = pairCandidateRows.find((candidate) => {
           const sceneMatch = event.sceneFamilyHint ? candidate.sceneFamily === event.sceneFamilyHint : true;
           const focusMatch = event.focusHint ? candidate.focus === event.focusHint : true;
           const labelMatch =
@@ -386,6 +408,15 @@ export function planEventEvidenceAct(params: {
             evidenceSourceDiversity: hinted.evidenceSourceDiversity,
           };
         }
+      }
+      if (!pair && pairCandidateRows.length > 0) {
+        pairCandidateRows.sort((a, b) => b.plannerPairScore - a.plannerPairScore);
+        pair = {
+          evidence: pairCandidateRows[0].evidence,
+          hasOnchainEvidence: pairCandidateRows[0].hasOnchainEvidence,
+          hasCrossSourceEvidence: pairCandidateRows[0].hasCrossSourceEvidence,
+          evidenceSourceDiversity: pairCandidateRows[0].evidenceSourceDiversity,
+        };
       }
       if (!pair && event.source === "evidence:structural-fallback" && event.lane === "onchain") {
         pair = selectEvidencePairForLane(event.lane, evidence, {
@@ -449,6 +480,16 @@ export function planEventEvidenceAct(params: {
       const eventEvidenceMismatchPenalty = estimateEventEvidenceMismatchPenalty(event, pair.evidence);
       const focus = resolvePlannerFocus(event.lane, pair.evidence);
       const sceneFamily = resolvePlannerSceneFamily(event.lane, focus, pair.evidence);
+      const hasSharpExplicitAlternative = candidateEvents.some(
+        (candidate) =>
+          candidate.id !== event.id &&
+          candidate.lane === event.lane &&
+          candidate.source !== "evidence:structural-fallback" &&
+          estimateHeadlineCommodityPenalty(candidate.headline, candidate.summary, candidate.lane) < 0.18
+      );
+      const structuralSourcePenalty =
+        event.source === "evidence:structural-fallback" ? (hasSharpExplicitAlternative ? 0.16 : 0.06) : 0;
+      const explicitSourceBonus = event.source !== "evidence:structural-fallback" ? 0.06 : 0;
       const recentFocusPenalty = estimateRecentNarrativeFocusPenalty(
         event.lane,
         focus,
@@ -473,6 +514,8 @@ export function planEventEvidenceAct(params: {
         narrativeRichness * 0.28 +
         laneScarcityBoost -
         headlineCommodityPenalty * 1.25 -
+        structuralSourcePenalty +
+        explicitSourceBonus -
         (quotaLimited ? 0.35 : 0) -
         laneRepeatPenalty -
         recentFocusPenalty -
@@ -534,10 +577,10 @@ function estimateRecentNarrativeFocusPenalty(
   ).length;
   const sameLaneRepeats = recent.filter((item) => item.lane === lane).length;
   let penalty = 0;
-  if (exactFocusRepeats >= 1) penalty += 0.12;
-  if (exactFocusRepeats >= 2) penalty += 0.08;
-  if (sameSceneFamilyRepeats >= 1) penalty += 0.12;
-  if (sameSceneFamilyRepeats >= 2) penalty += 0.08;
+  if (exactFocusRepeats >= 1) penalty += 0.1;
+  if (exactFocusRepeats >= 2) penalty += 0.06;
+  if (sameSceneFamilyRepeats >= 1) penalty += 0.18;
+  if (sameSceneFamilyRepeats >= 2) penalty += 0.12;
   if (sameLaneRepeats >= 3) penalty += 0.05;
   if (focus === "general") penalty += 0.06;
   return clampNumber(penalty, 0, 0.36, 0);
@@ -682,6 +725,16 @@ export function buildEventEvidenceFallbackPost(
         "달러가 흔들리는 날엔 숫자보다 이야기가 더 오래 남는다",
         "달러 쪽이 출렁이면 가격보다 서사가 오래 버틴다",
       ],
+      "메인넷 준비도는 오르는데 복귀 자금이 늦는 출시": [
+        "메인넷 준비도는 오르는데 복귀 자금은 아직 느린 출시다",
+        "출시 박수는 큰데 복귀 자금은 아직 따라오지 않는 장면이다",
+        "메인넷 발표는 앞서는데 복귀 자금이 늦게 붙는 출시다",
+      ],
+      "지갑 재방문은 남는데 커뮤니티 열기만 먼저 식는 구간": [
+        "지갑은 돌아오는데 커뮤니티 열기만 먼저 식는 날이다",
+        "사람은 다시 들어오는데 열기만 먼저 식는 장면이다",
+        "재방문은 남는데 커뮤니티 열기만 먼저 꺼지는 구간이다",
+      ],
       "자유는 느림이 아니라 설명 가능한 합의라는 생각": [
         "자유라는 말은 결국 속도보다 설명 가능한 합의 쪽에서 더 또렷해진다",
         "요즘은 자유가 빠름보다 설명 가능한 합의에 더 가까워 보인다",
@@ -757,14 +810,20 @@ export function buildEventEvidenceFallbackPost(
     const focus = WRITER_FOCUS_SET.has(plan.focus as WriterFocus) ? (plan.focus as WriterFocus) : "general";
     const cleaned = sanitizeTweetText(text || "").replace(/[.!?]+$/g, "").trim();
     if (!cleaned) return text;
-    const pickFocusVariant = (...pool: string[]) => pool[(stableSeed(`${cleaned}|${plan.lane}|${focus}|${variant}`) + variant) % pool.length];
+    const pickFocusVariant = (...pool: string[]) =>
+      pool[(stableSeed(`${cleaned}|${plan.lane}|${focus}|${plan.sceneFamily || "none"}|${variant}`) + variant) % pool.length];
     if (plan.event.source !== "evidence:structural-fallback") return text;
     if (plan.lane === "protocol" && focus === "durability") {
       return pickFocusVariant(
         "복구 기록이 늦게 붙는 자리에서 발표와 운영이 갈린다",
         "박수보다 복구 기록이 늦게 남는 날엔 운영 빈칸이 먼저 보인다",
         "좋은 업그레이드 발표도 복구 기록이 비면 금방 종이처럼 얇아진다",
-        "운영 로그가 늦게 붙는 날일수록 업그레이드 발표의 본색이 드러난다"
+        "운영 로그가 늦게 붙는 날일수록 업그레이드 발표의 본색이 드러난다",
+        "복구 태도가 비는 순간 화려한 업그레이드 발표도 바로 시험대에 오른다",
+        "배포 속도보다 늦게 남은 복구 기록이 결국 이 업그레이드의 본색을 드러낸다",
+        "복구 로그가 느리게 붙는 날일수록 업그레이드 발표는 운영 앞에서 다시 시험받는다",
+        "장애 뒤 기록이 늦게 붙는 순간 이 업그레이드 서사는 발표보다 운영 쪽으로 기운다",
+        "롤아웃 박수보다 복구 흔적이 늦는 자리가 결국 발표의 무게를 다시 깎는다"
       );
     }
     if (plan.lane === "regulation" && focus === "court") {
@@ -772,7 +831,12 @@ export function buildEventEvidenceFallbackPost(
         "판결 기사보다 돈의 방향이 늦게 진실을 말하는 날이 있다",
         "법원 문장과 자금 반응이 엇갈리는 자리에서 뉴스 값이 갈린다",
         "소송 일정은 커도 돈이 비면 그 판결 뉴스는 기사값으로 남는다",
-        "판결 해설보다 자금 반응이 늦게 붙는 순간 이 뉴스의 무게가 갈린다"
+        "판결 해설보다 자금 반응이 늦게 붙는 순간 이 뉴스의 무게가 갈린다",
+        "법원 뉴스는 길어도 돈이 안 붙는 순간 기사값으로 다시 눌린다",
+        "소송 문장보다 늦게 붙는 자금 반응이 결국 판결 뉴스의 본색을 드러낸다",
+        "법원 일정은 길어도 자금 반응이 비는 자리에서 결국 기사 톤이 들통난다",
+        "판결 문장보다 돈의 방향이 늦게 바뀌는 순간 이 뉴스의 무게도 다시 갈린다",
+        "소송 뉴스는 결국 자금이 어느 쪽으로 눕는지 보여 줄 때만 기사값을 벗어난다"
       );
     }
     if (plan.lane === "market-structure" && focus === "liquidity") {
@@ -780,7 +844,9 @@ export function buildEventEvidenceFallbackPost(
         "체결 없는 호가 열기는 결국 화면값으로 끝난다",
         "호가 두께가 살아도 큰 주문 소화가 비면 과열은 연출 쪽이다",
         "분위기보다 실제 체결이 늦게 남는 자리에서 구조와 연출이 갈린다",
-        "호가 열기만 큰 장면은 결국 체결 자리에서 본색이 드러난다"
+        "호가 열기만 큰 장면은 결국 체결 자리에서 본색이 드러난다",
+        "체결보다 호가가 먼저 커진 과열은 금방 화면 장면으로 눌린다",
+        "실제 돈보다 호가 열기가 앞서는 순간 구조 변화는 바로 얇아진다"
       );
     }
     if (plan.lane === "ecosystem" && focus === "builder") {
@@ -835,7 +901,7 @@ export function buildEventEvidenceFallbackPost(
       signatureBelief: signatureByLane[plan.lane],
       recentReflection: worldviewByLane[plan.lane],
       maxChars,
-      seedHint: `${plan.event.id}|fallback|${narrativeMode}|${variant}`,
+      seedHint: `${plan.event.id}|${plan.sceneFamily || "none"}|fallback|${narrativeMode}|${variant}`,
     }, variant);
   }
 
@@ -1934,6 +2000,9 @@ function buildStructuralHeadlineFromEvidence(
         `복구 기록과 검증자 안정성이 같이 버텨야 업그레이드 얘기도 신뢰를 얻는다`,
         `복구 기록과 검증자 안정성이 갈라지면 발표보다 운영 빈칸이 먼저 보인다`,
         `복구 기록과 검증자 안정성이 따로 놀면 박수보다 운영 쪽이 먼저 약해진다`,
+        `검증자 안정성은 버티는데 복구 기록이 비면 그 업그레이드는 발표값으로 돌아간다`,
+        `복구 로그와 검증자 안정성이 같은 편에 서야 발표도 운영으로 넘어간다`,
+        `장애 뒤 복구 기록과 검증자 안정성이 엇갈리면 그 발표는 아직 운영까지 못 간다`,
       ];
       return sanitizeTweetText(recoveryPool[seed % recoveryPool.length]).slice(0, 140);
     }
@@ -1942,6 +2011,9 @@ function buildStructuralHeadlineFromEvidence(
         `배포 기세와 복구 기록이 같이 남아야 업그레이드도 오래 버틴다`,
         `배포 기세와 복구 기록이 갈라지면 릴리스 노트가 먼저 얇아진다`,
         `배포 기세와 복구 기록이 따로 놀면 발표보다 운영 태도가 더 빨리 드러난다`,
+        `롤아웃 속도는 살아도 복구 기록이 비면 그 개선 서사는 금방 납작해진다`,
+        `배포 기세와 장애 뒤 기록이 다른 편에 서면 박수보다 빈칸이 더 오래 남는다`,
+        `롤아웃 박수와 복구 기록이 엇갈리는 순간 업그레이드 얘기는 반쪽이 된다`,
       ];
       return sanitizeTweetText(rolloutPool[seed % rolloutPool.length]).slice(0, 140);
     }
@@ -1954,12 +2026,39 @@ function buildStructuralHeadlineFromEvidence(
     ];
     return sanitizeTweetText(launchRolloutPool[seed % launchRolloutPool.length]).slice(0, 140);
   }
+  if (lane === "protocol" && focus === "launch") {
+    if (/capital\+launch$/.test(sceneFamily) || /launch\+capital$/.test(sceneFamily)) {
+      const launchCapitalPool = [
+        `메인넷 준비도와 복귀 자금이 같이 붙어야 출시 서사도 반쪽을 벗어난다`,
+        `메인넷 준비도와 복귀 자금이 갈라지면 발표보다 복귀 빈칸이 먼저 드러난다`,
+        `메인넷 준비도와 복귀 자금이 따로 놀면 런치 박수는 금방 발표값으로 눌린다`,
+        `메인넷 준비도는 올라가도 복귀 자금이 비면 그 출시는 아직 종이 위에 머문다`,
+        `런치 준비도와 복귀 자금이 같은 편이어야 메인넷 서사도 구조로 남는다`,
+        `메인넷 설명만 앞서고 복귀 자금이 늦으면 그 출시는 박수에서 멈춘다`,
+      ];
+      return sanitizeTweetText(launchCapitalPool[seed % launchCapitalPool.length]).slice(0, 140);
+    }
+    if (/capital\+rollout$/.test(sceneFamily) || /rollout\+capital$/.test(sceneFamily)) {
+      const rolloutCapitalPool = [
+        `배포 속도와 복귀 자금이 같이 붙어야 출시 기세도 운영으로 내려온다`,
+        `배포 속도와 복귀 자금이 갈라지면 메인넷 서사는 발표보다 빈칸이 먼저 커진다`,
+        `배포 속도와 복귀 자금이 따로 놀면 런치 기세는 금방 종이처럼 얇아진다`,
+        `배포 속도는 앞서도 복귀 자금이 비면 그 런치는 아직 운영까지 못 닿았다`,
+        `롤아웃 기세와 자금 복귀가 같은 편이어야 출시 박수도 오래 버틴다`,
+        `배포 속도만 남고 복귀 자금이 늦으면 메인넷 서사는 금방 헐거워진다`,
+      ];
+      return sanitizeTweetText(rolloutCapitalPool[seed % rolloutCapitalPool.length]).slice(0, 140);
+    }
+  }
   if (lane === "regulation" && focus === "court") {
     if (/capital\+court$/.test(sceneFamily)) {
       const courtCapitalPool = [
         `판결 기사와 자금 방향이 같이 붙어야 법원 뉴스도 기사값을 벗어난다`,
         `판결 기사와 자금 방향이 갈라지면 해설보다 돈 쪽이 더 솔직해진다`,
         `판결 기사와 자금 방향이 따로 놀면 그 뉴스는 아직 기사 톤에 묶여 있다`,
+        `법원 일정은 커도 자금 방향이 비면 그 뉴스는 끝내 기사 무게를 못 넘긴다`,
+        `판결 해설보다 자금 방향이 늦게 움직이는 날이 결국 이 뉴스의 본색을 드러낸다`,
+        `소송 뉴스는 길어도 자금 방향이 안 붙으면 기사 자리로 다시 밀린다`,
       ];
       return sanitizeTweetText(courtCapitalPool[seed % courtCapitalPool.length]).slice(0, 140);
     }
@@ -1968,11 +2067,25 @@ function buildStructuralHeadlineFromEvidence(
         `법원 일정과 집행 흔적이 같이 남아야 규제 뉴스도 현장으로 내려온다`,
         `법원 일정과 집행 흔적이 갈라지면 판결 해설은 반쪽으로 남는다`,
         `법원 일정과 집행 흔적이 따로 놀면 그 규제 뉴스는 기사보다 행동이 비어 있다`,
+        `판결 기사와 집행 흔적이 같은 편에 서야 그 뉴스가 기사 톤을 벗어난다`,
+        `법원 일정만 크고 집행 흔적이 늦으면 그 규제 뉴스는 결국 기사 쪽이다`,
+        `소송 일정과 집행 흔적이 엇갈리는 순간 해설보다 빈칸이 먼저 커진다`,
       ];
       return sanitizeTweetText(courtExecutionPool[seed % courtExecutionPool.length]).slice(0, 140);
     }
   }
   if (lane === "ecosystem" && focus === "retention") {
+    if (/cohort\+wallet$/.test(sceneFamily)) {
+      const retentionWalletPool = [
+        `지갑 재방문과 사용자 재방문 흐름이 같이 남아야 잔류도 진짜가 된다`,
+        `지갑 재방문과 사용자 재방문 흐름이 갈라지면 반응보다 잔류 균열이 먼저 보인다`,
+        `지갑 재방문과 사용자 재방문 흐름이 따로 놀면 큰 생태계 서사도 금방 얇아진다`,
+        `지갑은 다시 오는데 사람 흐름이 비면 그 생태계 서사는 오래 못 간다`,
+        `사용자 재방문과 지갑 복귀가 다른 편이면 반응보다 이탈이 더 솔직하다`,
+        `지갑 재방문과 사람 복귀가 엇갈리는 순간 생태계 기세는 포스터처럼 납작해진다`,
+      ];
+      return sanitizeTweetText(retentionWalletPool[seed % retentionWalletPool.length]).slice(0, 140);
+    }
     if (/community\+retention$/.test(sceneFamily)) {
       const retentionCommunityPool = [
         `재방문 흐름과 커뮤니티 열기가 같이 남아야 생태계 기세도 오래 버틴다`,
@@ -1988,6 +2101,17 @@ function buildStructuralHeadlineFromEvidence(
         `재방문 흐름과 체인 안쪽 사용이 따로 놀면 그 생태계 기세는 오래 못 간다`,
       ];
       return sanitizeTweetText(retentionUsagePool[seed % retentionUsagePool.length]).slice(0, 140);
+    }
+    if (/retention\+wallet$/.test(sceneFamily) || /wallet\+retention$/.test(sceneFamily)) {
+      const retentionWalletDepthPool = [
+        `지갑 재방문과 잔류 흐름이 같이 남아야 생태계 반응도 다음 날까지 버틴다`,
+        `지갑 재방문과 잔류 흐름이 갈라지면 커뮤니티 열기보다 이탈이 먼저 보인다`,
+        `지갑 재방문과 잔류 흐름이 따로 놀면 그 생태계 기세는 포스터처럼 납작해진다`,
+        `지갑은 돌아오는데 잔류 흐름이 비면 그 반응은 생태계까지 못 이어진다`,
+        `잔류와 지갑 복귀가 다른 편이면 생태계 열기보다 이탈의 속도가 더 정확하다`,
+        `지갑 복귀와 잔류 흐름이 엇갈리는 순간 큰 반응도 다음 날이면 힘을 잃는다`,
+      ];
+      return sanitizeTweetText(retentionWalletDepthPool[seed % retentionWalletDepthPool.length]).slice(0, 140);
     }
   }
   if (lane === "market-structure" && focus === "liquidity") {
@@ -2084,7 +2208,30 @@ function buildStructuralSummaryFromEvidence(
     ];
     return sanitizeTweetText(launchPool[stableSeed(`${pair}|${sceneFamily}|summary`) % launchPool.length]).slice(0, 180);
   }
+  if (lane === "protocol" && focus === "launch") {
+    if (/capital\+launch$/.test(sceneFamily) || /launch\+capital$/.test(sceneFamily)) {
+      const launchCapitalPool = [
+        `핵심은 ${pair}가 같이 남아서 메인넷 발표가 아니라 실제 복귀로 남는지다.`,
+        `지금은 ${pair}, 이 조합이 준비도보다 복귀 자금으로 남는지부터 본다.`,
+      ];
+      return sanitizeTweetText(launchCapitalPool[stableSeed(`${pair}|${sceneFamily}|summary`) % launchCapitalPool.length]).slice(0, 180);
+    }
+    if (/capital\+rollout$/.test(sceneFamily) || /rollout\+capital$/.test(sceneFamily)) {
+      const rolloutCapitalPool = [
+        `핵심은 ${pair}가 같이 남아서 배포 기세가 아니라 운영 복귀로 남는지다.`,
+        `지금은 ${pair}, 이 조합이 롤아웃 속도보다 복귀 자금으로 남는지부터 본다.`,
+      ];
+      return sanitizeTweetText(rolloutCapitalPool[stableSeed(`${pair}|${sceneFamily}|summary`) % rolloutCapitalPool.length]).slice(0, 180);
+    }
+  }
   if (lane === "ecosystem" && focus === "retention") {
+    if (/cohort\+wallet$/.test(sceneFamily)) {
+      const retentionWalletPool = [
+        `핵심은 ${pair}가 같이 남아서 말이 아니라 실제 잔류로 남는지다.`,
+        `지금은 ${pair}, 이 조합이 반응보다 다음 날 복귀로 남는지부터 본다.`,
+      ];
+      return sanitizeTweetText(retentionWalletPool[stableSeed(`${pair}|${sceneFamily}|summary`) % retentionWalletPool.length]).slice(0, 180);
+    }
     if (/community\+retention$/.test(sceneFamily)) {
       const retentionCommunityPool = [
         `핵심은 ${pair}가 같이 남아서 반응이 아니라 잔류 분위기로 남는지다.`,
@@ -2098,6 +2245,13 @@ function buildStructuralSummaryFromEvidence(
         `지금은 ${pair}, 이 조합이 반응보다 체인 안쪽 사용으로 남는지부터 본다.`,
       ];
       return sanitizeTweetText(retentionUsagePool[stableSeed(`${pair}|${sceneFamily}|summary`) % retentionUsagePool.length]).slice(0, 180);
+    }
+    if (/retention\+wallet$/.test(sceneFamily) || /wallet\+retention$/.test(sceneFamily)) {
+      const retentionWalletDepthPool = [
+        `핵심은 ${pair}가 같이 남아서 열기가 아니라 복귀 습관으로 남는지다.`,
+        `지금은 ${pair}, 이 조합이 커뮤니티 반응보다 지갑 복귀로 남는지부터 본다.`,
+      ];
+      return sanitizeTweetText(retentionWalletDepthPool[stableSeed(`${pair}|${sceneFamily}|summary`) % retentionWalletDepthPool.length]).slice(0, 180);
     }
   }
   if (lane === "regulation" && focus === "court" && /capital\+court$/.test(sceneFamily)) {
@@ -2325,14 +2479,19 @@ function selectEvidencePairCandidatesForLane(
 
 function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFamily: string): number {
   if (lane === "ecosystem" && focus === "retention") {
-    if (/^ecosystem:retention:retention$/.test(sceneFamily)) return -0.08;
+    if (/^ecosystem:retention:retention$/.test(sceneFamily)) return -0.12;
+    if (/cohort\+wallet$/.test(sceneFamily)) return 0.16;
+    if (/retention\+wallet$/.test(sceneFamily) || /wallet\+retention$/.test(sceneFamily)) return 0.12;
+    if (/cohort\+retention$/.test(sceneFamily) || /retention\+cohort$/.test(sceneFamily)) return 0.1;
     if (/retention\+usage$/.test(sceneFamily) || /retention\+usage/.test(sceneFamily)) return 0.1;
     if (/community\+retention$/.test(sceneFamily)) return 0.06;
   }
   if (lane === "protocol" && focus === "launch") {
-    if (/^protocol:launch:launch$/.test(sceneFamily)) return -0.04;
+    if (/^protocol:launch:launch$/.test(sceneFamily)) return -0.08;
+    if (/capital\+launch$/.test(sceneFamily) || /launch\+capital$/.test(sceneFamily)) return 0.14;
+    if (/capital\+rollout$/.test(sceneFamily) || /rollout\+capital$/.test(sceneFamily)) return 0.12;
     if (/launch\+rollout$/.test(sceneFamily)) return 0.1;
-    if (/launch$/.test(sceneFamily)) return 0.04;
+    if (/launch$/.test(sceneFamily)) return 0.02;
   }
   if (lane === "regulation" && focus === "court") {
     if (/^regulation:court:court$/.test(sceneFamily)) return -0.04;
@@ -2460,6 +2619,8 @@ function resolvePlannerSceneFacet(item: OnchainEvidence, lane: TrendLane): strin
   const normalized = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
   if (lane === "ecosystem") {
     if (/(개발자|빌더|builder|developer)/.test(normalized)) return "builder";
+    if (/(지갑\s*재방문|wallet\s*return|wallet\s*revisit|지갑\s*복귀)/.test(normalized)) return "wallet";
+    if (/(사용자\s*재방문|유저\s*재방문|재방문\s*흐름|cohort|returning\s*user|사용자\s*복귀)/.test(normalized)) return "cohort";
     if (/(재방문|잔류|retention|returning|sticky)/.test(normalized)) return "retention";
     if (/(지갑|wallet|실사용|usage|사용 흔적)/.test(normalized)) return "usage";
     if (/(커뮤니티|community|열기|광고|홍보|hype)/.test(normalized)) return "community";
@@ -2472,10 +2633,11 @@ function resolvePlannerSceneFacet(item: OnchainEvidence, lane: TrendLane): strin
     if (/(대기 자금|자금 흐름|capital)/.test(normalized)) return "capital";
   }
   if (lane === "protocol") {
-    if (/(메인넷|launch|출시|예치 자금|복귀 자금)/.test(normalized)) return "launch";
+    if (/(복귀 자금|예치 자금|자금 복귀|capital)/.test(normalized)) return "capital";
+    if (/(메인넷|launch|출시|준비도)/.test(normalized)) return "launch";
     if (/(검증자|validator|합의|consensus)/.test(normalized)) return "validator";
     if (/(복구|recovery|장애)/.test(normalized)) return "recovery";
-    if (/(테스트넷|testnet|업그레이드|rollup|firedancer)/.test(normalized)) return "rollout";
+    if (/(테스트넷|testnet|업그레이드|rollup|firedancer|배포|rollout|큐)/.test(normalized)) return "rollout";
   }
   if (lane === "onchain") {
     if (/(고래|큰손|whale|주소 이동|exchange flow|거래소 자금)/.test(normalized)) return "flow";
