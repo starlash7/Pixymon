@@ -734,6 +734,11 @@ export async function postTrendUpdate(
       laneUsage: laneUsageWindow,
       requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
       requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
+      identityPressure: {
+        obsessionLine: soulIntent.obsessionLine,
+        grudgeLine: soulIntent.grudgeLine,
+        continuityLine: soulIntent.continuityLine,
+      },
     });
     if (!eventPlan) {
       const syntheticEvents = buildStructuralFallbackEventsFromEvidence(
@@ -751,6 +756,11 @@ export async function postTrendUpdate(
           laneUsage: laneUsageWindow,
           requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
           requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
+          identityPressure: {
+            obsessionLine: soulIntent.obsessionLine,
+            grudgeLine: soulIntent.grudgeLine,
+            continuityLine: soulIntent.continuityLine,
+          },
         });
         if (eventPlan) {
           console.log(`[PLAN] structural fallback events 사용: ${syntheticEvents.map((item) => item.headline).join(" | ")}`);
@@ -764,6 +774,11 @@ export async function postTrendUpdate(
             laneUsage: laneUsageWindow,
             requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
             requireCrossSourceEvidence: false,
+            identityPressure: {
+              obsessionLine: soulIntent.obsessionLine,
+              grudgeLine: soulIntent.grudgeLine,
+              continuityLine: soulIntent.continuityLine,
+            },
           });
           if (relaxedStructuralPlan && isStrongOnchainStructuralPlan(relaxedStructuralPlan)) {
             candidateEvents = syntheticEvents;
@@ -793,6 +808,11 @@ export async function postTrendUpdate(
           laneUsage: laneUsageWindow,
           requireOnchainEvidence: runtimeSettings.requireOnchainEvidence,
           requireCrossSourceEvidence: runtimeSettings.requireCrossSourceEvidence,
+          identityPressure: {
+            obsessionLine: soulIntent.obsessionLine,
+            grudgeLine: soulIntent.grudgeLine,
+            continuityLine: soulIntent.continuityLine,
+          },
         });
         if (replanned?.hasCrossSourceEvidence) {
           eventPlan = replanned;

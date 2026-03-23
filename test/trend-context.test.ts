@@ -1438,6 +1438,55 @@ test("buildStructuralFallbackEventsFromEvidence emits multiple protocol structur
   assert.ok(events.some((event) => /메인넷|복귀 자금|런치|출시/.test(event.headline)));
 });
 
+test("buildStructuralFallbackEventsFromEvidence keeps rollout-validator durability family alive when evidence allows it", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "dur-rollout-a",
+      lane: "protocol" as const,
+      nutrientId: "n-dur-rollout-a",
+      source: "protocol" as const,
+      label: "검증자 안정성",
+      value: "유지",
+      summary: "Validator stability held across the rollout window.",
+      trust: 0.84,
+      freshness: 0.9,
+      digestScore: 0.8,
+      capturedAt: createdAt,
+    },
+    {
+      id: "dur-rollout-b",
+      lane: "protocol" as const,
+      nutrientId: "n-dur-rollout-b",
+      source: "news" as const,
+      label: "업그레이드 배포",
+      value: "지연",
+      summary: "Rollout logs lagged the initial release applause.",
+      trust: 0.81,
+      freshness: 0.88,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "dur-rollout-c",
+      lane: "protocol" as const,
+      nutrientId: "n-dur-rollout-c",
+      source: "news" as const,
+      label: "복구 속도",
+      value: "둔화",
+      summary: "Recovery speed slowed after the celebratory release narrative.",
+      trust: 0.8,
+      freshness: 0.87,
+      digestScore: 0.74,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 6).filter((event) => event.lane === "protocol");
+  const families = new Set(events.map((item) => `${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`));
+  assert.ok(families.has("durability:protocol:durability:rollout+validator"));
+});
+
 test("buildStructuralFallbackEventsFromEvidence keeps alternative court and liquidity scene families when evidence allows it", () => {
   const createdAt = new Date().toISOString();
   const evidence = [
@@ -1543,6 +1592,7 @@ test("buildStructuralFallbackEventsFromEvidence keeps alternative court and liqu
 
   assert.ok(families.has("regulation:court:capital+court"));
   assert.ok(families.has("regulation:court:court+execution"));
+  assert.ok(families.has("regulation:court:capital+execution"));
   assert.ok(
     families.has("market-structure:liquidity:capital+depth") ||
       families.has("market-structure:settlement:depth+settlement") ||
