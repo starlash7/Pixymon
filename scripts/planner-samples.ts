@@ -129,6 +129,14 @@ const cases: PlannerSampleCase[] = [
     mode: "meta-reflection",
     events: [
       event(
+        "eco-retention-explicit",
+        "ecosystem",
+        "지갑 재방문은 남는데 커뮤니티 열기만 먼저 식는 구간",
+        "Wallet return survives after community heat fades, exposing whether the ecosystem can hold people.",
+        "analysis:sharp",
+        ["재방문", "지갑", "커뮤니티"]
+      ),
+      event(
         "eco-retention-sharp",
         "ecosystem",
         "생태계 서사가 실제 잔류로 이어지는지 본다",
@@ -191,6 +199,14 @@ const cases: PlannerSampleCase[] = [
     lane: "protocol",
     mode: "identity-journal",
     events: [
+      event(
+        "protocol-launch-explicit",
+        "protocol",
+        "메인넷 준비도는 오르는데 복귀 자금이 늦는 출시",
+        "Launch confidence rises while returning capital still hesitates to follow.",
+        "analysis:sharp",
+        ["메인넷", "복귀", "출시"]
+      ),
       event(
         "protocol-launch-sharp",
         "protocol",

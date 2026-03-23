@@ -1550,6 +1550,74 @@ test("buildStructuralFallbackEventsFromEvidence keeps alternative court and liqu
   );
 });
 
+test("buildStructuralFallbackEventsFromEvidence emits launch capital and retention wallet families when evidence allows it", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "launch-a",
+      lane: "protocol" as const,
+      nutrientId: "n-launch-a",
+      source: "news" as const,
+      label: "메인넷 준비도",
+      value: "상승",
+      summary: "Mainnet readiness climbed into the release window.",
+      trust: 0.82,
+      freshness: 0.9,
+      digestScore: 0.78,
+      capturedAt: createdAt,
+    },
+    {
+      id: "launch-b",
+      lane: "protocol" as const,
+      nutrientId: "n-launch-b",
+      source: "market" as const,
+      label: "복귀 자금",
+      value: "지연",
+      summary: "Returning capital lagged the launch narrative.",
+      trust: 0.8,
+      freshness: 0.88,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+    {
+      id: "retention-a",
+      lane: "ecosystem" as const,
+      nutrientId: "n-retention-a",
+      source: "onchain" as const,
+      label: "지갑 재방문",
+      value: "확대",
+      summary: "Wallet return kept showing up after the initial burst.",
+      trust: 0.81,
+      freshness: 0.9,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "retention-b",
+      lane: "ecosystem" as const,
+      nutrientId: "n-retention-b",
+      source: "news" as const,
+      label: "사용자 재방문 흐름",
+      value: "확대",
+      summary: "Returning users kept showing up after the headline cycle cooled.",
+      trust: 0.8,
+      freshness: 0.89,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 8);
+  const families = new Set(
+    events
+      .map((item) => `${item.lane}:${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`)
+      .filter(Boolean)
+  );
+
+  assert.ok(families.has("protocol:launch:capital+launch"));
+  assert.ok(families.has("ecosystem:retention:cohort+wallet"));
+});
+
 test("planEventEvidenceAct prefers builder ecosystem pair over generic community pair", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({
@@ -2497,4 +2565,79 @@ test("planEventEvidenceAct rotates away from recently used builder scene family 
   assert.equal(plan?.focus, "builder");
   assert.notEqual(plan?.sceneFamily, "ecosystem:builder:builder+settlement");
   assert.match(String(plan?.sceneFamily || ""), /^ecosystem:builder:/);
+});
+
+test("planEventEvidenceAct prefers explicit sharp launch event over structural fallback when both are available", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "launch-explicit",
+        lane: "protocol" as const,
+        headline: "메인넷 준비도는 오르는데 복귀 자금이 늦는 출시",
+        summary: "Launch confidence rose while returning capital still lagged.",
+        source: "analysis:sharp",
+        trust: 0.86,
+        freshness: 0.91,
+        capturedAt: createdAt,
+        keywords: ["메인넷", "복귀", "출시"],
+      },
+      {
+        id: "launch-structural",
+        lane: "protocol" as const,
+        headline: "메인넷 발표보다 늦게 붙는 건 복귀 자금이다",
+        summary: "Mainnet applause still outruns capital return.",
+        source: "evidence:structural-fallback",
+        trust: 0.82,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["메인넷", "복귀"],
+        focusHint: "launch",
+        sceneFamilyHint: "protocol:launch:capital+launch",
+        evidenceLabelHints: ["메인넷 준비도", "복귀 자금"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "launch-n1",
+        source: "news",
+        category: "protocol-news",
+        label: "메인넷 준비도",
+        value: "상승",
+        evidence: "Mainnet readiness rose into the release window.",
+        trust: 0.82,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.78 },
+      },
+      {
+        id: "launch-n2",
+        source: "market",
+        category: "capital-flow",
+        label: "복귀 자금",
+        value: "지연",
+        evidence: "Returning capital still lagged the launch narrative.",
+        trust: 0.8,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.75 },
+      },
+      {
+        id: "launch-n3",
+        source: "news",
+        category: "protocol-rollout",
+        label: "업그레이드 배포 큐",
+        value: "증가",
+        evidence: "Deployment queue activity rose ahead of capital return.",
+        trust: 0.78,
+        freshness: 0.86,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.72 },
+      },
+    ]),
+    recentPosts: [],
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "launch-explicit");
 });
