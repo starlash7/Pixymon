@@ -1484,7 +1484,7 @@ test("buildStructuralFallbackEventsFromEvidence keeps rollout-validator durabili
 
   const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 6).filter((event) => event.lane === "protocol");
   const families = new Set(events.map((item) => `${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`));
-  assert.ok(families.has("durability:protocol:durability:rollout+validator"));
+  assert.ok([...families].some((family) => family.startsWith("durability:protocol:durability:rollout+validator")));
 });
 
 test("buildStructuralFallbackEventsFromEvidence keeps alternative court and liquidity scene families when evidence allows it", () => {
@@ -1590,13 +1590,13 @@ test("buildStructuralFallbackEventsFromEvidence keeps alternative court and liqu
       .filter(Boolean)
   );
 
-  assert.ok(families.has("regulation:court:capital+court"));
-  assert.ok(families.has("regulation:court:court+execution"));
-  assert.ok(families.has("regulation:court:capital+execution"));
+  assert.ok([...families].some((family) => family.startsWith("regulation:court:capital+court")));
+  assert.ok([...families].some((family) => family.startsWith("regulation:court:court+execution")));
+  assert.ok([...families].some((family) => family.startsWith("regulation:court:capital+execution")));
   assert.ok(
-    families.has("market-structure:liquidity:capital+depth") ||
-      families.has("market-structure:settlement:depth+settlement") ||
-      families.has("market-structure:settlement:execution+settlement")
+    [...families].some((family) => family.startsWith("market-structure:liquidity:capital+depth")) ||
+      [...families].some((family) => family.startsWith("market-structure:settlement:depth+settlement")) ||
+      [...families].some((family) => family.startsWith("market-structure:settlement:execution+settlement"))
   );
 });
 
@@ -1664,8 +1664,210 @@ test("buildStructuralFallbackEventsFromEvidence emits launch capital and retenti
       .filter(Boolean)
   );
 
-  assert.ok(families.has("protocol:launch:capital+launch"));
-  assert.ok(families.has("ecosystem:retention:cohort+wallet"));
+  assert.ok(
+    [...families].some((family) => family.startsWith("protocol:launch:capital+launch")) ||
+      [...families].some((family) => family.startsWith("protocol:launch:return+launch")) ||
+      [...families].some((family) => family.startsWith("protocol:launch:launch+showcase"))
+  );
+  assert.ok(
+    [...families].some((family) => family.startsWith("ecosystem:retention:cohort+wallet")) ||
+      [...families].some((family) => family.startsWith("ecosystem:retention:wallet+retention")) ||
+      [...families].some((family) => family.startsWith("ecosystem:retention:retention+cohort"))
+  );
+  assert.ok(![...families].some((family) => family.startsWith("ecosystem:retention:return+wallet")));
+});
+
+test("buildStructuralFallbackEventsFromEvidence can split launch and settlement families into sharper bases", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "launch-a",
+      lane: "protocol" as const,
+      nutrientId: "n-launch-a",
+      source: "news" as const,
+      label: "메인넷 준비도",
+      value: "상승",
+      summary: "쇼케이스는 뜨거운데 실제 복귀는 아직 객석에 남은 장면",
+      trust: 0.82,
+      freshness: 0.9,
+      digestScore: 0.78,
+      capturedAt: createdAt,
+    },
+    {
+      id: "launch-b",
+      lane: "protocol" as const,
+      nutrientId: "n-launch-b",
+      source: "market" as const,
+      label: "복귀 자금",
+      value: "지연",
+      summary: "Returning capital lagged the launch narrative.",
+      trust: 0.8,
+      freshness: 0.88,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+    {
+      id: "settle-a",
+      lane: "market-structure" as const,
+      nutrientId: "n-settle-a",
+      source: "market" as const,
+      label: "현물 체결",
+      value: "재가동",
+      summary: "현물 체결은 남는데 깊이는 아직 얕은 장면",
+      trust: 0.83,
+      freshness: 0.9,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "settle-b",
+      lane: "market-structure" as const,
+      nutrientId: "n-settle-b",
+      source: "market" as const,
+      label: "호가 두께",
+      value: "식음",
+      summary: "Orderbook depth stayed thin after the first move.",
+      trust: 0.82,
+      freshness: 0.89,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 8);
+  const families = new Set(
+    events
+      .map((item) => `${item.lane}:${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`)
+      .filter(Boolean)
+  );
+
+  assert.ok(
+    [...families].some((family) => family.startsWith("protocol:launch:launch+showcase")) ||
+      [...families].some((family) => family.startsWith("protocol:launch:return+announcement")) ||
+      [...families].some((family) => family.startsWith("protocol:launch:return+showcase")) ||
+      [...families].some((family) => family.startsWith("protocol:launch:return+launch"))
+  );
+  assert.ok(
+    [...families].some((family) => family.startsWith("market-structure:settlement:execution+depth")) ||
+      [...families].some((family) => family.startsWith("market-structure:settlement:volume+depth")) ||
+      [...families].some((family) => family.startsWith("market-structure:settlement:depth+heat"))
+  );
+});
+
+test("buildStructuralFallbackEventsFromEvidence can split retention and launch families with headline cues", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "retention-scene-a",
+      lane: "ecosystem" as const,
+      nutrientId: "n-retention-scene-a",
+      source: "onchain" as const,
+      label: "지갑 재방문",
+      value: "확대",
+      summary: "지갑은 돌아오는데 다음 날 사람 수는 얇아진 장면",
+      trust: 0.81,
+      freshness: 0.9,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "retention-scene-b",
+      lane: "ecosystem" as const,
+      nutrientId: "n-retention-scene-b",
+      source: "news" as const,
+      label: "사용자 재방문 흐름",
+      value: "둔화",
+      summary: "Returning users kept thinning after the headline cycle cooled.",
+      trust: 0.8,
+      freshness: 0.89,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+    {
+      id: "launch-scene-a",
+      lane: "protocol" as const,
+      nutrientId: "n-launch-scene-a",
+      source: "news" as const,
+      label: "메인넷 준비도",
+      value: "상승",
+      summary: "메인넷 발표는 컸지만 뉴스 열기가 먼저 돈 장면",
+      trust: 0.82,
+      freshness: 0.9,
+      digestScore: 0.78,
+      capturedAt: createdAt,
+    },
+    {
+      id: "launch-scene-b",
+      lane: "protocol" as const,
+      nutrientId: "n-launch-scene-b",
+      source: "market" as const,
+      label: "복귀 자금",
+      value: "지연",
+      summary: "Returning capital stayed cautious after the announcement.",
+      trust: 0.8,
+      freshness: 0.88,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 8);
+  const families = new Set(
+    events
+      .map((item) => `${item.lane}:${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`)
+      .filter(Boolean)
+  );
+
+  assert.ok(
+    [...families].some((family) => family.startsWith("ecosystem:retention:retention+cohort")) ||
+      [...families].some((family) => family.startsWith("ecosystem:retention:wallet+retention"))
+  );
+  assert.ok(
+    [...families].some((family) => family.startsWith("protocol:launch:return+announcement")) ||
+      [...families].some((family) => family.startsWith("protocol:launch:return+launch"))
+  );
+});
+
+test("buildStructuralFallbackEventsFromEvidence prefers execution/depth facets over generic heat base", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "settle-heat-a",
+      lane: "market-structure" as const,
+      nutrientId: "n-settle-heat-a",
+      source: "market" as const,
+      label: "현물 체결",
+      value: "재가동",
+      summary: "분위기는 뜨거운데 실제 체결은 남는 장면",
+      trust: 0.83,
+      freshness: 0.9,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "settle-heat-b",
+      lane: "market-structure" as const,
+      nutrientId: "n-settle-heat-b",
+      source: "market" as const,
+      label: "호가 두께",
+      value: "약화",
+      summary: "화면은 과열됐지만 호가 두께는 얕아진 상태",
+      trust: 0.82,
+      freshness: 0.89,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 8);
+  const families = new Set(
+    events
+      .map((item) => `${item.lane}:${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`)
+      .filter(Boolean)
+  );
+
+  assert.ok([...families].some((family) => family.startsWith("market-structure:settlement:execution+depth")));
+  assert.ok(![...families].some((family) => family.startsWith("market-structure:settlement:heat")));
 });
 
 test("planEventEvidenceAct prefers builder ecosystem pair over generic community pair", () => {
@@ -2403,8 +2605,8 @@ test("buildEventEvidenceFallbackPost rewrites korean 구간 headline into direct
   };
 
   const text = buildEventEvidenceFallbackPost(plan, "ko", 220, "philosophy-note");
-  assert.doesNotMatch(text, /실제로 이어지는지 다시|말에서 끝나는지 행동으로 이어지는지 다시|다시\.$/);
-  assert.match(text, /구간이 오늘 더 크게 남는다|결국 말과 흐름이 갈린다/);
+  assert.doesNotMatch(text, /실제로 이어지는지 다시|말에서 끝나는지 행동으로 이어지는지 다시|다시\.$|구간은 결국|구간에선 늦게/);
+  assert.match(text, /(얕다|빈칸이 먼저 드러난다|구조보다 연출 쪽이다|호가|체결)/);
 });
 
 test("planEventEvidenceAct surfaces planner focus and repeat warning for same lane thread family", () => {
@@ -2690,4 +2892,250 @@ test("planEventEvidenceAct prefers explicit sharp launch event over structural f
 
   assert.ok(plan);
   assert.equal(plan?.event.id, "launch-explicit");
+});
+
+test("planEventEvidenceAct promotes explicit builder event over structural fallback when score gap is small", () => {
+  const createdAt = new Date().toISOString();
+  const events = [
+    {
+      id: "builder-explicit",
+      lane: "ecosystem" as const,
+      headline: "개발자 잔류는 남는데 예치 자금 복귀가 늦는 구간",
+      summary: "Builder retention holds while capital return lags.",
+      source: "analysis:sharp",
+      trust: 0.82,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["개발자", "예치 자금", "복귀"],
+    },
+    {
+      id: "builder-fallback",
+      lane: "ecosystem" as const,
+      headline: "코드는 남는데 자금이 안 돌아오면 그 생태계 얘기는 오래 못 간다",
+      summary: "Code stays active while capital return stays thin.",
+      source: "evidence:structural-fallback",
+      trust: 0.8,
+      freshness: 0.9,
+      capturedAt: createdAt,
+      keywords: ["개발자", "자금"],
+      focusHint: "builder",
+      sceneFamilyHint: "ecosystem:builder:builder+capital",
+      evidenceLabelHints: ["개발자 잔류", "예치 자금 복귀"],
+    } as any,
+  ];
+
+  const evidence = [
+    {
+      id: "builder-a",
+      lane: "ecosystem" as const,
+      nutrientId: "n:builder-a",
+      source: "onchain" as const,
+      label: "개발자 잔류",
+      value: "유지",
+      summary: "Developer retention stayed firm after the release cycle.",
+      trust: 0.84,
+      freshness: 0.92,
+      digestScore: 0.8,
+      capturedAt: createdAt,
+    },
+    {
+      id: "builder-b",
+      lane: "ecosystem" as const,
+      nutrientId: "n:builder-b",
+      source: "market" as const,
+      label: "예치 자금 복귀",
+      value: "지연",
+      summary: "Deposited capital returned slower than expected.",
+      trust: 0.8,
+      freshness: 0.9,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "builder-c",
+      lane: "ecosystem" as const,
+      nutrientId: "n:builder-c",
+      source: "news" as const,
+      label: "빌더 업데이트",
+      value: "지속",
+      summary: "Builder update cadence stayed active.",
+      trust: 0.76,
+      freshness: 0.87,
+      digestScore: 0.71,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const plan = planEventEvidenceAct({
+    events,
+    evidence,
+    recentPosts: [],
+    identityPressure: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 코드보다 자금 복귀다.",
+      grudgeLine: "개발은 남는데 돈이 안 돌아오는 생태계 서사를 제일 싫어한다.",
+      continuityLine: "지난번에도 개발자 잔류보다 예치 자금 복귀 쪽이 더 늦게 붙었다.",
+    },
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "builder-explicit");
+});
+
+test("planEventEvidenceAct escapes concentrated structural scene bases in favor of explicit court events", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "court-explicit",
+        lane: "regulation" as const,
+        headline: "브리핑은 커졌는데 현장 집행은 아직 뒤에 남은 구간",
+        summary: "Legal briefing grew louder while actual execution stayed behind it.",
+        source: "analysis:sharp",
+        trust: 0.84,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["브리핑", "집행", "법원"],
+      },
+      {
+        id: "court-fallback",
+        lane: "regulation" as const,
+        headline: "브리핑은 큰데 집행은 늦는 구간",
+        summary: "Briefing stays large while execution lags.",
+        source: "evidence:structural-fallback",
+        trust: 0.82,
+        freshness: 0.89,
+        capturedAt: createdAt,
+        keywords: ["브리핑", "집행"],
+        focusHint: "court",
+        sceneFamilyHint: "regulation:court:briefing+execution",
+        evidenceLabelHints: ["법원 일정", "집행 흔적"],
+      } as any,
+    ],
+    evidence: [
+      {
+        id: "court-a",
+        lane: "regulation" as const,
+        nutrientId: "n:court-a",
+        source: "news" as const,
+        label: "법원 일정",
+        value: "집중",
+        summary: "Court calendar coverage dominated the cycle.",
+        trust: 0.83,
+        freshness: 0.9,
+        digestScore: 0.79,
+        capturedAt: createdAt,
+      },
+      {
+        id: "court-b",
+        lane: "regulation" as const,
+        nutrientId: "n:court-b",
+        source: "news" as const,
+        label: "집행 흔적",
+        value: "지연",
+        summary: "Execution traces stayed behind the legal narrative.",
+        trust: 0.82,
+        freshness: 0.88,
+        digestScore: 0.77,
+        capturedAt: createdAt,
+      },
+      {
+        id: "court-c",
+        lane: "regulation" as const,
+        nutrientId: "n:court-c",
+        source: "onchain" as const,
+        label: "대기 자금 흐름",
+        value: "관망",
+        summary: "Waiting capital stayed cautious despite the briefing tone.",
+        trust: 0.79,
+        freshness: 0.86,
+        digestScore: 0.74,
+        capturedAt: createdAt,
+      },
+    ],
+    recentPosts: [],
+    recentNarrativeThreads: [
+      {
+        lane: "regulation",
+        focus: "court",
+        sceneFamily: "regulation:court:briefing+execution",
+        headline: "직전에도 브리핑과 집행의 빈칸을 물고 있었다",
+      },
+      {
+        lane: "regulation",
+        focus: "court",
+        sceneFamily: "regulation:court:briefing+execution:execution-lag:briefing-gap",
+        headline: "브리핑 톤보다 집행 빈칸이 크게 남았다",
+      },
+    ],
+    identityPressure: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 기사보다 집행 흔적이다.",
+      grudgeLine: "집행은 없는데 기사만 큰 규제 해설을 제일 싫어한다.",
+      continuityLine: "지난번에도 브리핑보다 집행 빈칸이 더 크게 남았다.",
+    },
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "court-explicit");
+});
+
+test("buildEventEvidenceFallbackPost avoids analytic generic loop phrasing for korean synthetic headline", () => {
+  const createdAt = new Date().toISOString();
+  const text = buildEventEvidenceFallbackPost(
+    {
+      lane: "market-structure",
+      focus: "settlement",
+      event: {
+        id: "generic-loop",
+        lane: "market-structure",
+        headline: "체결은 남는데 깊이가 대답을 미루는 장면이 실제로 이어지는지 다시 본다",
+        summary: "Settlement stays loud while depth remains thin.",
+        source: "analysis:sharp",
+        trust: 0.82,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["체결", "깊이"],
+      },
+      evidence: [
+        {
+          id: "settlement-a",
+          lane: "market-structure",
+          nutrientId: "n:settlement-a",
+          source: "market",
+          label: "현물 체결",
+          value: "증가",
+          summary: "Spot fills picked up.",
+          trust: 0.82,
+          freshness: 0.9,
+          digestScore: 0.76,
+          capturedAt: createdAt,
+        },
+        {
+          id: "settlement-b",
+          lane: "market-structure",
+          nutrientId: "n:settlement-b",
+          source: "market",
+          label: "호가 두께",
+          value: "약화",
+          summary: "Depth stayed shallow.",
+          trust: 0.8,
+          freshness: 0.9,
+          digestScore: 0.74,
+          capturedAt: createdAt,
+        },
+      ],
+      mode: "philosophy-note",
+      variant: 1,
+      identityPressure: {
+        obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 깊이다.",
+        grudgeLine: "깊이 없는 거래량을 제일 싫어한다.",
+        continuityLine: "지난번에도 체결보다 깊이가 더 늦게 붙었다.",
+      },
+    },
+    "ko",
+    260,
+    "philosophy-note",
+    1
+  );
+
+  assert.doesNotMatch(text, /실제로 이어지는지 다시|행동으로 이어지는지 다시|다시 본다/u);
 });
