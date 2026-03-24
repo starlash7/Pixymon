@@ -221,6 +221,45 @@ test("buildKoIdentityWriterCandidate uses lane-aware question prompts", () => {
   assert.doesNotMatch(text, /어떤 근거를 먼저 버리겠나/);
 });
 
+test("buildKoIdentityWriterCandidate keeps builder voice judgmental instead of analytic", () => {
+  const text = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "ecosystem",
+      mode: "meta-reflection",
+      headline: "개발자와 돈의 복귀가 서로 다른 속도로 움직이는 구간",
+      primaryAnchor: "개발자 잔류",
+      secondaryAnchor: "예치 자금 흐름",
+      preferredFocus: "builder",
+      seedHint: "identity-writer:builder-judgment",
+    },
+    2
+  );
+
+  assert.match(text, /(내부자 낙관|헐거워진다|반쪽짜리|돈의 복귀|생태계 기세)/);
+  assert.doesNotMatch(text, /끝까지 확인한다|다시 확인하게 만든다/);
+});
+
+test("buildKoIdentityWriterCandidate rewrites 구간 headlines into direct prose", () => {
+  const text = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "ecosystem",
+      mode: "meta-reflection",
+      headline: "지갑은 돌아오는데 재방문은 얕은 구간",
+      primaryAnchor: "사용자 재방문 흐름",
+      secondaryAnchor: "지갑 재방문",
+      preferredFocus: "retention",
+      sceneFamily: "ecosystem:retention:wallet+retention:retention-holds:wallet-thins",
+      seedHint: "identity-writer:range-rewrite",
+    },
+    1
+  );
+
+  assert.doesNotMatch(text, /구간은|구간에선|구간에서/);
+  assert.match(text, /(얕다|홍보 문구|재방문|남는 사람)/);
+});
+
 test("buildKoIdentityWriterCandidate can surface lane fixation instead of generic instinct", () => {
   const text = buildKoIdentityWriterCandidate({
     ...baseInput,
@@ -231,7 +270,7 @@ test("buildKoIdentityWriterCandidate can surface lane fixation instead of generi
     seedHint: "identity-writer:fixation",
   }, 2);
 
-  assert.match(text, /(체결|돈이 안 붙은 자신감|화면 열기보다 오래 보는 건 결국 체결|돈이 남는지 여부가 이 과열의 본색을 가른다)/);
+  assert.match(text, /(체결|돈이 안 붙은 자신감|자금이 안 남은 자신감|화면 열기보다 오래 보는 건 결국 체결|돈이 남는지 여부가 이 과열의 본색을 가른다|돈이 빠지는 순간 그 장면은 구조보다 연출에 가까워진다)/);
 });
 
 test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy mode", () => {
@@ -244,7 +283,7 @@ test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy 
     seedHint: "identity-writer:mode-stamp",
   }, 0);
 
-  assert.match(text, /(신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다|업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다|박수보다 오래 남는 건 결국 복구 로그 쪽이다|복구 기록이 비면 좋은 업그레이드 문장도 금방 종이처럼 얇아진다|결국 배포 공지보다 오래 남는 건 장애 뒤의 운영 태도다|결국 남은 건 발표가 아니라 장애 뒤 복구 기록 쪽이다|신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다|업그레이드는 박수보다 장애 뒤의 태도로 평가된다|운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다|설명보다 오래 가는 건 결국 복구 속도다|장애 뒤 태도가 비는 업그레이드는 박수부터 의심한다|길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복|장애 뒤 운영 흔적이 비는 순간 좋은 발표도 금방 시험대에 오른다|복구 흔적이 비는 순간 빠른 배포도 결국 발표값으로 되돌아간다|결국 이번에도 릴리스 박수보다 복구 태도 자리의 빈칸이 제일 크게 남는다|복구 태도가 끊기는 순간 그 개선 서사도 오래 못 버틴다)/);
+  assert.match(text, /(신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다|업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다|박수보다 오래 남는 건 결국 복구 로그 쪽이다|복구 기록이 비면 좋은 업그레이드 문장도 금방 종이처럼 얇아진다|결국 배포 공지보다 오래 남는 건 장애 뒤의 운영 태도다|결국 남은 건 발표가 아니라 장애 뒤 복구 기록 쪽이다|신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다|업그레이드는 박수보다 장애 뒤의 태도로 평가된다|운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다|설명보다 오래 가는 건 결국 복구 속도다|장애 뒤 태도가 비는 업그레이드는 박수부터 의심한다|길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복|장애 뒤 운영 흔적이 비는 순간 좋은 발표도 금방 시험대에 오른다|복구 흔적이 비는 순간 빠른 배포도 결국 발표값으로 되돌아간다|결국 이번에도 릴리스 박수보다 복구 태도 자리의 빈칸이 제일 크게 남는다|복구 태도가 끊기는 순간 그 개선 서사도 오래 못 버틴다|검증자 안정성은 살아 있는데 복구 속도가 비면 나는 그 업그레이드를 절반만 믿는다|운영 로그가 안 남으면 그 발표는 결국 릴리스 문장으로 눌린다)/);
 });
 
 test("buildKoIdentityWriterCandidate avoids stale ledger/value-drop phrasing in onchain mode", () => {

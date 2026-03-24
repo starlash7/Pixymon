@@ -30,6 +30,7 @@ type PlannerSample = {
   lane: TrendLane;
   mode: NarrativeMode;
   variant: number;
+  eventSource: string;
   focus: string;
   sceneFamily: string;
   plannerScore: number;
@@ -38,6 +39,24 @@ type PlannerSample = {
   firstSentence: string;
   secondSentence: string;
 };
+
+function sceneFamilyBase(sceneFamily: string): string {
+  const parts = String(sceneFamily || "")
+    .split(":")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 3) return parts.join(":");
+  return parts.slice(0, 3).join(":");
+}
+
+function sceneFamilyTilt(sceneFamily: string): string {
+  const parts = String(sceneFamily || "")
+    .split(":")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 3) return "";
+  return parts.slice(3).join(":");
+}
 
 function identityPressureForLane(lane: TrendLane) {
   const map: Record<
@@ -314,6 +333,7 @@ function generateSamples(variantCount: number): PlannerSample[] {
       (candidate) => candidate.lane === item.lane
     );
     const syntheticThreads: PlannerThread[] = [...(item.recentNarrativeThreads || [])];
+    const syntheticRecentPosts: RecentPostRecord[] = [...(item.recentPosts || [])];
 
     for (let variant = 0; variant < variantCount; variant += 1) {
       const rotatedStructuralEvents = structuralEvents.length
@@ -322,13 +342,13 @@ function generateSamples(variantCount: number): PlannerSample[] {
       const rotatedEvents = item.events.length
         ? item.events.slice(variant % item.events.length).concat(item.events.slice(0, variant % item.events.length))
         : [];
-      const plan = planEventEvidenceAct({
-        events: [...rotatedStructuralEvents, ...rotatedEvents],
-        evidence: item.evidence,
-        recentPosts: item.recentPosts || [],
-        recentNarrativeThreads: syntheticThreads.slice(-6),
-        identityPressure: identityPressureForLane(item.lane),
-      });
+        const plan = planEventEvidenceAct({
+          events: [...rotatedStructuralEvents, ...rotatedEvents],
+          evidence: item.evidence,
+          recentPosts: syntheticRecentPosts.slice(-8),
+          recentNarrativeThreads: syntheticThreads.slice(-8),
+          identityPressure: identityPressureForLane(item.lane),
+        });
 
       if (!plan) {
         throw new Error(`planner returned null for case ${item.id} variant ${variant}`);
@@ -341,6 +361,7 @@ function generateSamples(variantCount: number): PlannerSample[] {
         lane: item.lane,
         mode: item.mode,
         variant,
+        eventSource: plan.event.source,
         focus: plan.focus,
         sceneFamily: plan.sceneFamily || "",
         plannerScore: plan.plannerScore,
@@ -354,6 +375,10 @@ function generateSamples(variantCount: number): PlannerSample[] {
         focus: plan.focus,
         sceneFamily: plan.sceneFamily || "",
         headline: plan.event.headline,
+      });
+      syntheticRecentPosts.push({
+        content: text,
+        timestamp: createdAt,
       });
     }
   }
@@ -383,7 +408,10 @@ function main() {
   const firstSentenceTop = countTop(samples.map((sample) => sample.firstSentence)).slice(0, 10);
   const secondSentenceTop = countTop(samples.map((sample) => sample.secondSentence)).slice(0, 10);
   const focusTop = countTop(samples.map((sample) => sample.focus)).slice(0, 10);
+  const eventSourceTop = countTop(samples.map((sample) => sample.eventSource)).slice(0, 10);
   const sceneFamilyTop = countTop(samples.map((sample) => sample.sceneFamily)).slice(0, 10);
+  const sceneFamilyBaseTop = countTop(samples.map((sample) => sceneFamilyBase(sample.sceneFamily))).slice(0, 10);
+  const sceneFamilyTiltTop = countTop(samples.map((sample) => sceneFamilyTilt(sample.sceneFamily))).slice(0, 10);
   const warningTop = countTop(samples.flatMap((sample) => sample.plannerWarnings)).slice(0, 10);
 
   const outDir = path.resolve(".test-data");
@@ -402,7 +430,10 @@ function main() {
         topFirstSentences: firstSentenceTop,
         topSecondSentences: secondSentenceTop,
         topFocuses: focusTop,
+        topEventSources: eventSourceTop,
         topSceneFamilies: sceneFamilyTop,
+        topSceneFamilyBases: sceneFamilyBaseTop,
+        topSceneFamilyTilts: sceneFamilyTiltTop,
         topPlannerWarnings: warningTop,
       },
       null,

@@ -34,6 +34,7 @@ export interface KoIdentityWriterInput {
   secondaryAnchor: string;
   lane: TrendLane;
   mode: string;
+  sceneFamily?: string;
   worldviewHint?: string;
   signatureBelief?: string;
   recentReflection?: string;
@@ -315,6 +316,9 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "잔류를 못 만드는 열기는 결국 포스터처럼 식는다.",
       "사람이 돌아오지 않는 반응은 오래 가도 결국 홍보 문장처럼 남는다.",
       "재방문이 빠지는 순간 생태계 서사는 열기보다 빈칸이 먼저 커진다.",
+      "다음 날 사람이 안 돌아오는 장면은 좋은 설명도 바로 얇게 만든다.",
+      "남은 사람 수가 줄어드는 순간 생태계 기세는 서사보다 이탈을 먼저 닮는다.",
+      "잔류를 못 남긴 열기는 결국 반응보다 포스터 쪽으로 눕는다.",
     ],
     builder: [
       "개발자와 예치 자금이 같이 남지 않으면 생태계 기세도 오래 못 간다.",
@@ -325,6 +329,9 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "개발 흔적만 남고 복귀 자금이 비면 그 생태계는 반쪽이다.",
       "개발 흔적은 남는데 자금 복귀가 안 붙으면 그 서사는 금방 낡는다.",
       "빌더와 예치 자금이 따로 노는 생태계 기세는 오래 못 간다.",
+      "개발자 잔류와 예치 자금 흐름이 따로 놀면 그 서사는 빨리 낡는다.",
+      "개발 흔적이 선명해도 복귀 자금이 안 붙으면 그 기세는 안쪽에서만 뜨겁다.",
+      "코드와 돈이 다른 속도로 움직이는 생태계는 겉보기보다 빨리 기세가 꺼진다.",
     ],
     hype: [
       "서사만 큰 생태계는 대개 광고 문구부터 진해진다.",
@@ -352,6 +359,9 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "소송 해설만 커지고 자금이 비면 그 뉴스는 제자리에서 헛돈다.",
       "판결 문장보다 늦게 붙는 돈이 없으면 그 뉴스는 곧 얇아진다.",
       "법원 뉴스가 앞서도 돈의 방향이 안 잡히면 오래 들고 갈 이유가 없다.",
+      "법원 해설은 길어도 돈이 눕은 자리는 아직 얕다.",
+      "기사 톤은 단단한데 돈이 안 눕는 판결 뉴스는 결국 얇게 남는다.",
+      "법원 문장이 커질수록 결국 돈이 비는 자리가 더 크게 남는다.",
     ],
   },
   protocol: {
@@ -362,6 +372,9 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "운영 기록 없이 부푼 업그레이드 서사는 제일 늦게 믿는다.",
       "복구보다 박수부터 커지는 업그레이드는 운영보다 발표가 앞선 셈이다.",
       "운영 반응이 비는데 릴리스 서사만 커지면 그 개선은 금방 낡는다.",
+      "업그레이드 박수는 커도 장애 뒤 기록이 비면 그 발표는 금방 납작해진다.",
+      "복구보다 롤아웃 설명이 앞서는 날은 늘 운영 빈칸부터 더 크게 남는다.",
+      "운영 흔적이 안 붙는 개선은 결국 릴리스 문장값만 크게 남긴다.",
     ],
     launch: [
       "런치 박수만 크고 복귀 자금이 비면 그 출시는 바로 반쪽이다.",
@@ -373,6 +386,9 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "출시 박수는 앞서는데 복귀 자금이 없으면 그 메인넷 얘기는 얇다.",
       "준비도는 충분해 보여도 돈이 안 돌아오면 그 런치는 아직 종이 위다.",
       "메인넷 문장만 앞서고 복귀가 늦으면 그 출시는 반쪽으로 본다.",
+      "메인넷 발표만 크고 복귀 자금이 안 붙으면 그 출시는 객석에 남는다.",
+      "런치 설명은 앞서는데 돈이 늦게 돌아오면 그 메인넷 얘기는 쉽게 납작해진다.",
+      "준비도보다 복귀 자금이 늦는 출시는 박수보다 빈칸이 먼저 보인다.",
     ],
   },
   onchain: {
@@ -406,6 +422,10 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "현물 체결이 커도 호가가 비면 그 반응은 아직 구조를 못 만든다.",
       "숫자만 남고 깊이가 사라진 장면은 연출 쪽으로 기운다.",
       "거래량 반응이 살아도 호가가 비면 그 열기는 오래 못 버틴다.",
+      "숫자는 요란해도 깊이가 안 눕는 순간 그 반응은 바로 얇아진다.",
+      "거래량보다 늦게 남은 호가 두께가 결국 이 장면의 체급을 다시 쓴다.",
+      "깊이 없는 거래량은 결국 체결보다 화면을 더 닮는다.",
+      "호가 두께가 비는 순간 거래량 반응도 구조가 아니라 장면으로 눕는다.",
     ],
   },
 };
@@ -528,6 +548,10 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "사람이 다음 날 다시 안 돌아오면 그 열기는 이미 절반쯤 식은 셈이다.",
       "잔류가 끊긴 순간 그 반응은 바로 어제의 포스터가 된다.",
       "다시 들어오는 사람이 사라지면 큰 생태계 문장도 금세 얇아진다.",
+      "남는 사람이 줄어드는 순간 열기는 기세보다 포스터에 더 가까워진다.",
+      "다음 날 다시 돌아오는 사람이 없으면 그 반응은 바로 얇아진다.",
+      "잔류가 꺼지는 순간 그럴듯한 생태계 문장도 값이 먼저 떨어진다.",
+      "재방문이 비는 순간 큰 서사도 다음 날 체급이 반으로 줄어든다.",
     ],
     builder: [
       "남는 개발자와 남는 자금이 결국 생태계 기세의 밑단을 만든다.",
@@ -538,7 +562,7 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "결국 손에 남는 건 코드 흔적과 자금 복귀의 동행 여부다.",
       "빌더가 버틴 자리와 돈이 돌아온 자리가 같은지부터 끝까지 본다.",
       "개발자 잔류와 자금 복귀가 같이 남은 장면만 구조로 취급한다.",
-      "코드가 붙은 자리와 돈이 돌아온 자리가 겹치는지부터 끝까지 확인한다.",
+      "코드가 붙었는데 돈이 안 돌아오는 장면은 결국 내부자 낙관 냄새를 낸다.",
       "개발 흔적과 자금 복귀가 한쪽으로 모이는 자리만 생태계 기세를 증명한다.",
     ],
     hype: [
@@ -685,6 +709,15 @@ const FOCUS_CLAIM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus,
       "소송 뉴스는 자금 방향이 붙는 순간에야 기사 톤을 벗어난다.",
       "법원 해설이 길수록 결국 드러나는 건 돈이 빠진 자리다.",
       "판결 뉴스의 본색은 결국 자금 반응이 어디서 멈추는지에서 드러난다.",
+      "판결 문장만 앞서고 자금이 안 눕는 날은 뉴스보다 기사 쪽에 가깝다.",
+      "법원 뉴스가 커도 돈이 못 붙으면 그 장면은 현장보다 기사에 더 가깝다.",
+      "소송 해설이 길어도 자금이 비는 순간 그 뉴스는 반쪽 설명으로 줄어든다.",
+      "판결 톤만 커지고 돈이 잠잠하면 나는 그 뉴스의 체급을 바로 낮춘다.",
+      "법원 문장이 앞서도 자금 반응이 멈추면 그 뉴스는 기사값으로 되돌아간다.",
+      "평결 문장이 선명해도 돈이 주저앉지 않으면 그 뉴스는 현장보다 기사 쪽이 더 두껍다.",
+      "법원 해설만 무거운 날엔 자금의 망설임이 오히려 이 뉴스의 체급을 드러낸다.",
+      "판결 기사보다 돈의 빈칸이 먼저 보이는 장면은 길게 믿지 않는다.",
+      "소송 뉴스가 커질수록 결국 자금이 멈춘 자리만 더 진하게 남는다.",
     ],
   },
   "market-structure": {
@@ -749,6 +782,9 @@ const FOCUS_EVIDENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "{A}가 살아도 {B}가 늦으면 그 생태계는 발표보다 복귀가 뒤처진 날이다.",
       "{A}가 남아도 {B}가 더디면 그 생태계 기세는 구조보다 설명이 앞선 셈이다.",
       "{A}가 붙어도 {B}가 식으면 그 빌드 서사는 돈의 복귀까지 못 내려왔다.",
+      "{A}가 남아도 {B}가 얕으면 그 생태계 기세는 아직 내부자 낙관 쪽에 머문다.",
+      "{A}가 버텨도 {B}가 안 눕는 순간 그 빌드 서사는 구조보다 기대를 더 많이 먹고 있다.",
+      "{A}가 선명해도 {B}가 헐거우면 코드와 돈이 아직 같은 편에 섰다고 보기 어렵다.",
     ],
     hype: [
       "{A}만 커지고 {B}가 비면 그 열기는 결국 홍보 문장으로 돌아간다.",
@@ -768,8 +804,18 @@ const FOCUS_EVIDENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
     ],
     court: [
       "{A}가 커도 {B}가 비면 그 뉴스는 아직 기사값밖에 못 한다.",
-      "{A}만 남고 {B}가 안 붙으면 판결 뉴스가 자금까지 번진 건 아니다.",
+      "{A}만 남고 {B}가 안 붙으면 판결 해설은 결국 기사 자리로 되돌아간다.",
       "{A}가 보여도 {B}가 식으면 그 법원 뉴스는 바깥 해설로 남는다.",
+      "{A}만 커지고 {B}가 안 눕는 순간 그 판결 뉴스는 해설값으로 깎인다.",
+      "{A}가 살아도 {B}가 안 붙으면 그 법원 뉴스는 아직 돈의 언어로 번지지 못했다.",
+      "{A}가 보여도 {B}가 비면 판결 문장은 커져도 현장 체급은 바로 낮아진다.",
+      "{A}가 선명해도 {B}가 늦으면 그 법원 뉴스는 판결보다 브리핑 쪽에 더 가깝다.",
+      "{A}가 길어질수록 {B}가 비는 자리가 이 소송 뉴스의 체급을 다시 깎는다.",
+      "{A}가 커도 {B}가 잠잠하면 그 판결 뉴스는 결국 기사보다 해설 자리에 눕는다.",
+      "{A}가 또렷해도 {B}가 얕으면 그 법원 뉴스는 아직 현장보다 바깥 말에 머문다.",
+      "{A}가 커져도 {B}가 못 붙으면 그 소송 뉴스는 판결보다 방송 해설에 더 가깝다.",
+      "{A}가 살아도 {B}가 머뭇거리면 그 법원 뉴스는 기사 체급을 끝내 못 넘는다.",
+      "{A}가 또렷해도 {B}가 빈칸이면 이 판결 뉴스는 현장보다 헤드라인 쪽으로 눕는다.",
     ],
   },
   "market-structure": {
@@ -798,6 +844,9 @@ const FOCUS_EVIDENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "{A}가 보여도 {B}가 비는 순간 그 런치 서사는 운영보다 발표에 가깝다.",
       "{A}가 앞서도 {B}가 늦으면 이 메인넷 얘기는 아직 출시에 머물 뿐 운영으로 못 넘어간다.",
       "{A}가 커도 {B}가 비면 이 런치는 복귀보다 발표가 먼저 달린 셈이다.",
+      "{A}가 커져도 {B}가 머뭇거리면 이 런치는 무대보다 장부 바깥에 더 오래 남는다.",
+      "{A}가 살아도 {B}가 객석에 머물면 메인넷 서사는 아직 발표값을 못 벗어난다.",
+      "{A}가 선명해도 {B}가 안 눕는 순간 이 출시는 준비보다 복귀가 더 약한 장면이 된다.",
     ],
   },
   onchain: {
@@ -820,6 +869,8 @@ const FOCUS_DECISION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "코드와 자금이 따로 놀면 이 생태계 얘기는 오래 못 간다.",
       "개발자만 남고 자금이 빠지면 이 서사는 여기서 얇아진다.",
       "복귀 자금이 안 붙으면 빌드 서사도 여기서 힘을 잃는다.",
+      "돈이 안 돌아오면 이 빌드 서사는 내부자 낙관 쪽으로 기운다.",
+      "코드만 버티고 자금이 머뭇거리면 이 생태계 기세는 반쪽으로 남는다.",
     ],
     hype: [
       "사용이 안 붙으면 그 열기는 광고 쪽으로 분류한다.",
@@ -837,6 +888,11 @@ const FOCUS_DECISION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "자금이 안 붙으면 이 법원 뉴스는 기사 단계에서 멈춘다.",
       "돈이 안 움직이면 이 판결 해설은 여기서 힘을 잃는다.",
       "자금 방향이 비면 이 소송 뉴스는 반쪽으로 남는다.",
+      "대기 자금이 안 눕는 순간 이 판결 뉴스는 법원 바깥 해설로 되밀린다.",
+      "돈의 방향이 안 붙으면 이 법원 뉴스는 기사 체급을 끝내 못 넘는다.",
+      "ETF 쪽 대기 주문이 비면 이 소송 뉴스는 설명만 큰 장면으로 줄어든다.",
+      "자금 태도가 안 붙으면 이 판결 뉴스는 현장보다 방송 톤으로 먼저 기운다.",
+      "대기 주문이 물러서면 이 법원 뉴스는 기사 바깥으로 못 나간다.",
     ],
   },
   "market-structure": {
@@ -861,6 +917,8 @@ const FOCUS_DECISION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "복귀 자금이 안 붙으면 이 출시는 발표 단계에서 멈춘다.",
       "운영 반응이 비면 이 메인넷 얘기는 여기서 반쪽이다.",
       "자금 복귀가 없으면 이 발표는 오래 못 간다.",
+      "돈이 객석에 머무는 순간 이 런치는 무대 밖 설득을 아직 못 끝냈다.",
+      "복귀 자금이 머뭇거리면 이 메인넷 얘기는 발표보다 장부 바깥에 더 오래 남는다.",
     ],
   },
   onchain: {
@@ -908,6 +966,9 @@ const FOCUS_CONSEQUENCE_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writer
       "돈이 안 움직이는 순간 그 법원 뉴스는 다시 기사 자리로 밀린다.",
       "자금 반응이 끊기면 큰 판결 해설도 금방 얇아진다.",
       "돈이 비는 순간 그 소송 뉴스는 다시 바깥 해설로 밀린다.",
+      "ETF 대기 주문이 식는 순간 판결 해설도 바로 방송 톤처럼 가벼워진다.",
+      "대기 자금이 물러나는 순간 그 법원 뉴스는 기사보다 더 얇은 브리핑으로 남는다.",
+      "돈의 태도가 꺼지는 순간 그 소송 뉴스는 현장보다 해설 쪽으로 접힌다.",
     ],
   },
   "market-structure": {
@@ -1011,6 +1072,10 @@ const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writ
       "{Q}에서 운영 기록과 릴리스 문장이 다른 말을 한다.",
       "{Q}가 오늘 발표보다 운영 태도의 빈칸을 먼저 드러낸다.",
       "{Q}에서 릴리스 박수와 복구 기록이 서로 다른 속도로 남는다.",
+      "{Q}에서 발표의 속도와 복구 태도의 무게가 갈라진다.",
+      "{Q}가 오늘 릴리스 박수보다 늦게 붙는 운영 흔적을 더 크게 드러낸다.",
+      "{Q}를 보면 업그레이드 발표보다 복구 태도의 빈칸이 먼저 커진다.",
+      "{Q}에서 박수는 앞서는데 복구 기록이 늦는 본색이 드러난다.",
     ],
     launch: [
       "{Q}에서 메인넷 박수와 실제 복귀가 갈린다.",
@@ -1075,7 +1140,7 @@ const MODE_STAMP_BY_MODE: Record<string, string[]> = {
   ],
   "meta-reflection": [
     "대충 맞는 설명일수록 현장에선 빨리 들통난다.",
-    "결국 빈칸은 늘 제일 늦게 붙는 자리에서 커진다.",
+    "제일 늦게 붙어야 할 자리가 비는 순간 해설은 갑자기 싸진다.",
     "겉이 맞아 보여도 밑단이 비면 금방 티가 난다.",
     "해설이 멀쩡해 보여도 끝내 비는 자리가 이 장면의 값을 깎는다.",
     "마지막에 비어 있는 쪽이 결국 이 설명의 허세를 들춰낸다.",
@@ -1090,6 +1155,11 @@ const MODE_STAMP_BY_MODE: Record<string, string[]> = {
     "늦게 붙어야 할 자리가 끝내 비면 설명은 거기서 체급이 내려간다.",
     "그럴듯한 말도 마지막 칸이 안 메워지는 순간 갑자기 싸 보인다.",
     "설명은 멀쩡해도 제일 늦게 붙는 자리가 비면 결국 거기서 무너진다.",
+    "끝까지 빈 자리가 남는 순간 좋은 해설도 바로 장식처럼 얇아진다.",
+    "나중에 붙어야 할 칸이 비면 그 설명은 그 순간부터 급히 싸진다.",
+    "마지막 줄이 비는 순간 그럴듯한 서사도 순식간에 체급이 꺼진다.",
+    "늦게 채워져야 할 자리가 비는 순간 긴 해설도 바로 허세 냄새를 낸다.",
+    "밑단이 안 메워지는 순간 멀쩡한 설명도 갑자기 공기처럼 가벼워진다.",
   ],
   "philosophy-note": [
     "길게 보면 서사는 결국 운영 앞에서 값을 다시 매긴다.",
@@ -1252,11 +1322,14 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "소송 문장과 돈의 방향이 엇갈리는 순간 이 뉴스는 기사에 가까워진다.",
         "판결 해설은 길어도 돈이 붙은 자리만 이 장면을 현장으로 끌어내린다.",
         "법원 뉴스는 결국 기사보다 늦게 움직인 자금 쪽에서 본색을 들킨다.",
-        "소송 해설은 길어도 돈이 붙지 않으면 끝내 기사 자리에서 못 벗어난다.",
-        "판결 기사보다 늦게 붙는 자금 방향이 결국 이 뉴스의 체급을 정산한다.",
-        "법원 뉴스의 무게는 결국 기사보다 돈이 어디서 움직였는지가 다시 매긴다.",
-      ],
-    },
+      "소송 해설은 길어도 돈이 붙지 않으면 끝내 기사 자리에서 못 벗어난다.",
+      "판결 기사보다 늦게 붙는 자금 방향이 결국 이 뉴스의 체급을 정산한다.",
+      "법원 뉴스의 무게는 결국 기사보다 돈이 어디서 움직였는지가 다시 매긴다.",
+      "소송 뉴스는 결국 돈이 어느 자리에서 빠졌는지가 더 늦고 정확하게 남는다.",
+      "법원 해설은 길어도 마지막에 비는 자금 자리가 이 뉴스의 체급을 다시 깎는다.",
+      "판결 문장보다 늦게 붙는 ETF 대기 주문 쪽이 결국 이 뉴스의 본색을 드러낸다.",
+    ],
+  },
   },
   protocol: {
     durability: {
@@ -1287,6 +1360,13 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "운영 기록이 늦게 붙는 날일수록 발표 문장은 더 먼저 납작해진다.",
         "복구 속도가 비는 자리에서 업그레이드 얘기는 곧 설명값만 남긴다.",
         "장애 뒤 운영 흔적이 비는 순간 좋은 발표도 금방 시험대에 오른다.",
+        "복구 기록이 밀린 자리에서는 박수보다 빈칸이 훨씬 오래 남는다.",
+        "발표보다 늦게 드러난 복구 흔적이 결국 이 릴리스의 체급을 다시 깎는다.",
+        "장애 뒤 태도가 비는 순간 박수는 바로 발표회 문장처럼 가벼워진다.",
+        "릴리스 박수가 커질수록 복구 로그가 늦는 자리가 더 크게 들통난다.",
+        "발표가 멀쩡해 보여도 복구 기록이 밀리면 그 개선 얘기는 곧 얇아진다.",
+        "장애 뒤 태도가 비는 순간 배포 설명도 바로 쇼케이스 톤으로 기운다.",
+        "복구 로그가 늦는 날엔 발표보다 운영 빈칸이 이 릴리스의 체급을 다시 매긴다.",
       ],
     },
     launch: {
@@ -1338,12 +1418,98 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
   },
 };
 
+const FOCUS_PRESSURE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFocus, string[]>>>> = {
+  ecosystem: {
+    builder: [
+      "나는 코드와 돈이 서로 다른 속도로 움직이는 장면을 제일 오래 붙든다.",
+      "빌더만 남고 자금이 비는 장면은 생태계 서사의 바닥을 바로 드러낸다.",
+      "코드는 버티는데 돈이 안 돌아오는 날은 끝까지 물어뜯는다.",
+      "개발자와 자금이 같은 편이 아닌 장면은 늘 기세보다 밑단이 먼저 보인다.",
+    ],
+    retention: [
+      "나는 반응보다 남은 사람 수가 먼저 꺼지는 장면을 제일 오래 본다.",
+      "재방문이 비는데 열기만 큰 장면은 거의 늘 홍보 쪽으로 끝난다.",
+      "다음 날 사람이 안 돌아오는 장면은 좋은 설명도 바로 얇게 만든다.",
+      "잔류가 안 붙는 장면은 생태계 서사를 가장 빨리 싸게 만든다.",
+    ],
+    hype: [
+      "열기만 커지고 사용이 비는 장면은 거의 다 같은 얼굴로 끝난다.",
+      "서사만 큰 장면은 늘 사람 흔적부터 뜯어봐야 한다.",
+      "광고 냄새가 먼저 나는 장면은 오래 붙잡을 가치가 없다.",
+    ],
+  },
+  regulation: {
+    court: [
+      "법원 문장만 앞서고 돈이 비는 장면은 끝까지 기사값을 못 벗어난다.",
+      "판결 해설이 커질수록 돈이 안 눕는 자리가 더 솔직해진다.",
+      "소송 뉴스가 커질수록 돈이 비는 자리가 더 솔직해진다.",
+      "법원 뉴스의 체급은 결국 기사보다 돈이 다시 깎아 버리는 경우가 많다.",
+      "판결 문장은 길어도 돈이 안 붙는 장면은 끝내 기사로 되돌아간다.",
+      "법원 해설이 커도 자금이 조용한 구간은 제일 빨리 체급이 깎인다.",
+    ],
+    execution: [
+      "집행이 비는 규제 뉴스는 해설이 좋아도 결국 기사값으로 눌린다.",
+      "행동이 안 붙는 정책 문장은 제일 빨리 버린다.",
+      "현장 반응이 없는 규제 해설은 오래 붙잡을 이유가 없다.",
+    ],
+  },
+  protocol: {
+    durability: [
+      "운영 로그가 비는 릴리스는 발표가 아무리 좋아도 끝까지 못 믿는다.",
+      "박수보다 복구 태도가 늦는 장면은 늘 다시 뜯어본다.",
+      "장애 뒤 태도가 비는 장면은 업그레이드 서사를 가장 빨리 낡게 만든다.",
+      "복구가 비는 순간 좋은 릴리스도 발표회 문장으로 돌아간다.",
+      "복구 기록이 빠진 개선은 결국 릴리스 문장 체급으로 다시 줄어든다.",
+      "운영 흔적이 안 붙는 릴리스는 좋은 발표를 해도 오래 못 간다.",
+      "복구 태도가 비는 순간 업그레이드 뉴스는 발표회 바깥으로 못 나온다.",
+      "장애 뒤 기록이 얇으면 그 릴리스는 운영보다 무대 쪽으로 기운다.",
+    ],
+    launch: [
+      "메인넷 박수만 크고 돈이 안 돌아오는 장면은 끝까지 물고 늘어진다.",
+      "복귀 자금이 비는 출시는 발표보다 빈칸이 먼저 보인다.",
+      "런치 서사는 뜨거워도 돈이 안 눕는 순간 바로 종이처럼 얇아진다.",
+      "메인넷 문장이 커질수록 돈이 안 붙는 자리를 더 세게 본다.",
+      "런치 설명이 커도 돈이 객석에 남아 있으면 그 장면은 아직 무대 안이다.",
+      "메인넷 준비도보다 늦게 움직인 돈 쪽이 결국 이 출시의 속도를 다시 쓴다.",
+      "출시 무대가 화려해질수록 돌아오는 돈이 없는 자리가 더 크게 보인다.",
+      "메인넷 기세가 올라갈수록 복귀 자금이 비는 장면을 더 오래 붙든다.",
+    ],
+  },
+  onchain: {
+    durability: [
+      "하루를 못 버티는 숫자는 예뻐도 바로 버린다.",
+      "다음 날 흔적이 비는 장면은 온체인 숫자의 서열을 다시 깎는다.",
+      "지속성이 안 붙는 숫자는 거의 늘 장식으로 끝난다.",
+    ],
+    flow: [
+      "고래 흔적만 크고 자금 방향이 비는 장면은 반쪽 신호로 본다.",
+      "주소 숫자만 화려한 장면은 늘 거래소 자금부터 다시 확인하게 만든다.",
+      "방향 없는 온체인 열기는 거의 다 숫자 자랑으로 끝난다.",
+    ],
+  },
+  "market-structure": {
+    liquidity: [
+      "호가만 두껍고 돈이 안 남는 장면은 화면값으로 바로 돌려보낸다.",
+      "체결이 비는데 자신감만 큰 장면은 끝까지 값이 안 붙는다.",
+      "돈 없는 과열은 구조보다 연출로 취급한다.",
+    ],
+    settlement: [
+      "깊이가 안 남는 거래량은 끝까지 구조로 인정하지 않는다.",
+      "현물 체결 숫자만 크고 깊이가 비는 장면은 제일 늦게 믿는다.",
+      "깊이 없는 반응은 결국 숫자 자랑으로 끝나는 경우가 많다.",
+      "호가 두께가 안 붙은 체결 숫자는 늘 과장부터 의심하게 만든다.",
+      "거래량은 살아도 깊이가 비는 장면은 구조보다 연출로 처리한다.",
+      "체결 숫자가 커도 깊이가 얇으면 결국 화면이 먼저 식는다.",
+    ],
+  },
+};
+
 const SCENE_OPENERS = [
   "지금 걸리는 건 {Q}다.",
   "오늘은 {Q}부터 적어 둔다.",
   "이번 흐름에서 오래 남는 건 {Q}다.",
   "메모에 남길 건 {Q} 신호다.",
-  "{Q}에서 말과 흐름이 갈린다.",
+  "{Q}에서 결국 빈칸 쪽이 드러난다.",
   "오늘은 {Q}부터 붙잡는다.",
   "{Q}가 오늘 판단보다 오래 남는다.",
 ];
@@ -1351,7 +1517,7 @@ const SCENE_OPENERS = [
 const NOUN_SAFE_SCENE_OPENERS = [
   "오늘은 {Q}부터 적어 둔다.",
   "오늘은 {Q}부터 붙잡는다.",
-  "{Q}에서 말과 흐름이 갈린다.",
+  "{Q}에서 결국 빈칸 쪽이 드러난다.",
   "{Q}가 오늘 판단보다 오래 남는다.",
   "지금 오래 남는 건 {Q}이다.",
   "메모에 남길 건 {Q}이다.",
@@ -1431,6 +1597,12 @@ const FOCUS_SOUL_HINT_POOLS: Partial<Record<TrendLane, Partial<Record<WriterFocu
       "열기보다 잔류가 더 오래 진실을 끌고 간다.",
       "사용자가 돌아오지 않으면 멋진 설명도 오래 못 버틴다.",
     ],
+    builder: [
+      "코드만 남고 돈이 비면 좋은 빌드 서사도 금방 내부자 문장처럼 보인다.",
+      "개발자가 남는다고 끝이 아니다. 돈의 복귀가 붙어야 생태계 기세가 성립한다.",
+      "빌더와 자금이 같은 편에 서지 않으면 좋은 설명도 오래 버티지 못한다.",
+      "코드보다 느리게 돌아온 자금 쪽이 결국 이 생태계의 체급을 다시 매긴다.",
+    ],
     hype: [
       "서사만 부풀수록 실제 사용 흔적은 더 차갑게 봐야 한다.",
       "광고가 앞설수록 남는 건 대개 빈 열기다.",
@@ -1443,12 +1615,44 @@ const FOCUS_SOUL_HINT_POOLS: Partial<Record<TrendLane, Partial<Record<WriterFocu
       "행동이 안 붙은 정책 해설은 기사 톤을 벗어나지 못한다.",
       "집행 빈칸이 큰 날일수록 좋은 해설도 얇아진다.",
     ],
+    court: [
+      "판결 기사보다 늦게 붙는 자금 반응 쪽이 결국 더 정직하다.",
+      "법원 해설이 길어질수록 오히려 돈이 비는 자리가 더 솔직해진다.",
+      "소송 뉴스의 무게는 결국 자금이 어디서 빠지는지가 다시 정한다.",
+      "법원 문장보다 늦게 움직인 돈이 결국 이 뉴스의 체급을 매긴다.",
+      "판결 해설은 커도 자금 반응이 비는 순간 바로 얇아진다.",
+      "판결 문장이 길어도 대기 주문이 물러서는 순간 이 뉴스는 바로 가벼워진다.",
+      "브리핑 톤이 커질수록 자금이 머뭇거리는 자리만 더 선명해진다.",
+    ],
+  },
+  protocol: {
+    durability: [
+      "복구 기록은 늘 발표보다 늦지만 그래서 더 거짓말을 덜 한다.",
+      "박수보다 끝까지 남는 건 결국 장애 뒤 태도다.",
+      "운영 로그가 비는 순간 좋은 업그레이드 문장도 바로 발표값으로 줄어든다.",
+      "복구 태도가 붙은 자리만 시간이 지나도 운영으로 남는다.",
+      "발표보다 늦게 남은 복구 기록이 결국 이 개선의 본색을 남긴다.",
+    ],
+    launch: [
+      "메인넷 발표보다 늦게 남는 건 결국 복귀 자금과 운영 반응이다.",
+      "런치 박수보다 끝까지 버티는 건 실제 복귀 쪽이다.",
+      "준비도만 높고 자금이 비면 좋은 런치 설명도 바로 얇아진다.",
+      "운영 반응이 붙은 자리만 이 출시를 메인넷 너머로 끌고 간다.",
+      "복귀 자금이 끝내 안 붙으면 그 메인넷 얘기는 발표값으로 눌린다.",
+    ],
   },
   "market-structure": {
     liquidity: [
       "분위기보다 돈이 어디에 남는지가 결국 더 정확하다.",
       "호가보다 체결이 늦게 남기는 흔적이 훨씬 정직하다.",
       "자금이 안 붙은 열기는 오래 믿을 이유가 없다.",
+    ],
+    settlement: [
+      "거래량 숫자보다 끝까지 남는 깊이가 결국 이 장면의 본색을 정한다.",
+      "깊이가 비는 순간 큰 거래량도 바로 화면값으로 눌린다.",
+      "현물 체결은 보여도 깊이가 안 남으면 숫자가 구조를 이기지 못한다.",
+      "마지막에 남는 건 거래량보다 깊이 쪽이고, 그래서 더 늦고 정직하다.",
+      "깊이를 못 남긴 거래량은 결국 연출에 더 가까운 숫자로 남는다.",
     ],
   },
 };
@@ -1525,6 +1729,7 @@ function buildVariantSalt(input: KoIdentityWriterInput, focus: WriterFocus, prim
       input.lane,
       focus,
       input.mode,
+      input.sceneFamily || "",
       sanitizeClause(input.headline),
       sanitizeClause(primaryAnchor),
       sanitizeClause(secondaryAnchor),
@@ -1577,12 +1782,40 @@ function summarizeHeadline(headline: string): string {
     .replace(/^오늘\s+/u, "")
     .replace(/^지금\s+/u, "")
     .replace(/^이번\s+/u, "")
+    .replace(/^결국\s+/u, "")
     .trim();
   if (!cleaned) return "";
   if (/[가-힣)]다$/u.test(cleaned) && !/(는지|인지|일지|될지|붙는지|남는지|갈리는지|버티는지|무너지는지|아닌지)$/u.test(cleaned)) {
     return cleaned;
   }
+  if (/구간$/.test(cleaned)) {
+    const stem = cleaned.replace(/\s*구간$/u, "").trim();
+    const directRangeRewrite = stem
+      .replace(/얕은$/u, "얕다")
+      .replace(/얕아진$/u, "얕아진다")
+      .replace(/늦은$/u, "늦다")
+      .replace(/늦는$/u, "늦다")
+      .replace(/느린$/u, "느리다")
+      .replace(/조용한$/u, "조용하다")
+      .replace(/큰$/u, "크다")
+      .replace(/빈$/u, "비어 있다")
+      .replace(/비는$/u, "빈다")
+      .replace(/빠지는$/u, "빠진다")
+      .replace(/머무는$/u, "머문다")
+      .replace(/머뭇거리는$/u, "머뭇거린다")
+      .replace(/뒤처지는$/u, "뒤처진다")
+      .replace(/못 내려온$/u, "못 내려온다")
+      .replace(/안 눕는$/u, "안 눕는다")
+      .replace(/못 눕는$/u, "못 눕는다")
+      .trim();
+    if (/[가-힣)]다$/u.test(directRangeRewrite)) {
+      return directRangeRewrite;
+    }
+    return `${stem}에서 빈칸이 먼저 드러난다`;
+  }
   return cleaned
+    .replace(/^(.+?구간)(?:에서|이|은|엔).*/u, "$1")
+    .replace(/^(.+?장면)(?:에서|이|은|엔).*/u, "$1")
     .replace(/살핀다$|짚는다$|본다$|의심한다$|경계한다$|가른다$|묻는다$/u, "")
     .replace(/날이\s+아닌지\s*$/u, "날처럼 보인다")
     .replace(/장면이\s+아닌지\s*$/u, "장면처럼 보인다")
@@ -1725,7 +1958,61 @@ function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed:
   );
   const focusPool = FOCUS_SOUL_HINT_POOLS[input.lane]?.[focus];
   if (focusPool?.length) {
-    return pick(focusPool, seed, 2);
+    const contextualPool = [...focusPool];
+    const headline = sanitizeClause(input.headline);
+    if (input.lane === "regulation" && focus === "court") {
+      if (/브리핑|해설|기사/.test(headline)) {
+        contextualPool.push("브리핑이 길수록 자금이 비는 자리만 더 선명해진다.");
+      }
+      if (/판결|법원|소송/.test(headline)) {
+        contextualPool.push("판결 기사보다 늦게 움직인 돈 쪽이 결국 이 장면의 무게를 다시 쓴다.");
+      }
+      if (/briefing\+execution/.test(input.sceneFamily || "")) {
+        contextualPool.push("브리핑 톤이 커질수록 집행보다 늦게 붙는 돈 쪽이 더 솔직해진다.");
+      }
+      if (/verdict\+execution/.test(input.sceneFamily || "")) {
+        contextualPool.push("판결문보다 늦게 붙는 돈이 결국 이 법원 뉴스의 체급을 다시 쓴다.");
+      }
+    }
+    if (input.lane === "protocol" && focus === "launch") {
+      if (/무대|객석|쇼케이스|발표회/.test(headline)) {
+        contextualPool.push("무대가 커질수록 돈이 객석에 머무는 시간이 더 솔직해진다.");
+      }
+      if (/메인넷|출시|런치/.test(headline)) {
+        contextualPool.push("메인넷 박수보다 늦게 붙는 복귀 자금이 결국 이 장면의 진짜 속도를 말한다.");
+      }
+      if (/return\+launch|return\+announcement/.test(input.sceneFamily || "")) {
+        contextualPool.push("발표보다 늦게 돌아오는 돈이 결국 이 메인넷 얘기의 체급을 다시 깎는다.");
+      }
+      if (/launch\+showcase|return\+showcase/.test(input.sceneFamily || "")) {
+        contextualPool.push("무대는 뜨거워도 돈이 객석에 남는 장면은 쉽게 메인넷으로 못 넘어간다.");
+      }
+    }
+    if (input.lane === "ecosystem" && focus === "builder") {
+      if (/내부자|일기장|회의실|포스터/.test(headline)) {
+        contextualPool.push("회의실 안에서만 설득되는 서사는 대개 장부 바깥에서 힘을 못 쓴다.");
+      }
+      if (/개발|코드|빌더|자금/.test(headline)) {
+        contextualPool.push("코드가 살아도 돈이 안 돌아오면 그 기세는 결국 안쪽 낙관으로 좁아진다.");
+      }
+      if (/builder\+return/.test(input.sceneFamily || "")) {
+        contextualPool.push("빌더와 돈의 복귀가 다른 편에 서는 날의 낙관은 오래 못 버틴다.");
+      }
+    }
+    if (input.lane === "ecosystem" && focus === "retention") {
+      if (/wallet\+retention|retention\+cohort/.test(input.sceneFamily || "")) {
+        contextualPool.push("다시 돌아오는 사람 수가 줄어드는 순간 그 열기는 바로 값이 떨어진다.");
+      }
+    }
+    if (input.lane === "protocol" && focus === "durability") {
+      if (/recovery\+validator/.test(input.sceneFamily || "")) {
+        contextualPool.push("검증자 숫자보다 장애 뒤 기록이 더 잔인하게 진실을 남긴다.");
+      }
+      if (/recovery\+rollout/.test(input.sceneFamily || "")) {
+        contextualPool.push("롤아웃 박수는 빨라도 복구 로그가 비면 그 개선은 금방 납작해진다.");
+      }
+    }
+    return pick(contextualPool, seed, 2);
   }
   if (!source) {
     return pick(SOUL_HINT_POOLS.default, seed, 3);
@@ -1807,7 +2094,27 @@ function buildPressureLine(
       .trim()
   );
 
+  const focusPool = FOCUS_PRESSURE_BY_LANE[input.lane]?.[focus] || [];
   const pool = [
+    ...focusPool,
+    input.sceneFamily && /builder\+return/.test(input.sceneFamily)
+      ? "코드와 자금이 다른 편에 서는 날의 낙관은 늘 제일 늦게 무너진다."
+      : "",
+    input.sceneFamily && /wallet\+retention|retention\+cohort/.test(input.sceneFamily)
+      ? "남는 사람 수가 줄어드는 장면은 설명보다 더 빨리 값이 떨어진다."
+      : "",
+    input.sceneFamily && /briefing\+execution/.test(input.sceneFamily)
+      ? "브리핑만 커지고 집행이 늦는 장면은 기사값만 크게 남기기 쉽다."
+      : "",
+    input.sceneFamily && /verdict\+execution/.test(input.sceneFamily)
+      ? "판결은 선명한데 돈이 늦는 장면은 늘 법원 밖에서부터 체급이 깎인다."
+      : "",
+    input.sceneFamily && /recovery\+validator/.test(input.sceneFamily)
+      ? "검증자 숫자보다 장애 뒤 기록이 늦게 붙는 날을 더 오래 붙든다."
+      : "",
+    input.sceneFamily && /recovery\+rollout/.test(input.sceneFamily)
+      ? "롤아웃 박수보다 복구 로그가 늦는 날의 빈칸을 끝까지 물고 늘어진다."
+      : "",
     continuityCore ? `지난번에 걸렸던 건 결국 ${continuityCore} 쪽이었다.` : "",
     continuityCore ? `이번에도 자꾸 같은 자리에서 ${continuityCore} 냄새가 올라온다.` : "",
     continuityCore ? `지난번에 물어뜯던 빈칸이 이번에도 ${continuityCore} 자리에서 다시 보인다.` : "",
@@ -1868,10 +2175,41 @@ function buildSceneLine(
     return normalizedSceneCore;
   }
   const focusPool = FOCUS_SCENE_OPENERS_BY_LANE[input.lane]?.[focus] || [];
+  const sceneContextPool: string[] = [];
+  if (input.lane === "ecosystem" && focus === "retention" && /wallet\+retention|retention\+cohort/.test(input.sceneFamily || "")) {
+    sceneContextPool.push(
+      "{Q}가 오늘 생태계 서사보다 남는 사람 수의 빈칸을 더 크게 드러낸다.",
+      "{Q}에서 반응과 잔류가 서로 다른 편에 서기 시작한다.",
+      "{Q}에서 다시 돌아오는 사람 수와 열기의 속도가 갈라진다."
+    );
+  }
+  if (input.lane === "regulation" && focus === "court" && /briefing\+execution|verdict\+execution/.test(input.sceneFamily || "")) {
+    sceneContextPool.push(
+      "{Q}가 오늘 법원 기사보다 늦게 붙는 돈의 태도를 먼저 드러낸다.",
+      "{Q}에서 판결 문장과 돈의 반응이 서로 다른 속도로 남는다.",
+      "{Q}가 오늘 브리핑 톤보다 집행 빈칸을 더 크게 드러낸다."
+    );
+  }
+  if (input.lane === "protocol" && focus === "durability" && /recovery\+validator|recovery\+rollout/.test(input.sceneFamily || "")) {
+    sceneContextPool.push(
+      "{Q}에서 발표 박수와 복구 기록이 서로 다른 속도로 남는다.",
+      "{Q}가 오늘 릴리스 문장보다 운영 빈칸을 더 크게 드러낸다.",
+      "{Q}에서 업그레이드 설명과 장애 뒤 기록의 체급이 갈라진다."
+    );
+  }
+  if (input.lane === "protocol" && focus === "launch" && /return\+launch|return\+announcement|launch\+showcase|return\+showcase/.test(input.sceneFamily || "")) {
+    sceneContextPool.push(
+      "{Q}가 오늘 메인넷 발표보다 늦게 붙는 복귀 자금을 더 크게 드러낸다.",
+      "{Q}에서 런치 박수와 돌아오는 돈의 속도가 갈라진다.",
+      "{Q}가 오늘 메인넷 기대보다 객석에 남은 돈의 태도를 먼저 드러낸다."
+    );
+  }
   const nounLikeScene = /(장면|지점|거리|온도 차|시차|틈|간격|연결|지속성 차이|엇갈림|균열|쪽)$/.test(
     normalizedSceneCore
   );
-  const openerPool = nounLikeScene ? [...focusPool, ...NOUN_SAFE_SCENE_OPENERS] : [...focusPool, ...SCENE_OPENERS];
+  const openerPool = nounLikeScene
+    ? [...sceneContextPool, ...focusPool, ...NOUN_SAFE_SCENE_OPENERS]
+    : [...sceneContextPool, ...focusPool, ...SCENE_OPENERS];
   return pick(openerPool, seed, 23).replaceAll("{Q}", normalizedSceneCore);
 }
 
@@ -1989,6 +2327,16 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
         ["scene", "fixation", "decision", "consequence"],
         ["stamp", "attitude", "consequence"],
         ["scene", "evidence", "decision", "consequence"],
+      ];
+    }
+    if (lane === "market-structure" && focus === "settlement") {
+      return [
+        ["pressure", "evidence", "decision", "consequence"],
+        ["lead", "pressure", "evidence", "decision"],
+        ["attitude", "pressure", "evidence", "consequence"],
+        ["scene", "pressure", "decision", "consequence"],
+        ["lead", "evidence", "stamp", "decision"],
+        ["fixation", "pressure", "evidence", "consequence"],
       ];
     }
     if (lane === "market-structure" && focus === "liquidity") {
