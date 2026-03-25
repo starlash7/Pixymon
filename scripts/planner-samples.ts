@@ -211,6 +211,26 @@ const cases: PlannerSampleCase[] = [
     ],
   },
   {
+    id: "eco-retention-usage",
+    lane: "ecosystem",
+    mode: "interaction-experiment",
+    events: [
+      event(
+        "eco-retention-usage-explicit",
+        "ecosystem",
+        "재방문은 남는데 생활 흔적이 다음 날까지 못 이어지는 구간",
+        "People return, but the habit does not persist into the next day.",
+        "analysis:sharp",
+        ["재방문", "생활 흔적", "다음 날"]
+      ),
+    ],
+    evidence: [
+      evidence("eco-retention-usage-a", "ecosystem", "news", "사용자 재방문 흐름", "유지", "사람은 다시 들어오지만 다음 날까지 머무는 습관은 아직 얕다."),
+      evidence("eco-retention-usage-b", "ecosystem", "onchain", "체인 안쪽 사용", "둔화", "생활 흔적은 생기지만 다음 날로 이어지는 강도는 아직 얕다."),
+      evidence("eco-retention-usage-c", "ecosystem", "onchain", "지갑 재방문", "확대", "지갑은 돌아오지만 사용 습관은 아직 납작하게 남는 장면이다.", 0.8, 0.88, 0.72),
+    ],
+  },
+  {
     id: "reg-court",
     lane: "regulation",
     mode: "interaction-experiment",
@@ -232,6 +252,26 @@ const cases: PlannerSampleCase[] = [
     ],
   },
   {
+    id: "reg-court-order",
+    lane: "regulation",
+    mode: "meta-reflection",
+    events: [
+      event(
+        "reg-court-order-explicit",
+        "regulation",
+        "판결 기사보다 ETF 대기 주문이 늦게 눕는 구간",
+        "Court coverage runs ahead of actual ETF bid placement.",
+        "analysis:sharp",
+        ["판결", "ETF", "주문"]
+      ),
+    ],
+    evidence: [
+      evidence("reg-court-order-a", "regulation", "market", "ETF 대기 주문", "지연", "판결 기사에 비해 실제 주문은 아직 늦게 깔리는 장면이다."),
+      evidence("reg-court-order-b", "regulation", "news", "법원 일정", "집중", "법원 일정은 길게 회자되지만 주문과 자금은 아직 같은 편이 아니다."),
+      evidence("reg-court-order-c", "regulation", "onchain", "대기 자금 흐름", "관망", "대기 자금도 판결 기사보다 늦게 몸을 싣는 구간이다.", 0.78, 0.87, 0.7),
+    ],
+  },
+  {
     id: "protocol-durability",
     lane: "protocol",
     mode: "philosophy-note",
@@ -250,6 +290,26 @@ const cases: PlannerSampleCase[] = [
       evidence("protocol-durability-b", "protocol", "news", "복구 속도", "둔화", "Recovery speed lagged the celebratory rollout narrative."),
       evidence("protocol-durability-c", "protocol", "market", "운영 반응", "신중", "Operational response remained cautious despite headline optimism.", 0.76, 0.85, 0.7),
       evidence("protocol-durability-d", "protocol", "news", "업그레이드 배포", "지연", "Upgrade rollout slipped behind the initial operator applause.", 0.79, 0.87, 0.73),
+    ],
+  },
+  {
+    id: "protocol-durability-ops",
+    lane: "protocol",
+    mode: "meta-reflection",
+    events: [
+      event(
+        "protocol-durability-ops-explicit",
+        "protocol",
+        "복구 속도보다 운영 로그가 늦게 붙는 구간",
+        "Operational logs arrive after the recovery story is already being sold.",
+        "analysis:sharp",
+        ["복구", "운영", "로그"]
+      ),
+    ],
+    evidence: [
+      evidence("protocol-durability-ops-a", "protocol", "market", "운영 로그", "지연", "복구 설명보다 운영 기록이 한 박자 늦게 붙는 장면이다."),
+      evidence("protocol-durability-ops-b", "protocol", "news", "복구 속도", "둔화", "장애 뒤 복구 속도는 좋아 보이지만 운영 기록은 아직 얇다."),
+      evidence("protocol-durability-ops-c", "protocol", "onchain", "검증자 안정성", "유지", "검증자 수치는 버티지만 운영 태도는 아직 느리게 남는 구간이다.", 0.79, 0.87, 0.73),
     ],
   },
   {
@@ -281,6 +341,26 @@ const cases: PlannerSampleCase[] = [
     ],
   },
   {
+    id: "protocol-launch-showcase",
+    lane: "protocol",
+    mode: "philosophy-note",
+    events: [
+      event(
+        "protocol-launch-showcase-explicit",
+        "protocol",
+        "메인넷 무대는 뜨거운데 복귀 자금은 아직 객석에 남은 장면",
+        "The mainnet showcase is loud, but returning capital still stays in the audience.",
+        "analysis:sharp",
+        ["메인넷", "쇼케이스", "복귀"]
+      ),
+    ],
+    evidence: [
+      evidence("protocol-launch-showcase-a", "protocol", "news", "메인넷 준비도", "상승", "메인넷 준비도는 강조되지만 운영 반응은 아직 조심스럽다."),
+      evidence("protocol-launch-showcase-b", "protocol", "onchain", "복귀 자금", "지연", "돌아오는 돈은 아직 발표장의 기세를 그대로 따라오지 않는다."),
+      evidence("protocol-launch-showcase-c", "protocol", "market", "쇼케이스 반응", "과열", "무대 반응은 뜨겁지만 실제 복귀 자금은 객석 근처에서 머뭇거린다.", 0.77, 0.85, 0.69),
+    ],
+  },
+  {
     id: "market-liquidity",
     lane: "market-structure",
     mode: "philosophy-note",
@@ -299,6 +379,27 @@ const cases: PlannerSampleCase[] = [
       evidence("market-liquidity-b", "market-structure", "market", "자금 쏠림 방향", "분산", "Capital concentration stayed scattered instead of confirming the move."),
       evidence("market-liquidity-c", "market-structure", "market", "호가 두께", "약화", "Orderbook depth thinned despite louder reaction.", 0.79, 0.88, 0.72),
       evidence("market-liquidity-d", "market-structure", "market", "현물 체결", "지연", "Spot settlement stayed slow even as the screen heat expanded.", 0.8, 0.89, 0.74),
+    ],
+  },
+  {
+    id: "market-settlement-depth",
+    lane: "market-structure",
+    mode: "identity-journal",
+    events: [
+      event(
+        "market-settlement-depth-explicit",
+        "market-structure",
+        "거래량 숫자는 사는데 호가 두께가 같이 안 눕는 구간",
+        "Printed size runs ahead of actual book depth.",
+        "analysis:sharp",
+        ["거래량", "호가", "깊이"]
+      ),
+    ],
+    evidence: [
+      evidence("market-settlement-depth-a", "market-structure", "market", "거래량 반응", "확대", "숫자는 살아도 깊이는 아직 같은 편으로 안 눕는 장면이다."),
+      evidence("market-settlement-depth-b", "market-structure", "market", "호가 두께", "약화", "호가 두께가 비면서 실제 깊이가 숫자를 못 받치는 구간이다."),
+      evidence("market-settlement-depth-c", "market-structure", "market", "현물 체결", "지연", "체결은 늦게 붙고 화면 열기만 먼저 커지는 장면이다.", 0.8, 0.88, 0.74),
+      evidence("market-settlement-depth-d", "market-structure", "onchain", "큰 주문 소화", "둔화", "큰 주문 소화가 늦게 붙으면서 화면 숫자만 먼저 살아난 구간이다.", 0.79, 0.87, 0.72),
     ],
   },
 ];

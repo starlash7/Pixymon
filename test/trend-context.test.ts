@@ -1754,6 +1754,94 @@ test("buildStructuralFallbackEventsFromEvidence can split launch and settlement 
   );
 });
 
+test("buildStructuralFallbackEventsFromEvidence can surface court-order and durability-ops families", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "court-order-a",
+      lane: "regulation" as const,
+      nutrientId: "n-court-order-a",
+      source: "market" as const,
+      label: "ETF 대기 주문",
+      value: "지연",
+      summary: "ETF bid placement still lagged the court narrative.",
+      trust: 0.79,
+      freshness: 0.88,
+      digestScore: 0.74,
+      capturedAt: createdAt,
+    },
+    {
+      id: "court-order-b",
+      lane: "regulation" as const,
+      nutrientId: "n-court-order-b",
+      source: "news" as const,
+      label: "법원 일정",
+      value: "집중",
+      summary: "Court scheduling dominated coverage despite thinner real demand.",
+      trust: 0.81,
+      freshness: 0.89,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "durability-ops-a",
+      lane: "protocol" as const,
+      nutrientId: "n-durability-ops-a",
+      source: "market" as const,
+      label: "운영 로그",
+      value: "지연",
+      summary: "Operational logs arrived later than the recovery narrative.",
+      trust: 0.8,
+      freshness: 0.88,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+    {
+      id: "durability-ops-b",
+      lane: "protocol" as const,
+      nutrientId: "n-durability-ops-b",
+      source: "news" as const,
+      label: "복구 속도",
+      value: "둔화",
+      summary: "Recovery speed slowed beneath the operator applause.",
+      trust: 0.8,
+      freshness: 0.87,
+      digestScore: 0.74,
+      capturedAt: createdAt,
+    },
+    {
+      id: "durability-ops-c",
+      lane: "protocol" as const,
+      nutrientId: "n-durability-ops-c",
+      source: "onchain" as const,
+      label: "검증자 안정성",
+      value: "유지",
+      summary: "Validator stability held despite the lagging ops record.",
+      trust: 0.81,
+      freshness: 0.88,
+      digestScore: 0.75,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 10);
+  const families = new Set(
+    events
+      .map((item) => `${item.lane}:${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`)
+      .filter(Boolean)
+  );
+
+  assert.ok(
+    [...families].some((family) => family.startsWith("regulation:court:order+capital")) ||
+      [...families].some((family) => family.startsWith("regulation:court:capital+execution"))
+  );
+  assert.ok(
+    [...families].some((family) => family.startsWith("protocol:durability:ops+recovery")) ||
+      [...families].some((family) => family.startsWith("protocol:durability:ops+validator")) ||
+      [...families].some((family) => family.startsWith("protocol:durability:repair+ops"))
+  );
+});
+
 test("buildStructuralFallbackEventsFromEvidence can split retention and launch families with headline cues", () => {
   const createdAt = new Date().toISOString();
   const evidence = [
