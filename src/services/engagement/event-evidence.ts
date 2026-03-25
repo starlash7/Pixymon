@@ -3925,6 +3925,7 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
   if (lane === "ecosystem" && focus === "retention") {
     if (sceneFamilyMatches(sceneFamily, /^ecosystem:retention:retention$/)) return -0.18;
     if (sceneFamilyMatches(sceneFamily, /cohort\+wallet$/)) return -0.24;
+    if (sceneFamilyMatches(sceneFamily, /wallet\+usage$/)) return -0.18;
     if (sceneFamilyMatches(sceneFamily, /usage\+wallet$/) || sceneFamilyMatches(sceneFamily, /cohort\+usage$/)) return 0.24;
     if (sceneFamilyMatches(sceneFamily, /retention\+wallet$/) || sceneFamilyMatches(sceneFamily, /wallet\+retention$/)) return 0.3;
     if (sceneFamilyMatches(sceneFamily, /cohort\+retention$/) || sceneFamilyMatches(sceneFamily, /retention\+cohort$/)) return 0.14;
@@ -3949,6 +3950,7 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
     if (sceneFamilyMatches(sceneFamily, /^regulation:court:court$/)) return -0.32;
     if (sceneFamilyMatches(sceneFamily, /verdict\+execution$/)) return 0.44;
     if (sceneFamilyMatches(sceneFamily, /briefing\+execution$/)) return 0.2;
+    if (sceneFamilyMatches(sceneFamily, /briefing\+capital$/)) return -0.1;
     if (sceneFamilyMatches(sceneFamily, /court\+execution$/)) return 0.4;
     if (sceneFamilyMatches(sceneFamily, /capital\+court$/)) return -0.14;
     if (sceneFamilyMatches(sceneFamily, /capital\+execution$/)) return 0.36;
@@ -3959,6 +3961,7 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
     if (sceneFamilyMatches(sceneFamily, /rollout\+validator$/)) return 0.26;
     if (sceneFamilyMatches(sceneFamily, /ops\+recovery$/)) return 0.22;
     if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) return 0.18;
+    if (sceneFamilyMatches(sceneFamily, /validator\+log$/) || sceneFamilyMatches(sceneFamily, /ops\+log$/)) return 0.24;
   }
   if (lane === "market-structure") {
     if (focus === "liquidity") {
@@ -3991,11 +3994,11 @@ function estimateSceneFamilyMonopolyPenalty(
   if (familyCount <= 1) return 0;
   let penalty = 0.05 * (familyCount - 1);
   if (
-    (lane === "ecosystem" && focus === "retention" && sceneFamilyMatches(sceneFamily, /(cohort\+wallet|retention\+usage)$/)) ||
+    (lane === "ecosystem" && focus === "retention" && sceneFamilyMatches(sceneFamily, /(cohort\+wallet|retention\+usage|wallet\+usage)$/)) ||
     (lane === "ecosystem" && focus === "builder" && sceneFamilyMatches(sceneFamily, /builder\+capital$/)) ||
     (lane === "protocol" && focus === "launch" && sceneFamilyMatches(sceneFamily, /(capital\+launch|launch\+capital|return\+launch|return\+announcement|return\+ops|return\+showcase|launch\+ops)$/)) ||
-    (lane === "regulation" && focus === "court" && sceneFamilyMatches(sceneFamily, /^regulation:court:court$/)) ||
-    (lane === "protocol" && focus === "durability" && sceneFamilyMatches(sceneFamily, /(recovery\+validator|ops\+validator|rollout\+validator)$/))
+    (lane === "regulation" && focus === "court" && sceneFamilyMatches(sceneFamily, /^regulation:court:court$|briefing\+capital/)) ||
+    (lane === "protocol" && focus === "durability" && sceneFamilyMatches(sceneFamily, /(recovery\+validator|ops\+validator|rollout\+validator|validator\+log)$/))
   ) {
     penalty += lane === "regulation" && focus === "court" ? 0.14 : 0.1;
   }
@@ -4271,6 +4274,17 @@ function augmentSceneFamilyBaseWithHeadline(
       return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+announcement");
     }
   }
+  if (lane === "protocol" && focus === "launch" && base === "protocol:launch:return+ops") {
+    if (/(객석|무대|쇼케이스|포스터|데모|발표회)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+showcase");
+    }
+    if (/(박수|발표|설명|기사|뉴스|기대|브리핑)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+announcement");
+    }
+    if (/(메인넷|launch|출시|준비도|런치)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+launch");
+    }
+  }
   if (lane === "protocol" && focus === "launch" && base === "protocol:launch:return+announcement") {
     if (/(객석|무대|쇼케이스|포스터|데모|발표회)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+showcase");
@@ -4308,6 +4322,9 @@ function augmentSceneFamilyBaseWithHeadline(
     }
   }
   if (lane === "protocol" && focus === "durability" && base === "protocol:durability:rollout") {
+    if (/(운영|로그)/.test(normalized) && /(검증자|validator|합의)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:validator+log");
+    }
     if (/(복구|장애)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:recovery+rollout");
     }
@@ -4327,6 +4344,9 @@ function augmentSceneFamilyBaseWithHeadline(
     }
   }
   if (lane === "protocol" && focus === "durability" && base === "protocol:durability:recovery+rollout") {
+    if (/(운영|로그)/.test(normalized) && /(검증자|validator|합의)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:validator+log");
+    }
     if (/(검증자|validator|합의)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:recovery+validator");
     }
@@ -4342,9 +4362,28 @@ function augmentSceneFamilyBaseWithHeadline(
       return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:ops+validator");
     }
   }
+  if (lane === "protocol" && focus === "durability" && base === "protocol:durability:validator+log") {
+    if (/(복구|장애)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:recovery+validator");
+    }
+    if (/(롤아웃|배포)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:rollout+validator");
+    }
+    if (/(운영|로그)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:ops+log");
+    }
+  }
   if (lane === "protocol" && focus === "durability" && base === "protocol:durability:repair+ops") {
     if (/(복구|장애)/.test(normalized) && /(운영|로그)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:ops+recovery");
+    }
+  }
+  if (lane === "protocol" && focus === "durability" && base === "protocol:durability:ops+log") {
+    if (/(복구|장애)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:ops+recovery");
+    }
+    if (/(검증자|validator|합의)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:ops+validator");
     }
   }
   if (lane === "regulation" && focus === "court" && base === "regulation:court:capital+execution") {
@@ -4378,6 +4417,31 @@ function augmentSceneFamilyBaseWithHeadline(
   if (lane === "regulation" && focus === "court" && base === "regulation:court:briefing+execution") {
     if (/(자금|돈|capital|대기 자금|주문)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "regulation:court:capital+execution");
+    }
+  }
+  if (lane === "regulation" && focus === "court" && base === "regulation:court:verdict+execution") {
+    if (/(브리핑|해설|기사|뉴스)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:briefing+execution");
+    }
+    if (/(주문|ETF|대기 주문|매수 자리)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:order+capital");
+    }
+    if (/(자금|돈|capital|대기 자금)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:capital+execution");
+    }
+  }
+  if (lane === "regulation" && focus === "court" && base === "regulation:court:briefing+capital") {
+    if (/집행/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:briefing+execution");
+    }
+    if (/(판결|평결|verdict)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:verdict+execution");
+    }
+    if (/(법원|소송|court|lawsuit)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:court+execution");
+    }
+    if (/(주문|ETF|대기 주문|매수 자리)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:order+capital");
     }
   }
   if (lane === "regulation" && focus === "court" && base === "regulation:court:court+execution") {
@@ -4435,6 +4499,28 @@ function augmentSceneFamilyBaseWithHeadline(
     }
     if (/(다음 날|남는 사람|사람 수|잔류)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+cohort");
+    }
+  }
+  if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:wallet+usage") {
+    if (/(생활 리듬|습관|habits?)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:return+habit");
+    }
+    if (/(다음 날|남는 사람|사람 수|잔류|재방문)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+cohort");
+    }
+    if (/(커뮤니티|열기|광고|홍보)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:community+retention");
+    }
+  }
+  if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:usage+wallet") {
+    if (/(생활 리듬|습관|habits?)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:habit+retention");
+    }
+    if (/(다음 날|남는 사람|사람 수|잔류|재방문)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+retention");
+    }
+    if (/(커뮤니티|열기|광고|홍보)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:community+retention");
     }
   }
   if (lane === "ecosystem" && focus === "builder" && base === "ecosystem:builder:builder+capital") {
@@ -4606,21 +4692,21 @@ function diversifyDerivedSceneFamilyForVariant(
     /(ecosystem:retention:wallet\+retention|ecosystem:retention:retention\+cohort|ecosystem:retention:retention\+usage|ecosystem:retention:usage\+wallet|ecosystem:retention:cohort\+usage|ecosystem:retention:retention\+wallet|ecosystem:retention:cohort\+retention|ecosystem:retention:wallet\+usage|ecosystem:retention:habit\+retention|ecosystem:retention:return\+habit)/.test(base)
   ) {
     const rotated = [
-      "ecosystem:retention:wallet+retention",
+      "ecosystem:retention:community+retention",
       "ecosystem:retention:retention+cohort",
       "ecosystem:retention:retention+usage",
       "ecosystem:retention:cohort+usage",
       "ecosystem:retention:usage+wallet",
       "ecosystem:retention:habit+retention",
       "ecosystem:retention:return+habit",
-      "ecosystem:retention:wallet+usage",
+      "ecosystem:retention:cohort+retention",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
   if (
     lane === "regulation" &&
     focus === "court" &&
-    /(regulation:court:briefing\+execution|regulation:court:capital\+execution|regulation:court:court\+execution|regulation:court:order\+capital|regulation:court:verdict\+execution)/.test(base)
+    /(regulation:court:briefing\+execution|regulation:court:briefing\+capital|regulation:court:capital\+execution|regulation:court:court\+execution|regulation:court:order\+capital|regulation:court:verdict\+execution)/.test(base)
   ) {
     const rotated = [
       "regulation:court:briefing+execution",
@@ -4628,8 +4714,8 @@ function diversifyDerivedSceneFamilyForVariant(
       "regulation:court:court+execution",
       "regulation:court:order+capital",
       "regulation:court:verdict+execution",
+      "regulation:court:briefing+capital",
       "regulation:court:court+execution",
-      "regulation:court:order+capital",
       "regulation:court:capital+execution",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
@@ -4644,9 +4730,9 @@ function diversifyDerivedSceneFamilyForVariant(
       "protocol:launch:return+ops",
       "protocol:launch:return+audience",
       "protocol:launch:return+launch",
-      "protocol:launch:launch+treasury",
+      "protocol:launch:launch+rollout",
       "protocol:launch:launch+audience",
-      "protocol:launch:launch+capital",
+      "protocol:launch:launch+treasury",
       "protocol:launch:launch+showcase",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
@@ -4654,14 +4740,14 @@ function diversifyDerivedSceneFamilyForVariant(
   if (
     lane === "protocol" &&
     focus === "durability" &&
-    /(protocol:durability:recovery\+validator|protocol:durability:recovery\+rollout|protocol:durability:repair\+validator|protocol:durability:repair\+ops|protocol:durability:ops\+validator|protocol:durability:ops\+recovery|protocol:durability:rollout\+validator|protocol:durability:recovery\+ops|protocol:durability:ops\+log|protocol:durability:repair\+log)/.test(base)
+    /(protocol:durability:recovery\+validator|protocol:durability:recovery\+rollout|protocol:durability:repair\+validator|protocol:durability:repair\+ops|protocol:durability:ops\+validator|protocol:durability:ops\+recovery|protocol:durability:rollout\+validator|protocol:durability:recovery\+ops|protocol:durability:ops\+log|protocol:durability:repair\+log|protocol:durability:validator\+log)/.test(base)
   ) {
     const rotated = [
       "protocol:durability:recovery+validator",
       "protocol:durability:recovery+rollout",
       "protocol:durability:repair+validator",
       "protocol:durability:repair+log",
-      "protocol:durability:ops+validator",
+      "protocol:durability:validator+log",
       "protocol:durability:ops+log",
       "protocol:durability:rollout+validator",
       "protocol:durability:recovery+ops",
@@ -4696,6 +4782,7 @@ function resolvePlannerSceneTilt(
 ): string {
   const lagPattern = /(지연|둔화|관망|정체|비어|비면|늦|얕|약화|멈춤|없음|느림|식음|뒤처|빠지)/;
   const holdPattern = /(유지|확대|증가|복귀|재가동|정상화|상승|회복|강화|안정|버티|남)/;
+  const mergedText = sanitizeTweetText(pair.map((item) => `${item.label} ${item.value} ${item.summary}`).join(" | ")).toLowerCase();
   const rows = pair.map((item) => {
     const text = sanitizeTweetText(`${item.label} ${item.value} ${item.summary}`).toLowerCase();
     return {
@@ -4708,82 +4795,109 @@ function resolvePlannerSceneTilt(
   const facetLag = (...targets: string[]) => rows.some((row) => targets.includes(row.facet) && row.lag);
   const facetHold = (...targets: string[]) => rows.some((row) => targets.includes(row.facet) && row.hold);
   const hasFacet = (...targets: string[]) => facets.some((facet) => targets.includes(facet));
+  const scoreCandidates = new Map<string, number>();
+  const addScore = (tilt: string, score: number, condition: boolean = true) => {
+    if (!condition || !tilt || score <= 0) return;
+    scoreCandidates.set(tilt, (scoreCandidates.get(tilt) || 0) + score);
+  };
+  const pickTilt = (fallback: string = ""): string => {
+    if (scoreCandidates.size === 0) return fallback;
+    const ranked = [...scoreCandidates.entries()].sort((a, b) => b[1] - a[1]);
+    const topScore = ranked[0][1];
+    const finalists = ranked.filter((item) => topScore - item[1] <= 0.08).map((item) => item[0]);
+    if (finalists.length === 1) return finalists[0];
+    const seed = stableSeed(`${lane}|${focus}|${mergedText}|${facets.join("+")}|tilt`);
+    return finalists[Math.abs(seed) % finalists.length];
+  };
 
   if (lane === "ecosystem" && focus === "builder") {
-    if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
-    if (hasFacet("usage") && facetLag("usage")) return "usage-gap";
-    if (facetHold("builder") && facetHold("capital")) return "builder-holds";
-    return "builder-split";
+    addScore("capital-lag", 0.74, hasFacet("capital") && facetLag("capital"));
+    addScore("usage-gap", 0.72, hasFacet("usage") && facetLag("usage"));
+    addScore("builder-holds", 0.66, facetHold("builder") && facetHold("capital"));
+    addScore("builder-holds", 0.12, /(복귀|재가동|버티)/.test(mergedText));
+    addScore("builder-split", 0.42, true);
+    return pickTilt("builder-split");
   }
   if (lane === "ecosystem" && focus === "retention") {
-    if (hasFacet("usage") && facetLag("usage")) return "usage-gap";
-    if (/(생활|습관)/.test(rows.map((row) => row.text).join(" "))) return "habit-gap";
-    if (hasFacet("wallet") && facetLag("wallet")) return "wallet-thins";
-    if (hasFacet("cohort", "retention") && facetLag("cohort", "retention")) return "cohort-thins";
-    if (/(열기|커뮤니티)/.test(rows.map((row) => row.text).join(" "))) return "heat-gap";
-    if (facetHold("wallet", "cohort", "retention")) return "retention-holds";
-    return "retention-split";
+    addScore("usage-gap", 0.74, hasFacet("usage") && facetLag("usage"));
+    addScore("habit-gap", 0.82, /(생활|습관|다음 날|리듬)/.test(mergedText));
+    addScore("wallet-thins", 0.72, hasFacet("wallet") && facetLag("wallet"));
+    addScore("cohort-thins", 0.72, hasFacet("cohort", "retention") && facetLag("cohort", "retention"));
+    addScore("heat-gap", 0.68, /(열기|커뮤니티|광고|포스터)/.test(mergedText));
+    addScore("retention-holds", 0.64, facetHold("wallet", "cohort", "retention"));
+    addScore("retention-split", 0.4, true);
+    return pickTilt("retention-split");
   }
   if (lane === "regulation" && focus === "court") {
-    if (hasFacet("order") && facetLag("order")) return "order-lag";
-    if (hasFacet("execution") && facetLag("execution")) return "execution-lag";
-    if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
-    if (facetHold("order", "capital")) return "order-holds";
-    if (facetHold("court", "execution")) return "court-holds";
-    return "court-split";
+    addScore("order-lag", 0.8, hasFacet("order") && facetLag("order"));
+    addScore("execution-lag", 0.74, hasFacet("execution") && facetLag("execution"));
+    addScore("capital-lag", 0.72, hasFacet("capital") && facetLag("capital"));
+    addScore("headline-gap", 0.7, /(브리핑|해설|기사|뉴스)/.test(mergedText));
+    addScore("verdict-gap", 0.7, /(판결|평결|법원|소송|court)/.test(mergedText));
+    addScore("order-holds", 0.66, facetHold("order", "capital"));
+    addScore("court-holds", 0.62, facetHold("court", "execution"));
+    addScore("court-split", 0.4, true);
+    return pickTilt("court-split");
   }
   if (lane === "regulation" && focus === "execution") {
-    if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
-    if (facetHold("execution")) return "execution-holds";
-    return "execution-split";
+    addScore("capital-lag", 0.72, hasFacet("capital") && facetLag("capital"));
+    addScore("execution-holds", 0.62, facetHold("execution"));
+    addScore("execution-split", 0.42, true);
+    return pickTilt("execution-split");
   }
   if (lane === "protocol" && focus === "launch") {
-    if (hasFacet("return") && facetLag("return")) return "return-lag";
-    if (/(객석|무대|쇼케이스|발표회|브리핑)/.test(rows.map((row) => row.text).join(" "))) return "audience-gap";
-    if (hasFacet("ops") && facetLag("ops")) return "ops-lag";
-    if (hasFacet("rollout") && facetLag("rollout")) return "rollout-lag";
-    if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
-    if (facetHold("ops", "rollout")) return "ops-holds";
-    if (facetHold("launch", "return", "capital")) return "launch-holds";
-    return "launch-split";
+    addScore("return-lag", 0.76, hasFacet("return") && facetLag("return"));
+    addScore("audience-gap", 0.74, /(객석|무대|쇼케이스|발표회|브리핑|포스터|데모)/.test(mergedText));
+    addScore("ops-lag", 0.72, hasFacet("ops") && facetLag("ops"));
+    addScore("rollout-lag", 0.72, hasFacet("rollout") && facetLag("rollout"));
+    addScore("capital-lag", 0.68, hasFacet("capital") && facetLag("capital"));
+    addScore("ops-holds", 0.62, facetHold("ops", "rollout"));
+    addScore("launch-holds", 0.6, facetHold("launch", "return", "capital"));
+    addScore("launch-split", 0.38, true);
+    return pickTilt("launch-split");
   }
   if (lane === "protocol" && focus === "durability") {
-    if (/(로그|기록)/.test(rows.map((row) => row.text).join(" "))) return "log-gap";
-    if (/(박수|발표|쇼케이스)/.test(rows.map((row) => row.text).join(" "))) return "applause-gap";
-    if (hasFacet("ops") && facetLag("ops")) return "ops-lag";
-    if (hasFacet("validator") && facetLag("validator")) return "validator-lag";
-    if (hasFacet("recovery") && facetLag("recovery")) return "recovery-lag";
-    if (hasFacet("rollout") && facetLag("rollout")) return "rollout-lag";
-    if (facetHold("ops", "recovery")) return "ops-holds";
-    if (facetHold("validator", "recovery", "rollout")) return "durability-holds";
-    return "durability-split";
+    addScore("log-gap", 0.82, /(로그|기록|운영 로그)/.test(mergedText));
+    addScore("applause-gap", 0.72, /(박수|발표|쇼케이스|무대|객석)/.test(mergedText));
+    addScore("ops-lag", 0.74, hasFacet("ops") && facetLag("ops"));
+    addScore("validator-lag", 0.74, hasFacet("validator") && facetLag("validator"));
+    addScore("recovery-lag", 0.76, hasFacet("recovery") && facetLag("recovery"));
+    addScore("rollout-lag", 0.68, hasFacet("rollout") && facetLag("rollout"));
+    addScore("ops-holds", 0.62, facetHold("ops", "recovery"));
+    addScore("durability-holds", 0.6, facetHold("validator", "recovery", "rollout"));
+    addScore("durability-split", 0.38, true);
+    return pickTilt("durability-split");
   }
   if (lane === "market-structure" && focus === "settlement") {
-    if (hasFacet("volume") && facetLag("volume")) return "size-only";
-    if (hasFacet("execution") && facetLag("execution")) return "execution-thin";
-    if (hasFacet("depth") && facetLag("depth")) return "depth-thin";
-    if (/(정산|settlement)/.test(rows.map((row) => row.text).join(" "))) return "settlement-lag";
-    if (facetHold("volume", "depth")) return "settlement-holds";
-    if (facetHold("settlement", "execution")) return "settlement-holds";
-    return "settlement-split";
+    addScore("size-only", 0.74, hasFacet("volume") && facetLag("volume"));
+    addScore("execution-thin", 0.76, hasFacet("execution") && facetLag("execution"));
+    addScore("depth-thin", 0.74, hasFacet("depth") && facetLag("depth"));
+    addScore("settlement-lag", 0.72, /(정산|settlement|호가 책|깊이)/.test(mergedText));
+    addScore("book-thin", 0.72, /(호가 책|호가|book)/.test(mergedText));
+    addScore("settlement-holds", 0.62, facetHold("volume", "depth") || facetHold("settlement", "execution"));
+    addScore("settlement-split", 0.38, true);
+    return pickTilt("settlement-split");
   }
   if (lane === "market-structure" && focus === "liquidity") {
-    if (hasFacet("depth") && facetLag("depth")) return "depth-thin";
-    if (hasFacet("capital") && facetLag("capital")) return "capital-thin";
-    if (facetHold("execution", "depth")) return "liquidity-holds";
-    return "liquidity-split";
+    addScore("depth-thin", 0.76, hasFacet("depth") && facetLag("depth"));
+    addScore("capital-thin", 0.72, hasFacet("capital") && facetLag("capital"));
+    addScore("liquidity-holds", 0.62, facetHold("execution", "depth"));
+    addScore("liquidity-split", 0.38, true);
+    return pickTilt("liquidity-split");
   }
   if (lane === "onchain" && focus === "durability") {
-    if (hasFacet("congestion") && facetLag("congestion")) return "congestion-lag";
-    if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
-    if (facetHold("usage", "congestion", "capital")) return "durability-holds";
-    return "durability-split";
+    addScore("congestion-lag", 0.74, hasFacet("congestion") && facetLag("congestion"));
+    addScore("capital-lag", 0.72, hasFacet("capital") && facetLag("capital"));
+    addScore("durability-holds", 0.62, facetHold("usage", "congestion", "capital"));
+    addScore("durability-split", 0.38, true);
+    return pickTilt("durability-split");
   }
   if (lane === "onchain" && focus === "flow") {
-    if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
-    if (hasFacet("flow") && facetLag("flow")) return "flow-lag";
-    if (facetHold("flow", "capital")) return "flow-holds";
-    return "flow-split";
+    addScore("capital-lag", 0.74, hasFacet("capital") && facetLag("capital"));
+    addScore("flow-lag", 0.74, hasFacet("flow") && facetLag("flow"));
+    addScore("flow-holds", 0.62, facetHold("flow", "capital"));
+    addScore("flow-split", 0.38, true);
+    return pickTilt("flow-split");
   }
   return "";
 }
@@ -4808,7 +4922,13 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
   }
 
   if (lane === "ecosystem" && focus === "retention") {
-    if (facets.includes("wallet") && (facets.includes("cohort") || facets.includes("retention"))) {
+    if (/(생활|습관|리듬|다음 날)/.test(merged)) {
+      facetKey = facets.includes("wallet") ? "return+habit" : "habit+retention";
+    } else if (/(실사용|생활 흔적|사용 흔적|체인 안쪽 사용)/.test(merged) && facets.includes("usage")) {
+      facetKey = facets.includes("wallet") ? "usage+wallet" : "retention+usage";
+    } else if (/(커뮤니티|열기|광고|홍보|포스터)/.test(merged)) {
+      facetKey = "community+retention";
+    } else if (facets.includes("wallet") && (facets.includes("cohort") || facets.includes("retention"))) {
       facetKey = "wallet+retention";
     } else if (facets.includes("retention") && facets.includes("usage")) {
       facetKey = "retention+usage";
@@ -4822,7 +4942,15 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
   }
 
   if (lane === "protocol" && focus === "launch") {
-    if (facets.includes("showcase") && facets.includes("return")) {
+    if (/(쇼케이스|데모|무대|객석|발표회|포스터)/.test(merged) && facets.includes("return")) {
+      facetKey = "return+showcase";
+    } else if (/(박수|발표|브리핑|기사|뉴스|기대)/.test(merged) && facets.includes("return")) {
+      facetKey = "return+announcement";
+    } else if (/(운영|로그|복구|배포|롤아웃)/.test(merged) && facets.includes("return")) {
+      facetKey = "return+ops";
+    } else if (/(자금|돈|treasury|예치 자금|복귀 자금)/.test(merged) && facets.includes("launch")) {
+      facetKey = "launch+treasury";
+    } else if (facets.includes("showcase") && facets.includes("return")) {
       facetKey = "return+showcase";
     } else if (facets.includes("showcase") && facets.includes("launch")) {
       facetKey = "launch+showcase";
@@ -4838,7 +4966,13 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
   }
 
   if (lane === "market-structure" && focus === "settlement") {
-    if (facets.includes("execution") && facets.includes("depth")) {
+    if (/(호가 책|호가|book)/.test(merged) && facets.includes("execution")) {
+      facetKey = "fill+book";
+    } else if (/(거래량|숫자|볼륨)/.test(merged) && facets.includes("depth")) {
+      facetKey = "volume+depth";
+    } else if (/(정산|settlement)/.test(merged) && facets.includes("depth")) {
+      facetKey = "depth+settlement";
+    } else if (facets.includes("execution") && facets.includes("depth")) {
       facetKey = "execution+depth";
     } else if (facets.includes("volume") && facets.includes("depth")) {
       facetKey = "volume+depth";
