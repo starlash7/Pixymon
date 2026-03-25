@@ -276,12 +276,18 @@ export function buildStructuralFallbackEventsFromEvidence(
             };
           })
           .concat(
-            [0, 1, 2]
+            [0, 1, 2, 3, 4]
               .map((derivedVariant) => {
+                const diversifiedSceneFamily = diversifyDerivedSceneFamilyForVariant(
+                  pairCandidate.sceneFamily,
+                  lane,
+                  pairCandidate.focus,
+                  derivedVariant
+                );
                 const derivedHeadline = buildDerivedExplicitHeadlineFromEvidence(
                   lane,
                   pairCandidate.focus,
-                  pairCandidate.sceneFamily,
+                  diversifiedSceneFamily,
                   primary,
                   secondary,
                   derivedVariant
@@ -290,13 +296,13 @@ export function buildStructuralFallbackEventsFromEvidence(
                 const derivedSummary = buildDerivedExplicitSummaryFromEvidence(
                   lane,
                   pairCandidate.focus,
-                  pairCandidate.sceneFamily,
+                  diversifiedSceneFamily,
                   primary,
                   secondary,
                   derivedVariant
                 );
                 const derivedSceneFamily = augmentSceneFamilyWithHeadline(
-                  diversifyDerivedSceneFamilyForVariant(pairCandidate.sceneFamily, lane, pairCandidate.focus, derivedVariant),
+                  diversifiedSceneFamily,
                   derivedHeadline,
                   lane,
                   pairCandidate.focus
@@ -976,13 +982,23 @@ function estimateSceneFamilyBasePenalty(
 
   if (
     (lane === "ecosystem" && focus === "builder" && /builder\+capital$/.test(base)) ||
-    (lane === "ecosystem" && focus === "retention" && /cohort\+wallet$/.test(base)) ||
-    (lane === "protocol" && focus === "launch" && /(capital\+launch|return\+launch|return\+announcement|return\+ops|return\+showcase|launch\+showcase)$/.test(base)) ||
-    (lane === "protocol" && focus === "durability" && /rollout\+validator$/.test(base)) ||
-    (lane === "regulation" && focus === "court" && /(capital\+execution|court\+execution|verdict\+execution)$/.test(base)) ||
-    (lane === "market-structure" && focus === "settlement" && /(execution\+settlement|depth\+settlement|execution\+depth|volume\+depth)$/.test(base))
+    (lane === "ecosystem" && focus === "retention" && /(cohort\+wallet|retention\+cohort|wallet\+retention|retention\+usage)$/.test(base)) ||
+    (lane === "protocol" && focus === "launch" && /(capital\+launch|launch\+capital|return\+launch|return\+announcement|return\+ops|return\+showcase|launch\+showcase|launch\+treasury|launch\+ops)$/.test(base)) ||
+    (lane === "protocol" && focus === "durability" && /(rollout\+validator|recovery\+validator|recovery\+rollout|repair\+validator|ops\+validator|ops\+recovery|rollout)$/.test(base)) ||
+    (lane === "regulation" && focus === "court" && /(capital\+execution|court\+execution|verdict\+execution|order\+capital|briefing|briefing\+execution)$/.test(base)) ||
+    (lane === "market-structure" && focus === "settlement" && /(execution\+settlement|depth\+settlement|execution\+depth|volume\+depth|fill\+depth)$/.test(base))
   ) {
-    penalty += 0.08;
+    if (lane === "market-structure" && focus === "settlement") {
+      penalty += /execution\+depth$/.test(base) ? 0.16 : 0.12;
+    } else if (lane === "regulation" && focus === "court" && /briefing$/.test(base)) {
+      penalty += 0.1;
+    } else if (lane === "protocol" && focus === "durability" && /rollout$/.test(base)) {
+      penalty += 0.1;
+    } else if (lane === "protocol" && focus === "launch" && /launch\+ops$/.test(base)) {
+      penalty += 0.1;
+    } else {
+      penalty += 0.08;
+    }
   }
 
   return clampNumber(penalty, 0, 0.34, 0);
@@ -1008,10 +1024,11 @@ function estimateExplicitEscapeBonus(
 
   const concentratedBase =
     (lane === "ecosystem" && focus === "builder" && /builder\+return$/.test(base)) ||
-    (lane === "ecosystem" && focus === "retention" && /(retention\+cohort|wallet\+retention|retention\+wallet)$/.test(base)) ||
-    (lane === "protocol" && focus === "launch" && /(return\+announcement|return\+launch|launch\+showcase)$/.test(base)) ||
-    (lane === "protocol" && focus === "durability" && /recovery\+rollout$/.test(base)) ||
-    (lane === "regulation" && focus === "court" && /briefing\+execution$/.test(base));
+    (lane === "ecosystem" && focus === "retention" && /(retention\+cohort|wallet\+retention|retention\+wallet|retention\+usage)$/.test(base)) ||
+    (lane === "protocol" && focus === "launch" && /(return\+announcement|return\+launch|launch\+showcase|launch\+treasury|launch\+ops)$/.test(base)) ||
+    (lane === "protocol" && focus === "durability" && /(recovery\+rollout|recovery\+validator|ops\+validator|ops\+recovery|rollout|rollout\+validator)$/.test(base)) ||
+    (lane === "regulation" && focus === "court" && /(briefing\+execution|court\+execution|briefing|briefing\+capital)$/.test(base)) ||
+    (lane === "market-structure" && focus === "settlement" && /(execution\+depth|volume\+depth|fill\+depth)$/.test(base));
 
   if (event.source === "evidence:structural-fallback") {
     const penalty = concentratedBase ? 0.16 : 0.08;
@@ -1035,6 +1052,7 @@ function estimateStructuralFallbackFamilyBias(
     if (sceneFamilyMatches(sceneFamily, /builder\+return$/)) return 0.06;
     if (sceneFamilyMatches(sceneFamily, /builder\+inside$/)) return 0.04;
     if (sceneFamilyMatches(sceneFamily, /builder\+usage$/)) return 0.08;
+    if (sceneFamilyMatches(sceneFamily, /builder\+treasury$/)) return 0.12;
   }
   if (lane === "ecosystem" && focus === "retention") {
     if (sceneFamilyMatches(sceneFamily, /cohort\+wallet$/)) return -0.1;
@@ -1053,6 +1071,7 @@ function estimateStructuralFallbackFamilyBias(
     if (sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/)) return 0.16;
     if (sceneFamilyMatches(sceneFamily, /launch\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+launch$/)) return 0.04;
     if (sceneFamilyMatches(sceneFamily, /launch\+ops$/) || sceneFamilyMatches(sceneFamily, /ops\+launch$/)) return 0.08;
+    if (sceneFamilyMatches(sceneFamily, /launch\+treasury$/) || sceneFamilyMatches(sceneFamily, /treasury\+launch$/)) return 0.1;
     if (sceneFamilyMatches(sceneFamily, /capital\+rollout$/) || sceneFamilyMatches(sceneFamily, /launch\+rollout$/)) return 0.08;
   }
   if (lane === "regulation" && focus === "court") {
@@ -1060,11 +1079,23 @@ function estimateStructuralFallbackFamilyBias(
     if (sceneFamilyMatches(sceneFamily, /verdict\+execution$/)) return 0.1;
     if (sceneFamilyMatches(sceneFamily, /briefing\+execution$/)) return 0.04;
     if (sceneFamilyMatches(sceneFamily, /court\+execution$/) || sceneFamilyMatches(sceneFamily, /capital\+execution$/)) return 0.06;
+    if (sceneFamilyMatches(sceneFamily, /order\+capital$/)) return 0.12;
+  }
+  if (lane === "protocol" && focus === "durability") {
+    if (sceneFamilyMatches(sceneFamily, /repair\+validator$/)) return 0.12;
+    if (sceneFamilyMatches(sceneFamily, /repair\+ops$/)) return 0.1;
+    if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) return 0.06;
+    if (sceneFamilyMatches(sceneFamily, /ops\+recovery$/)) return 0.12;
+    if (sceneFamilyMatches(sceneFamily, /rollout\+validator$/)) return 0.14;
   }
   if (lane === "market-structure" && focus === "settlement") {
     if (sceneFamilyMatches(sceneFamily, /execution\+depth$/)) return 0.1;
     if (sceneFamilyMatches(sceneFamily, /volume\+depth$/)) return 0.06;
+    if (sceneFamilyMatches(sceneFamily, /fill\+depth$/)) return 0.16;
+    if (sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) return 0.14;
+    if (sceneFamilyMatches(sceneFamily, /settlement\+heat$/)) return 0.08;
     if (sceneFamilyMatches(sceneFamily, /depth\+heat$/)) return 0.03;
+    if (sceneFamilyMatches(sceneFamily, /depth\+settlement$/) || sceneFamilyMatches(sceneFamily, /execution\+settlement$/)) return 0.08;
   }
   return 0;
 }
@@ -3187,9 +3218,26 @@ function buildDerivedExplicitHeadlineFromEvidence(
 
   if (lane === "ecosystem" && focus === "builder") {
     const pool =
-      sceneFamilyMatches(sceneFamily, /builder\+capital$/) ||
-      sceneFamilyMatches(sceneFamily, /builder\+return$/) ||
-      sceneFamilyMatches(sceneFamily, /builder\+inside$/)
+      sceneFamilyMatches(sceneFamily, /builder\+treasury$/)
+        ? [
+            "예치 자금은 남는데 코드의 복귀가 늦는 생태계",
+            "돈은 눕는데 빌더 복귀가 한 박자 늦는 장면",
+            "예치 자금은 버티는데 개발 흔적이 늦게 따라오는 생태계",
+            "돈은 돌아오는데 코드 온도는 아직 얕은 장면",
+            "예치 자금은 두껍게 남는데 빌더 쪽 복귀는 아직 늦은 생태계",
+            "돈은 눕는데 개발자 복귀가 아직 헐거운 장면",
+          ]
+        : sceneFamilyMatches(sceneFamily, /builder\+inside$/)
+        ? [
+            "코드는 남는데 돈은 아직 회의실 안쪽에 머문 생태계",
+            "개발 흔적은 선명한데 돈은 아직 장부 바깥으로 안 나온 장면",
+            "코드의 온도는 높은데 돈은 아직 내부자 낙관에서만 뜨거운 생태계",
+            "빌더는 버티는데 돈은 아직 포스터 안쪽에 남은 장면",
+            "개발 흔적은 남는데 돈은 아직 객석 뒤쪽에 머문 생태계",
+            "코드는 살아 있는데 돈은 아직 안쪽 방에서만 도는 장면",
+          ]
+        : sceneFamilyMatches(sceneFamily, /builder\+capital$/) ||
+          sceneFamilyMatches(sceneFamily, /builder\+return$/)
         ? [
             "개발자 잔류는 남는데 예치 자금 복귀가 늦는 구간",
             "코드는 버티는데 예치 자금은 늦게 돌아오는 장면",
@@ -3209,16 +3257,32 @@ function buildDerivedExplicitHeadlineFromEvidence(
             "개발 흔적은 진한데 실사용은 아직 묽은 생태계",
             "빌더의 속도와 사용자 흔적이 서로 다른 편에 선 장면",
             "코드가 앞서가는데 실제 사용은 아직 얇은 구간",
+            "개발자는 남는데 생활 흔적이 다음 날까지 못 이어지는 생태계",
+            "빌더 기세는 버티는데 사용 습관은 아직 납작한 장면",
           ];
     return sanitizeTweetText(pool[seed % pool.length]).slice(0, 140);
   }
   if (lane === "ecosystem" && focus === "retention") {
     const pool =
-      sceneFamilyMatches(sceneFamily, /cohort\+wallet$/) ||
-      sceneFamilyMatches(sceneFamily, /retention\+wallet$/) ||
-      sceneFamilyMatches(sceneFamily, /wallet\+retention$/) ||
-      sceneFamilyMatches(sceneFamily, /retention\+cohort$/) ||
-      sceneFamilyMatches(sceneFamily, /cohort\+retention$/)
+      sceneFamilyMatches(sceneFamily, /retention\+usage$/) ||
+      sceneFamilyMatches(sceneFamily, /cohort\+usage$/) ||
+      sceneFamilyMatches(sceneFamily, /usage\+wallet$/)
+        ? [
+            "재방문은 남는데 생활 흔적이 다음 날까지 못 이어지는 구간",
+            "사람은 다시 들어오는데 체인 안쪽 습관은 아직 얇은 장면",
+            "복귀는 남는데 생활 흔적이 다음 날까지 못 눕는 생태계",
+            "다시 들어오는 사람은 있는데 실사용은 아직 납작한 장면",
+            "재방문은 버티는데 생활 흔적이 하루를 못 넘기는 장면",
+            "복귀한 지갑은 있는데 실사용은 아직 다음 날로 못 이어지는 생태계",
+            "재방문은 붙는데 생활 리듬이 다음 날까지 못 눕는 장면",
+            "지갑은 돌아오는데 생활 흔적은 아직 하루를 못 버티는 구간",
+          ]
+        : sceneFamilyMatches(sceneFamily, /cohort\+wallet$/) ||
+          sceneFamilyMatches(sceneFamily, /retention\+wallet$/) ||
+          sceneFamilyMatches(sceneFamily, /wallet\+retention$/) ||
+          sceneFamilyMatches(sceneFamily, /retention\+cohort$/) ||
+          sceneFamilyMatches(sceneFamily, /cohort\+retention$/) ||
+          sceneFamilyMatches(sceneFamily, /wallet\+usage$/)
         ? [
             "지갑은 돌아오는데 재방문은 얕은 구간",
             "복귀 흔적은 남는데 잔류가 얇은 생태계",
@@ -3232,6 +3296,8 @@ function buildDerivedExplicitHeadlineFromEvidence(
             "지갑 복귀는 보이는데 남는 사람은 아직 얇은 구간",
             "지갑 복귀는 버티는데 생활 흔적은 아직 다음 날까지 못 이어지는 구간",
             "사람은 다시 들어오는데 체인 사용은 아직 얇게 남는 생태계",
+            "지갑은 돌아오는데 생활 습관은 아직 하루를 못 넘기는 장면",
+            "복귀 흔적은 선명한데 일상 리듬은 아직 따라오지 못한 생태계",
           ]
         : [
             "재방문은 버티는데 체인 사용이 얕은 구간",
@@ -3275,14 +3341,30 @@ function buildDerivedExplicitHeadlineFromEvidence(
           ]
         : sceneFamilyMatches(sceneFamily, /capital\+execution$/)
         ? [
-            "판결 해설은 큰데 자금과 집행이 늦는 구간",
-            "법원 뉴스는 큰데 실제 돈과 집행은 늦는 장면",
-            "판결 기사보다 자금과 집행이 늦게 붙는 구간",
-            "집행 흔적은 남는데 대기 자금이 끝까지 안 눕는 판결 구간",
-            "판결 문장은 큰데 돈이 따라붙는 속도는 늦은 장면",
-            "법원 뉴스는 앞서는데 집행과 자금은 뒤처지는 구간",
-            "법원 해설은 큰데 집행 빈칸이 더 크게 보이는 장면",
-            "기사보다 돈과 집행이 늦게 움직이는 판결 구간",
+            "대기 자금은 잡히는데 집행이 늦게 붙는 판결 구간",
+            "돈의 방향은 보이는데 집행이 아직 얕은 법원 장면",
+            "대기 자금과 집행 속도가 서로 어긋난 판결 구간",
+            "매수 자리는 보이는데 집행이 늦게 도착하는 법원 장면",
+            "대기 자금은 눕는데 집행 빈칸이 남는 판결 구간",
+            "돈은 반응하는데 행동이 늦게 따라오는 법원 장면",
+          ]
+        : sceneFamilyMatches(sceneFamily, /court\+execution$/)
+        ? [
+            "법원 일정은 선명한데 집행이 아직 현장까지 못 내려온 구간",
+            "판결문은 또렷한데 행동이 늦게 도착하는 법원 장면",
+            "소송 일정은 길어도 집행이 얕게 남는 구간",
+            "법원 문장은 선명한데 집행 속도는 아직 다른 편인 장면",
+            "판결문은 나왔는데 행동이 늦게 붙는 법원 구간",
+            "법원 일정과 집행 속도가 엇갈리는 장면",
+          ]
+        : sceneFamilyMatches(sceneFamily, /order\+capital$/)
+        ? [
+            "판결 뉴스는 큰데 ETF 대기 주문과 자금이 같이 늦는 구간",
+            "법원 기사보다 매수 자리와 돈이 늦게 붙는 장면",
+            "대기 주문은 커졌는데 실제 돈은 아직 안 눕는 판결 구간",
+            "소송 해설은 긴데 주문과 자금이 같은 편에 못 선 장면",
+            "법원 뉴스는 앞서는데 대기 주문과 자금은 아직 뒤처지는 구간",
+            "판결 기사보다 주문과 자금의 엇갈림이 먼저 드러난 장면",
           ]
         : [
             "법원 뉴스는 큰데 자금 반응이 늦는 구간",
@@ -3318,12 +3400,25 @@ function buildDerivedExplicitHeadlineFromEvidence(
             "메인넷 뉴스는 뜨거운데 운영과 돈이 같이 머뭇거리는 구간",
             "출시 설명은 완성됐는데 운영과 복귀 자금은 아직 한 템포 늦은 장면",
           ]
-        : sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/)
+        : sceneFamilyMatches(sceneFamily, /launch\+treasury$/) || sceneFamilyMatches(sceneFamily, /launch\+capital$/)
+        ? [
+            "메인넷 준비도는 높아도 복귀 자금이 아직 몸을 사리는 출시",
+            "준비도 설명은 충분한데 돈은 아직 메인넷 장부 바깥에 남은 장면",
+            "메인넷 기대는 뜨거운데 자금은 아직 객석 근처에서 머뭇거리는 출시",
+            "준비도는 선명한데 복귀 자금은 아직 몸을 낮추는 메인넷 구간",
+            "메인넷 설명은 앞서는데 돈은 아직 뒤에서 망설이는 장면",
+            "출시 준비도는 충분한데 자금이 아직 주저앉지 않는 구간",
+            "메인넷 기대는 앞서는데 돈은 아직 무대 아래에서 머뭇거리는 출시",
+            "준비도 설명은 단단한데 복귀 자금은 아직 객석 쪽에서 머무는 장면",
+          ]
+        : sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/) || sceneFamilyMatches(sceneFamily, /launch\+showcase$/)
         ? [
             "무대는 뜨거운데 복귀 자금은 아직 객석에 남은 출시",
             "쇼케이스는 선명한데 돌아오는 돈은 아직 한 박자 늦은 장면",
             "무대 연출은 큰데 돈은 아직 바깥에서 망설이는 메인넷 구간",
             "메인넷 쇼케이스는 완성됐는데 복귀 자금은 아직 객석에 머무는 장면",
+            "무대 조명은 선명한데 돈은 아직 객석 끝에서 머무는 출시",
+            "쇼케이스는 끝났는데 돌아오는 자금은 아직 발표장 밖을 맴도는 장면",
           ]
         : sceneFamilyMatches(sceneFamily, /return\+launch$/) || sceneFamilyMatches(sceneFamily, /launch\+return$/)
         ? [
@@ -3347,6 +3442,10 @@ function buildDerivedExplicitHeadlineFromEvidence(
             "런치 설명은 완성됐는데 운영 흔적은 아직 얕은 장면",
             "메인넷 뉴스는 뜨거운데 운영 태도는 뒤처지는 구간",
             "출시 무대는 끝났는데 운영 로그는 아직 비는 장면",
+            "메인넷 기대는 큰데 운영 반응은 아직 못 눕는 출시",
+            "출시 설명은 앞서는데 운영 로그는 아직 뒤에서 망설이는 장면",
+            "메인넷 설명은 선명한데 운영 태도는 아직 객석에 남은 출시",
+            "런치 무대는 뜨거운데 운영 로그는 아직 발표장 밖에서 더디게 붙는 장면",
           ]
         : sceneFamilyMatches(sceneFamily, /capital\+launch$/) || sceneFamilyMatches(sceneFamily, /launch\+capital$/)
         ? [
@@ -3371,7 +3470,47 @@ function buildDerivedExplicitHeadlineFromEvidence(
   }
   if (lane === "protocol" && focus === "durability") {
     const pool =
-      sceneFamilyMatches(sceneFamily, /recovery\+validator$/)
+      sceneFamilyMatches(sceneFamily, /ops\+validator$/) || sceneFamilyMatches(sceneFamily, /rollout\+validator$/)
+        ? [
+            "운영 로그는 비는데 검증자 숫자만 늦게 버티는 구간",
+            "운영 기록은 얇은데 검증자 안정성만 남는 장면",
+            "운영 태도는 늦는데 검증자 숫자만 버티는 구간",
+            "로그는 비는데 검증자 회복만 선명한 장면",
+            "운영 흔적은 늦는데 합의 숫자만 살아 있는 구간",
+            "기록은 얇은데 검증자 쪽 숫자만 버티는 장면",
+            "롤아웃은 끝났는데 검증자 숫자만 남고 운영 기록은 비는 구간",
+            "배포 박수는 컸는데 합의 숫자만 버티고 운영 흔적은 늦는 장면",
+          ]
+        : sceneFamilyMatches(sceneFamily, /ops\+recovery$/) || sceneFamilyMatches(sceneFamily, /recovery\+ops$/)
+        ? [
+            "운영 로그와 복구 속도가 서로 다른 박자로 남는 구간",
+            "복구는 시작됐는데 운영 기록은 아직 늦는 장면",
+            "운영 태도와 복구 속도가 서로 다른 편에 선 구간",
+            "로그는 비는데 복구 설명만 앞서가는 장면",
+            "복구는 말하는데 운영 쪽 기록은 아직 얕은 구간",
+            "복구 속도와 운영 흔적이 엇갈린 채 남는 장면",
+            "장애는 정리되는데 운영 기록이 뒤에서 허둥대는 구간",
+            "복구는 진행되는데 운영 흔적은 아직 한 템포 늦은 장면",
+          ]
+        : sceneFamilyMatches(sceneFamily, /repair\+validator$/)
+        ? [
+            "장애 기록은 진한데 검증자 회복이 늦게 붙는 장면",
+            "복구 태도는 보이는데 검증자 회복이 한 박자 늦은 구간",
+            "장애 뒤 기록은 쌓이는데 검증자 쪽 복귀가 늦는 장면",
+            "복구는 시작됐는데 검증자 회복이 아직 얕은 구간",
+            "장애 뒤 태도와 검증자 회복 속도가 엇갈리는 장면",
+            "복구 흔적은 선명한데 검증자 숫자가 늦게 돌아오는 구간",
+          ]
+        : sceneFamilyMatches(sceneFamily, /repair\+ops$/)
+        ? [
+            "장애 복구는 말하는데 운영 로그가 늦게 붙는 구간",
+            "복구 태도는 보이는데 운영 기록이 아직 비는 장면",
+            "장애 뒤 기록은 진한데 운영 로그는 한 박자 늦은 구간",
+            "복구는 시작됐는데 운영 쪽 증거가 아직 얕은 장면",
+            "장애 뒤 태도와 운영 기록 속도가 엇갈리는 구간",
+            "복구 흔적은 선명한데 운영 로그가 늦게 돌아오는 장면",
+          ]
+        : sceneFamilyMatches(sceneFamily, /recovery\+validator$/)
         ? [
             "업그레이드 박수는 큰데 복구 기록이 늦는 구간",
             "검증자 안정성은 버티는데 복구 태도는 늦는 장면",
@@ -3393,6 +3532,8 @@ function buildDerivedExplicitHeadlineFromEvidence(
             "배포 뉴스는 뜨거운데 운영 흔적은 늦게 도착하는 장면",
             "롤아웃은 빨랐는데 검증자와 복구 기록은 아직 다른 속도로 남는 장면",
             "배포 설명은 컸는데 검증자 안정성과 복구 태도는 아직 어긋난 구간",
+            "릴리스 속도는 앞섰는데 운영 기록은 아직 복구보다 뒤에서 버벅이는 장면",
+            "배포 무대는 끝났는데 운영 흔적은 아직 로그 바깥에서 늦게 들어오는 구간",
           ];
     return sanitizeTweetText(pool[seed % pool.length]).slice(0, 140);
   }
@@ -3405,29 +3546,44 @@ function buildDerivedExplicitHeadlineFromEvidence(
     return sanitizeTweetText(pool[seed % pool.length]).slice(0, 140);
   }
   if (lane === "market-structure" && focus === "settlement") {
-    if (sceneFamilyMatches(sceneFamily, /execution\+depth$/)) {
+    if (sceneFamilyMatches(sceneFamily, /execution\+depth$/) || sceneFamilyMatches(sceneFamily, /fill\+depth$/)) {
       const executionDepthPool = [
         `체결은 살아도 깊이가 늦게 붙는 장면은 구조보다 긴장이 먼저 남는다`,
         `현물 체결은 뜨거운데 호가 두께가 못 따라오면 그 반응은 아직 반쪽이다`,
         `체결 숫자는 보이는데 깊이가 비는 순간 그 장면은 체급을 못 만든다`,
         `현물 체결이 남아도 깊이가 비면 그 반응은 결국 화면 쪽으로 눕는다`,
+        `주문 소화는 버티는데 깊이가 늦게 눕는 장면은 숫자가 구조를 이기지 못한다`,
+        `체결은 남는데 정산 깊이가 비면 그 반응은 결국 화면에 더 가깝다`,
+        `큰 주문 소화는 보이는데 호가 두께가 비면 그 반응은 아직 숫자에 머문다`,
+        `체결 흔적은 선명한데 깊이가 늦게 눕는 순간 그 장면은 구조값을 못 얻는다`,
+        `현물 체결만 남고 깊이가 비는 장면은 결국 스크린 긴장만 크게 남긴다`,
+        `주문 소화가 살아도 깊이가 안 버티면 그 반응은 체급보다 속도만 남긴다`,
       ];
       return sanitizeTweetText(executionDepthPool[seed % executionDepthPool.length]).slice(0, 140);
     }
-    if (sceneFamilyMatches(sceneFamily, /volume\+depth$/)) {
+    if (sceneFamilyMatches(sceneFamily, /volume\+depth$/) || sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) {
       const volumeDepthPool = [
         `거래량은 큰데 깊이가 얕은 장면은 숫자가 구조를 못 이긴다`,
         `볼륨은 요란한데 호가 두께가 비면 그 열기는 체급까지 못 간다`,
         `거래량 숫자는 살아도 깊이가 안 눕는 장면은 결국 연출에 더 가깝다`,
         `볼륨이 커도 깊이가 늦는 순간 그 반응은 화면값으로 다시 깎인다`,
+        `거래량은 선명한데 정산 깊이가 얇으면 그 장면은 숫자값으로 접힌다`,
+        `볼륨이 앞서도 깊이가 못 눕는 날은 체급보다 속도만 남는다`,
+        `거래량은 남는데 정산 깊이가 얕으면 그 반응은 숫자 체급에서 더 못 올라간다`,
+        `볼륨은 분명한데 깊이가 비는 구간은 결국 차트보다 화면에 더 가깝다`,
+        `숫자는 살아도 깊이가 늦으면 그 장면은 체결보다 연출이 먼저 기억에 남는다`,
       ];
       return sanitizeTweetText(volumeDepthPool[seed % volumeDepthPool.length]).slice(0, 140);
     }
-    if (sceneFamilyMatches(sceneFamily, /depth\+heat$/)) {
+    if (sceneFamilyMatches(sceneFamily, /depth\+heat$/) || sceneFamilyMatches(sceneFamily, /settlement\+heat$/)) {
       const depthHeatPool = [
         `분위기는 뜨거운데 깊이가 비는 장면은 결국 화면만 남는다`,
         `과열은 커도 깊이가 안 붙으면 그 반응은 숫자보다 연출에 가깝다`,
         `화면 열기만 커지고 깊이가 얕으면 그 장면은 체급보다 기세로 남는다`,
+        `체결 열기는 뜨거운데 깊이가 비면 그 장면은 결국 스크린 쪽으로 기운다`,
+        `분위기만 앞서고 깊이가 못 눕는 순간 그 반응은 장면값으로 줄어든다`,
+        `과열 분위기가 앞서도 깊이가 비는 장면은 결국 체결보다 화면이 더 오래 남는다`,
+        `화면 열기만 커지고 정산 깊이가 얕으면 그 장면은 금세 장식값으로 줄어든다`,
       ];
       return sanitizeTweetText(depthHeatPool[seed % depthHeatPool.length]).slice(0, 140);
     }
@@ -3761,6 +3917,7 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
   if (lane === "ecosystem" && focus === "retention") {
     if (sceneFamilyMatches(sceneFamily, /^ecosystem:retention:retention$/)) return -0.18;
     if (sceneFamilyMatches(sceneFamily, /cohort\+wallet$/)) return -0.24;
+    if (sceneFamilyMatches(sceneFamily, /usage\+wallet$/) || sceneFamilyMatches(sceneFamily, /cohort\+usage$/)) return 0.24;
     if (sceneFamilyMatches(sceneFamily, /retention\+wallet$/) || sceneFamilyMatches(sceneFamily, /wallet\+retention$/)) return 0.3;
     if (sceneFamilyMatches(sceneFamily, /cohort\+retention$/) || sceneFamilyMatches(sceneFamily, /retention\+cohort$/)) return 0.14;
     if (sceneFamilyMatches(sceneFamily, /retention\+usage$/) || sceneFamilyMatches(sceneFamily, /retention\+usage/)) return 0.36;
@@ -3773,6 +3930,7 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
     if (sceneFamilyMatches(sceneFamily, /return\+announcement$/)) return 0.3;
     if (sceneFamilyMatches(sceneFamily, /return\+ops$/)) return 0.38;
     if (sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/)) return 0.46;
+    if (sceneFamilyMatches(sceneFamily, /launch\+capital$/) || sceneFamilyMatches(sceneFamily, /capital\+launch$/)) return -0.18;
     if (sceneFamilyMatches(sceneFamily, /launch\+ops$/) || sceneFamilyMatches(sceneFamily, /ops\+launch$/)) return 0.34;
     if (sceneFamilyMatches(sceneFamily, /launch\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+launch$/)) return 0.18;
     if (sceneFamilyMatches(sceneFamily, /capital\+rollout$/) || sceneFamilyMatches(sceneFamily, /rollout\+capital$/)) return 0.36;
@@ -3791,6 +3949,8 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
     if (sceneFamilyMatches(sceneFamily, /recovery\+rollout$/)) return 0.28;
     if (sceneFamilyMatches(sceneFamily, /recovery\+validator$/)) return -0.12;
     if (sceneFamilyMatches(sceneFamily, /rollout\+validator$/)) return 0.26;
+    if (sceneFamilyMatches(sceneFamily, /ops\+recovery$/)) return 0.22;
+    if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) return 0.18;
   }
   if (lane === "market-structure") {
     if (focus === "liquidity") {
@@ -3800,6 +3960,7 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
     if (focus === "settlement") {
       if (sceneFamilyMatches(sceneFamily, /execution\+depth$/)) return 0.14;
       if (sceneFamilyMatches(sceneFamily, /volume\+depth$/)) return 0.08;
+      if (sceneFamilyMatches(sceneFamily, /fill\+depth$/) || sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) return 0.12;
       if (sceneFamilyMatches(sceneFamily, /depth\+heat$/)) return 0.02;
       if (sceneFamilyMatches(sceneFamily, /depth\+settlement$/) || sceneFamilyMatches(sceneFamily, /execution\+settlement$/)) return 0.08;
     }
@@ -3822,11 +3983,11 @@ function estimateSceneFamilyMonopolyPenalty(
   if (familyCount <= 1) return 0;
   let penalty = 0.05 * (familyCount - 1);
   if (
-    (lane === "ecosystem" && focus === "retention" && sceneFamilyMatches(sceneFamily, /cohort\+wallet$/)) ||
+    (lane === "ecosystem" && focus === "retention" && sceneFamilyMatches(sceneFamily, /(cohort\+wallet|retention\+usage)$/)) ||
     (lane === "ecosystem" && focus === "builder" && sceneFamilyMatches(sceneFamily, /builder\+capital$/)) ||
-    (lane === "protocol" && focus === "launch" && sceneFamilyMatches(sceneFamily, /(capital\+launch|return\+launch|return\+announcement|return\+ops|return\+showcase)$/)) ||
+    (lane === "protocol" && focus === "launch" && sceneFamilyMatches(sceneFamily, /(capital\+launch|launch\+capital|return\+launch|return\+announcement|return\+ops|return\+showcase|launch\+ops)$/)) ||
     (lane === "regulation" && focus === "court" && sceneFamilyMatches(sceneFamily, /^regulation:court:court$/)) ||
-    (lane === "protocol" && focus === "durability" && sceneFamilyMatches(sceneFamily, /recovery\+validator$/))
+    (lane === "protocol" && focus === "durability" && sceneFamilyMatches(sceneFamily, /(recovery\+validator|ops\+validator|rollout\+validator)$/))
   ) {
     penalty += lane === "regulation" && focus === "court" ? 0.14 : 0.1;
   }
@@ -3993,18 +4154,20 @@ function resolvePlannerSceneFacet(item: OnchainEvidence, lane: TrendLane): strin
     if (/(브리핑|해설|기사|뉴스)/.test(normalized)) return "briefing";
     if (/(판결|평결|verdict)/.test(normalized)) return "verdict";
     if (/(법원|소송|판결|court|lawsuit)/.test(normalized)) return "court";
+    if (/(etf\s*대기\s*주문|대기\s*주문|매수\s*자리|order)/.test(normalized)) return "order";
     if (/(etf|심사|승인|policy|regulation|당국|sec|cftc)/.test(normalized)) return "policy";
     if (/(대기 자금|자금 흐름|capital)/.test(normalized)) return "capital";
   }
   if (lane === "protocol") {
-    if (/(배포 큐|운영 로그|운영 반응|ops|log)/.test(normalized)) return "ops";
+    if (/(배포 큐|배포|rollout|큐)/.test(normalized)) return "rollout";
+    if (/(운영 로그|운영 반응|ops|log)/.test(normalized)) return "ops";
     if (/(쇼케이스|데모|무대|객석|포스터|발표회|showcase|demo|stage|audience)/.test(normalized)) return "showcase";
     if (/(복귀 자금|예치 자금|자금 복귀|returning capital)/.test(normalized)) return "return";
     if (/(복귀 자금|예치 자금|자금 복귀|capital)/.test(normalized)) return "capital";
     if (/(메인넷|launch|출시|준비도)/.test(normalized)) return "launch";
     if (/(검증자|validator|합의|consensus)/.test(normalized)) return "validator";
     if (/(복구|recovery|장애)/.test(normalized)) return "recovery";
-    if (/(테스트넷|testnet|업그레이드|rollup|firedancer|배포|rollout|큐)/.test(normalized)) return "rollout";
+    if (/(테스트넷|testnet|업그레이드|rollup|firedancer)/.test(normalized)) return "rollout";
   }
   if (lane === "onchain") {
     if (/(고래|큰손|whale|주소 이동|exchange flow|거래소 자금)/.test(normalized)) return "flow";
@@ -4107,6 +4270,45 @@ function augmentSceneFamilyBaseWithHeadline(
     if (/(운영|로그|복구|배포|롤아웃)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+ops");
     }
+    if (/(자금|돈|복귀 자금|자금 복귀|자금 흐름)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:launch+treasury");
+    }
+  }
+  if (lane === "protocol" && focus === "launch" && base === "protocol:launch:launch+ops") {
+    if (/(쇼케이스|데모|무대|객석|포스터|발표회)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:launch+showcase");
+    }
+    if (/(복귀 자금|자금 복귀|돌아오|복귀|돈이 눕|돈이 안 붙)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+ops");
+    }
+    if (/(발표|박수|기사|뉴스|설명)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+announcement");
+    }
+    if (/(메인넷|launch|출시|준비도|런치)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:launch+capital");
+    }
+  }
+  if (lane === "protocol" && focus === "launch" && base === "protocol:launch:launch+capital") {
+    if (/(쇼케이스|데모|무대|객석|포스터|발표회)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:launch+showcase");
+    }
+    if (/(운영|로그|복구)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:launch+ops");
+    }
+    if (/(복귀 자금|자금 복귀|돌아오|복귀|돈이 눕|돈이 안 붙)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:launch:return+launch");
+    }
+  }
+  if (lane === "protocol" && focus === "durability" && base === "protocol:durability:rollout") {
+    if (/(복구|장애)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:recovery+rollout");
+    }
+    if (/(검증자|validator|합의)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:rollout+validator");
+    }
+    if (/(운영|로그)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:repair+ops");
+    }
   }
   if (lane === "protocol" && focus === "durability" && base === "protocol:durability:rollout+validator") {
     if (/(복구|장애)/.test(normalized)) {
@@ -4120,6 +4322,22 @@ function augmentSceneFamilyBaseWithHeadline(
     if (/(검증자|validator|합의)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:recovery+validator");
     }
+    if (/(운영|로그)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:repair+ops");
+    }
+  }
+  if (lane === "protocol" && focus === "durability" && base === "protocol:durability:recovery+validator") {
+    if (/(복구|장애)/.test(normalized) && /(검증자|validator|합의)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:repair+validator");
+    }
+    if (/(운영|로그)/.test(normalized) && /(검증자|validator|합의)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:ops+validator");
+    }
+  }
+  if (lane === "protocol" && focus === "durability" && base === "protocol:durability:repair+ops") {
+    if (/(복구|장애)/.test(normalized) && /(운영|로그)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:ops+recovery");
+    }
   }
   if (lane === "regulation" && focus === "court" && base === "regulation:court:capital+execution") {
     if (/(브리핑|해설|기사|뉴스)/.test(normalized)) {
@@ -4132,9 +4350,31 @@ function augmentSceneFamilyBaseWithHeadline(
       return rewriteSceneFamilyBase(sceneFamily, "regulation:court:court+execution");
     }
   }
+  if (lane === "regulation" && focus === "court" && base === "regulation:court:briefing") {
+    if (/(판결|평결|verdict)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:verdict+execution");
+    }
+    if (/(판결|법원|소송|court|lawsuit)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:court+execution");
+    }
+    if (/(주문|ETF|대기 주문|매수 자리)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:order+capital");
+    }
+    if (/(자금|돈|capital|대기 자금)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:capital+execution");
+    }
+    if (/집행/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:briefing+execution");
+    }
+  }
   if (lane === "regulation" && focus === "court" && base === "regulation:court:briefing+execution") {
     if (/(자금|돈|capital|대기 자금|주문)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "regulation:court:capital+execution");
+    }
+  }
+  if (lane === "regulation" && focus === "court" && base === "regulation:court:court+execution") {
+    if (/(주문|ETF|대기 주문|매수 자리)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:order+capital");
     }
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:cohort+wallet") {
@@ -4146,6 +4386,17 @@ function augmentSceneFamilyBaseWithHeadline(
     }
     if (/(재방문|잔류|사람|다음 날)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+cohort");
+    }
+  }
+  if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:retention+cohort") {
+    if (/(실사용|생활 흔적|체인 사용|사용 흔적)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+usage");
+    }
+    if (/(지갑|wallet)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:wallet+retention");
+    }
+    if (/(다음 날|남는 사람|사람 수|잔류|재방문)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+retention");
     }
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:wallet+retention") {
@@ -4182,6 +4433,9 @@ function augmentSceneFamilyBaseWithHeadline(
     if (/(일기장|내부자|회의실|포스터|객석)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:builder:builder+inside");
     }
+    if (/(예치 자금|tvl|자금 복귀|복귀 자금|자금)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:builder:builder+treasury");
+    }
   }
   if (lane === "market-structure" && focus === "settlement" && base === "market-structure:settlement:execution+settlement") {
     if (/(거래량|숫자|볼륨)/.test(normalized)) {
@@ -4192,6 +4446,20 @@ function augmentSceneFamilyBaseWithHeadline(
     }
     if (/(화면|분위기|과열)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:depth+heat");
+    }
+    if (/(호가|깊이)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:depth+settlement");
+    }
+  }
+  if (lane === "market-structure" && focus === "settlement" && base === "market-structure:settlement:execution+depth") {
+    if (/(거래량|숫자|볼륨)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+settlement");
+    }
+    if (/(현물 체결|체결|주문 소화)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:fill+depth");
+    }
+    if (/(화면|과열|분위기)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:settlement+heat");
     }
     if (/(호가|깊이)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:depth+settlement");
@@ -4275,24 +4543,106 @@ function diversifyDerivedSceneFamilyForVariant(
   focus: PlannerFocus,
   variant: number
 ): string {
-  const index = Math.abs(variant) % 4;
+  const index = Math.abs(variant) % 8;
   const base = sceneFamilyBase(sceneFamily);
   if (!base) return sceneFamily;
 
   if (lane === "ecosystem" && focus === "builder" && base === "ecosystem:builder:builder+return") {
-    const rotated = ["ecosystem:builder:builder+return", "ecosystem:builder:builder+inside", "ecosystem:builder:builder+usage", "ecosystem:builder:builder+return"][index];
+    const rotated = [
+      "ecosystem:builder:builder+return",
+      "ecosystem:builder:builder+inside",
+      "ecosystem:builder:builder+usage",
+      "ecosystem:builder:builder+treasury",
+      "ecosystem:builder:builder+usage",
+      "ecosystem:builder:builder+inside",
+      "ecosystem:builder:builder+treasury",
+      "ecosystem:builder:builder+return",
+    ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
-  if (lane === "regulation" && focus === "court" && base === "regulation:court:briefing+execution") {
-    const rotated = ["regulation:court:briefing+execution", "regulation:court:capital+execution", "regulation:court:court+execution", "regulation:court:briefing+execution"][index];
+  if (
+    lane === "ecosystem" &&
+    focus === "retention" &&
+    /(ecosystem:retention:wallet\+retention|ecosystem:retention:retention\+cohort|ecosystem:retention:retention\+usage|ecosystem:retention:usage\+wallet|ecosystem:retention:cohort\+usage|ecosystem:retention:retention\+wallet|ecosystem:retention:cohort\+retention|ecosystem:retention:wallet\+usage)/.test(base)
+  ) {
+    const rotated = [
+      "ecosystem:retention:wallet+retention",
+      "ecosystem:retention:retention+cohort",
+      "ecosystem:retention:retention+usage",
+      "ecosystem:retention:cohort+usage",
+      "ecosystem:retention:usage+wallet",
+      "ecosystem:retention:retention+wallet",
+      "ecosystem:retention:cohort+retention",
+      "ecosystem:retention:wallet+usage",
+    ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
-  if (lane === "protocol" && focus === "launch" && base === "protocol:launch:return+announcement") {
-    const rotated = ["protocol:launch:return+announcement", "protocol:launch:return+ops", "protocol:launch:return+showcase", "protocol:launch:return+launch"][index];
+  if (
+    lane === "regulation" &&
+    focus === "court" &&
+    /(regulation:court:briefing\+execution|regulation:court:capital\+execution|regulation:court:court\+execution|regulation:court:order\+capital|regulation:court:verdict\+execution)/.test(base)
+  ) {
+    const rotated = [
+      "regulation:court:briefing+execution",
+      "regulation:court:capital+execution",
+      "regulation:court:court+execution",
+      "regulation:court:order+capital",
+      "regulation:court:verdict+execution",
+      "regulation:court:court+execution",
+      "regulation:court:order+capital",
+      "regulation:court:capital+execution",
+    ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
-  if (lane === "protocol" && focus === "durability" && base === "protocol:durability:recovery+validator") {
-    const rotated = ["protocol:durability:recovery+validator", "protocol:durability:recovery+rollout", "protocol:durability:recovery+validator", "protocol:durability:recovery+rollout"][index];
+  if (
+    lane === "protocol" &&
+    focus === "launch" &&
+    /(protocol:launch:return\+announcement|protocol:launch:return\+launch|protocol:launch:return\+showcase|protocol:launch:return\+ops|protocol:launch:launch\+treasury|protocol:launch:launch\+ops|protocol:launch:launch\+capital|protocol:launch:launch\+showcase)/.test(base)
+  ) {
+    const rotated = [
+      "protocol:launch:return+announcement",
+      "protocol:launch:return+ops",
+      "protocol:launch:return+showcase",
+      "protocol:launch:return+launch",
+      "protocol:launch:launch+treasury",
+      "protocol:launch:launch+ops",
+      "protocol:launch:launch+capital",
+      "protocol:launch:launch+showcase",
+    ][index];
+    return rewriteSceneFamilyBase(sceneFamily, rotated);
+  }
+  if (
+    lane === "protocol" &&
+    focus === "durability" &&
+    /(protocol:durability:recovery\+validator|protocol:durability:recovery\+rollout|protocol:durability:repair\+validator|protocol:durability:repair\+ops|protocol:durability:ops\+validator|protocol:durability:ops\+recovery|protocol:durability:rollout\+validator|protocol:durability:recovery\+ops)/.test(base)
+  ) {
+    const rotated = [
+      "protocol:durability:recovery+validator",
+      "protocol:durability:recovery+rollout",
+      "protocol:durability:repair+validator",
+      "protocol:durability:repair+ops",
+      "protocol:durability:ops+validator",
+      "protocol:durability:ops+recovery",
+      "protocol:durability:rollout+validator",
+      "protocol:durability:recovery+ops",
+    ][index];
+    return rewriteSceneFamilyBase(sceneFamily, rotated);
+  }
+  if (
+    lane === "market-structure" &&
+    focus === "settlement" &&
+    /(market-structure:settlement:execution\+depth|market-structure:settlement:volume\+depth|market-structure:settlement:depth\+settlement|market-structure:settlement:depth\+heat|market-structure:settlement:execution\+settlement|market-structure:settlement:volume\+settlement|market-structure:settlement:fill\+depth|market-structure:settlement:settlement\+heat)/.test(base)
+  ) {
+    const rotated = [
+      "market-structure:settlement:execution+depth",
+      "market-structure:settlement:volume+depth",
+      "market-structure:settlement:depth+settlement",
+      "market-structure:settlement:depth+heat",
+      "market-structure:settlement:execution+settlement",
+      "market-structure:settlement:volume+settlement",
+      "market-structure:settlement:fill+depth",
+      "market-structure:settlement:settlement+heat",
+    ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
   return sceneFamily;
@@ -4326,14 +4676,17 @@ function resolvePlannerSceneTilt(
     return "builder-split";
   }
   if (lane === "ecosystem" && focus === "retention") {
-    if (hasFacet("wallet") && facetLag("wallet", "cohort", "retention")) return "wallet-thins";
+    if (hasFacet("wallet") && facetLag("wallet")) return "wallet-thins";
+    if (hasFacet("cohort", "retention") && facetLag("cohort", "retention")) return "cohort-thins";
     if (hasFacet("usage") && facetLag("usage")) return "usage-gap";
     if (facetHold("wallet", "cohort", "retention")) return "retention-holds";
     return "retention-split";
   }
   if (lane === "regulation" && focus === "court") {
+    if (hasFacet("order") && facetLag("order")) return "order-lag";
     if (hasFacet("execution") && facetLag("execution")) return "execution-lag";
     if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
+    if (facetHold("order", "capital")) return "order-holds";
     if (facetHold("court", "execution")) return "court-holds";
     return "court-split";
   }
@@ -4343,20 +4696,28 @@ function resolvePlannerSceneTilt(
     return "execution-split";
   }
   if (lane === "protocol" && focus === "launch") {
-    if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
+    if (hasFacet("return") && facetLag("return")) return "return-lag";
+    if (hasFacet("ops") && facetLag("ops")) return "ops-lag";
     if (hasFacet("rollout") && facetLag("rollout")) return "rollout-lag";
-    if (facetHold("launch", "capital")) return "launch-holds";
+    if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
+    if (facetHold("ops", "rollout")) return "ops-holds";
+    if (facetHold("launch", "return", "capital")) return "launch-holds";
     return "launch-split";
   }
   if (lane === "protocol" && focus === "durability") {
+    if (hasFacet("ops") && facetLag("ops")) return "ops-lag";
+    if (hasFacet("validator") && facetLag("validator")) return "validator-lag";
     if (hasFacet("recovery") && facetLag("recovery")) return "recovery-lag";
     if (hasFacet("rollout") && facetLag("rollout")) return "rollout-lag";
+    if (facetHold("ops", "recovery")) return "ops-holds";
     if (facetHold("validator", "recovery", "rollout")) return "durability-holds";
     return "durability-split";
   }
   if (lane === "market-structure" && focus === "settlement") {
+    if (hasFacet("volume") && facetLag("volume")) return "size-only";
     if (hasFacet("execution") && facetLag("execution")) return "execution-thin";
     if (hasFacet("depth") && facetLag("depth")) return "depth-thin";
+    if (facetHold("volume", "depth")) return "settlement-holds";
     if (facetHold("settlement", "execution")) return "settlement-holds";
     return "settlement-split";
   }
