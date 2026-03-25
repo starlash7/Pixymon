@@ -210,13 +210,7 @@ export async function searchRecentTrendTweets(
     const cleaned = sanitizeTrendKeywords(keywords).slice(0, 16);
     const searchTerms = buildTrendSearchTerms(cleaned).slice(0, 12);
 
-    const keywordQuery = searchTerms.length > 0
-      ? searchTerms
-          .map((keyword) => (/\s/.test(keyword) ? `"${keyword}"` : keyword))
-          .join(" OR ")
-      : "crypto OR blockchain OR onchain OR layer2";
-
-    const query = `(${keywordQuery}) -is:retweet -is:reply -is:quote`;
+    const query = buildTrendSearchQuery(searchTerms);
     const maxResults = Math.max(10, Math.min(100, count));
 
     const result = await twitter.v2.search(query, {
@@ -482,11 +476,22 @@ function isSuspiciousTrendReplyTarget(
   ]
     .join(" ")
     .toLowerCase();
+  const normalized = normalizePromoHaystack(haystack);
 
   return (
-    /(t\.me|telegram|telegram\.me|discord\.gg|discord\.com\/invite|whatsapp|linktr\.ee|beacons\.ai)/i.test(haystack) ||
-    /(join (my|our) (telegram|discord|channel|group)|vip group|alpha group|free signal|dm me|check bio|link in bio)/i.test(haystack)
+    /(t\.me|telegram|telegram\.me|discord\.gg|discord\.com\/invite|whatsapp|linktr\.ee|linktree|beacons\.ai|bit\.ly|tinyurl\.com|cutt\.ly|buff\.ly|rb\.gy)/i.test(haystack) ||
+    /(join (my|our) (telegram|discord|channel|group)|vip group|alpha group|free signal|dm me|check bio|link in bio|signal room|premium channel|private group)/i.test(haystack) ||
+    /\b(?:tg|telegram|discord|whatsapp|signal)\b/.test(normalized) &&
+      /\b(?:join|dm|link|bio|group|channel|room|vip|premium|alpha)\b/.test(normalized)
   );
+}
+
+function normalizePromoHaystack(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // 멘션에 답글 달기
@@ -726,6 +731,16 @@ function sanitizeTrendKeywords(keywords: string[]): string[] {
       .filter((keyword) => !/^(http|https)/i.test(keyword))
       .filter((keyword) => !/^[@#]/.test(keyword))
   )];
+}
+
+function buildTrendSearchQuery(searchTerms: string[]): string {
+  const keywordQuery =
+    searchTerms.length > 0
+      ? searchTerms
+          .map((keyword) => (/\s/.test(keyword) ? `"${keyword}"` : keyword))
+          .join(" OR ")
+      : "crypto OR blockchain OR onchain OR layer2";
+  return `(${keywordQuery}) -is:retweet -is:reply -is:quote -has:links`;
 }
 
 const TREND_SEARCH_STOP_WORDS = new Set([
@@ -1077,6 +1092,7 @@ export const __postDispatchTest = {
 export const __trendTargetTest = {
   isPreferredTrendReplyTarget,
   buildTrendSearchTerms,
+  buildTrendSearchQuery,
   getTrendSearchCooldownRemainingMs,
   setTrendSearchCooldownUntilForTest,
 };

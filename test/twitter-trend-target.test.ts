@@ -116,6 +116,23 @@ test("isPreferredTrendReplyTarget rejects replies and quoted posts", () => {
   assert.equal(ok, false);
 });
 
+test("isPreferredTrendReplyTarget rejects quoted posts even when they look high-signal", () => {
+  const ok = __trendTargetTest.isPreferredTrendReplyTarget(
+    {
+      id: "99",
+      conversation_id: "99",
+      created_at: new Date().toISOString(),
+      referenced_tweets: [{ type: "quoted" }],
+      text: "Detailed quote-post about market structure with enough context to look credible, but it is still not a safe reply target.",
+    },
+    { verified: true, public_metrics: { followers_count: 28000 } },
+    { engagementRaw: 92, score: 6.4 },
+    0.77,
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+  );
+  assert.equal(ok, false);
+});
+
 test("isPreferredTrendReplyTarget rejects suspicious telegram or link promo accounts", () => {
   const ok = __trendTargetTest.isPreferredTrendReplyTarget(
     {
@@ -138,6 +155,28 @@ test("isPreferredTrendReplyTarget rejects suspicious telegram or link promo acco
   assert.equal(ok, false);
 });
 
+test("isPreferredTrendReplyTarget rejects obfuscated tg or shortener promo accounts", () => {
+  const ok = __trendTargetTest.isPreferredTrendReplyTarget(
+    {
+      id: "1",
+      conversation_id: "1",
+      created_at: new Date().toISOString(),
+      text: "Protocol thread with enough detail, but the profile pushes users into a private tg room through a short link.",
+    },
+    {
+      verified: true,
+      username: "alphaflow",
+      description: "join tg room for premium alpha",
+      url: "https://bit.ly/alpha-room",
+      public_metrics: { followers_count: 18000 },
+    },
+    { engagementRaw: 48, score: 5.7 },
+    0.63,
+    { minSourceTrust: 0.45, minScore: 3.2, minEngagement: 12, maxAgeHours: 24, requireRootPost: true, blockSuspiciousPromo: true }
+  );
+  assert.equal(ok, false);
+});
+
 test("buildTrendSearchTerms reduces narrative phrases into searchable terms", () => {
   const terms = __trendTargetTest.buildTrendSearchTerms([
     "사람들이 실제로 머무는 체인과 밖에서 도는 서사가 맞물리는지 살핀다",
@@ -152,6 +191,14 @@ test("buildTrendSearchTerms reduces narrative phrases into searchable terms", ()
   assert.equal(terms.includes("사람들"), false);
   assert.equal(terms.includes("사람"), true);
   assert.equal(terms.includes("장면"), false);
+});
+
+test("buildTrendSearchQuery excludes replies, quotes, and link posts", () => {
+  const query = __trendTargetTest.buildTrendSearchQuery(["Firedancer", "real yield"]);
+  assert.match(query, /-is:reply/);
+  assert.match(query, /-is:quote/);
+  assert.match(query, /-has:links/);
+  assert.match(query, /Firedancer OR \"real yield\"/);
 });
 
 test("trend search cooldown helper reports remaining time", () => {
