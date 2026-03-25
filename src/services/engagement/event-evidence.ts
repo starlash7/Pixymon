@@ -982,11 +982,11 @@ function estimateSceneFamilyBasePenalty(
 
   if (
     (lane === "ecosystem" && focus === "builder" && /builder\+capital$/.test(base)) ||
-    (lane === "ecosystem" && focus === "retention" && /(cohort\+wallet|retention\+cohort|wallet\+retention|retention\+usage)$/.test(base)) ||
-    (lane === "protocol" && focus === "launch" && /(capital\+launch|launch\+capital|return\+launch|return\+announcement|return\+ops|return\+showcase|launch\+showcase|launch\+treasury|launch\+ops)$/.test(base)) ||
-    (lane === "protocol" && focus === "durability" && /(rollout\+validator|recovery\+validator|recovery\+rollout|repair\+validator|ops\+validator|ops\+recovery|rollout)$/.test(base)) ||
+    (lane === "ecosystem" && focus === "retention" && /(cohort\+wallet|retention\+cohort|wallet\+retention|retention\+usage|habit\+retention|return\+habit)$/.test(base)) ||
+    (lane === "protocol" && focus === "launch" && /(capital\+launch|launch\+capital|return\+launch|return\+announcement|return\+ops|return\+showcase|launch\+showcase|launch\+treasury|launch\+ops|launch\+audience|return\+audience)$/.test(base)) ||
+    (lane === "protocol" && focus === "durability" && /(rollout\+validator|recovery\+validator|recovery\+rollout|repair\+validator|ops\+validator|ops\+recovery|rollout|ops\+log|repair\+log)$/.test(base)) ||
     (lane === "regulation" && focus === "court" && /(capital\+execution|court\+execution|verdict\+execution|order\+capital|briefing|briefing\+execution)$/.test(base)) ||
-    (lane === "market-structure" && focus === "settlement" && /(execution\+settlement|depth\+settlement|execution\+depth|volume\+depth|fill\+depth)$/.test(base))
+    (lane === "market-structure" && focus === "settlement" && /(execution\+settlement|depth\+settlement|execution\+depth|volume\+depth|fill\+depth|fill\+book|volume\+book)$/.test(base))
   ) {
     if (lane === "market-structure" && focus === "settlement") {
       penalty += /execution\+depth$/.test(base) ? 0.16 : 0.12;
@@ -1024,11 +1024,11 @@ function estimateExplicitEscapeBonus(
 
   const concentratedBase =
     (lane === "ecosystem" && focus === "builder" && /builder\+return$/.test(base)) ||
-    (lane === "ecosystem" && focus === "retention" && /(retention\+cohort|wallet\+retention|retention\+wallet|retention\+usage)$/.test(base)) ||
-    (lane === "protocol" && focus === "launch" && /(return\+announcement|return\+launch|launch\+showcase|launch\+treasury|launch\+ops)$/.test(base)) ||
-    (lane === "protocol" && focus === "durability" && /(recovery\+rollout|recovery\+validator|ops\+validator|ops\+recovery|rollout|rollout\+validator)$/.test(base)) ||
+    (lane === "ecosystem" && focus === "retention" && /(retention\+cohort|wallet\+retention|retention\+wallet|retention\+usage|habit\+retention|return\+habit)$/.test(base)) ||
+    (lane === "protocol" && focus === "launch" && /(return\+announcement|return\+launch|launch\+showcase|launch\+treasury|launch\+ops|launch\+audience|return\+audience)$/.test(base)) ||
+    (lane === "protocol" && focus === "durability" && /(recovery\+rollout|recovery\+validator|ops\+validator|ops\+recovery|rollout|rollout\+validator|ops\+log|repair\+log)$/.test(base)) ||
     (lane === "regulation" && focus === "court" && /(briefing\+execution|court\+execution|briefing|briefing\+capital)$/.test(base)) ||
-    (lane === "market-structure" && focus === "settlement" && /(execution\+depth|volume\+depth|fill\+depth)$/.test(base));
+    (lane === "market-structure" && focus === "settlement" && /(execution\+depth|volume\+depth|fill\+depth|fill\+book|volume\+book)$/.test(base));
 
   if (event.source === "evidence:structural-fallback") {
     const penalty = concentratedBase ? 0.16 : 0.08;
@@ -1060,7 +1060,9 @@ function estimateStructuralFallbackFamilyBias(
       sceneFamilyMatches(sceneFamily, /retention\+usage$/) ||
       sceneFamilyMatches(sceneFamily, /retention\+wallet$/) ||
       sceneFamilyMatches(sceneFamily, /wallet\+retention$/) ||
-      sceneFamilyMatches(sceneFamily, /retention\+cohort$/)
+      sceneFamilyMatches(sceneFamily, /retention\+cohort$/) ||
+      sceneFamilyMatches(sceneFamily, /habit\+retention$/) ||
+      sceneFamilyMatches(sceneFamily, /return\+habit$/)
     ) return 0.07;
   }
   if (lane === "protocol" && focus === "launch") {
@@ -1069,7 +1071,9 @@ function estimateStructuralFallbackFamilyBias(
     if (sceneFamilyMatches(sceneFamily, /return\+announcement$/)) return 0.14;
     if (sceneFamilyMatches(sceneFamily, /return\+ops$/)) return 0.18;
     if (sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/)) return 0.16;
+    if (sceneFamilyMatches(sceneFamily, /return\+audience$/) || sceneFamilyMatches(sceneFamily, /audience\+return$/)) return 0.18;
     if (sceneFamilyMatches(sceneFamily, /launch\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+launch$/)) return 0.04;
+    if (sceneFamilyMatches(sceneFamily, /launch\+audience$/) || sceneFamilyMatches(sceneFamily, /audience\+launch$/)) return 0.12;
     if (sceneFamilyMatches(sceneFamily, /launch\+ops$/) || sceneFamilyMatches(sceneFamily, /ops\+launch$/)) return 0.08;
     if (sceneFamilyMatches(sceneFamily, /launch\+treasury$/) || sceneFamilyMatches(sceneFamily, /treasury\+launch$/)) return 0.1;
     if (sceneFamilyMatches(sceneFamily, /capital\+rollout$/) || sceneFamilyMatches(sceneFamily, /launch\+rollout$/)) return 0.08;
@@ -1084,7 +1088,9 @@ function estimateStructuralFallbackFamilyBias(
   if (lane === "protocol" && focus === "durability") {
     if (sceneFamilyMatches(sceneFamily, /repair\+validator$/)) return 0.12;
     if (sceneFamilyMatches(sceneFamily, /repair\+ops$/)) return 0.1;
+    if (sceneFamilyMatches(sceneFamily, /repair\+log$/)) return 0.14;
     if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) return 0.06;
+    if (sceneFamilyMatches(sceneFamily, /ops\+log$/)) return 0.12;
     if (sceneFamilyMatches(sceneFamily, /ops\+recovery$/)) return 0.12;
     if (sceneFamilyMatches(sceneFamily, /rollout\+validator$/)) return 0.14;
   }
@@ -1092,6 +1098,8 @@ function estimateStructuralFallbackFamilyBias(
     if (sceneFamilyMatches(sceneFamily, /execution\+depth$/)) return 0.1;
     if (sceneFamilyMatches(sceneFamily, /volume\+depth$/)) return 0.06;
     if (sceneFamilyMatches(sceneFamily, /fill\+depth$/)) return 0.16;
+    if (sceneFamilyMatches(sceneFamily, /fill\+book$/)) return 0.14;
+    if (sceneFamilyMatches(sceneFamily, /volume\+book$/)) return 0.12;
     if (sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) return 0.14;
     if (sceneFamilyMatches(sceneFamily, /settlement\+heat$/)) return 0.08;
     if (sceneFamilyMatches(sceneFamily, /depth\+heat$/)) return 0.03;
@@ -4392,6 +4400,9 @@ function augmentSceneFamilyBaseWithHeadline(
     if (/(실사용|생활 흔적|체인 사용|사용 흔적)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+usage");
     }
+    if (/(생활 리듬|습관|habits?)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:habit+retention");
+    }
     if (/(지갑|wallet)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:wallet+retention");
     }
@@ -4403,11 +4414,22 @@ function augmentSceneFamilyBaseWithHeadline(
     if (/(생활 흔적|실사용|체인 사용)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+usage");
     }
+    if (/(생활 리듬|습관|habits?)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:return+habit");
+    }
     if (/(사람|사용자|유저|다음 날|잔류)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+cohort");
     }
   }
-  if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:wallet+retention") {
+  if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:habit+retention") {
+    if (/(지갑|wallet|복귀 흔적)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:return+habit");
+    }
+    if (/(다음 날|남는 사람|사람 수|잔류)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+cohort");
+    }
+  }
+  if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:return+habit") {
     if (/(실사용|생활 흔적|체인 사용|사용 흔적)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+usage");
     }
@@ -4465,6 +4487,16 @@ function augmentSceneFamilyBaseWithHeadline(
       return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:depth+settlement");
     }
   }
+  if (lane === "market-structure" && focus === "settlement" && base === "market-structure:settlement:fill+depth") {
+    if (/(호가|깊이|book)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:fill+book");
+    }
+  }
+  if (lane === "market-structure" && focus === "settlement" && base === "market-structure:settlement:volume+depth") {
+    if (/(호가|깊이|book)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+book");
+    }
+  }
   if (lane === "market-structure" && focus === "settlement" && base === "market-structure:settlement:execution") {
     if (/(거래량|숫자|볼륨)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+depth");
@@ -4491,9 +4523,11 @@ function resolveEventSceneNudge(headline: string, lane: TrendLane, focus: Planne
     if (/(실사용|사용|얇|묽)/.test(normalized)) return "usage-thin";
   }
   if (lane === "ecosystem" && focus === "retention") {
+    if (/(생활 리듬|습관|habits?)/.test(normalized)) return "habit-gap";
     if (/(지갑|다시 들어오|복귀 흔적)/.test(normalized)) return "wallet-thins";
     if (/(사람|잔류|재방문|다음 날)/.test(normalized)) return "cohort-thin";
     if (/(생활 흔적|실사용|체인 사용)/.test(normalized)) return "usage-gap";
+    if (/(열기|커뮤니티)/.test(normalized)) return "heat-gap";
   }
   if (lane === "regulation" && focus === "court") {
     if (/(브리핑|해설)/.test(normalized)) return "briefing-gap";
@@ -4503,12 +4537,17 @@ function resolveEventSceneNudge(headline: string, lane: TrendLane, focus: Planne
     if (/(자금|돈)/.test(normalized)) return "capital-lag";
   }
   if (lane === "protocol" && focus === "launch") {
+    if (/(객석|무대)/.test(normalized)) return "audience-gap";
+    if (/(발표회|브리핑)/.test(normalized)) return "briefing-gap";
     if (/(쇼케이스|데모|발표|무대|반쪽|얇아진|얇은)/.test(normalized)) return "showcase";
     if (/(발표회|객석|종이|무대)/.test(normalized)) return "stage-gap";
     if (/(복귀 자금|돈)/.test(normalized)) return "return-lag";
+    if (/(운영|로그)/.test(normalized)) return "ops-cold";
     if (/(롤아웃|배포)/.test(normalized)) return "rollout-lag";
   }
   if (lane === "protocol" && focus === "durability") {
+    if (/(로그|기록)/.test(normalized)) return "log-gap";
+    if (/(박수|발표|쇼케이스)/.test(normalized)) return "applause-gap";
     if (/(복구|장애)/.test(normalized)) return "repair-gap";
     if (/(운영|로그)/.test(normalized)) return "ops-gap";
     if (/(검증자|합의)/.test(normalized)) return "validator-gap";
@@ -4516,6 +4555,7 @@ function resolveEventSceneNudge(headline: string, lane: TrendLane, focus: Planne
   }
   if (lane === "market-structure" && focus === "settlement") {
     if (/거래량|숫자/.test(normalized)) return "size-only";
+    if (/(정산|settlement)/.test(normalized)) return "settlement-lag";
     if (/(호가|깊이)/.test(normalized)) return "book-thin";
     if (/(체결|주문 소화)/.test(normalized)) return "fill-thin";
     if (/(화면|과열|분위기)/.test(normalized)) return "screen-heat";
@@ -4563,7 +4603,7 @@ function diversifyDerivedSceneFamilyForVariant(
   if (
     lane === "ecosystem" &&
     focus === "retention" &&
-    /(ecosystem:retention:wallet\+retention|ecosystem:retention:retention\+cohort|ecosystem:retention:retention\+usage|ecosystem:retention:usage\+wallet|ecosystem:retention:cohort\+usage|ecosystem:retention:retention\+wallet|ecosystem:retention:cohort\+retention|ecosystem:retention:wallet\+usage)/.test(base)
+    /(ecosystem:retention:wallet\+retention|ecosystem:retention:retention\+cohort|ecosystem:retention:retention\+usage|ecosystem:retention:usage\+wallet|ecosystem:retention:cohort\+usage|ecosystem:retention:retention\+wallet|ecosystem:retention:cohort\+retention|ecosystem:retention:wallet\+usage|ecosystem:retention:habit\+retention|ecosystem:retention:return\+habit)/.test(base)
   ) {
     const rotated = [
       "ecosystem:retention:wallet+retention",
@@ -4571,8 +4611,8 @@ function diversifyDerivedSceneFamilyForVariant(
       "ecosystem:retention:retention+usage",
       "ecosystem:retention:cohort+usage",
       "ecosystem:retention:usage+wallet",
-      "ecosystem:retention:retention+wallet",
-      "ecosystem:retention:cohort+retention",
+      "ecosystem:retention:habit+retention",
+      "ecosystem:retention:return+habit",
       "ecosystem:retention:wallet+usage",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
@@ -4597,15 +4637,15 @@ function diversifyDerivedSceneFamilyForVariant(
   if (
     lane === "protocol" &&
     focus === "launch" &&
-    /(protocol:launch:return\+announcement|protocol:launch:return\+launch|protocol:launch:return\+showcase|protocol:launch:return\+ops|protocol:launch:launch\+treasury|protocol:launch:launch\+ops|protocol:launch:launch\+capital|protocol:launch:launch\+showcase)/.test(base)
+    /(protocol:launch:return\+announcement|protocol:launch:return\+launch|protocol:launch:return\+showcase|protocol:launch:return\+ops|protocol:launch:launch\+treasury|protocol:launch:launch\+ops|protocol:launch:launch\+capital|protocol:launch:launch\+showcase|protocol:launch:launch\+audience|protocol:launch:return\+audience)/.test(base)
   ) {
     const rotated = [
       "protocol:launch:return+announcement",
       "protocol:launch:return+ops",
-      "protocol:launch:return+showcase",
+      "protocol:launch:return+audience",
       "protocol:launch:return+launch",
       "protocol:launch:launch+treasury",
-      "protocol:launch:launch+ops",
+      "protocol:launch:launch+audience",
       "protocol:launch:launch+capital",
       "protocol:launch:launch+showcase",
     ][index];
@@ -4614,15 +4654,15 @@ function diversifyDerivedSceneFamilyForVariant(
   if (
     lane === "protocol" &&
     focus === "durability" &&
-    /(protocol:durability:recovery\+validator|protocol:durability:recovery\+rollout|protocol:durability:repair\+validator|protocol:durability:repair\+ops|protocol:durability:ops\+validator|protocol:durability:ops\+recovery|protocol:durability:rollout\+validator|protocol:durability:recovery\+ops)/.test(base)
+    /(protocol:durability:recovery\+validator|protocol:durability:recovery\+rollout|protocol:durability:repair\+validator|protocol:durability:repair\+ops|protocol:durability:ops\+validator|protocol:durability:ops\+recovery|protocol:durability:rollout\+validator|protocol:durability:recovery\+ops|protocol:durability:ops\+log|protocol:durability:repair\+log)/.test(base)
   ) {
     const rotated = [
       "protocol:durability:recovery+validator",
       "protocol:durability:recovery+rollout",
       "protocol:durability:repair+validator",
-      "protocol:durability:repair+ops",
+      "protocol:durability:repair+log",
       "protocol:durability:ops+validator",
-      "protocol:durability:ops+recovery",
+      "protocol:durability:ops+log",
       "protocol:durability:rollout+validator",
       "protocol:durability:recovery+ops",
     ][index];
@@ -4631,16 +4671,16 @@ function diversifyDerivedSceneFamilyForVariant(
   if (
     lane === "market-structure" &&
     focus === "settlement" &&
-    /(market-structure:settlement:execution\+depth|market-structure:settlement:volume\+depth|market-structure:settlement:depth\+settlement|market-structure:settlement:depth\+heat|market-structure:settlement:execution\+settlement|market-structure:settlement:volume\+settlement|market-structure:settlement:fill\+depth|market-structure:settlement:settlement\+heat)/.test(base)
+    /(market-structure:settlement:execution\+depth|market-structure:settlement:volume\+depth|market-structure:settlement:depth\+settlement|market-structure:settlement:depth\+heat|market-structure:settlement:execution\+settlement|market-structure:settlement:volume\+settlement|market-structure:settlement:fill\+depth|market-structure:settlement:settlement\+heat|market-structure:settlement:fill\+book|market-structure:settlement:volume\+book)/.test(base)
   ) {
     const rotated = [
       "market-structure:settlement:execution+depth",
-      "market-structure:settlement:volume+depth",
+      "market-structure:settlement:volume+book",
       "market-structure:settlement:depth+settlement",
       "market-structure:settlement:depth+heat",
       "market-structure:settlement:execution+settlement",
       "market-structure:settlement:volume+settlement",
-      "market-structure:settlement:fill+depth",
+      "market-structure:settlement:fill+book",
       "market-structure:settlement:settlement+heat",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
@@ -4676,9 +4716,11 @@ function resolvePlannerSceneTilt(
     return "builder-split";
   }
   if (lane === "ecosystem" && focus === "retention") {
+    if (hasFacet("usage") && facetLag("usage")) return "usage-gap";
+    if (/(생활|습관)/.test(rows.map((row) => row.text).join(" "))) return "habit-gap";
     if (hasFacet("wallet") && facetLag("wallet")) return "wallet-thins";
     if (hasFacet("cohort", "retention") && facetLag("cohort", "retention")) return "cohort-thins";
-    if (hasFacet("usage") && facetLag("usage")) return "usage-gap";
+    if (/(열기|커뮤니티)/.test(rows.map((row) => row.text).join(" "))) return "heat-gap";
     if (facetHold("wallet", "cohort", "retention")) return "retention-holds";
     return "retention-split";
   }
@@ -4697,6 +4739,7 @@ function resolvePlannerSceneTilt(
   }
   if (lane === "protocol" && focus === "launch") {
     if (hasFacet("return") && facetLag("return")) return "return-lag";
+    if (/(객석|무대|쇼케이스|발표회|브리핑)/.test(rows.map((row) => row.text).join(" "))) return "audience-gap";
     if (hasFacet("ops") && facetLag("ops")) return "ops-lag";
     if (hasFacet("rollout") && facetLag("rollout")) return "rollout-lag";
     if (hasFacet("capital") && facetLag("capital")) return "capital-lag";
@@ -4705,6 +4748,8 @@ function resolvePlannerSceneTilt(
     return "launch-split";
   }
   if (lane === "protocol" && focus === "durability") {
+    if (/(로그|기록)/.test(rows.map((row) => row.text).join(" "))) return "log-gap";
+    if (/(박수|발표|쇼케이스)/.test(rows.map((row) => row.text).join(" "))) return "applause-gap";
     if (hasFacet("ops") && facetLag("ops")) return "ops-lag";
     if (hasFacet("validator") && facetLag("validator")) return "validator-lag";
     if (hasFacet("recovery") && facetLag("recovery")) return "recovery-lag";
@@ -4717,6 +4762,7 @@ function resolvePlannerSceneTilt(
     if (hasFacet("volume") && facetLag("volume")) return "size-only";
     if (hasFacet("execution") && facetLag("execution")) return "execution-thin";
     if (hasFacet("depth") && facetLag("depth")) return "depth-thin";
+    if (/(정산|settlement)/.test(rows.map((row) => row.text).join(" "))) return "settlement-lag";
     if (facetHold("volume", "depth")) return "settlement-holds";
     if (facetHold("settlement", "execution")) return "settlement-holds";
     return "settlement-split";
