@@ -1124,6 +1124,8 @@ const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writ
       "{Q}를 보면 생태계 열기보다 잔류의 빈칸이 더 먼저 보인다.",
       "{Q}에서 다시 들어온 사람과 남는 생활 리듬이 다른 편에 선다.",
       "{Q}가 오늘 생태계 열기보다 다음 날 습관의 빈칸을 더 크게 드러낸다.",
+      "{Q}에서 지갑 복귀와 남는 사람 수가 서로 다른 속도로 남는다.",
+      "{Q}가 오늘 반응보다 다음 날 잔류의 빈칸을 더 직접 드러낸다.",
     ],
     builder: [
       "{Q}가 오늘 생태계 기세의 밑단을 드러낸다.",
@@ -1154,6 +1156,8 @@ const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writ
       "{Q}가 오늘 판결 기사보다 돈의 태도를 더 크게 드러낸다.",
       "{Q}에서 기사 톤과 돈의 태도가 서로 등을 돌린다.",
       "{Q}가 오늘 법원 해설보다 자금 반응의 빈칸을 먼저 드러낸다.",
+      "{Q}에서 브리핑 톤과 대기 주문이 서로 다른 무게로 남는다.",
+      "{Q}가 오늘 판결 기사보다 주문 빈칸을 더 직접 드러낸다.",
     ],
   },
   "market-structure": {
@@ -1183,6 +1187,8 @@ const FOCUS_SCENE_OPENERS_BY_LANE: Partial<Record<TrendLane, Partial<Record<Writ
     durability: [
       "{Q}에서 발표와 복구 기록이 갈린다.",
       "오늘은 {Q}에서 박수보다 복구 태도의 빈칸이 먼저 보인다.",
+      "{Q}에서 로그와 검증자 숫자가 서로 다른 속도로 남는다.",
+      "{Q}가 오늘 업그레이드 설명보다 운영 기록의 빈칸을 더 직접 드러낸다.",
       "{Q}가 업그레이드 발표의 실제 값을 드러낸다.",
       "{Q}에서 운영 기록과 릴리스 문장이 다른 말을 한다.",
       "{Q}가 오늘 발표보다 운영 태도의 빈칸을 먼저 드러낸다.",
@@ -1548,6 +1554,8 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "메인넷 문장이 커져도 복귀 자금이 늦는 순간 그 발표는 바로 얇아진다.",
         "복귀 자금이 늦게 붙는 자리에서 메인넷 쇼케이스의 본색이 더 잘 드러난다.",
         "출시 기세보다 늦게 움직인 돈 쪽이 결국 이 런치의 진짜 속도를 남긴다.",
+        "메인넷 롤아웃이 빨라도 돌아오는 돈이 늦는 순간 발표 체급은 다시 깎인다.",
+        "출시 설명은 단단해도 객석의 돈이 늦게 움직이면 그 무대는 곧 반쪽이 된다.",
       ],
     },
   },
@@ -1614,6 +1622,9 @@ const FOCUS_PRESSURE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "열기보다 사람 수가 먼저 비는 장면은 설명을 바로 포스터로 만든다.",
       "잔류가 비는 순간 좋은 생태계 서사도 금세 광고 냄새를 낸다.",
       "사람이 다음 날 돌아오지 않는 장면은 기세보다 공허함을 먼저 남긴다.",
+      "돌아오는 지갑보다 남는 사람이 먼저 얇아지는 장면은 거의 늘 포장으로 끝난다.",
+      "생활 흔적이 다음 날 못 이어지는 장면은 좋은 서사도 바로 싸게 만든다.",
+      "지갑은 돌아오는데 사람이 안 남는 장면은 생태계 문장을 제일 빨리 납작하게 만든다.",
     ],
     hype: [
       "열기만 커지고 사용이 비는 장면은 거의 다 같은 얼굴로 끝난다.",
@@ -1633,6 +1644,8 @@ const FOCUS_PRESSURE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "소송 해설은 길어도 자금이 머뭇거리는 순간 금세 브리핑 값으로 내려앉는다.",
       "법원 문장이 무거워 보여도 돈이 비는 장면은 제일 먼저 기사 톤으로 돌아간다.",
       "판결 뉴스가 커질수록 결국 들키는 건 돈이 비는 자리 쪽이다.",
+      "법원 브리핑만 길고 돈이 안 눕는 장면은 끝내 기사보다 얇게 남는다.",
+      "판결 기사보다 대기 주문이 늦게 눕는 장면은 체급보다 빈칸을 먼저 남긴다.",
     ],
     execution: [
       "집행이 비는 규제 뉴스는 해설이 좋아도 결국 기사값으로 눌린다.",
@@ -1654,6 +1667,8 @@ const FOCUS_PRESSURE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "운영 태도가 비는 업그레이드는 좋은 설명이어도 끝내 발표회 냄새를 지우지 못한다.",
       "장애 뒤 기록이 가벼운 개선은 시간만 지나도 금세 종이 문장처럼 얇아진다.",
       "복구가 늦는 장면은 업그레이드 서사를 운영보다 연출 쪽으로 기울게 만든다.",
+      "검증자 숫자만 선명하고 운영 기록이 늦는 장면은 개선보다 발표를 먼저 의심하게 만든다.",
+      "로그가 늦고 검증자만 남는 장면은 늘 운영보다 발표가 앞선 쪽으로 읽힌다.",
     ],
     launch: [
       "메인넷 박수만 크고 돈이 안 돌아오는 장면은 끝까지 물고 늘어진다.",
@@ -1670,6 +1685,8 @@ const FOCUS_PRESSURE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "돌아오는 돈이 없는 런치는 준비도보다 빈칸이 먼저 기억에 남는다.",
       "메인넷 무대가 뜨거울수록 객석에 남은 돈의 태도가 더 잔인하게 드러난다.",
       "쇼케이스는 큰데 복귀 자금이 안 눕는 장면은 준비도보다 빈칸이 더 또렷하다.",
+      "메인넷 롤아웃은 빠른데 돈이 늦게 돌아오는 장면은 설명보다 빈칸을 더 오래 남긴다.",
+      "출시 준비도는 단단한데 객석의 돈이 늦는 장면은 메인넷보다 무대에 더 가깝다.",
     ],
   },
   onchain: {
@@ -1701,6 +1718,8 @@ const FOCUS_PRESSURE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "깊이가 없는 체결 반응은 숫자가 커도 금세 장면값으로 돌아간다.",
       "호가 두께가 비는 거래량은 결국 구조보다 연출에 더 가깝다.",
       "숫자는 살아도 깊이가 안 남는 장면은 끝내 차트보다 화면 효과를 닮는다.",
+      "체결 숫자는 사는데 깊이가 안 눕는 장면은 구조보다 스크린을 더 닮는다.",
+      "거래량이 버텨도 호가 책이 비는 장면은 체급보다 연출 쪽으로 기운다.",
     ],
   },
 };
@@ -2166,8 +2185,108 @@ function pickAttitudeLine(
   return pickDistinctLine(effectivePool, seed, variant, [lead, scene], 21);
 }
 
+function buildSceneFamilyFixationPool(input: KoIdentityWriterInput, focus: WriterFocus): string[] {
+  const sceneFamily = input.sceneFamily || "";
+  const headline = sanitizeClause(input.headline);
+  const pool: string[] = [];
+
+  if (input.lane === "ecosystem" && focus === "retention") {
+    if (/retention\+usage|usage\+wallet/.test(sceneFamily)) {
+      pool.push(
+        "생활 흔적이 다음 날 못 이어지는 순간 그 반응은 잔류보다 포스터에 가까워진다.",
+        "실사용 온도보다 다음 날의 생활 리듬이 먼저 식는 장면은 늘 체급을 속인다.",
+        "지갑은 돌아와도 생활 흔적이 못 남는 순간 그 반응은 체급 대신 기세만 남긴다."
+      );
+    }
+    if (/retention\+cohort|cohort\+retention/.test(sceneFamily)) {
+      pool.push(
+        "남는 사람 수가 먼저 비는 순간 큰 생태계 서사는 하루치 기세로 접힌다.",
+        "잔류선이 먼저 꺾인 장면은 좋은 설명을 남겨도 체급을 버티지 못한다.",
+        "사람 수가 하루를 못 넘기는 순간 그 반응은 이미 절반쯤 값이 빠진 셈이다."
+      );
+    }
+    if (/habit\+retention|return\+habit/.test(sceneFamily) || /생활|습관/.test(headline)) {
+      pool.push(
+        "생활 리듬이 안 눕는 장면은 사용자 수가 보여도 결국 습관을 못 만든다.",
+        "다음 날 습관이 안 붙는 순간 그 반응은 체험보다 광고 쪽으로 기운다.",
+        "생활 리듬이 끊기는 장면은 숫자가 살아 있어도 오래 버티는 공동체로 안 남는다."
+      );
+    }
+  }
+
+  if (input.lane === "regulation" && focus === "court") {
+    if (/verdict\+execution|court\+execution/.test(sceneFamily)) {
+      pool.push(
+        "판결문보다 늦게 도착한 집행 흔적이 결국 이 뉴스의 체급을 다시 정한다.",
+        "법원 문장은 길어도 집행이 늦는 장면에선 기사값부터 다시 깎인다.",
+        "판결이 선명해도 집행이 비는 순간 그 뉴스는 법원 밖에서 바로 얇아진다."
+      );
+    }
+    if (/order\+capital|capital\+execution|briefing\+execution/.test(sceneFamily)) {
+      pool.push(
+        "대기 주문이 비는 장면에선 해설보다 돈의 주저함이 더 오래 남는다.",
+        "브리핑이 길수록 결국 들키는 건 주문이 눕지 않는 자리 쪽이다.",
+        "자금이 머뭇거리는 판결 뉴스는 법원보다 브리핑 톤으로 더 오래 남는다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "durability") {
+    if (/ops\+validator|validator\+log/.test(sceneFamily)) {
+      pool.push(
+        "검증자 숫자가 살아도 운영 로그가 늦는 장면은 늘 발표보다 운영 쪽이 먼저 얇아진다.",
+        "합의가 버티는 것만으로는 부족하고, 결국 늦게 남은 운영 로그가 체급을 다시 쓴다.",
+        "검증자 안정성만 살아 있는 장면은 로그 빈칸이 드러나는 순간 바로 발표값으로 줄어든다."
+      );
+    }
+    if (/ops\+recovery|recovery\+validator|repair\+validator/.test(sceneFamily)) {
+      pool.push(
+        "복구 속도가 머뭇거리는 순간 좋은 릴리스도 운영 문턱을 못 넘는다.",
+        "장애 뒤 기록이 얇은 장면은 검증자 박수가 살아 있어도 결국 운영으로 못 내려온다.",
+        "복구 태도가 늦는 순간 이 개선 서사는 합의보다 빈칸이 더 크게 남는다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "launch") {
+    if (/return\+ops|launch\+ops/.test(sceneFamily)) {
+      pool.push(
+        "운영 반응보다 돈이 늦게 눕는 장면은 결국 런치보다 객석의 망설임이 더 크게 남는다.",
+        "운영 로그가 붙어도 복귀 자금이 안 눕는 순간 이 출시는 무대 밖 설득을 못 끝낸다.",
+        "메인넷 준비도보다 늦게 돌아온 돈이 없으면 그 런치는 운영보다 발표 쪽에 더 가깝다."
+      );
+    }
+    if (/return\+announcement|return\+showcase|launch\+showcase/.test(sceneFamily)) {
+      pool.push(
+        "박수는 커도 돈이 객석에 남는 순간 그 런치는 아직 발표회 체급을 못 벗어난다.",
+        "쇼케이스가 뜨거운 장면일수록 돌아오는 돈이 없으면 무대 밖에선 금방 얇아진다.",
+        "발표는 화려해도 복귀 자금이 느린 장면은 메인넷보다 브리핑 냄새를 더 남긴다."
+      );
+    }
+  }
+
+  if (input.lane === "market-structure" && focus === "settlement") {
+    if (/execution\+depth|fill\+depth|fill\+book/.test(sceneFamily)) {
+      pool.push(
+        "현물 체결이 살아도 깊이가 늦는 장면은 거래량보다 정산 빈칸이 더 오래 남는다.",
+        "체결 숫자가 버텨도 호가 책이 얕으면 그 반응은 끝내 체급 대신 스크린 열기만 남긴다.",
+        "숫자는 선명한데 깊이가 못 눕는 장면은 결국 정산보다 속도전 쪽으로 기운다."
+      );
+    }
+    if (/volume\+settlement|volume\+depth|depth\+settlement/.test(sceneFamily)) {
+      pool.push(
+        "거래량이 먼저 커진 장면일수록 결국 늦게 남은 깊이 하나가 전체 체급을 다시 깎는다.",
+        "숫자 크기보다 정산 깊이가 더 늦게 말하는 장면은 늘 거래량이 먼저 과장된다.",
+        "거래량이 살아도 깊이가 비는 순간 그 반응은 체급보다 숫자값으로 더 빨리 접힌다."
+      );
+    }
+  }
+
+  return pool.filter(Boolean);
+}
+
 function pickFixationLine(
-  lane: TrendLane,
+  input: KoIdentityWriterInput,
   focus: WriterFocus,
   seed: number,
   variant: number,
@@ -2175,10 +2294,85 @@ function pickFixationLine(
   attitude: string,
   scene: string
 ): string {
-  const focusPool = FOCUS_FIXATION_BY_LANE[lane]?.[focus] || [];
-  const fallbackPool = FIXATION_BY_LANE[lane];
-  const effectivePool = focusPool.length ? focusPool : fallbackPool;
-  return pickDistinctLine(effectivePool, seed, variant, [lead, attitude, scene], 25);
+  const focusPool = FOCUS_FIXATION_BY_LANE[input.lane]?.[focus] || [];
+  const fallbackPool = FIXATION_BY_LANE[input.lane];
+  const effectivePool = [...focusPool, ...buildSceneFamilyFixationPool(input, focus)];
+  const pool = effectivePool.length ? effectivePool : fallbackPool;
+  const contextKey = [
+    input.lane,
+    focus,
+    input.mode,
+    input.sceneFamily || "",
+    sanitizeClause(input.headline),
+    sanitizeClause(input.primaryAnchor),
+    sanitizeClause(input.secondaryAnchor),
+    "fixation",
+  ].join("|");
+  return pickContextualDistinctLine(pool, contextKey, variant, [lead, attitude, scene], 25 + seed);
+}
+
+function buildSceneFamilyConsequencePool(input: KoIdentityWriterInput, focus: WriterFocus): string[] {
+  const sceneFamily = input.sceneFamily || "";
+  const pool: string[] = [];
+
+  if (input.lane === "ecosystem" && focus === "retention") {
+    if (/retention\+usage|usage\+wallet|habit\+retention|return\+habit/.test(sceneFamily)) {
+      pool.push(
+        "생활 리듬이 비는 순간 그 생태계 얘기는 성장보다 체험형 광고 쪽으로 접힌다.",
+        "실사용 온도가 하루를 못 넘기면 그 반응은 결국 생태계보다 캠페인 쪽으로 남는다."
+      );
+    }
+    if (/retention\+cohort|cohort\+retention/.test(sceneFamily)) {
+      pool.push(
+        "남는 사람이 줄어드는 순간 그 서사는 커뮤니티보다 포스터 값으로 되돌아간다.",
+        "잔류선이 먼저 꺼지는 날엔 큰 서사도 결국 하루치 반응으로 눕는다."
+      );
+    }
+  }
+
+  if (input.lane === "regulation" && focus === "court") {
+    if (/verdict\+execution|court\+execution/.test(sceneFamily)) {
+      pool.push(
+        "집행이 늦는 순간 그 판결 뉴스는 기사 체급으로 다시 낮아진다.",
+        "법원 문장만 남는 순간 그 뉴스는 현장보다 해설 쪽으로 먼저 접힌다."
+      );
+    }
+    if (/order\+capital|capital\+execution|briefing\+execution/.test(sceneFamily)) {
+      pool.push(
+        "주문이 식는 순간 그 법원 뉴스는 브리핑 체급으로 먼저 미끄러진다.",
+        "돈의 태도가 꺼지는 순간 그 소송 뉴스는 법원보다 스튜디오 쪽으로 더 빨리 접힌다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "durability") {
+    if (/ops\+validator|validator\+log|ops\+recovery|recovery\+validator|repair\+validator/.test(sceneFamily)) {
+      pool.push(
+        "운영 기록이 얕은 순간 이 릴리스는 개선보다 발표회 쪽으로 먼저 눕는다.",
+        "복구 태도가 늦는 순간 좋은 업그레이드도 운영보다 쇼케이스 쪽에 더 가까워진다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "launch") {
+    if (/return\+ops|return\+announcement|return\+showcase|launch\+showcase|launch\+ops/.test(sceneFamily)) {
+      pool.push(
+        "돌아오는 돈이 늦는 순간 이 출시는 메인넷보다 발표회 체급으로 남는다.",
+        "객석의 돈이 비는 순간 그 런치는 운영보다 무대 쪽으로 먼저 기운다."
+      );
+    }
+  }
+
+  if (input.lane === "market-structure" && focus === "settlement") {
+    if (/execution\+depth|fill\+depth|fill\+book|volume\+settlement|volume\+depth|depth\+settlement/.test(sceneFamily)) {
+      pool.push(
+        "깊이가 비는 순간 그 거래량은 구조보다 화면값으로 먼저 접힌다.",
+        "정산이 얕은 순간 그 반응은 체결보다 속도전 장면으로 더 오래 남는다."
+      );
+    }
+  }
+
+  return pool.filter(Boolean);
 }
 
 function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed: number): string {
@@ -2406,6 +2600,7 @@ function buildSceneLine(
   input: KoIdentityWriterInput,
   focus: WriterFocus,
   seed: number,
+  variant: number,
   primaryAnchor: string,
   secondaryAnchor: string
 ): string {
@@ -2572,7 +2767,7 @@ function buildSceneLine(
     primaryAnchor,
     secondaryAnchor,
   ].join("|");
-  return pickContextualDistinctLine(openerPool, contextKey, 0, [], 23 + seed).replaceAll("{Q}", repairedSceneCore);
+  return pickContextualDistinctLine(openerPool, contextKey, variant, [], 23 + seed).replaceAll("{Q}", repairedSceneCore);
 }
 
 function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
@@ -2842,7 +3037,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
       : frame === "field-note"
         ? focusLeadPool.length ? focusLeadPool : FIELD_NOTES_BY_LANE[input.lane]
         : focusLeadPool.length ? focusLeadPool : CLAIM_BY_LANE[input.lane];
-  const scene = buildSceneLine(input, focus, selectionSeed + variant * 5 + 1, primaryAnchor, secondaryAnchor);
+  const scene = buildSceneLine(input, focus, selectionSeed + variant * 5 + 1, variant, primaryAnchor, secondaryAnchor);
   const lead = pickContextualDistinctLine(
     leadPool,
     [
@@ -2866,7 +3061,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   );
   const instinct = rewriteSoulHint(input, focus, selectionSeed + variant * 13 + 17);
   const attitude = pickAttitudeLine(input.lane, focus, selectionSeed + variant * 17 + 1, variant, lead, scene);
-  const fixation = pickFixationLine(input.lane, focus, selectionSeed + variant * 19 + 1, variant, lead, attitude, scene);
+  const fixation = pickFixationLine(input, focus, selectionSeed + variant * 19 + 1, variant, lead, attitude, scene);
   const stamp = pickModeStampForLane(
     input.lane,
     focus,
@@ -2900,7 +3095,10 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     29 + selectionSeed
   );
   const focusConsequencePool = FOCUS_CONSEQUENCE_BY_LANE[input.lane]?.[focus] || [];
-  const consequencePool = focusConsequencePool.length ? focusConsequencePool : CONSEQUENCE_BY_LANE[input.lane];
+  const sceneConsequencePool = buildSceneFamilyConsequencePool(input, focus);
+  const consequencePool = [...focusConsequencePool, ...sceneConsequencePool].filter(Boolean).length
+    ? [...focusConsequencePool, ...sceneConsequencePool].filter(Boolean)
+    : CONSEQUENCE_BY_LANE[input.lane];
   const consequence = pickContextualDistinctLine(
     consequencePool,
     [

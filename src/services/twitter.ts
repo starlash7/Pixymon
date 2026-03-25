@@ -21,6 +21,7 @@ import { XApiCostRuntimeSettings } from "../types/runtime.js";
 import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 import { recordNarrativeObservation } from "./narrative-observer.js";
+import { resolveDataDir } from "./data-dir.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
 export const TEST_NO_EXTERNAL_CALLS =
@@ -37,7 +38,8 @@ const CURATED_REPLY_FALLBACK_USERNAMES = [
   "aixbt_agent",
 ];
 const TREND_SEARCH_ENDPOINT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-let trendSearchEndpointUnavailableUntil = 0;
+const TREND_SEARCH_STATE_PATH = path.join(resolveDataDir(), "trend-search-state.json");
+let trendSearchEndpointUnavailableUntil = readTrendSearchCooldownState();
 const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
   minSourceTrust: 0.34,
   minScore: 2.8,
@@ -386,6 +388,10 @@ function isSearchTimelineFallbackError(error: any): boolean {
 }
 
 export function getTrendSearchCooldownRemainingMs(now: number = Date.now()): number {
+  if (trendSearchEndpointUnavailableUntil > 0 && trendSearchEndpointUnavailableUntil <= now) {
+    trendSearchEndpointUnavailableUntil = 0;
+    persistTrendSearchCooldownState();
+  }
   return Math.max(0, trendSearchEndpointUnavailableUntil - now);
 }
 
@@ -394,10 +400,36 @@ function activateTrendSearchCooldown(now: number = Date.now()): void {
     trendSearchEndpointUnavailableUntil,
     now + TREND_SEARCH_ENDPOINT_COOLDOWN_MS
   );
+  persistTrendSearchCooldownState();
 }
 
 function setTrendSearchCooldownUntilForTest(value: number): void {
   trendSearchEndpointUnavailableUntil = Math.max(0, Math.floor(value));
+  persistTrendSearchCooldownState();
+}
+
+function readTrendSearchCooldownState(): number {
+  try {
+    const raw = fs.readFileSync(TREND_SEARCH_STATE_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as { unavailableUntil?: number };
+    const value = Math.max(0, Math.floor(Number(parsed?.unavailableUntil || 0)));
+    return Number.isFinite(value) ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function persistTrendSearchCooldownState(): void {
+  try {
+    fs.mkdirSync(path.dirname(TREND_SEARCH_STATE_PATH), { recursive: true });
+    fs.writeFileSync(
+      TREND_SEARCH_STATE_PATH,
+      JSON.stringify({ unavailableUntil: trendSearchEndpointUnavailableUntil }, null, 2),
+      "utf-8"
+    );
+  } catch (error) {
+    console.log(`[TREND] cooldown state 저장 실패: ${String(error)}`);
+  }
 }
 
 function isPreferredTrendReplyTarget(
