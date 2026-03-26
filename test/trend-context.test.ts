@@ -2223,9 +2223,79 @@ test("planEventEvidenceAct keeps generic onchain event on non-price evidence pai
 
   assert.ok(plan);
   assert.deepEqual(
-    plan?.evidence.map((item) => item.label),
-    ["낮아진 체인 사용 압박", "풀리는 거래 대기 압박"]
+    [...(plan?.evidence.map((item) => item.label) || [])].sort(),
+    ["낮아진 체인 사용 압박", "풀리는 밀린 거래 압박"].sort()
   );
+  assert.equal(plan?.focus, "durability");
+  assert.ok(!plan?.plannerWarnings?.includes("focus-general"));
+});
+
+test("planEventEvidenceAct promotes onchain usage and capital pair out of general focus", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:onchain:capital-usage",
+        lane: "onchain",
+        headline: "체인 안쪽 사용과 대기 자금이 같이 움직이는지 짚는다",
+        summary: "온체인 사용 압박과 관망 자금 유입을 같이 본다.",
+        source: "news:coindesk-rss",
+        trust: 0.76,
+        freshness: 0.89,
+        capturedAt: createdAt,
+        keywords: ["온체인", "자금"],
+      },
+    ],
+    evidence: buildOnchainEvidence([
+      {
+        id: "n1",
+        source: "onchain",
+        category: "network-fee",
+        label: "BTC 네트워크 수수료",
+        value: "4 sat/vB",
+        evidence: "BTC network fees stayed subdued near 4 sat/vB",
+        trust: 0.82,
+        freshness: 0.93,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.79 },
+      },
+      {
+        id: "n2",
+        source: "onchain",
+        category: "stable-supply",
+        label: "스테이블코인 총공급",
+        value: "+$210M",
+        evidence: "Stablecoin supply expanded by $210M over the last day.",
+        trust: 0.84,
+        freshness: 0.94,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.81 },
+      },
+      {
+        id: "n3",
+        source: "market",
+        category: "price-action",
+        label: "BTC 24h 변동",
+        value: "+0.8%",
+        evidence: "BTC moved 0.8% over 24 hours",
+        trust: 0.72,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        metadata: { digestScore: 0.63 },
+      },
+    ]),
+    recentPosts: [],
+    requireOnchainEvidence: true,
+    requireCrossSourceEvidence: true,
+  });
+
+  assert.ok(plan);
+  assert.deepEqual(
+    [...(plan?.evidence.map((item) => item.label) || [])].sort(),
+    ["낮아진 체인 사용 압박", "관망 자금 유입"].sort()
+  );
+  assert.equal(plan?.focus, "durability");
+  assert.ok(!plan?.plannerWarnings?.includes("focus-general"));
 });
 
 test("planEventEvidenceAct avoids price-like evidence for ecosystem lane when structural pair exists", () => {

@@ -4087,6 +4087,9 @@ function classifyNarrativeBucket(item: OnchainEvidence): NarrativeBucket {
   if (/(활성 지갑|사용 지갑|실사용|사용 흔적|usage|wallet|address activity|active address|tvl|잠긴 자금)/.test(normalized)) {
     return "usage";
   }
+  if (/(체인 사용 압박|사용 압박|거래 대기 압박|밀린 거래 압박|거래 적체)/.test(normalized)) {
+    return "durability";
+  }
   if (/(예치 자금|현물 체결|호가 유동성|체결 유동성)/.test(normalized)) {
     return "settlement";
   }
@@ -4138,6 +4141,15 @@ function resolvePlannerFocus(lane: TrendLane, pair: OnchainEvidence[]): PlannerF
   if (lane === "onchain") {
     if (has("whale") || /(고래|거래소 자금|자금 방향)/.test(merged)) return "flow";
     if (has("durability")) return "durability";
+    if (
+      hasFacet("usage") ||
+      hasFacet("congestion") ||
+      ((hasFacet("capital") || has("capital")) &&
+        (/(체인 사용 압박|밀린 거래 압박|거래 적체|체인 안쪽 사용|사용 지갑|지갑 재방문|관망 자금)/.test(merged) ||
+          has("usage")))
+    ) {
+      return "durability";
+    }
   }
   if (lane === "market-structure") {
     if (has("settlement") || /(호가 유동성|현물 체결|깊이)/.test(merged)) return "settlement";
@@ -4183,6 +4195,9 @@ function resolvePlannerSceneFacet(item: OnchainEvidence, lane: TrendLane): strin
   if (lane === "onchain") {
     if (/(고래|큰손|whale|주소 이동|exchange flow|거래소 자금)/.test(normalized)) return "flow";
     if (/(수수료|멤풀|거래 대기|거래 적체|network fee|mempool)/.test(normalized)) return "congestion";
+    if (/(체인 사용 압박|사용 압박|체인 안쪽 사용|사용 지갑|지갑 재방문|실사용 잔류|실사용 흔적)/.test(normalized)) {
+      return "usage";
+    }
     if (/(스테이블|대기 자금|관망 자금|stablecoin|capital)/.test(normalized)) return "capital";
     if (/(활성 지갑|address activity|사용 지갑|usage|tvl)/.test(normalized)) return "usage";
   }
