@@ -6503,6 +6503,10 @@ function resolveXApiCostSettings(
       1440,
       DEFAULT_X_API_COST_SETTINGS.createMinIntervalMinutes
     ),
+    failClosedOnStateError:
+      typeof settings.failClosedOnStateError === "boolean"
+        ? settings.failClosedOnStateError
+        : DEFAULT_X_API_COST_SETTINGS.failClosedOnStateError,
   };
 }
 
@@ -6516,6 +6520,9 @@ function formatReadBlockReason(reason: XReadGuardBlockReason | undefined, waitSe
   }
   if (reason === "daily-usd-limit") {
     return "일일 예상 비용 한도 도달";
+  }
+  if (reason === "state-unavailable") {
+    return "공용 budget state 불가(호출 차단)";
   }
   return "비용 가드 정책";
 }

@@ -60,15 +60,18 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       X_MENTION_READ_MIN_INTERVAL_MINUTES: "90",
       X_TREND_READ_MIN_INTERVAL_MINUTES: "150",
       X_CREATE_MIN_INTERVAL_MINUTES: "45",
+      X_API_FAIL_CLOSED_ON_STATE_ERROR: "false",
       ANTHROPIC_COST_GUARD_ENABLED: "true",
       ANTHROPIC_DAILY_MAX_USD: "0.45",
       ANTHROPIC_DAILY_REQUEST_LIMIT: "28",
       ANTHROPIC_DEGRADE_AT_UTILIZATION: "0.72",
       ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION: "0.88",
+      ANTHROPIC_FAIL_CLOSED_ON_STATE_ERROR: "false",
       ANTHROPIC_PROMPT_CACHING_ENABLED: "false",
       ANTHROPIC_CACHE_WRITE_MULTIPLIER: "1.4",
       ANTHROPIC_CACHE_READ_MULTIPLIER: "0.15",
       ANTHROPIC_USAGE_API_ENABLED: "true",
+      ANTHROPIC_USAGE_API_REQUIRED: "false",
       ANTHROPIC_USAGE_API_MIN_SYNC_MINUTES: "9",
       ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD: "3.2",
       ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD: "16",
@@ -121,15 +124,18 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.xApiCost.mentionReadMinIntervalMinutes, 90);
       assert.equal(config.xApiCost.trendReadMinIntervalMinutes, 150);
       assert.equal(config.xApiCost.createMinIntervalMinutes, 45);
+      assert.equal(config.xApiCost.failClosedOnStateError, false);
       assert.equal(config.anthropicCost.enabled, true);
       assert.equal(config.anthropicCost.dailyMaxUsd, 0.45);
       assert.equal(config.anthropicCost.dailyRequestLimit, 28);
       assert.equal(config.anthropicCost.degradeAtUtilization, 0.72);
       assert.equal(config.anthropicCost.localOnlyAtUtilization, 0.88);
+      assert.equal(config.anthropicCost.failClosedOnStateError, false);
       assert.equal(config.anthropicCost.promptCachingEnabled, false);
       assert.equal(config.anthropicCost.cacheWriteMultiplier, 1.4);
       assert.equal(config.anthropicCost.cacheReadMultiplier, 0.15);
       assert.equal(config.anthropicCost.usageApiEnabled, true);
+      assert.equal(config.anthropicCost.usageApiRequired, false);
       assert.equal(config.anthropicCost.usageApiMinSyncMinutes, 9);
       assert.equal(config.anthropicCost.primaryInputCostPerMillionUsd, 3.2);
       assert.equal(config.anthropicCost.primaryOutputCostPerMillionUsd, 16);
@@ -175,15 +181,18 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       X_API_ESTIMATED_CREATE_COST_USD: "invalid",
       X_API_DAILY_READ_REQUEST_LIMIT: "invalid",
       X_API_DAILY_CREATE_REQUEST_LIMIT: "invalid",
+      X_API_FAIL_CLOSED_ON_STATE_ERROR: "invalid",
       ANTHROPIC_COST_GUARD_ENABLED: "invalid",
       ANTHROPIC_DAILY_MAX_USD: "invalid",
       ANTHROPIC_DAILY_REQUEST_LIMIT: "invalid",
       ANTHROPIC_DEGRADE_AT_UTILIZATION: "invalid",
       ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION: "invalid",
+      ANTHROPIC_FAIL_CLOSED_ON_STATE_ERROR: "invalid",
       ANTHROPIC_PROMPT_CACHING_ENABLED: "invalid",
       ANTHROPIC_CACHE_WRITE_MULTIPLIER: "invalid",
       ANTHROPIC_CACHE_READ_MULTIPLIER: "invalid",
       ANTHROPIC_USAGE_API_ENABLED: "invalid",
+      ANTHROPIC_USAGE_API_REQUIRED: "invalid",
       ANTHROPIC_USAGE_API_MIN_SYNC_MINUTES: "invalid",
       ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD: "invalid",
       ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD: "invalid",
@@ -228,15 +237,18 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.xApiCost.dailyReadRequestLimit, 8);
       assert.equal(config.xApiCost.dailyCreateRequestLimit, 10);
       assert.equal(config.xApiCost.createMinIntervalMinutes, 20);
+      assert.equal(config.xApiCost.failClosedOnStateError, true);
       assert.equal(config.anthropicCost.enabled, true);
       assert.equal(config.anthropicCost.dailyMaxUsd, 0.4);
       assert.equal(config.anthropicCost.dailyRequestLimit, 40);
       assert.equal(config.anthropicCost.degradeAtUtilization, 0.7);
       assert.equal(config.anthropicCost.localOnlyAtUtilization, 0.85);
+      assert.equal(config.anthropicCost.failClosedOnStateError, true);
       assert.equal(config.anthropicCost.promptCachingEnabled, true);
       assert.equal(config.anthropicCost.cacheWriteMultiplier, 1.25);
       assert.equal(config.anthropicCost.cacheReadMultiplier, 0.1);
-      assert.equal(config.anthropicCost.usageApiEnabled, false);
+      assert.equal(config.anthropicCost.usageApiEnabled, true);
+      assert.equal(config.anthropicCost.usageApiRequired, true);
       assert.equal(config.anthropicCost.usageApiMinSyncMinutes, 5);
       assert.equal(config.anthropicCost.primaryInputCostPerMillionUsd, 3);
       assert.equal(config.anthropicCost.primaryOutputCostPerMillionUsd, 15);

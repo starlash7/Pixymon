@@ -41,14 +41,17 @@ const DEFAULT_X_API_ESTIMATED_CREATE_COST_USD = 0.01;
 const DEFAULT_X_API_MENTION_MIN_INTERVAL_MINUTES = 120;
 const DEFAULT_X_API_TREND_MIN_INTERVAL_MINUTES = 180;
 const DEFAULT_X_API_CREATE_MIN_INTERVAL_MINUTES = 20;
+const DEFAULT_X_API_FAIL_CLOSED_ON_STATE_ERROR = true;
 const DEFAULT_ANTHROPIC_DAILY_MAX_USD = 0.4;
 const DEFAULT_ANTHROPIC_DAILY_REQUEST_LIMIT = 40;
 const DEFAULT_ANTHROPIC_DEGRADE_AT_UTILIZATION = 0.7;
 const DEFAULT_ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION = 0.85;
+const DEFAULT_ANTHROPIC_FAIL_CLOSED_ON_STATE_ERROR = true;
 const DEFAULT_ANTHROPIC_PROMPT_CACHING_ENABLED = true;
 const DEFAULT_ANTHROPIC_CACHE_WRITE_MULTIPLIER = 1.25;
 const DEFAULT_ANTHROPIC_CACHE_READ_MULTIPLIER = 0.1;
-const DEFAULT_ANTHROPIC_USAGE_API_ENABLED = false;
+const DEFAULT_ANTHROPIC_USAGE_API_ENABLED = true;
+const DEFAULT_ANTHROPIC_USAGE_API_REQUIRED = true;
 const DEFAULT_ANTHROPIC_USAGE_API_MIN_SYNC_MINUTES = 5;
 const DEFAULT_ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD = 3;
 const DEFAULT_ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD = 15;
@@ -124,6 +127,7 @@ export const DEFAULT_X_API_COST_SETTINGS: XApiCostRuntimeSettings = {
   mentionReadMinIntervalMinutes: DEFAULT_X_API_MENTION_MIN_INTERVAL_MINUTES,
   trendReadMinIntervalMinutes: DEFAULT_X_API_TREND_MIN_INTERVAL_MINUTES,
   createMinIntervalMinutes: DEFAULT_X_API_CREATE_MIN_INTERVAL_MINUTES,
+  failClosedOnStateError: DEFAULT_X_API_FAIL_CLOSED_ON_STATE_ERROR,
 };
 
 export const DEFAULT_ANTHROPIC_COST_SETTINGS: AnthropicCostRuntimeSettings = {
@@ -132,10 +136,12 @@ export const DEFAULT_ANTHROPIC_COST_SETTINGS: AnthropicCostRuntimeSettings = {
   dailyRequestLimit: DEFAULT_ANTHROPIC_DAILY_REQUEST_LIMIT,
   degradeAtUtilization: DEFAULT_ANTHROPIC_DEGRADE_AT_UTILIZATION,
   localOnlyAtUtilization: DEFAULT_ANTHROPIC_LOCAL_ONLY_AT_UTILIZATION,
+  failClosedOnStateError: DEFAULT_ANTHROPIC_FAIL_CLOSED_ON_STATE_ERROR,
   promptCachingEnabled: DEFAULT_ANTHROPIC_PROMPT_CACHING_ENABLED,
   cacheWriteMultiplier: DEFAULT_ANTHROPIC_CACHE_WRITE_MULTIPLIER,
   cacheReadMultiplier: DEFAULT_ANTHROPIC_CACHE_READ_MULTIPLIER,
   usageApiEnabled: DEFAULT_ANTHROPIC_USAGE_API_ENABLED,
+  usageApiRequired: DEFAULT_ANTHROPIC_USAGE_API_REQUIRED,
   usageApiMinSyncMinutes: DEFAULT_ANTHROPIC_USAGE_API_MIN_SYNC_MINUTES,
   primaryInputCostPerMillionUsd: DEFAULT_ANTHROPIC_PRIMARY_INPUT_COST_PER_MILLION_USD,
   primaryOutputCostPerMillionUsd: DEFAULT_ANTHROPIC_PRIMARY_OUTPUT_COST_PER_MILLION_USD,
@@ -464,6 +470,10 @@ export function loadRuntimeConfig(): RuntimeConfig {
       0,
       1440
     ),
+    failClosedOnStateError: parseBoolean(
+      process.env.X_API_FAIL_CLOSED_ON_STATE_ERROR,
+      DEFAULT_X_API_COST_SETTINGS.failClosedOnStateError
+    ),
   };
   const anthropicCost: AnthropicCostRuntimeSettings = {
     enabled: parseBoolean(
@@ -479,6 +489,10 @@ export function loadRuntimeConfig(): RuntimeConfig {
     ),
     degradeAtUtilization: anthropicDegradeAtUtilization,
     localOnlyAtUtilization: anthropicLocalOnlyAtUtilization,
+    failClosedOnStateError: parseBoolean(
+      process.env.ANTHROPIC_FAIL_CLOSED_ON_STATE_ERROR,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.failClosedOnStateError
+    ),
     promptCachingEnabled: parseBoolean(
       process.env.ANTHROPIC_PROMPT_CACHING_ENABLED,
       DEFAULT_ANTHROPIC_COST_SETTINGS.promptCachingEnabled
@@ -498,6 +512,10 @@ export function loadRuntimeConfig(): RuntimeConfig {
     usageApiEnabled: parseBoolean(
       process.env.ANTHROPIC_USAGE_API_ENABLED,
       DEFAULT_ANTHROPIC_COST_SETTINGS.usageApiEnabled
+    ),
+    usageApiRequired: parseBoolean(
+      process.env.ANTHROPIC_USAGE_API_REQUIRED,
+      DEFAULT_ANTHROPIC_COST_SETTINGS.usageApiRequired
     ),
     usageApiMinSyncMinutes: parseIntInRange(
       process.env.ANTHROPIC_USAGE_API_MIN_SYNC_MINUTES,

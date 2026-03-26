@@ -101,6 +101,7 @@ function buildBaseInput() {
       mentionReadMinIntervalMinutes: 120,
       trendReadMinIntervalMinutes: 180,
       createMinIntervalMinutes: 20,
+      failClosedOnStateError: true,
     },
     currentUsage: {
       estimatedTotalCostUsd: 0.03,

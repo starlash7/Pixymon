@@ -28,7 +28,7 @@ export function printStartupBanner(config: RuntimeConfig): void {
     `  [SAFE] action=${config.operational.actionMode} | reconcile=${config.operational.stateReconcileOnBoot ? "on" : "off"} | 2pc=${config.operational.actionTwoPhaseCommit ? "on" : "off"}`
   );
   console.log(
-    `  [BUDGET] X=$${config.xApiCost.dailyMaxUsd.toFixed(2)}/day | LLM=$${config.anthropicCost.dailyMaxUsd.toFixed(2)}/day | TOTAL=$${config.totalCost.dailyMaxUsd.toFixed(2)}/day | cache=${config.anthropicCost.promptCachingEnabled ? "on" : "off"} | usage-api=${config.anthropicCost.usageApiEnabled ? "on" : "off"}`
+    `  [BUDGET] X=$${config.xApiCost.dailyMaxUsd.toFixed(2)}/day | LLM=$${config.anthropicCost.dailyMaxUsd.toFixed(2)}/day | TOTAL=$${config.totalCost.dailyMaxUsd.toFixed(2)}/day | cache=${config.anthropicCost.promptCachingEnabled ? "on" : "off"} | usage-api=${config.anthropicCost.usageApiEnabled ? (config.anthropicCost.usageApiRequired ? "on(required)" : "on(optional)") : "off"}`
   );
   console.log(
     `  [BATCH] enabled=${config.batch.enabled ? "on" : "off"} | submit<=${config.batch.maxRequestsPerBatch} | sync<=${config.batch.maxSyncBatchesPerRun}/${config.batch.minSyncMinutes}m`

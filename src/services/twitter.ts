@@ -21,7 +21,7 @@ import { XApiCostRuntimeSettings } from "../types/runtime.js";
 import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 import { recordNarrativeObservation } from "./narrative-observer.js";
-import { resolveDataDir } from "./data-dir.js";
+import { resolveSharedStatePath } from "./shared-state-dir.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
 export const TEST_NO_EXTERNAL_CALLS =
@@ -38,7 +38,7 @@ const CURATED_REPLY_FALLBACK_USERNAMES = [
   "aixbt_agent",
 ];
 const TREND_SEARCH_ENDPOINT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-const TREND_SEARCH_STATE_PATH = path.join(resolveDataDir(), "trend-search-state.json");
+const TREND_SEARCH_STATE_PATH = resolveSharedStatePath("trend-search-state.json");
 let trendSearchEndpointUnavailableUntil = readTrendSearchCooldownState();
 const DEFAULT_TREND_TWEET_SEARCH_RULES: TrendTweetSearchRules = {
   minSourceTrust: 0.34,
@@ -88,9 +88,9 @@ const DISPATCH_LOCK_STALE_MS = 5 * 60 * 1000;
 const DISPATCH_MIN_GAP_MS = 8 * 60 * 1000;
 const DISPATCH_DUPLICATE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const DISPATCH_LOCK_PATH =
-  process.env.POST_DISPATCH_LOCK_PATH || path.join(process.cwd(), "data", "pixymon-post-dispatch.lock");
+  process.env.POST_DISPATCH_LOCK_PATH || resolveSharedStatePath("pixymon-post-dispatch.lock");
 const DISPATCH_STATE_PATH =
-  process.env.POST_DISPATCH_STATE_PATH || path.join(process.cwd(), "data", "pixymon-post-dispatch.json");
+  process.env.POST_DISPATCH_STATE_PATH || resolveSharedStatePath("pixymon-post-dispatch.json");
 
 // 환경 변수 검증
 export function validateEnvironment() {
@@ -958,6 +958,10 @@ function resolveXApiCostSettings(
         DEFAULT_X_API_COST_SETTINGS.createMinIntervalMinutes
       )
     ),
+    failClosedOnStateError:
+      typeof source.failClosedOnStateError === "boolean"
+        ? source.failClosedOnStateError
+        : DEFAULT_X_API_COST_SETTINGS.failClosedOnStateError,
   };
 }
 
@@ -971,6 +975,9 @@ function formatCreateBlockReason(reason: XCreateGuardBlockReason | undefined, wa
   }
   if (reason === "daily-usd-limit") {
     return "일일 예상 비용 한도 도달";
+  }
+  if (reason === "state-unavailable") {
+    return "공용 budget state 불가(호출 차단)";
   }
   return "비용 가드 정책";
 }

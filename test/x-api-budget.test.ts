@@ -157,3 +157,21 @@ test("x-api budget enforces daily create request limit", () => {
     ctx.cleanup();
   }
 });
+
+test("x-api budget fails closed when shared state is unreadable", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pixymon-xapi-budget-bad-"));
+  const dataPath = path.join(tempDir, "x-api-budget.json");
+  fs.writeFileSync(dataPath, "{broken-json", "utf-8");
+  try {
+    const service = new XApiBudgetService({
+      dataPath,
+      now: () => new Date("2026-02-17T00:00:00.000Z"),
+      failClosedOnStateError: true,
+    });
+    const decision = service.checkReadAllowance(buildPolicy());
+    assert.equal(decision.allowed, false);
+    assert.equal(decision.reason, "state-unavailable");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

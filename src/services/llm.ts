@@ -260,7 +260,14 @@ export async function requestBudgetedClaudeMessage(
     pricing: runtimeConfig.anthropicCost,
   });
   const todayXCost = xApiBudget.getTodayUsage(timezone).estimatedTotalCostUsd;
-  let syncedAnthropic = null;
+  if (runtimeConfig.anthropicCost.failClosedOnStateError && !anthropicBudget.isHealthy()) {
+    console.warn(`[LLM-BUDGET] ${options.kind} 스킵: local budget state unavailable`);
+    return null;
+  }
+
+  let syncedAnthropic = runtimeConfig.anthropicCost.usageApiEnabled
+    ? anthropicAdminUsage.getTodayUsage(timezone)
+    : null;
   if (runtimeConfig.anthropicCost.usageApiEnabled) {
     try {
       syncedAnthropic = await anthropicAdminUsage.maybeSyncToday({
@@ -271,6 +278,14 @@ export async function requestBudgetedClaudeMessage(
     } catch (error) {
       console.warn("[LLM-BUDGET] Anthropic usage sync 실패:", error);
     }
+  }
+  if (
+    runtimeConfig.anthropicCost.usageApiEnabled &&
+    runtimeConfig.anthropicCost.usageApiRequired &&
+    !syncedAnthropic
+  ) {
+    console.warn(`[LLM-BUDGET] ${options.kind} 스킵: provider usage sync unavailable`);
+    return null;
   }
   const todayAnthropic = mergeAnthropicUsageSnapshots(
     anthropicBudget.getTodayUsage(timezone),

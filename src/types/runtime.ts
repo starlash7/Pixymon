@@ -40,6 +40,7 @@ export interface XApiCostRuntimeSettings {
   mentionReadMinIntervalMinutes: number;
   trendReadMinIntervalMinutes: number;
   createMinIntervalMinutes: number;
+  failClosedOnStateError: boolean;
 }
 
 export interface AnthropicCostRuntimeSettings {
@@ -48,10 +49,12 @@ export interface AnthropicCostRuntimeSettings {
   dailyRequestLimit: number;
   degradeAtUtilization: number;
   localOnlyAtUtilization: number;
+  failClosedOnStateError: boolean;
   promptCachingEnabled: boolean;
   cacheWriteMultiplier: number;
   cacheReadMultiplier: number;
   usageApiEnabled: boolean;
+  usageApiRequired: boolean;
   usageApiMinSyncMinutes: number;
   primaryInputCostPerMillionUsd: number;
   primaryOutputCostPerMillionUsd: number;

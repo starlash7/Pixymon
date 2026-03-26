@@ -1,10 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { AnthropicUsageSnapshot } from "./anthropic-budget.js";
-import { resolveDataDir } from "./data-dir.js";
+import { resolveSharedStatePath } from "./shared-state-dir.js";
 
-const DATA_DIR = resolveDataDir();
-const DEFAULT_DATA_PATH = path.join(DATA_DIR, "anthropic-admin-usage.json");
+const DEFAULT_DATA_PATH = resolveSharedStatePath("anthropic-admin-usage.json");
 
 export interface AnthropicAdminUsageSnapshot {
   dateKey: string;

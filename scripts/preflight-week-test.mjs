@@ -14,7 +14,10 @@ const launchAgentLabel = "com.pixymon.agent";
 const legacyLaunchAgentLabel = "com.pixymon.tunis";
 const launchAgentPath = path.join(os.homedir(), "Library", "LaunchAgents", `${launchAgentLabel}.plist`);
 const legacyLaunchAgentPath = path.join(os.homedir(), "Library", "LaunchAgents", `${legacyLaunchAgentLabel}.plist`);
-const runtimeLockPath = path.join(rootDir, "data", "pixymon-runtime.lock");
+const sharedStateDir = process.env.PIXYMON_SHARED_STATE_DIR
+  ? path.resolve(process.env.PIXYMON_SHARED_STATE_DIR)
+  : path.join(os.homedir(), ".pixymon", "state");
+const runtimeLockPath = path.join(sharedStateDir, "pixymon-runtime.lock");
 const logPath = path.join(rootDir, "logs", "pixymon.log");
 const metricsPath = path.join(rootDir, process.env.OBSERVABILITY_EVENT_LOG_PATH || "data/metrics-events.ndjson");
 
@@ -113,6 +116,21 @@ const envChecks = [
     title: "ACTION_MODE live",
     ok: boolString(process.env.ACTION_MODE) === "live",
     failDetail: `ACTION_MODE=${process.env.ACTION_MODE || "(unset)"}`
+  },
+  {
+    title: "Anthropic usage sync on",
+    ok: boolString(process.env.ANTHROPIC_USAGE_API_ENABLED || "true") === "true",
+    failDetail: `ANTHROPIC_USAGE_API_ENABLED=${process.env.ANTHROPIC_USAGE_API_ENABLED || "(default:true)"}`
+  },
+  {
+    title: "Anthropic usage sync required",
+    ok: boolString(process.env.ANTHROPIC_USAGE_API_REQUIRED || "true") === "true",
+    failDetail: `ANTHROPIC_USAGE_API_REQUIRED=${process.env.ANTHROPIC_USAGE_API_REQUIRED || "(unset)"}`
+  },
+  {
+    title: "Anthropic admin key present",
+    ok: String(process.env.ANTHROPIC_ADMIN_API_KEY || "").trim().length > 0,
+    failDetail: "ANTHROPIC_ADMIN_API_KEY missing"
   }
 ];
 
@@ -140,6 +158,7 @@ const budgetSummary = [
   `TOTAL=${process.env.TOTAL_DAILY_MAX_USD || "(unset)"}`
 ].join(" | ");
 addCheck("OK", "Daily cost caps", budgetSummary);
+addCheck("OK", "Shared state dir", sharedStateDir);
 
 const fallbackAutoPublish = boolString(process.env.ALLOW_FALLBACK_AUTO_PUBLISH);
 if (fallbackAutoPublish === "true") {

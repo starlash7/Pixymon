@@ -197,3 +197,29 @@ test("anthropic budget records prompt caching read and write tokens with discoun
     ctx.cleanup();
   }
 });
+
+test("anthropic budget fails closed when shared state is unreadable", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pixymon-llm-budget-bad-"));
+  const dataPath = path.join(tempDir, "anthropic-budget.json");
+  fs.writeFileSync(dataPath, "{broken-json", "utf-8");
+  try {
+    const service = new AnthropicBudgetService({
+      dataPath,
+      now: () => new Date("2026-03-10T00:00:00.000Z"),
+      failClosedOnStateError: true,
+    });
+    const blocked = service.checkAllowance({
+      enabled: true,
+      timezone: "UTC",
+      dailyMaxUsd: 0.5,
+      dailyRequestLimit: 10,
+      estimatedCostUsd: 0.01,
+      totalDailyMaxUsd: 1,
+      xApiEstimatedCostUsd: 0.02,
+    });
+    assert.equal(blocked.allowed, false);
+    assert.equal(blocked.reason, "state-unavailable");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

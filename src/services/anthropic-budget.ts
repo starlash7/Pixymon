@@ -1,11 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { AnthropicCostRuntimeSettings, TotalCostRuntimeSettings } from "../types/runtime.js";
-import { resolveDataDir } from "./data-dir.js";
 import { quarantineCorruptFile } from "./quarantine.js";
+import { resolveSharedStatePath } from "./shared-state-dir.js";
 
-const DATA_DIR = resolveDataDir();
-const DEFAULT_DATA_PATH = path.join(DATA_DIR, "anthropic-budget.json");
+const DEFAULT_DATA_PATH = resolveSharedStatePath("anthropic-budget.json");
 const KEEP_DAYS = 21;
 const COST_EPSILON = 1e-9;
 
@@ -37,7 +36,12 @@ export interface AnthropicUsageSnapshot {
   byKind: Record<string, number>;
 }
 
-export type AnthropicBudgetBlockReason = "daily-request-limit" | "daily-usd-limit" | "combined-daily-usd-limit";
+export type AnthropicBudgetBlockReason =
+  | "daily-request-limit"
+  | "daily-usd-limit"
+  | "combined-daily-usd-limit"
+  | "state-unavailable"
+  | "usage-sync-unavailable";
 export type AnthropicBudgetMode = "full" | "degrade" | "local-only";
 
 export interface AnthropicBudgetGuardDecision {
@@ -220,12 +224,23 @@ export function resolveAnthropicBudgetMode(input: {
 export class AnthropicBudgetService {
   private readonly dataPath: string;
   private readonly now: () => Date;
+  private readonly failClosedOnStateError: boolean;
   private state: AnthropicBudgetState;
+  private stateHealthy: boolean;
 
-  constructor(options?: { dataPath?: string; now?: () => Date }) {
+  constructor(options?: { dataPath?: string; now?: () => Date; failClosedOnStateError?: boolean }) {
     this.dataPath = options?.dataPath ? path.resolve(options.dataPath) : DEFAULT_DATA_PATH;
     this.now = typeof options?.now === "function" ? options.now : () => new Date();
+    this.failClosedOnStateError =
+      typeof options?.failClosedOnStateError === "boolean"
+        ? options.failClosedOnStateError
+        : String(process.env.ANTHROPIC_FAIL_CLOSED_ON_STATE_ERROR || "true").trim().toLowerCase() !== "false";
+    this.stateHealthy = true;
     this.state = this.load();
+  }
+
+  isHealthy(): boolean {
+    return this.stateHealthy;
   }
 
   checkAllowance(input: {
@@ -252,6 +267,17 @@ export class AnthropicBudgetService {
     if (!input.enabled) {
       return {
         allowed: true,
+        projectedDailyCostUsd,
+        projectedTotalCostUsd,
+        remainingRequests,
+        todayRequestCount: bucket.requestCount,
+      };
+    }
+
+    if (this.failClosedOnStateError && !this.stateHealthy) {
+      return {
+        allowed: false,
+        reason: "state-unavailable",
         projectedDailyCostUsd,
         projectedTotalCostUsd,
         remainingRequests,
@@ -342,7 +368,12 @@ export class AnthropicBudgetService {
     bucket.byKind[kind] = (bucket.byKind[kind] || 0) + 1;
     bucket.updatedAt = this.now().toISOString();
     this.state.lastUpdated = bucket.updatedAt;
-    this.persist(this.state);
+    try {
+      this.persist(this.state);
+    } catch {
+      this.stateHealthy = false;
+      throw new Error("anthropic-budget-state-unavailable");
+    }
 
     return {
       dateKey: bucket.dateKey,
@@ -371,7 +402,11 @@ export class AnthropicBudgetService {
   }
 
   flushNow(): void {
-    this.persist(this.state);
+    try {
+      this.persist(this.state);
+    } catch {
+      this.stateHealthy = false;
+    }
   }
 
   private ensureBucket(dateKey: string): AnthropicUsageBucket {
@@ -407,10 +442,12 @@ export class AnthropicBudgetService {
         fs.mkdirSync(path.dirname(this.dataPath), { recursive: true });
         const empty = createEmptyState();
         fs.writeFileSync(this.dataPath, `${JSON.stringify(empty, null, 2)}\n`, "utf-8");
+        this.stateHealthy = true;
         return empty;
       }
       const raw = fs.readFileSync(this.dataPath, "utf-8");
       const parsed = JSON.parse(raw) as Partial<AnthropicBudgetState>;
+      this.stateHealthy = true;
       return this.normalizeState(parsed);
     } catch (error) {
       const raw = safeReadRaw(this.dataPath);
@@ -424,6 +461,7 @@ export class AnthropicBudgetService {
           console.error(`[LLM-BUDGET] 손상 파일 격리됨: ${quarantined}`);
         }
       }
+      this.stateHealthy = false;
       return createEmptyState();
     }
   }
@@ -452,6 +490,7 @@ export class AnthropicBudgetService {
   private persist(state: AnthropicBudgetState): void {
     fs.mkdirSync(path.dirname(this.dataPath), { recursive: true });
     fs.writeFileSync(this.dataPath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
+    this.stateHealthy = true;
   }
 }
 

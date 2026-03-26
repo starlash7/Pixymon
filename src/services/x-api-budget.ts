@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { resolveDataDir } from "./data-dir.js";
 import { quarantineCorruptFile } from "./quarantine.js";
+import { resolveSharedStateDir, resolveSharedStatePath } from "./shared-state-dir.js";
 
-const DATA_DIR = resolveDataDir();
-const DEFAULT_DATA_PATH = path.join(DATA_DIR, "x-api-budget.json");
+const SHARED_STATE_DIR = resolveSharedStateDir();
+const DEFAULT_DATA_PATH = resolveSharedStatePath("x-api-budget.json");
 const KEEP_DAYS = 21;
 const COST_EPSILON = 1e-9;
 
@@ -58,7 +58,11 @@ export interface XCreateBudgetPolicy {
   minIntervalMinutes: number;
 }
 
-export type XReadGuardBlockReason = "min-interval" | "daily-request-limit" | "daily-usd-limit";
+export type XReadGuardBlockReason =
+  | "min-interval"
+  | "daily-request-limit"
+  | "daily-usd-limit"
+  | "state-unavailable";
 export type XCreateGuardBlockReason = XReadGuardBlockReason;
 
 interface XBudgetGuardDecision {
@@ -103,12 +107,23 @@ function createEmptyState(): XApiBudgetState {
 export class XApiBudgetService {
   private readonly dataPath: string;
   private readonly now: () => Date;
+  private readonly failClosedOnStateError: boolean;
   private state: XApiBudgetState;
+  private stateHealthy: boolean;
 
-  constructor(options?: { dataPath?: string; now?: () => Date }) {
+  constructor(options?: { dataPath?: string; now?: () => Date; failClosedOnStateError?: boolean }) {
     this.dataPath = options?.dataPath ? path.resolve(options.dataPath) : DEFAULT_DATA_PATH;
     this.now = typeof options?.now === "function" ? options.now : () => new Date();
+    this.failClosedOnStateError =
+      typeof options?.failClosedOnStateError === "boolean"
+        ? options.failClosedOnStateError
+        : String(process.env.X_API_FAIL_CLOSED_ON_STATE_ERROR || "true").trim().toLowerCase() !== "false";
+    this.stateHealthy = true;
     this.state = this.load();
+  }
+
+  isHealthy(): boolean {
+    return this.stateHealthy;
   }
 
   checkReadAllowance(policy: XReadBudgetPolicy): XReadGuardDecision {
@@ -196,6 +211,18 @@ export class XApiBudgetService {
     if (!policy.enabled) {
       return {
         allowed: true,
+        projectedDailyCostUsd,
+        remainingRequests,
+        todayRequestCount,
+        todayReadRequests: bucket.readRequests,
+        todayCreateRequests: bucket.createRequests,
+      };
+    }
+
+    if (this.failClosedOnStateError && !this.stateHealthy) {
+      return {
+        allowed: false,
+        reason: "state-unavailable",
         projectedDailyCostUsd,
         remainingRequests,
         todayRequestCount,
@@ -298,12 +325,13 @@ export class XApiBudgetService {
 
   private load(): XApiBudgetState {
     try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+      if (!fs.existsSync(SHARED_STATE_DIR)) {
+        fs.mkdirSync(SHARED_STATE_DIR, { recursive: true });
       }
       if (!fs.existsSync(this.dataPath)) {
         const empty = createEmptyState();
         this.persist(empty);
+        this.stateHealthy = true;
         return empty;
       }
 
@@ -322,8 +350,10 @@ export class XApiBudgetService {
         }
         throw error;
       }
+      this.stateHealthy = true;
       return this.normalizeState(parsed);
     } catch {
+      this.stateHealthy = false;
       return createEmptyState();
     }
   }
@@ -388,7 +418,12 @@ export class XApiBudgetService {
   }
 
   private save(): void {
-    this.persist(this.state);
+    try {
+      this.persist(this.state);
+    } catch {
+      this.stateHealthy = false;
+      throw new Error("x-api-budget-state-unavailable");
+    }
   }
 
   flushNow(): void {
@@ -399,6 +434,7 @@ export class XApiBudgetService {
   private persist(state: XApiBudgetState): void {
     fs.mkdirSync(path.dirname(this.dataPath), { recursive: true });
     fs.writeFileSync(this.dataPath, JSON.stringify(state, null, 2));
+    this.stateHealthy = true;
   }
 
   private ensureBucket(dateKey: string): XApiUsageBucket {
