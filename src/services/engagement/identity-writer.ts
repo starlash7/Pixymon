@@ -364,6 +364,12 @@ const FOCUS_ATTITUDE_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "법원 해설은 길어도 돈이 눕은 자리는 아직 얕다.",
       "기사 톤은 단단한데 돈이 안 눕는 판결 뉴스는 결국 얇게 남는다.",
       "법원 문장이 커질수록 결국 돈이 비는 자리가 더 크게 남는다.",
+      "판결문보다 주문이 눕는 속도가 늦은 날은 결국 기사 체급부터 먼저 깎인다.",
+      "법원 뉴스가 커도 매수 자리가 안 붙는 순간 그 장면은 해설값으로 돌아간다.",
+      "소송 해설이 화려해도 돈의 방향이 비는 날은 오래 붙잡을 이유가 없다.",
+      "판결 뉴스의 길이가 길수록 결국 들키는 건 자금이 눕지 않는 자리다.",
+      "법원 일정이 선명해도 주문이 머뭇거리면 그 뉴스는 결국 현장까지 못 내려온다.",
+      "소송 문장이 앞서고 돈이 늦는 날은 늘 기사보다 빈칸이 더 크게 남는다.",
     ],
   },
   protocol: {
@@ -651,6 +657,12 @@ const FOCUS_FIXATION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "거래량보다 깊이가 끝까지 붙는지 여부가 결국 이 반응의 무게를 정한다.",
       "숫자보다 깊이가 남는 장면만 구조 변화로 기억해 둔다.",
       "호가 두께가 남지 않으면 큰 거래량도 결국 장면값으로 돌아간다.",
+      "거래량보다 끝까지 버틴 깊이가 있는지부터 봐야 이 반응의 체급이 보인다.",
+      "숫자가 아니라 깊이가 어느 자리까지 눕는지가 결국 이 장면을 갈라놓는다.",
+      "현물 체결이 살아도 호가 책이 비는 순간 그 반응은 구조보다 화면값이 앞선다.",
+      "큰 거래량보다 깊이가 실제로 눕는 자리가 결국 이 체결 반응의 체급을 정한다.",
+      "숫자보다 정산 깊이가 어디서 끊기는지를 봐야 이 장면의 무게가 보인다.",
+      "거래량이 버텨도 깊이가 안 붙는 순간 그 반응은 숫자보다 얕은 장면으로 남는다.",
     ],
   },
   protocol: {
@@ -978,6 +990,9 @@ const FOCUS_DECISION_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterFoc
       "ETF 쪽 대기 주문이 비면 이 소송 뉴스는 설명만 큰 장면으로 줄어든다.",
       "자금 태도가 안 붙으면 이 판결 뉴스는 현장보다 방송 톤으로 먼저 기운다.",
       "대기 주문이 물러서면 이 법원 뉴스는 기사 바깥으로 못 나간다.",
+      "자금이 머뭇거리는 순간 이 법원 뉴스는 판결보다 기사 톤으로 먼저 접힌다.",
+      "돈이 붙지 않으면 이 소송 뉴스는 법원 문장 바깥으로 오래 못 내려온다.",
+      "자금 반응이 비는 순간 이 판결 뉴스는 현장보다 브리핑 쪽으로 기운다.",
     ],
   },
   "market-structure": {
@@ -1356,6 +1371,9 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
       "소송의 시대감은 결국 판결문보다 돈이 눕는 쪽에서 다시 갈린다.",
       "규제 국면의 무게는 문장이 아니라 집행과 자금이 같이 남는 자리에서 결정된다.",
       "법원 뉴스의 체급은 결국 기사 길이보다 현장 반응의 지속 시간에서 정산된다.",
+      "규제 뉴스의 시대감은 결국 판결문보다 현장 반응이 얼마나 오래 남는지에서 갈린다.",
+      "법원 기사보다 집행과 자금이 같이 남는 시간이 결국 이 국면의 체급을 다시 쓴다.",
+      "소송 뉴스의 무게는 결국 해설 길이보다 현장 반응의 지속 시간에서 정리된다.",
     ],
     "meta-reflection": [
       "규제 뉴스의 무게는 해설이 아니라 집행이 끝내 정한다.",
@@ -1385,6 +1403,9 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
       "시장 구조의 시대는 결국 호가가 아니라 돈이 눕는 자리에서 갈린다.",
       "새 질서는 체결이 어디까지 남는지가 먼저 쓴다.",
       "한 국면의 무게는 결국 실제 돈이 화면을 얼마나 오래 이기는지에서 정리된다.",
+      "시장 장면의 체급은 결국 화면 열기보다 실제 돈이 얼마나 오래 남는지에서 갈린다.",
+      "새 구조의 무게는 결국 체결이 아니라 끝까지 남은 돈의 자리에서 정산된다.",
+      "한 장세의 질서는 결국 실제 돈이 화면을 밀어내는 시간에서 다시 쓰인다.",
     ],
     "philosophy-note": [
       "유동성은 분위기보다 훨씬 늦게 진짜 얼굴을 보여 준다.",
@@ -1405,6 +1426,12 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
       "새 질서는 출시 무대보다 장애 뒤 운영 반응이 더 늦게 정리한다.",
       "업그레이드의 시대감은 결국 검증자 박수보다 복구 기록이 다시 쓴다.",
       "릴리스의 체급은 결국 운영 태도가 어디서 버티는지가 다시 매긴다.",
+      "프로토콜의 세대는 결국 배포 박수보다 장애 뒤 운영 태도가 먼저 바꾼다.",
+      "업그레이드 국면의 체급은 결국 릴리스 속도보다 복구 기록의 지속 시간이 다시 정한다.",
+      "새 프로토콜의 무게는 결국 쇼케이스보다 운영 태도가 어디서 버티는지에서 갈린다.",
+      "프로토콜의 새 질서는 결국 무대 반응보다 운영 태도가 어디서 버티는지에서 정해진다.",
+      "업그레이드의 무게는 결국 쇼케이스보다 복구 태도가 얼마나 오래 남는지에서 갈린다.",
+      "새 프로토콜의 체급은 결국 릴리스 무대보다 운영 태도의 지속 시간에서 다시 매겨진다.",
     ],
     "identity-journal": [
       "출시 박수보다 늦게 붙는 운영 반응 쪽이 결국 더 정확하다.",
@@ -1444,6 +1471,16 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
 > = {
   ecosystem: {
     retention: {
+      "era-manifesto": [
+        "남은 사람 수가 다음 국면의 체급을 결국 다시 쓴다.",
+        "생태계의 시대는 열기보다 남는 습관 쪽에서 더 늦게 결정된다.",
+        "사람이 남는 자리만 결국 다음 장면의 질서를 다시 세운다.",
+        "결국 세대를 가르는 건 반응이 아니라 끝까지 남은 생활 리듬 쪽이다.",
+        "이 국면의 본색은 결국 몇 명이 다시 돌아왔는지에서 더 선명해진다.",
+        "생태계의 무게는 결국 떠들썩한 반응보다 남아 버틴 사람 수가 정산한다.",
+        "끝내 다음 질서를 여는 건 열기가 아니라 돌아오는 사람의 습관이다.",
+        "새 세대는 결국 커뮤니티 온도보다 잔류의 밀도로 먼저 열린다.",
+      ],
     "identity-journal": [
       "끝내 믿게 되는 건 떠들썩한 반응보다 다시 돌아온 사람 수다.",
       "재방문이 남는 쪽이 결국 생태계 얘기의 값을 다시 정한다.",
@@ -1465,6 +1502,16 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
       ],
     },
     builder: {
+      "era-manifesto": [
+        "생태계의 체급은 결국 남은 코드와 돌아온 돈이 같이 써야 올라간다.",
+        "빌드 서사의 세대는 결국 복귀 자금이 어느 편에 서는지가 다시 쓴다.",
+        "코드와 돈이 같은 편에 선 장면만 결국 다음 질서를 만든다.",
+        "새 국면은 결국 빌더의 잔류와 복귀 자금이 같은 속도로 움직일 때 열린다.",
+        "생태계의 시대감은 결국 내부 낙관이 아니라 돌아온 자금이 다시 매긴다.",
+        "코드만 남는 장면은 세대를 못 바꾸고, 돈이 돌아온 자리만 질서를 바꾼다.",
+        "다음 장면의 체급은 결국 개발자 잔류와 자금 복귀가 함께 버틸 때 붙는다.",
+        "빌드의 무게는 결국 회의실 박수보다 복귀 자금의 태도가 다시 정산한다.",
+      ],
       "identity-journal": [
         "사람과 코드가 같이 남는 장면만 시간이 지나도 생태계 얘기로 남는다.",
         "개발자와 예치 자금이 함께 버틴 생태계만 서사 대신 구조로 남는다.",
@@ -1513,6 +1560,16 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
       ],
     },
     court: {
+      "era-manifesto": [
+        "판결의 시대감은 결국 법원 문장이 아니라 눕는 돈의 방향이 다시 쓴다.",
+        "규제 국면의 체급은 결국 기사보다 집행과 자금이 얼마나 늦게 붙는지에서 갈린다.",
+        "법원 뉴스의 본색은 결국 판결보다 돈이 멈춘 자리에서 더 정확해진다.",
+        "소송의 세대는 결국 해설 길이보다 집행과 대기 주문이 다시 연다.",
+        "규제 질서는 결국 판결문보다 자금이 어느 자리에서 주저앉는지가 정한다.",
+        "법원 문장은 빨라도 규제의 무게는 결국 뒤늦게 눕는 주문 쪽이 다시 매긴다.",
+        "이 국면의 법원 뉴스는 결국 기사보다 자금 태도의 지속 시간이 더 크게 다시 쓴다.",
+        "판결 뉴스의 체급은 결국 브리핑보다 집행과 자금이 남은 자리가 정산한다.",
+      ],
       "meta-reflection": [
         "판결 뉴스의 무게는 결국 기사보다 돈이 어느 자리에서 멈추는지가 다시 정한다.",
         "법원 해설이 길수록 자금이 비는 자리 쪽이 더 늦고 더 솔직하게 남는다.",
@@ -1547,6 +1604,16 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
   },
   protocol: {
     durability: {
+      "era-manifesto": [
+        "업그레이드의 시대는 결국 복구 기록이 어디까지 버티는지가 다시 쓴다.",
+        "프로토콜의 질서는 결국 릴리스 속도보다 운영 로그가 늦게 정리한다.",
+        "새 국면은 결국 검증자 숫자보다 복구 태도가 남긴 기록이 연다.",
+        "배포의 체급은 결국 박수보다 장애 뒤 운영이 얼마나 오래 남는지에서 갈린다.",
+        "프로토콜의 세대는 결국 운영 태도가 어디서 다시 버티는지가 먼저 바꾼다.",
+        "릴리스의 무게는 결국 복구 기록의 지속 시간이 다시 정산한다.",
+        "새 질서는 결국 무대 반응보다 장애 뒤 운영 태도가 더 늦게 쓴다.",
+        "업그레이드 국면은 결국 발표보다 복구와 운영이 어디서 버티는지에서 갈린다.",
+      ],
       "philosophy-note": [
         "신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다.",
         "업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다.",
@@ -1584,6 +1651,16 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
       ],
     },
     launch: {
+      "era-manifesto": [
+        "메인넷의 세대는 결국 발표보다 복귀 자금이 어느 편에 서는지가 다시 쓴다.",
+        "출시의 시대감은 결국 객석에 남은 돈이 다시 매긴다.",
+        "런치 국면의 무게는 결국 무대보다 돌아오는 돈의 속도에서 갈린다.",
+        "메인넷 질서는 결국 발표 박수보다 복귀 자금이 먼저 정산한다.",
+        "출시 체급은 결국 준비도 설명보다 객석의 돈이 남은 자리에서 다시 쓰인다.",
+        "새 메인넷의 무게는 결국 무대가 아니라 복귀 자금이 눕는 자리에서 갈린다.",
+        "런치의 새 질서는 결국 운영 반응과 돈의 복귀가 같은 편일 때 열린다.",
+        "메인넷 시대는 결국 쇼케이스보다 돌아오는 돈이 더 늦게 선언한다.",
+      ],
       "identity-journal": [
         "메인넷 발표보다 늦게 붙는 복귀 자금이 결국 이 출시의 무게를 정한다.",
         "런치 박수보다 오래 남는 건 결국 운영 반응과 자금 복귀 쪽이다.",
@@ -1610,6 +1687,14 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
   },
   "market-structure": {
     liquidity: {
+      "era-manifesto": [
+        "시장의 질서는 결국 호가보다 끝까지 남은 체결이 다시 쓴다.",
+        "유동성의 시대감은 결국 분위기보다 돈이 눕는 자리에서 갈린다.",
+        "한 장세의 본색은 결국 화면보다 늦게 남은 체결에서 더 선명해진다.",
+        "시장의 무게는 결국 열기보다 실제 돈이 버틴 자리에서 다시 정산된다.",
+        "과열의 체급은 결국 분위기가 아니라 끝까지 남은 체결이 다시 매긴다.",
+        "새 장세는 결국 호가보다 돈이 얼마나 오래 버텼는지에서 열린다.",
+      ],
       "philosophy-note": [
         "열기보다 늦게 남는 체결이 결국 이 장면의 값을 다시 매긴다.",
         "돈이 붙은 자리는 화면보다 늦게 보이고 그래서 더 정확하다.",
@@ -1626,6 +1711,16 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
       ],
     },
     settlement: {
+      "era-manifesto": [
+        "정산의 시대는 결국 거래량보다 깊이가 어디서 버텼는지가 다시 쓴다.",
+        "시장 구조의 체급은 결국 숫자보다 늦게 남은 깊이 자리에서 갈린다.",
+        "새 질서는 결국 화면 열기보다 정산 깊이가 허락한 행동의 폭이 다시 연다.",
+        "한 국면의 무게는 결국 거래량이 아니라 정산 깊이가 얼마나 오래 남는지에서 정리된다.",
+        "체결 반응의 세대는 결국 숫자보다 늦게 버틴 깊이 쪽이 다시 바꾼다.",
+        "정산 깊이는 늘 늦지만 결국 그 늦음이 장면의 체급을 다시 쓴다.",
+        "숫자보다 깊이가 끝내 어디서 눕는지가 이 시장 장면의 질서를 다시 정한다.",
+        "새 장세의 질서는 결국 거래량보다 정산 깊이의 지속 시간이 다시 쓴다.",
+      ],
       "philosophy-note": [
         "숫자보다 늦게 남는 깊이 쪽이 결국 이 체결 반응의 체급을 다시 쓴다.",
         "거래량은 빨리 번쩍여도 정산 깊이는 더 늦고 더 솔직하게 남는다.",
@@ -2261,6 +2356,17 @@ function buildSceneFamilyFixationPool(input: KoIdentityWriterInput, focus: Write
     }
   }
 
+  if (input.lane === "ecosystem" && focus === "builder") {
+    if (/builder\+return|builder\+treasury|builder\+capital|builder\+usage/.test(sceneFamily)) {
+      pool.push(
+        "코드만 남고 돈이 안 돌아오면 이 빌드 서사는 회의실 낙관에서 더 못 나간다.",
+        "복귀 자금이 비는 순간 이 빌드 기세는 구조보다 내부 설명으로 더 빨리 접힌다.",
+        "개발자만 버티고 돈이 늦으면 이 생태계 얘기는 기세보다 안쪽 낙관으로 기운다.",
+        "코드와 자금이 엇갈리는 순간 이 빌드 서사는 구조보다 팀 내부 문장에 가까워진다."
+      );
+    }
+  }
+
   if (input.lane === "regulation" && focus === "court") {
     if (/verdict\+execution|court\+execution/.test(sceneFamily)) {
       pool.push(
@@ -2382,6 +2488,16 @@ function buildSceneFamilyEvidencePool(input: KoIdentityWriterInput, focus: Write
         "{A}가 돌아와도 {B}가 비면 그 생태계는 복귀보다 잔류 빈칸이 더 크게 보인다.",
         "{A}가 남아도 {B}가 안 붙으면 그 반응은 지갑 복귀보다 사람 이탈을 더 선명하게 남긴다.",
         "{A}가 살아도 {B}가 약하면 그 생태계 얘기는 복귀 숫자보다 잔류 결핍을 먼저 드러낸다."
+      );
+    }
+  }
+
+  if (input.lane === "ecosystem" && focus === "builder") {
+    if (/builder\+return|builder\+treasury|builder\+capital|builder\+usage/.test(sceneFamily)) {
+      pool.push(
+        "돌아오는 돈이 비는 순간 그 빌드 서사는 구조보다 내부 낙관 쪽으로 먼저 접힌다.",
+        "코드만 버티는 장면은 시간이 지나면 결국 생태계보다 회의실 톤으로 남는다.",
+        "개발자만 남고 자금이 식는 순간 그 기세는 곧 구조 대신 내부 설명으로 되돌아간다."
       );
     }
   }
@@ -3185,6 +3301,14 @@ function buildFrameLayouts(
   focus: WriterFocus,
   lengthProfile: WriterLengthProfile
 ): WriterSegment[][] {
+  const eraFocusNeedsOpeningSpread =
+    mode === "era-manifesto" &&
+    (focus === "retention" ||
+      focus === "court" ||
+      focus === "durability" ||
+      focus === "launch" ||
+      focus === "settlement");
+
   if (lengthProfile === "flash") {
     if (frame === "quest") {
       return [
@@ -3195,6 +3319,15 @@ function buildFrameLayouts(
       ];
     }
     if (mode === "era-manifesto") {
+      if (eraFocusNeedsOpeningSpread) {
+        return [
+          ["stamp", "consequence"],
+          ["pressure", "decision"],
+          ["scene", "stamp"],
+          ["attitude", "decision"],
+          ["fixation", "consequence"],
+        ];
+      }
       return [
         ["scene", "stamp"],
         ["lead", "consequence"],
@@ -3219,6 +3352,15 @@ function buildFrameLayouts(
       ];
     }
     if (mode === "era-manifesto") {
+      if (eraFocusNeedsOpeningSpread) {
+        return [
+          ["stamp", "evidence", "consequence"],
+          ["pressure", "evidence", "decision"],
+          ["scene", "stamp", "consequence"],
+          ["attitude", "stamp", "decision"],
+          ["fixation", "evidence", "consequence"],
+        ];
+      }
       return [
         ["scene", "stamp", "consequence"],
         ["lead", "attitude", "decision"],
@@ -3235,6 +3377,33 @@ function buildFrameLayouts(
   }
 
   if (mode === "era-manifesto") {
+    if (eraFocusNeedsOpeningSpread) {
+      if (lengthProfile === "essay") {
+        return [
+          ["stamp", "pressure", "evidence", "decision", "consequence"],
+          ["pressure", "stamp", "evidence", "decision", "consequence"],
+          ["scene", "stamp", "evidence", "decision", "consequence"],
+          ["attitude", "stamp", "evidence", "decision", "consequence"],
+          ["fixation", "stamp", "evidence", "decision", "consequence"],
+        ];
+      }
+      if (lengthProfile === "long") {
+        return [
+          ["stamp", "evidence", "decision", "consequence"],
+          ["pressure", "evidence", "decision", "consequence"],
+          ["scene", "stamp", "evidence", "consequence"],
+          ["attitude", "evidence", "stamp", "consequence"],
+          ["fixation", "stamp", "decision", "consequence"],
+        ];
+      }
+      return [
+        ["stamp", "evidence", "consequence"],
+        ["pressure", "evidence", "decision", "consequence"],
+        ["scene", "stamp", "evidence", "consequence"],
+        ["attitude", "stamp", "decision", "consequence"],
+        ["fixation", "evidence", "decision", "consequence"],
+      ];
+    }
     if (lengthProfile === "essay") {
       return [
         ["scene", "stamp", "pressure", "evidence", "decision", "consequence"],
@@ -3528,6 +3697,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
       input.lane,
       focus,
       input.mode,
+      lengthProfile,
       input.sceneFamily || "",
       sanitizeClause(input.headline),
       primaryAnchor,
@@ -3578,8 +3748,8 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const pressure = buildPressureLine(input, focus, selectionSeed + variant * 29 + 1, variant, lead, attitude);
   const focusDecisionPool = FOCUS_DECISION_BY_LANE[input.lane]?.[focus] || [];
   const sceneDecisionPool = buildSceneFamilyDecisionPool(input, focus);
-  const decisionPool = [...focusDecisionPool, ...sceneDecisionPool].filter(Boolean).length
-    ? [...focusDecisionPool, ...sceneDecisionPool].filter(Boolean)
+  const decisionPool = [...sceneDecisionPool, ...focusDecisionPool].filter(Boolean).length
+    ? [...sceneDecisionPool, ...focusDecisionPool].filter(Boolean)
     : DECISION_BY_LANE[input.lane];
   const decision = pickContextualDistinctLine(
     decisionPool,
@@ -3593,6 +3763,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
       primaryAnchor,
       secondaryAnchor,
       "decision",
+      lengthProfile,
     ].join("|"),
     variant,
     [lead, scene, attitude, fixation],
@@ -3600,8 +3771,8 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   );
   const focusConsequencePool = FOCUS_CONSEQUENCE_BY_LANE[input.lane]?.[focus] || [];
   const sceneConsequencePool = buildSceneFamilyConsequencePool(input, focus);
-  const consequencePool = [...focusConsequencePool, ...sceneConsequencePool].filter(Boolean).length
-    ? [...focusConsequencePool, ...sceneConsequencePool].filter(Boolean)
+  const consequencePool = [...sceneConsequencePool, ...focusConsequencePool].filter(Boolean).length
+    ? [...sceneConsequencePool, ...focusConsequencePool].filter(Boolean)
     : CONSEQUENCE_BY_LANE[input.lane];
   const consequence = pickContextualDistinctLine(
     consequencePool,
@@ -3614,6 +3785,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
       primaryAnchor,
       secondaryAnchor,
       "consequence",
+      lengthProfile,
     ].join("|"),
     variant,
     [lead, scene, stamp, decision],
