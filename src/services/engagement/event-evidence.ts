@@ -1472,6 +1472,22 @@ export function buildEventEvidenceFallbackPost(
         ) % pool.length
       ];
     if (plan.lane === "ecosystem" && focus === "retention") {
+      if (/habit-gap|return\+habit/.test(plan.sceneFamily || "")) {
+        return pickEraVariant(
+          "이 국면은 커뮤니티 온도보다 남는 생활 습관의 밀도를 더 엄격하게 심문한다",
+          "새 생태계의 질서는 결국 다시 이어지는 습관이 어디에 남는지에서 갈린다",
+          "이번 사이클은 반응보다 다음 날에도 이어지는 습관 쪽에 더 비싼 값을 매긴다",
+          "생태계의 다음 세대는 결국 남은 사람보다 남은 생활 리듬이 먼저 연다"
+        );
+      }
+      if (/wallet-thins|wallet\+retention|cohort-thin/.test(plan.sceneFamily || "")) {
+        return pickEraVariant(
+          "이 국면은 커뮤니티 열기보다 남는 지갑과 사람 수의 간극을 더 차갑게 본다",
+          "새 생태계의 체급은 결국 돌아오는 지갑보다 남는 사람 수가 다시 쓴다",
+          "이번 사이클은 재방문 숫자보다 끝까지 남은 사람 수의 밀도로 값이 갈린다",
+          "열기보다 남는 사람 수가 비는 순간 생태계의 시대감도 바로 바뀐다"
+        );
+      }
       return pickEraVariant(
         "이번 국면은 열기보다 남는 사람 수에 더 비싼 값을 매긴다",
         "이 사이클은 커뮤니티 온도보다 재방문 습관을 더 엄격하게 심문한다",
@@ -1488,6 +1504,22 @@ export function buildEventEvidenceFallbackPost(
       );
     }
     if (plan.lane === "regulation" && focus === "court") {
+      if (/capital-lag|verdict-gap/.test(plan.sceneFamily || "")) {
+        return pickEraVariant(
+          "소송 국면의 무게는 결국 판결문보다 늦게 붙는 자금 쪽이 다시 쓴다",
+          "법원 뉴스의 시대감은 결국 해설 길이보다 눕지 못한 돈의 자리에서 갈린다",
+          "규제 뉴스의 체급은 결국 판결보다 자금이 어느 자리에서 멈추는지에서 정산된다",
+          "판결 뉴스의 값은 결국 기사보다 늦게 붙는 돈의 방향이 다시 매긴다"
+        );
+      }
+      if (/briefing-gap|briefing\+execution/.test(plan.sceneFamily || "")) {
+        return pickEraVariant(
+          "규제 국면의 체급은 결국 브리핑보다 집행이 붙는 속도에서 갈린다",
+          "법원 해설의 무게는 결국 기사 길이보다 집행 빈칸이 다시 정산한다",
+          "이 국면의 규제 뉴스는 결국 브리핑보다 현장 집행의 밀도로 값이 갈린다",
+          "소송 뉴스의 세대감은 결국 판결보다 집행 흔적이 어디까지 내려오는지에서 열린다"
+        );
+      }
       return pickEraVariant(
         "이번 국면에서 규제 뉴스의 무게는 판결보다 집행에 눕는다",
         "법원 문장이 아니라 돈이 실제로 어디에 눕는지가 규제의 시대감을 정한다",
@@ -1499,6 +1531,22 @@ export function buildEventEvidenceFallbackPost(
       );
     }
     if (plan.lane === "protocol" && focus === "launch") {
+      if (/showcase|audience-gap/.test(plan.sceneFamily || "")) {
+        return pickEraVariant(
+          "이번 런치의 값은 결국 무대보다 객석의 돈이 다시 쓴다",
+          "메인넷의 시대감은 결국 쇼케이스보다 돌아오지 않은 돈의 자리에서 갈린다",
+          "출시 국면의 체급은 결국 발표보다 객석 바깥으로 나온 돈의 속도에서 정산된다",
+          "메인넷 무대는 뜨거워도 시대의 값은 결국 객석의 돈이 다시 매긴다"
+        );
+      }
+      if (/ops-cold|return-lag/.test(plan.sceneFamily || "")) {
+        return pickEraVariant(
+          "이번 사이클은 메인넷 설명보다 늦게 붙는 운영과 복귀의 속도로 갈린다",
+          "런치의 체급은 결국 발표보다 운영 반응과 자금 복귀가 같이 남는지에서 정산된다",
+          "새 메인넷의 무게는 결국 준비도보다 복귀와 운영이 어느 자리에서 버티는지에서 갈린다",
+          "출시 국면의 질서는 결국 박수보다 늦게 붙는 복귀와 운영 태도가 다시 쓴다"
+        );
+      }
       return pickEraVariant(
         "이번 사이클은 출시 박수보다 돌아오는 돈의 속도로 체급이 갈린다",
         "메인넷의 시대감은 결국 복귀 자금이 얼마나 늦게 붙는지에서 드러난다",
@@ -1521,6 +1569,22 @@ export function buildEventEvidenceFallbackPost(
       );
     }
     if (plan.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) {
+      if (/book-thin|execution-thin/.test(plan.sceneFamily || "")) {
+        return pickEraVariant(
+          "이 국면은 거래량보다 늦게 남는 호가 두께가 체급을 다시 쓴다",
+          "시장 구조의 체급은 결국 숫자보다 호가 책이 어디서 비는지에서 갈린다",
+          "새 장세의 값은 결국 체결보다 늦게 붙는 깊이 빈칸이 다시 정산한다",
+          "정산의 시대감은 결국 거래량보다 호가 책의 빈칸이 어디서 남는지에서 드러난다"
+        );
+      }
+      if (/size-only|settlement-lag/.test(plan.sceneFamily || "")) {
+        return pickEraVariant(
+          "이 국면은 숫자 크기보다 정산 깊이가 어디서 따라오지 못하는지에서 갈린다",
+          "새 장세의 질서는 결국 거래량보다 정산 깊이의 지연이 다시 쓴다",
+          "시장 구조의 값은 결국 숫자 반응보다 깊이가 늦게 눕는 자리에서 정산된다",
+          "정산의 체급은 결국 거래량보다 늦게 따라온 깊이가 다시 매긴다"
+        );
+      }
       return pickEraVariant(
         "이 국면은 호가가 아니라 실제 돈이 시장의 질서를 다시 정한다",
         "새 장세는 체결이 얼마나 오래 남는지가 먼저 선언한다",

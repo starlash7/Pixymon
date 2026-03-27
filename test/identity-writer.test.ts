@@ -435,7 +435,7 @@ test("buildKoIdentityWriterCandidate repairs thin scene headlines without malfor
 
   assert.doesNotMatch(text, /얇아진에서|커진에서|낮아진에서/);
   assert.doesNotMatch(text, /구간/);
-  assert.match(text, /(생활 흔적|습관|장면|빈칸)/);
+  assert.match(text, /(생활 흔적|습관|장면|빈칸|잔류|광고 냄새|포스터)/);
 });
 
 test("buildKoIdentityWriterCandidate can surface lane fixation instead of generic instinct", () => {

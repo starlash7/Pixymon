@@ -1480,6 +1480,10 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "생태계의 무게는 결국 떠들썩한 반응보다 남아 버틴 사람 수가 정산한다.",
         "끝내 다음 질서를 여는 건 열기가 아니라 돌아오는 사람의 습관이다.",
         "새 세대는 결국 커뮤니티 온도보다 잔류의 밀도로 먼저 열린다.",
+        "반응은 앞서도 결국 시대를 바꾸는 건 다음 날에도 남는 습관 쪽이다.",
+        "생태계의 국면은 결국 열기보다 끝까지 남은 사람 수가 더 늦게 다시 쓴다.",
+        "새 질서는 결국 커뮤니티 기세보다 남겨진 생활 리듬이 먼저 연다.",
+        "남는 사람 수가 붙은 자리만 결국 다음 생태계 문장을 구조로 바꾼다.",
       ],
     "identity-journal": [
       "끝내 믿게 되는 건 떠들썩한 반응보다 다시 돌아온 사람 수다.",
@@ -1569,6 +1573,9 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "법원 문장은 빨라도 규제의 무게는 결국 뒤늦게 눕는 주문 쪽이 다시 매긴다.",
         "이 국면의 법원 뉴스는 결국 기사보다 자금 태도의 지속 시간이 더 크게 다시 쓴다.",
         "판결 뉴스의 체급은 결국 브리핑보다 집행과 자금이 남은 자리가 정산한다.",
+        "소송의 무게는 결국 판결보다 대기 주문이 어디서 물러나는지가 먼저 다시 쓴다.",
+        "법원 뉴스의 질서는 결국 기사보다 집행과 자금의 지연이 어디서 겹치는지에서 갈린다.",
+        "판결문이 길어도 결국 이 국면의 값은 돈이 어느 자리에서 주저앉는지가 다시 적는다.",
       ],
       "meta-reflection": [
         "판결 뉴스의 무게는 결국 기사보다 돈이 어느 자리에서 멈추는지가 다시 정한다.",
@@ -1720,6 +1727,9 @@ const FOCUS_MODE_STAMP_BY_LANE_AND_MODE: Partial<
         "정산 깊이는 늘 늦지만 결국 그 늦음이 장면의 체급을 다시 쓴다.",
         "숫자보다 깊이가 끝내 어디서 눕는지가 이 시장 장면의 질서를 다시 정한다.",
         "새 장세의 질서는 결국 거래량보다 정산 깊이의 지속 시간이 다시 쓴다.",
+        "이 장세의 무게는 결국 거래량보다 늦게 눕는 깊이 쪽이 다시 정산한다.",
+        "시장 구조의 국면은 결국 숫자보다 정산 깊이의 빈칸이 어디서 남는지에서 갈린다.",
+        "정산의 새 질서는 결국 체결보다 깊이가 끝까지 버틴 자리에서 먼저 열린다.",
       ],
       "philosophy-note": [
         "숫자보다 늦게 남는 깊이 쪽이 결국 이 체결 반응의 체급을 다시 쓴다.",
@@ -2666,6 +2676,14 @@ function buildSceneFamilyDecisionPool(input: KoIdentityWriterInput, focus: Write
         "복귀 자금이 객석에 머무는 순간 이 메인넷 얘기는 브리핑 체급으로 내려앉는다."
       );
     }
+    if (/return\+launch|launch\+return|launch\+treasury|launch\+capital|capital\+launch/.test(sceneFamily)) {
+      pool.push(
+        "준비도는 단단해도 복귀 자금이 안 붙으면 이 런치는 반쪽 발표로 남는다.",
+        "메인넷 기대는 커도 돌아오는 돈이 없으면 이 출시는 객석 바깥으로 못 나온다.",
+        "출시 설명이 선명해도 복귀 자금이 비면 이 런치는 장부 바깥에서 체급이 꺼진다.",
+        "메인넷 문장은 단단해도 돈이 늦으면 이 출시는 준비도보다 빈칸이 먼저 기억된다."
+      );
+    }
   }
 
   if (input.lane === "market-structure" && focus === "settlement") {
@@ -2736,6 +2754,13 @@ function buildSceneFamilyConsequencePool(input: KoIdentityWriterInput, focus: Wr
       pool.push(
         "돌아오는 돈이 늦는 순간 이 출시는 메인넷보다 발표회 체급으로 남는다.",
         "객석의 돈이 비는 순간 그 런치는 운영보다 무대 쪽으로 먼저 기운다."
+      );
+    }
+    if (/return\+launch|launch\+return|launch\+treasury|launch\+capital|capital\+launch/.test(sceneFamily)) {
+      pool.push(
+        "복귀 자금이 붙지 않는 순간 이 메인넷 얘기는 준비도보다 빈칸으로 더 오래 남는다.",
+        "돈이 돌아오지 않는 순간 그 출시는 메인넷보다 발표회 체급으로 더 빨리 접힌다.",
+        "객석 바깥으로 나온 돈이 없으면 이 런치는 곧 종이 무대처럼 얇아진다."
       );
     }
   }
@@ -2848,6 +2873,7 @@ function pickModeStampForLane(
   lane: TrendLane,
   focus: WriterFocus,
   mode: string,
+  lengthProfile: WriterLengthProfile,
   seed: number,
   variant: number,
   lead: string,
@@ -2868,6 +2894,7 @@ function pickModeStampForLane(
     lane,
     focus,
     mode,
+    lengthProfile,
     sceneFamily,
     sanitizeClause(lead),
     sanitizeClause(attitude),
@@ -2887,6 +2914,7 @@ function pickModeStampForLane(
 function buildPressureLine(
   input: KoIdentityWriterInput,
   focus: WriterFocus,
+  lengthProfile: WriterLengthProfile,
   seed: number,
   variant: number,
   lead: string,
@@ -2975,6 +3003,7 @@ function buildPressureLine(
     input.lane,
     focus,
     input.mode,
+    lengthProfile,
     input.sceneFamily || "",
     sanitizeClause(input.headline),
     sanitizeClause(input.primaryAnchor),
@@ -3181,6 +3210,7 @@ function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
 function buildEraNudgeLine(
   input: KoIdentityWriterInput,
   focus: WriterFocus,
+  lengthProfile: WriterLengthProfile,
   variant: number,
   seed: number,
   stamp: string,
@@ -3220,6 +3250,18 @@ function buildEraNudgeLine(
       "정책의 체급은 결국 행동이 남는 자리에서 다시 매겨진다.",
       "판결의 세대감은 결국 돈이 눕는 자리에서 갈린다."
     );
+    if (/capital-lag|verdict-gap/.test(sceneFamily)) {
+      pool.push(
+        "판결 국면의 값은 결국 돈이 눕지 못한 자리에서 다시 깎인다.",
+        "소송의 시대감은 결국 기사보다 늦게 붙는 돈의 방향이 다시 정한다."
+      );
+    }
+    if (/briefing-gap|briefing\+execution/.test(sceneFamily)) {
+      pool.push(
+        "브리핑이 길어질수록 이 국면의 체급은 결국 집행 빈칸이 다시 매긴다.",
+        "규제의 무게는 결국 브리핑보다 행동이 어디까지 내려오는지에서 갈린다."
+      );
+    }
   }
 
   if (input.lane === "protocol" && focus === "launch") {
@@ -3228,6 +3270,18 @@ function buildEraNudgeLine(
       "메인넷의 체급은 결국 복귀 자금이 다시 쓴다.",
       "새 런치의 값은 결국 객석 밖으로 나온 돈이 정한다."
     );
+    if (/showcase|audience-gap/.test(sceneFamily)) {
+      pool.push(
+        "쇼케이스의 체급은 결국 객석 밖으로 나온 돈이 다시 정산한다.",
+        "출시 국면의 본색은 결국 무대보다 객석의 돈이 다시 쓴다."
+      );
+    }
+    if (/ops-cold|return-lag|return\+ops/.test(sceneFamily)) {
+      pool.push(
+        "메인넷의 질서는 결국 복귀와 운영이 같이 남는 자리에서 갈린다.",
+        "출시의 체급은 결국 준비도보다 복귀와 운영이 얼마나 늦게 붙는지에서 정산된다."
+      );
+    }
   }
 
   if (input.lane === "protocol" && focus === "durability") {
@@ -3236,6 +3290,18 @@ function buildEraNudgeLine(
       "프로토콜의 질서는 결국 로그와 복구가 정한다.",
       "새 국면은 결국 장애 뒤 태도가 선언한다."
     );
+    if (/ops\+validator|validator\+log|log-gap/.test(sceneFamily)) {
+      pool.push(
+        "프로토콜의 무게는 결국 검증자 숫자보다 늦게 남은 운영 로그가 다시 쓴다.",
+        "업그레이드의 체급은 결국 릴리스보다 운영 로그의 지속 시간이 정산한다."
+      );
+    }
+    if (/ops\+recovery|recovery\+validator|repair\+ops|rollout-lag/.test(sceneFamily)) {
+      pool.push(
+        "새 질서는 결국 배포보다 장애 뒤 복구 태도가 더 늦게 연다.",
+        "개선의 시대감은 결국 롤아웃보다 복구가 어디서 버티는지에서 갈린다."
+      );
+    }
   }
 
   if (input.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) {
@@ -3260,6 +3326,7 @@ function buildEraNudgeLine(
     input.lane,
     focus,
     input.mode,
+    lengthProfile,
     input.sceneFamily || "",
     sanitizeClause(input.headline),
     sanitizeClause(input.primaryAnchor),
@@ -3737,6 +3804,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     input.lane,
     focus,
     input.mode,
+    lengthProfile,
     selectionSeed + variant * 23 + 1,
     variant,
     lead,
@@ -3745,7 +3813,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     scene,
     input.sceneFamily || ""
   );
-  const pressure = buildPressureLine(input, focus, selectionSeed + variant * 29 + 1, variant, lead, attitude);
+  const pressure = buildPressureLine(input, focus, lengthProfile, selectionSeed + variant * 29 + 1, variant, lead, attitude);
   const focusDecisionPool = FOCUS_DECISION_BY_LANE[input.lane]?.[focus] || [];
   const sceneDecisionPool = buildSceneFamilyDecisionPool(input, focus);
   const decisionPool = [...sceneDecisionPool, ...focusDecisionPool].filter(Boolean).length
@@ -3847,7 +3915,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   }
 
   if (input.mode === "era-manifesto" && !/(국면|질서|시대|체급|사이클)/u.test(candidate)) {
-    const eraNudge = buildEraNudgeLine(input, focus, variant, selectionSeed, stamp, scene, lead);
+    const eraNudge = buildEraNudgeLine(input, focus, lengthProfile, variant, selectionSeed, stamp, scene, lead);
     const eraSentence = /[?؟.]$/u.test(eraNudge) ? eraNudge : `${sanitizeClause(eraNudge)}.`;
     const sentences = candidate.split(/(?<=[.!?])\s+/u).filter(Boolean);
     const injected =
