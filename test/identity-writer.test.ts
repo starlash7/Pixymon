@@ -260,6 +260,66 @@ test("buildKoIdentityWriterCandidate rewrites 구간 headlines into direct prose
   assert.match(text, /(얕다|홍보 문구|재방문|남는 사람)/);
 });
 
+test("buildKoIdentityWriterCandidate changes cadence and length across flash and essay profiles", () => {
+  const flash = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "ecosystem",
+      mode: "identity-journal",
+      headline: "생태계가 오래 가는지 아닌지는 결국 재방문에서 갈린다",
+      primaryAnchor: "체인 안쪽 사용",
+      secondaryAnchor: "재방문 흐름",
+      seedHint: "identity-writer:length-profile",
+      maxChars: 96,
+    },
+    0
+  );
+
+  const essay = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "ecosystem",
+      mode: "identity-journal",
+      headline: "생태계가 오래 가는지 아닌지는 결국 재방문에서 갈린다",
+      primaryAnchor: "체인 안쪽 사용",
+      secondaryAnchor: "재방문 흐름",
+      seedHint: "identity-writer:length-profile",
+      maxChars: 316,
+    },
+    0
+  );
+
+  assert.ok(flash.length <= 96);
+  assert.ok(essay.length <= 316);
+  assert.ok(essay.length >= flash.length + 40);
+  assert.notEqual(flash, essay);
+  assert.match(flash, /(재방문|잔류|사람)/);
+  assert.match(essay, /(재방문|잔류|사람)/);
+});
+
+test("buildKoIdentityWriterCandidate gives era-manifesto mode a period-scale thesis", () => {
+  const text = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "market-structure",
+      mode: "era-manifesto",
+      headline: "이 국면은 호가가 아니라 실제 돈이 질서를 다시 정하는 시기다",
+      primaryAnchor: "현물 체결",
+      secondaryAnchor: "호가 두께",
+      worldviewHint: "시장은 결국 체결이 허락한 행동만 오래 기억한다",
+      signatureBelief: "분위기보다 늦게 남은 체결 편에 선다",
+      recentReflection: "질서는 늘 실제 돈이 늦게 다시 쓴다",
+      seedHint: "identity-writer:era-manifesto",
+      maxChars: 300,
+    },
+    1
+  );
+
+  assert.match(text, /(국면|질서|시대|체급|사이클)/);
+  assert.match(text, /(돈|체결|호가|시장)/);
+  assert.doesNotMatch(text, /먼저 본다|확인한다|미룬다/);
+});
+
 test("buildKoIdentityWriterCandidate can surface lane fixation instead of generic instinct", () => {
   const text = buildKoIdentityWriterCandidate({
     ...baseInput,
@@ -270,7 +330,7 @@ test("buildKoIdentityWriterCandidate can surface lane fixation instead of generi
     seedHint: "identity-writer:fixation",
   }, 2);
 
-  assert.match(text, /(체결|돈이 안 붙은 자신감|자금이 안 남은 자신감|화면 열기보다 오래 보는 건 결국 체결|돈이 남는지 여부가 이 과열의 본색을 가른다|돈이 빠지는 순간 그 장면은 구조보다 연출에 가까워진다)/);
+  assert.match(text, /(체결|돈이 안 붙은 자신감|자금이 안 남은 자신감|화면 열기보다 오래 보는 건 결국 체결|돈이 남는지 여부가 이 과열의 본색을 가른다|돈이 빠지는 순간 그 장면은 구조보다 연출에 가까워진다|자금이 안 남은 순간 그 과열은 바로 힘이 빠진다)/);
 });
 
 test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy mode", () => {

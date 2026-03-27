@@ -30,6 +30,9 @@ type PlannerSample = {
   lane: TrendLane;
   mode: NarrativeMode;
   variant: number;
+  lengthProfile: string;
+  maxChars: number;
+  charCount: number;
   eventSource: string;
   focus: string;
   sceneFamily: string;
@@ -39,6 +42,19 @@ type PlannerSample = {
   firstSentence: string;
   secondSentence: string;
 };
+
+type LengthProfile = {
+  label: "flash" | "short" | "standard" | "long" | "essay";
+  maxChars: number;
+};
+
+const LENGTH_PROFILES: LengthProfile[] = [
+  { label: "flash", maxChars: 104 },
+  { label: "short", maxChars: 142 },
+  { label: "standard", maxChars: 196 },
+  { label: "long", maxChars: 248 },
+  { label: "essay", maxChars: 320 },
+];
 
 function sceneFamilyBase(sceneFamily: string): string {
   const parts = String(sceneFamily || "")
@@ -426,6 +442,10 @@ function countTop(items: string[]): Array<[string, number]> {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
+function resolveLengthProfile(variant: number): LengthProfile {
+  return LENGTH_PROFILES[variant % LENGTH_PROFILES.length];
+}
+
 function generateSamples(variantCount: number): PlannerSample[] {
   const samples: PlannerSample[] = [];
 
@@ -437,6 +457,7 @@ function generateSamples(variantCount: number): PlannerSample[] {
     const syntheticRecentPosts: RecentPostRecord[] = [...(item.recentPosts || [])];
 
     for (let variant = 0; variant < variantCount; variant += 1) {
+      const profile = resolveLengthProfile(variant);
       const rotatedStructuralEvents = structuralEvents.length
         ? structuralEvents.slice(variant % structuralEvents.length).concat(structuralEvents.slice(0, variant % structuralEvents.length))
         : [];
@@ -455,13 +476,16 @@ function generateSamples(variantCount: number): PlannerSample[] {
         throw new Error(`planner returned null for case ${item.id} variant ${variant}`);
       }
 
-      const text = buildEventEvidenceFallbackPost(plan, "ko", 260, item.mode, variant);
+      const text = buildEventEvidenceFallbackPost(plan, "ko", profile.maxChars, item.mode, variant);
       const sentences = splitSentences(text);
       samples.push({
         caseId: item.id,
         lane: item.lane,
         mode: item.mode,
         variant,
+        lengthProfile: profile.label,
+        maxChars: profile.maxChars,
+        charCount: text.length,
         eventSource: plan.event.source,
         focus: plan.focus,
         sceneFamily: plan.sceneFamily || "",
@@ -491,7 +515,7 @@ function buildMarkdown(samples: PlannerSample[]): string {
   const lines: string[] = ["# Pixymon Planner-Aware Samples", ""];
   for (const sample of samples) {
     lines.push(
-      `## ${sample.caseId} / ${sample.lane} / ${sample.mode} / ${sample.focus} / ${sample.sceneFamily || "none"} / v${sample.variant}`
+      `## ${sample.caseId} / ${sample.lane} / ${sample.mode} / ${sample.focus} / ${sample.sceneFamily || "none"} / ${sample.lengthProfile}(${sample.charCount}/${sample.maxChars}) / v${sample.variant}`
     );
     lines.push("");
     lines.push(`- plannerScore: ${sample.plannerScore}`);
@@ -508,12 +532,23 @@ function main() {
   const samples = generateSamples(variantCount);
   const firstSentenceTop = countTop(samples.map((sample) => sample.firstSentence)).slice(0, 10);
   const secondSentenceTop = countTop(samples.map((sample) => sample.secondSentence)).slice(0, 10);
+  const lengthProfileTop = countTop(samples.map((sample) => sample.lengthProfile)).slice(0, 10);
   const focusTop = countTop(samples.map((sample) => sample.focus)).slice(0, 10);
   const eventSourceTop = countTop(samples.map((sample) => sample.eventSource)).slice(0, 10);
   const sceneFamilyTop = countTop(samples.map((sample) => sample.sceneFamily)).slice(0, 10);
   const sceneFamilyBaseTop = countTop(samples.map((sample) => sceneFamilyBase(sample.sceneFamily))).slice(0, 10);
   const sceneFamilyTiltTop = countTop(samples.map((sample) => sceneFamilyTilt(sample.sceneFamily))).slice(0, 10);
   const warningTop = countTop(samples.flatMap((sample) => sample.plannerWarnings)).slice(0, 10);
+  const lengthSummary = Object.fromEntries(
+    LENGTH_PROFILES.map((profile) => {
+      const bucket = samples.filter((sample) => sample.lengthProfile === profile.label);
+      const avgChars =
+        bucket.length > 0
+          ? Math.round(bucket.reduce((sum, sample) => sum + sample.charCount, 0) / bucket.length)
+          : 0;
+      return [profile.label, { maxChars: profile.maxChars, avgChars, count: bucket.length }];
+    })
+  );
 
   const outDir = path.resolve(".test-data");
   fs.mkdirSync(outDir, { recursive: true });
@@ -530,6 +565,8 @@ function main() {
         variantCount,
         topFirstSentences: firstSentenceTop,
         topSecondSentences: secondSentenceTop,
+        topLengthProfiles: lengthProfileTop,
+        lengthSummary,
         topFocuses: focusTop,
         topEventSources: eventSourceTop,
         topSceneFamilies: sceneFamilyTop,
@@ -545,6 +582,11 @@ function main() {
 
   console.log(`wrote ${samples.length} planner-aware samples -> ${path.relative(process.cwd(), markdownPath)}`);
   console.log(`wrote summary -> ${path.relative(process.cwd(), summaryPath)}`);
+  console.log("");
+  console.log("length profiles:");
+  for (const [text, count] of lengthProfileTop.slice(0, 5)) {
+    console.log(`- ${count}x ${text}`);
+  }
   console.log("");
   console.log("top first sentences:");
   for (const [text, count] of firstSentenceTop.slice(0, 5)) {

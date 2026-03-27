@@ -1458,14 +1458,92 @@ export function buildEventEvidenceFallbackPost(
   };
 
   const eventHeadlineRaw = sanitizeTweetText(plan.event.headline).replace(/\.$/, "");
+  const baseNarrativeMode = resolveFallbackNarrativeMode(mode || inferNarrativeModeFromHeadline(eventHeadlineRaw));
+  const narrativeMode = resolveVariantFallbackNarrativeMode(baseNarrativeMode, plan, variant);
+  const intensifyKoEraHeadlineByFocus = (text: string): string => {
+    if (language !== "ko" || narrativeMode !== "era-manifesto") return text;
+    const focus = WRITER_FOCUS_SET.has(plan.focus as WriterFocus) ? (plan.focus as WriterFocus) : "general";
+    const pickEraVariant = (...pool: string[]) =>
+      pool[
+        (
+          stableSeed(
+            `${plan.event.id}|${plan.lane}|${focus}|${plan.sceneFamily || "none"}|${(plan.event.evidenceLabelHints || []).join("|")}|era-headline|${variant}`
+          ) + variant
+        ) % pool.length
+      ];
+    if (plan.lane === "ecosystem" && focus === "retention") {
+      return pickEraVariant(
+        "이번 국면은 열기보다 남는 사람 수에 더 비싼 값을 매긴다",
+        "이 사이클은 커뮤니티 온도보다 재방문 습관을 더 엄격하게 심문한다",
+        "생태계의 시대감은 결국 다시 돌아오는 사람 수가 다시 쓴다",
+        "지금 바뀌는 건 열기가 아니라 남는 습관의 질서다"
+      );
+    }
+    if (plan.lane === "ecosystem" && focus === "builder") {
+      return pickEraVariant(
+        "이 국면은 코드보다 돌아오는 돈의 태도를 더 오래 본다",
+        "생태계의 체급은 결국 빌더와 자금이 같은 편에 서는지에서 갈린다",
+        "이번 사이클은 개발 흔적보다 복귀 자금의 성격이 더 많은 걸 말한다",
+        "생태계의 다음 세대는 결국 코드와 돈이 함께 버틴 자리에서 열린다"
+      );
+    }
+    if (plan.lane === "regulation" && focus === "court") {
+      return pickEraVariant(
+        "이번 국면에서 규제 뉴스의 무게는 판결보다 집행에 눕는다",
+        "법원 문장이 아니라 돈이 실제로 어디에 눕는지가 규제의 시대감을 정한다",
+        "규제의 체급은 결국 기사보다 집행과 자금이 다시 매긴다",
+        "지금 바뀌는 건 판결 뉴스의 크기가 아니라 집행이 붙는 속도다"
+      );
+    }
+    if (plan.lane === "protocol" && focus === "launch") {
+      return pickEraVariant(
+        "이번 사이클은 출시 박수보다 돌아오는 돈의 속도로 체급이 갈린다",
+        "메인넷의 시대감은 결국 복귀 자금이 얼마나 늦게 붙는지에서 드러난다",
+        "런치의 값은 발표보다 객석의 돈이 더 오래 다시 쓴다",
+        "지금 시장은 준비도보다 복귀의 태도에 더 비싼 값을 매긴다"
+      );
+    }
+    if (plan.lane === "protocol" && focus === "durability") {
+      return pickEraVariant(
+        "새 프로토콜의 시대는 배포 속도보다 복구 태도가 결정한다",
+        "업그레이드의 체급은 결국 운영 로그가 다시 쓴다",
+        "이 국면은 릴리스 노트보다 장애 뒤 태도를 더 엄격하게 본다",
+        "프로토콜의 질서는 결국 복구 기록이 늦게 선언한다"
+      );
+    }
+    if (plan.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) {
+      return pickEraVariant(
+        "이 국면은 호가가 아니라 실제 돈이 시장의 질서를 다시 정한다",
+        "새 장세는 체결이 얼마나 오래 남는지가 먼저 선언한다",
+        "시장 구조의 체급은 결국 화면보다 돈이 어디에 눕는지가 다시 쓴다",
+        "지금 바뀌는 건 분위기가 아니라 정산 깊이가 허락하는 행동의 폭이다"
+      );
+    }
+    if (plan.lane === "onchain") {
+      return pickEraVariant(
+        "온체인의 시대감은 결국 하루를 버틴 흔적이 다시 쓴다",
+        "새 장세는 튀는 숫자보다 남는 흔적의 권위가 먼저 선언한다",
+        "이 국면은 예쁜 수치보다 버틴 주소와 자금의 습관에 더 엄격하다",
+        "온체인의 질서는 결국 오래 남은 흔적 쪽으로 다시 기운다"
+      );
+    }
+    if (plan.lane === "macro") {
+      return pickEraVariant(
+        "이 국면은 헤드라인보다 자금 습관이 시대의 방향을 더 빨리 말한다",
+        "새 사이클은 해설보다 배치가 먼저 선언한다",
+        "거시의 체급은 결국 설명이 아니라 돈의 습관이 다시 매긴다",
+        "시대는 결국 해설보다 배치가 어디로 눕는지에서 갈린다"
+      );
+    }
+    return text;
+  };
   const eventHeadline =
     language === "ko"
-      ? diversifyKoEventHeadlineByFocus(humanizeKoEventHeadline(eventHeadlineRaw))
+      ? intensifyKoEraHeadlineByFocus(diversifyKoEventHeadlineByFocus(humanizeKoEventHeadline(eventHeadlineRaw)))
       : eventHeadlineRaw;
   const [koEvidenceA, koEvidenceB] = language === "ko" ? resolveDistinctKoEvidenceAnchors(plan) : ["", ""];
   const evidenceA = language === "ko" ? koEvidenceA : formatEvidenceAnchor(plan.evidence[0], language);
   const evidenceB = language === "ko" ? koEvidenceB : formatEvidenceAnchor(plan.evidence[1], language);
-  const narrativeMode = resolveFallbackNarrativeMode(mode || inferNarrativeModeFromHeadline(eventHeadline));
   const seed = stableSeed(`${plan.event.id}|${eventHeadline}|${evidenceA}|${evidenceB}|${narrativeMode}`);
 
   if (language === "ko") {
@@ -1509,6 +1587,10 @@ export function buildEventEvidenceFallbackPost(
       `What I log today is ${eventHeadline}. Anchors are ${evidenceA} and ${evidenceB}. I verify this first and drop the thesis if opposite evidence persists.`,
       `One line from my journal: ${eventHeadline}. My anchors are ${evidenceA} and ${evidenceB}. I re-check next cycle and revise if the condition breaks.`,
     ],
+    "era-manifesto": [
+      `${eventHeadline}. This cycle is repricing behavior before narrative, and ${evidenceA} plus ${evidenceB} are where that repricing shows up first.`,
+      `${eventHeadline}. When the era actually turns, it is ${evidenceA} and ${evidenceB} that redraw the rules before commentary catches up.`,
+    ],
     "philosophy-note": [
       `${eventHeadline} through ${evidenceA} and ${evidenceB} explains behavior better than price. I verify execution first and retract this read if falsified.`,
       `A book fragment onchain becomes ${eventHeadline}. Two anchors: ${evidenceA}, ${evidenceB}. I test this first and abandon it if conditions fail.`,
@@ -1536,6 +1618,9 @@ function resolveFallbackNarrativeMode(mode: NarrativeMode): NarrativeMode {
   if (mode === "interaction-experiment" || mode === "fable-essay") {
     return "identity-journal";
   }
+  if (mode === "era-manifesto") {
+    return "era-manifesto";
+  }
   if (mode === "philosophy-note") {
     return "meta-reflection";
   }
@@ -1544,11 +1629,30 @@ function resolveFallbackNarrativeMode(mode: NarrativeMode): NarrativeMode {
 
 function inferNarrativeModeFromHeadline(headline: string): NarrativeMode {
   const lower = sanitizeTweetText(headline).toLowerCase();
+  if (/시대|세대|질서|국면|체제|레짐|정당성|관성|습관|전환/.test(lower)) return "era-manifesto";
   if (/철학|philosophy|책|book|사상|worldview/.test(lower)) return "philosophy-note";
   if (/실험|experiment|미션|mission|커뮤니티/.test(lower)) return "interaction-experiment";
   if (/회고|reflection|실수|failure|오판/.test(lower)) return "meta-reflection";
   if (/우화|fable|에세이|essay|비유/.test(lower)) return "fable-essay";
   return "identity-journal";
+}
+
+function resolveVariantFallbackNarrativeMode(
+  baseMode: NarrativeMode,
+  plan: EventEvidencePlan,
+  variant: number
+): NarrativeMode {
+  const focus = String(plan.focus || "general");
+  const sceneFamily = String(plan.sceneFamily || "");
+  const headline = sanitizeTweetText(plan.event.headline || "");
+  const eraEligible =
+    /(retention|builder|court|launch|durability|settlement|liquidity|flow)/.test(focus) ||
+    /(lag|thin|split|return|habit|execution|settlement|validator|court|usage|wallet|capital|depth)/.test(sceneFamily) ||
+    /(시대|세대|질서|국면|체제|전환|정당성|습관)/.test(headline);
+  if (eraEligible && variant % 3 === 2) {
+    return "era-manifesto";
+  }
+  return baseMode;
 }
 
 function stableSeed(input: string): number {

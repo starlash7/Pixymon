@@ -28,6 +28,8 @@ type WriterSegment =
   | "consequence"
   | "question";
 
+type WriterLengthProfile = "flash" | "short" | "standard" | "long" | "essay";
+
 export interface KoIdentityWriterInput {
   headline: string;
   primaryAnchor: string;
@@ -1273,6 +1275,13 @@ const MODE_STAMP_BY_MODE: Record<string, string[]> = {
     "내가 오래 붙드는 건 늘 늦게 남는 쪽이다.",
     "빨리 맞는 설명보다 늦게 남는 근거를 더 오래 붙든다.",
   ],
+  "era-manifesto": [
+    "결국 한 시대의 값은 누가 오래 남는지에서 다시 매겨진다.",
+    "이 국면이 바꾸는 건 숫자보다 사람들의 습관 쪽이다.",
+    "시대는 늘 가장 늦게 남은 흔적 쪽으로 기운다.",
+    "국면 전환은 해설이 아니라 남는 행동이 대신 선언한다.",
+    "결국 질서는 가장 늦게 버틴 쪽을 따라 다시 정리된다.",
+  ],
   "meta-reflection": [
     "대충 맞는 설명일수록 현장에선 빨리 들통난다.",
     "제일 늦게 붙어야 할 자리가 비는 순간 해설은 갑자기 싸진다.",
@@ -1315,6 +1324,11 @@ const MODE_STAMP_BY_MODE: Record<string, string[]> = {
 
 const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<string, string[]>>>> = {
   ecosystem: {
+    "era-manifesto": [
+      "한 생태계의 세대는 결국 남는 사람 수가 갈아엎는다.",
+      "시대가 바뀌는 쪽은 늘 커뮤니티 열기보다 남는 습관 쪽이다.",
+      "사람이 남지 않는 생태계는 결국 다음 국면의 문턱을 못 넘는다.",
+    ],
     "identity-journal": [
       "남는 건 늘 열기보다 잔류 쪽이다.",
       "커뮤니티 얘기의 값은 결국 돌아오는 사람이 매긴다.",
@@ -1327,6 +1341,11 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
     ],
   },
   regulation: {
+    "era-manifesto": [
+      "규제의 시대감은 기사 문장이 아니라 집행이 붙는 속도에서 갈린다.",
+      "정책의 체급은 결국 문장보다 행동이 얼마나 오래 남는지에서 정산된다.",
+      "규제 국면은 해설보다 집행 흔적이 질서를 다시 쓴다.",
+    ],
     "meta-reflection": [
       "규제 뉴스의 무게는 해설이 아니라 집행이 끝내 정한다.",
       "행동으로 번지지 못한 규제 해설은 결국 기사 톤으로 돌아간다.",
@@ -1351,6 +1370,11 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
     ],
   },
   "market-structure": {
+    "era-manifesto": [
+      "시장 구조의 시대는 결국 호가가 아니라 돈이 눕는 자리에서 갈린다.",
+      "새 질서는 체결이 어디까지 남는지가 먼저 쓴다.",
+      "한 국면의 무게는 결국 실제 돈이 화면을 얼마나 오래 이기는지에서 정리된다.",
+    ],
     "philosophy-note": [
       "유동성은 분위기보다 훨씬 늦게 진짜 얼굴을 보여 준다.",
       "체결은 언제나 호가보다 늦게 남고, 그래서 더 정확하다.",
@@ -1362,6 +1386,11 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
     ],
   },
   protocol: {
+    "era-manifesto": [
+      "프로토콜의 시대는 출시 박수가 아니라 운영 태도가 바꾼다.",
+      "업그레이드의 세대는 결국 복구 기록이 늦게 다시 쓴다.",
+      "새 국면은 늘 릴리스 노트보다 장애 뒤 태도가 선언한다.",
+    ],
     "identity-journal": [
       "출시 박수보다 늦게 붙는 운영 반응 쪽이 결국 더 정확하다.",
       "메인넷 문장보다 복귀 자금이 남는지가 결국 이 발표의 값을 정한다.",
@@ -1380,6 +1409,11 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
     ],
   },
   onchain: {
+    "era-manifesto": [
+      "온체인의 시대감은 결국 하루를 버틴 숫자가 다시 쓴다.",
+      "한 국면의 권위는 튀는 수치보다 남는 흔적이 먼저 가져간다.",
+      "새 장세는 결국 오래 버틴 주소와 자금의 습관이 선언한다.",
+    ],
     "meta-reflection": [
       "온체인 숫자는 오래 남는 쪽만 겨우 단서 취급을 받는다.",
       "반짝인 숫자보다 다음 날까지 버틴 흔적이 훨씬 비싸다.",
@@ -2062,8 +2096,20 @@ function summarizeHeadline(headline: string): string {
     .trim();
 }
 
+function resolveWriterLengthProfile(maxChars: number): WriterLengthProfile {
+  if (maxChars <= 110) return "flash";
+  if (maxChars <= 155) return "short";
+  if (maxChars <= 230) return "standard";
+  if (maxChars <= 285) return "long";
+  return "essay";
+}
+
 function resolveWriterFrame(mode: string, focus: WriterFocus, seed: number): KoWriterFrame {
   if (mode === "interaction-experiment") return "quest";
+  if (mode === "era-manifesto" && (focus === "court" || focus === "liquidity" || focus === "settlement")) {
+    return "cross-exam";
+  }
+  if (mode === "era-manifesto") return seed % 2 === 0 ? "claim-note" : "field-note";
   if (mode === "meta-reflection") return "cross-exam";
   if (mode === "identity-journal" && focus === "retention") return "field-note";
   if (mode === "identity-journal" && focus === "hype") return "claim-note";
@@ -2808,7 +2854,87 @@ function rotateLayouts(layouts: WriterSegment[][], seed: number): WriterSegment[
   return [...layouts.slice(offset), ...layouts.slice(0, offset)];
 }
 
-function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, focus: WriterFocus): WriterSegment[][] {
+function buildFrameLayouts(
+  frame: KoWriterFrame,
+  mode: string,
+  lane: TrendLane,
+  focus: WriterFocus,
+  lengthProfile: WriterLengthProfile
+): WriterSegment[][] {
+  if (lengthProfile === "flash") {
+    if (frame === "quest") {
+      return [
+        ["lead", "question"],
+        ["attitude", "question"],
+        ["scene", "question"],
+        ["stamp", "question"],
+      ];
+    }
+    if (mode === "era-manifesto") {
+      return [
+        ["scene", "stamp"],
+        ["lead", "consequence"],
+        ["attitude", "decision"],
+        ["fixation", "consequence"],
+      ];
+    }
+    return [
+      ["lead", "decision"],
+      ["scene", "consequence"],
+      ["attitude", "consequence"],
+      ["stamp", "decision"],
+    ];
+  }
+
+  if (lengthProfile === "short") {
+    if (frame === "quest") {
+      return [
+        ["lead", "evidence", "question"],
+        ["scene", "decision", "question"],
+        ["attitude", "question"],
+      ];
+    }
+    if (mode === "era-manifesto") {
+      return [
+        ["scene", "stamp", "consequence"],
+        ["lead", "attitude", "decision"],
+        ["pressure", "evidence", "consequence"],
+        ["fixation", "stamp", "decision"],
+      ];
+    }
+    return [
+      ["lead", "evidence", "decision"],
+      ["scene", "stamp", "consequence"],
+      ["attitude", "evidence", "consequence"],
+      ["fixation", "decision", "consequence"],
+    ];
+  }
+
+  if (mode === "era-manifesto") {
+    if (lengthProfile === "essay") {
+      return [
+        ["scene", "stamp", "pressure", "evidence", "decision", "consequence"],
+        ["lead", "attitude", "stamp", "evidence", "decision", "consequence"],
+        ["scene", "fixation", "stamp", "evidence", "decision", "consequence"],
+        ["lead", "pressure", "fixation", "evidence", "decision", "consequence"],
+      ];
+    }
+    if (lengthProfile === "long") {
+      return [
+        ["scene", "stamp", "evidence", "decision", "consequence"],
+        ["lead", "attitude", "evidence", "decision", "consequence"],
+        ["scene", "pressure", "evidence", "decision", "consequence"],
+        ["lead", "fixation", "stamp", "decision", "consequence"],
+      ];
+    }
+    return [
+      ["scene", "stamp", "evidence", "consequence"],
+      ["lead", "attitude", "decision", "consequence"],
+      ["pressure", "evidence", "decision", "consequence"],
+      ["scene", "fixation", "decision", "consequence"],
+    ];
+  }
+
   if (frame === "quest") {
     if (lane === "regulation" && focus === "court") {
       return [
@@ -3018,6 +3144,39 @@ function buildFrameLayouts(frame: KoWriterFrame, mode: string, lane: TrendLane, 
   ];
 }
 
+function buildExtendedLengthLayouts(frame: KoWriterFrame, lengthProfile: WriterLengthProfile): WriterSegment[][] {
+  if (lengthProfile === "essay") {
+    if (frame === "quest") {
+      return [
+        ["scene", "stamp", "pressure", "evidence", "decision", "question"],
+        ["lead", "attitude", "fixation", "evidence", "consequence", "question"],
+      ];
+    }
+    return [
+      ["scene", "stamp", "pressure", "evidence", "decision", "consequence"],
+      ["lead", "attitude", "fixation", "evidence", "decision", "consequence"],
+      ["scene", "instinct", "stamp", "evidence", "decision", "consequence"],
+      ["lead", "pressure", "fixation", "evidence", "decision", "consequence"],
+    ];
+  }
+
+  if (lengthProfile === "long") {
+    if (frame === "quest") {
+      return [
+        ["lead", "stamp", "evidence", "decision", "question"],
+        ["scene", "attitude", "evidence", "consequence", "question"],
+      ];
+    }
+    return [
+      ["scene", "stamp", "evidence", "decision", "consequence"],
+      ["lead", "attitude", "evidence", "decision", "consequence"],
+      ["fixation", "stamp", "evidence", "decision", "consequence"],
+    ];
+  }
+
+  return [];
+}
+
 export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, variant = 0): string {
   const baseSeed = stableSeedForPrelude(
     `${input.seedHint || input.headline}|${input.primaryAnchor}|${input.secondaryAnchor}|${input.mode}|${input.lane}`
@@ -3029,6 +3188,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const variantSalt = buildVariantSalt(input, focus, primaryAnchor, secondaryAnchor);
   const selectionSeed = seed + variantSalt;
   const frame = resolveWriterFrame(input.mode, focus, selectionSeed + variant);
+  const lengthProfile = resolveWriterLengthProfile(input.maxChars);
   const focusLeadPool = FOCUS_CLAIM_BY_LANE[input.lane]?.[focus] || [];
   const focusCrossExamPool = FOCUS_CROSS_EXAM_BY_LANE[input.lane]?.[focus] || [];
   const leadPool =
@@ -3130,7 +3290,10 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     question,
   };
 
-  const layouts = rotateLayouts(buildFrameLayouts(frame, input.mode, input.lane, focus), selectionSeed + variant * 41 + 1);
+  const layouts = rotateLayouts(
+    buildFrameLayouts(frame, input.mode, input.lane, focus, lengthProfile),
+    selectionSeed + variant * 41 + 1
+  );
   let candidate = "";
   for (const layout of layouts) {
     const lines = materializeLayout(layout, segments, input.maxChars);
@@ -3144,6 +3307,27 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   if (!candidate) {
     const fallbackLines = materializeLayout(["lead", "evidence", "decision", frame === "quest" ? "question" : "consequence"], segments, input.maxChars);
     candidate = joinCandidate(fallbackLines, input.maxChars);
+  }
+
+  const minTargetByLengthProfile: Partial<Record<WriterLengthProfile, number>> = {
+    long: Math.min(input.maxChars - 12, 156),
+    essay: Math.min(input.maxChars - 16, 220),
+  };
+  const minTarget = minTargetByLengthProfile[lengthProfile];
+  if (minTarget && candidate.length < minTarget) {
+    const extendedLayouts = rotateLayouts(
+      buildExtendedLengthLayouts(frame, lengthProfile),
+      selectionSeed + variant * 43 + 7
+    );
+    for (const layout of extendedLayouts) {
+      const lines = materializeLayout(layout, segments, input.maxChars);
+      if (!lines.length) continue;
+      const expanded = joinCandidate(lines, input.maxChars);
+      if (expanded && expanded.length > candidate.length) {
+        candidate = expanded;
+      }
+      if (candidate.length >= minTarget) break;
+    }
   }
 
   if (frame === "quest" && !/[?؟]$/.test(candidate)) {

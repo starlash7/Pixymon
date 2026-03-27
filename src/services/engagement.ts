@@ -5375,13 +5375,17 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
     { mode: "philosophy-note", baseOffset: 13, charBudgetRatio: 0.72 },
     { mode: "interaction-experiment", baseOffset: 17, charBudgetRatio: 0.9, askKo: contextualKoAsk, askEn: contextualEnAsk },
     { mode: "meta-reflection", baseOffset: 21, charBudgetRatio: 0.76 },
+    { mode: "era-manifesto", baseOffset: 23, charBudgetRatio: 0.94 },
     { mode: "fable-essay", baseOffset: 25, charBudgetRatio: 1 },
   ];
   const koIdentityCandidateModes = [
-    { mode: "identity-journal", baseOffset: 9, charBudgetRatio: 0.82 },
-    { mode: "philosophy-note", baseOffset: 13, charBudgetRatio: 0.72 },
-    { mode: "interaction-experiment", baseOffset: 17, charBudgetRatio: 0.9, askKo: contextualKoAsk, askEn: contextualEnAsk },
-    { mode: "meta-reflection", baseOffset: 21, charBudgetRatio: 0.76 },
+    { mode: "micro-note", baseOffset: 1, charBudgetRatio: 0.34 },
+    { mode: "split-note", baseOffset: 5, charBudgetRatio: 0.5 },
+    { mode: "identity-journal", baseOffset: 9, charBudgetRatio: 0.72 },
+    { mode: "philosophy-note", baseOffset: 13, charBudgetRatio: 0.82 },
+    { mode: "interaction-experiment", baseOffset: 17, charBudgetRatio: 0.64, askKo: contextualKoAsk, askEn: contextualEnAsk },
+    { mode: "meta-reflection", baseOffset: 21, charBudgetRatio: 0.68 },
+    { mode: "era-manifesto", baseOffset: 23, charBudgetRatio: 1 },
   ];
   const headlineAlreadyReadsAsScene =
     input.language === "ko" &&
@@ -5891,6 +5895,8 @@ function buildIdentityFallbackPost(
     lane: TrendLane;
     event: { id?: string; headline: string };
     evidence: Array<{ label: string; value: string }>;
+    focus?: string;
+    sceneFamily?: string;
   },
   variant: "hard" | "rescue" | "emergency",
   maxChars: number,
@@ -5898,11 +5904,40 @@ function buildIdentityFallbackPost(
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
-  const modeByVariant = {
-    hard: "identity-journal",
-    rescue: "meta-reflection",
-    emergency: "philosophy-note",
-  } as const;
+  const resolveFallbackWriterSpec = () => {
+    const focus = String(eventPlan.focus || "general");
+    const sceneFamily = String(eventPlan.sceneFamily || "");
+    const seed = stableSeedForPrelude(
+      `${eventPlan.event.id || eventPlan.event.headline}|${eventPlan.lane}|${focus}|${sceneFamily}|${variant}|${variantIndex}`
+    );
+    const eraEligible =
+      /(builder|retention|court|launch|durability|settlement|liquidity|flow)/.test(focus) ||
+      /(lag|thin|split|return|habit|execution|settlement|validator|court|usage|wallet|capital|depth)/.test(sceneFamily);
+    const modesByVariant = {
+      hard: eraEligible
+        ? (["identity-journal", "era-manifesto", "meta-reflection"] as const)
+        : (["identity-journal", "meta-reflection", "philosophy-note"] as const),
+      rescue: eraEligible
+        ? (["meta-reflection", "era-manifesto", "philosophy-note"] as const)
+        : (["meta-reflection", "philosophy-note", "identity-journal"] as const),
+      emergency: eraEligible
+        ? (["era-manifesto", "philosophy-note", "micro-note"] as const)
+        : (["philosophy-note", "identity-journal", "micro-note"] as const),
+    } as const;
+    const ratioFamilies = {
+      hard: eraEligible ? [0.54, 0.76, 0.92] : [0.44, 0.68, 0.86],
+      rescue: eraEligible ? [0.42, 0.62, 0.84] : [0.36, 0.56, 0.74],
+      emergency: eraEligible ? [0.28, 0.46, 0.68] : [0.24, 0.4, 0.6],
+    } as const;
+    const modes = modesByVariant[variant];
+    const ratios = ratioFamilies[variant];
+    const pickIndex = (seed + variantIndex) % modes.length;
+    const mode = modes[pickIndex];
+    const ratio = ratios[(seed + variantIndex * 3) % ratios.length];
+    const charBudget = Math.max(68, Math.min(maxChars, Math.floor(maxChars * ratio)));
+    return { mode, charBudget };
+  };
+  const { mode, charBudget } = resolveFallbackWriterSpec();
   const worldviewByLane: Record<TrendLane, string> = {
     protocol: "신뢰는 발표보다 운영 기록에서 늦게 쌓인다",
     ecosystem: "사람이 남지 않으면 큰 서사도 금방 광고가 된다",
@@ -5919,18 +5954,20 @@ function buildIdentityFallbackPost(
     onchain: "하루도 못 버틴 숫자는 장식으로 본다",
     "market-structure": "돈이 안 붙은 자신감은 제일 먼저 버린다",
   };
-    return buildKoIdentityWriterCandidate({
-      headline: buildPixymonSceneHeadline(eventPlan, variant),
-      primaryAnchor: formatEvidenceToken(a.label, a.value, 24) || a.label,
-      secondaryAnchor: formatEvidenceToken(b.label, b.value, 24) || b.label,
+  return buildKoIdentityWriterCandidate({
+    headline: buildPixymonSceneHeadline(eventPlan, variant),
+    primaryAnchor: formatEvidenceToken(a.label, a.value, 24) || a.label,
+    secondaryAnchor: formatEvidenceToken(b.label, b.value, 24) || b.label,
     lane: eventPlan.lane,
-    mode: modeByVariant[variant],
-      worldviewHint: worldviewByLane[eventPlan.lane],
-      signatureBelief: signatureByLane[eventPlan.lane],
-      recentReflection: worldviewByLane[eventPlan.lane],
-      maxChars,
-      seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}`,
-    }, variantIndex);
+    sceneFamily: eventPlan.sceneFamily,
+    preferredFocus: eventPlan.focus as any,
+    mode,
+    worldviewHint: worldviewByLane[eventPlan.lane],
+    signatureBelief: signatureByLane[eventPlan.lane],
+    recentReflection: worldviewByLane[eventPlan.lane],
+    maxChars: charBudget,
+    seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}|${mode}|${charBudget}`,
+  }, variantIndex);
 }
 
 function buildHardContractPost(

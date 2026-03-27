@@ -45,16 +45,17 @@ const MODE_ORDER: NarrativeMode[] = [
   "meta-reflection",
   "interaction-experiment",
   "philosophy-note",
+  "era-manifesto",
   "fable-essay",
 ];
 
 const MODE_BY_LANE: Record<TrendLane, NarrativeMode[]> = {
-  protocol: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  ecosystem: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  regulation: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  macro: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  onchain: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  "market-structure": ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
+  protocol: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  ecosystem: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  regulation: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  macro: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  onchain: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  "market-structure": ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
 };
 
 const MODE_INTRINSIC_PENALTY: Record<NarrativeMode, number> = {
@@ -62,6 +63,7 @@ const MODE_INTRINSIC_PENALTY: Record<NarrativeMode, number> = {
   "meta-reflection": 0.03,
   "interaction-experiment": 0.12,
   "philosophy-note": 0.4,
+  "era-manifesto": 0.34,
   "fable-essay": 0.46,
 };
 
@@ -96,6 +98,12 @@ const OPENING_BY_MODE_KO: Record<NarrativeMode, string[]> = {
     "비유 없이 적어도 충분히 이상한 장면은",
     "한 문단보다 더 짧게 줄이면",
   ],
+  "era-manifesto": [
+    "이번 국면에서 끝내 남는 건",
+    "이 사이클이 결국 다시 쓰는 건",
+    "지금 질서를 다시 매기는 쪽은",
+    "이번 장세가 드러내는 건",
+  ],
 };
 
 const OPENING_BY_MODE_EN: Record<NarrativeMode, string[]> = {
@@ -123,6 +131,11 @@ const OPENING_BY_MODE_EN: Record<NarrativeMode, string[]> = {
     "If I unfold this scene as a short story:",
     "If I leave this in one paragraph:",
     "If I borrow one metaphor first:",
+  ],
+  "era-manifesto": [
+    "What this cycle is actually repricing is this:",
+    "The thing redrawing the rules in this regime is this:",
+    "What this market keeps forcing back into focus is this:",
   ],
 };
 
@@ -245,6 +258,7 @@ function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]):
 
 function inferModeFromText(text: string): NarrativeMode {
   const lower = normalizeNarrativeText(text);
+  if (/시대|국면|질서|체제|regime|era|cycle|세대/.test(lower)) return "era-manifesto";
   if (/철학|philosophy|책|book|사상|worldview/.test(lower)) return "philosophy-note";
   if (/실험|experiment|미션|mission|댓글로/.test(lower)) return "interaction-experiment";
   if (/회고|reflection|실수|failure|오판|mistake/.test(lower)) return "meta-reflection";
@@ -275,6 +289,7 @@ function buildBodyDirective(mode: NarrativeMode, language: "ko" | "en"): string 
   if (language === "ko") {
     if (mode === "identity-journal") return "내 메모처럼 시작하되, 이벤트 1개와 근거 2개를 사람 말로 연결";
     if (mode === "philosophy-note") return "추상 문장을 그대로 쓰지 말고 현재 크립토 장면으로 풀어 번역";
+    if (mode === "era-manifesto") return "이번 장면이 질서나 국면을 어떻게 다시 쓰는지 단정적으로 말하고 근거 2개를 압축해 연결";
     if (mode === "interaction-experiment") return "질문은 1개만 두고, 먼저 내 판단의 근거 2개를 짧게 제시";
     if (mode === "meta-reflection") return "내가 놓칠 수 있는 지점을 먼저 말하고 왜 다시 보는지 짧게 적음";
     return "짧은 산문처럼 쓰되 템플릿 티를 없애고 근거 2개는 자연스럽게 녹임";
@@ -282,6 +297,7 @@ function buildBodyDirective(mode: NarrativeMode, language: "ko" | "en"): string 
 
   if (mode === "identity-journal") return "Open in first person, then connect one event with two evidence points";
   if (mode === "philosophy-note") return "Use one philosophy/book frame and translate it into current crypto context";
+  if (mode === "era-manifesto") return "Frame the scene as a regime shift or repricing of behavior, then ground it with two concrete evidence points";
   if (mode === "interaction-experiment") return "Include one concrete audience question and attach evidence";
   if (mode === "meta-reflection") return "State your potential failure mode first, then define verification condition";
   return "Keep essay tone with one metaphor max, grounded by two evidence points";
@@ -291,11 +307,13 @@ function buildEndingDirective(mode: NarrativeMode, language: "ko" | "en"): strin
   if (language === "ko") {
     if (mode === "interaction-experiment") return "끝은 바로 답할 수 있는 짧은 질문으로 마무리";
     if (mode === "meta-reflection") return "끝은 틀릴 조건을 짚거나 다시 볼 포인트를 남김";
+    if (mode === "era-manifesto") return "끝은 교훈 대신 시대감이나 질서 변화가 남는 문장으로 마무리";
     return "끝은 너무 교훈적으로 닫지 말고, 질문형 또는 열린 관찰형으로 마무리";
   }
 
   if (mode === "interaction-experiment") return "End with an open question that invites a direct reply";
   if (mode === "meta-reflection") return "End with a falsifiable open question";
+  if (mode === "era-manifesto") return "End with a line that leaves the regime shift or structural repricing hanging in the air";
   return "End with an open dialogue invitation";
 }
 

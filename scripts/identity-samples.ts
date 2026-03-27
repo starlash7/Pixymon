@@ -89,10 +89,26 @@ type Sample = {
   lane: TrendLane;
   mode: string;
   variant: number;
+  lengthProfile: string;
+  maxChars: number;
+  charCount: number;
   text: string;
   firstSentence: string;
   secondSentence: string;
 };
+
+type LengthProfile = {
+  label: "flash" | "short" | "standard" | "long" | "essay";
+  maxChars: number;
+};
+
+const LENGTH_PROFILES: LengthProfile[] = [
+  { label: "flash", maxChars: 96 },
+  { label: "short", maxChars: 136 },
+  { label: "standard", maxChars: 188 },
+  { label: "long", maxChars: 244 },
+  { label: "essay", maxChars: 316 },
+];
 
 function parseVariantCount(argv: string[]): number {
   const raw = argv.find((arg) => arg.startsWith("--variants="))?.split("=")[1];
@@ -108,15 +124,20 @@ function splitSentences(text: string): string[] {
     .filter(Boolean);
 }
 
+function resolveLengthProfile(variant: number): LengthProfile {
+  return LENGTH_PROFILES[variant % LENGTH_PROFILES.length];
+}
+
 function generateSamples(variantCount: number): Sample[] {
   const samples: Sample[] = [];
   for (const item of cases) {
     for (let variant = 0; variant < variantCount; variant += 1) {
+      const profile = resolveLengthProfile(variant);
       const text = buildKoIdentityWriterCandidate(
         {
           ...item,
-          maxChars: 260,
-          seedHint: `identity-sample:${item.id}:${variant}`,
+          maxChars: profile.maxChars,
+          seedHint: `identity-sample:${item.id}:${profile.label}:${variant}`,
         },
         variant
       );
@@ -126,6 +147,9 @@ function generateSamples(variantCount: number): Sample[] {
         lane: item.lane,
         mode: item.mode,
         variant,
+        lengthProfile: profile.label,
+        maxChars: profile.maxChars,
+        charCount: text.length,
         text,
         firstSentence: sentences[0] || "",
         secondSentence: sentences[1] || "",
@@ -146,7 +170,9 @@ function countTop(items: string[]): Array<[string, number]> {
 function buildMarkdown(samples: Sample[]): string {
   const lines: string[] = ["# Pixymon Identity Writer Samples", ""];
   for (const sample of samples) {
-    lines.push(`## ${sample.caseId} / ${sample.lane} / ${sample.mode} / v${sample.variant}`);
+    lines.push(
+      `## ${sample.caseId} / ${sample.lane} / ${sample.mode} / ${sample.lengthProfile}(${sample.charCount}/${sample.maxChars}) / v${sample.variant}`
+    );
     lines.push("");
     lines.push(sample.text);
     lines.push("");
@@ -159,6 +185,17 @@ function main() {
   const samples = generateSamples(variantCount);
   const firstSentenceTop = countTop(samples.map((sample) => sample.firstSentence)).slice(0, 10);
   const secondSentenceTop = countTop(samples.map((sample) => sample.secondSentence)).slice(0, 10);
+  const lengthProfileTop = countTop(samples.map((sample) => sample.lengthProfile)).slice(0, 10);
+  const lengthSummary = Object.fromEntries(
+    LENGTH_PROFILES.map((profile) => {
+      const bucket = samples.filter((sample) => sample.lengthProfile === profile.label);
+      const avgChars =
+        bucket.length > 0
+          ? Math.round(bucket.reduce((sum, sample) => sum + sample.charCount, 0) / bucket.length)
+          : 0;
+      return [profile.label, { maxChars: profile.maxChars, avgChars, count: bucket.length }];
+    })
+  );
 
   const outDir = path.resolve(".test-data");
   fs.mkdirSync(outDir, { recursive: true });
@@ -175,6 +212,8 @@ function main() {
         variantCount,
         topFirstSentences: firstSentenceTop,
         topSecondSentences: secondSentenceTop,
+        topLengthProfiles: lengthProfileTop,
+        lengthSummary,
       },
       null,
       2
@@ -184,6 +223,11 @@ function main() {
 
   console.log(`wrote ${samples.length} samples -> ${path.relative(process.cwd(), markdownPath)}`);
   console.log(`wrote summary -> ${path.relative(process.cwd(), summaryPath)}`);
+  console.log("");
+  console.log("length profiles:");
+  for (const [text, count] of lengthProfileTop.slice(0, 5)) {
+    console.log(`- ${count}x ${text}`);
+  }
   console.log("");
   console.log("top first sentences:");
   for (const [text, count] of firstSentenceTop.slice(0, 5)) {

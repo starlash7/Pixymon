@@ -3297,3 +3297,79 @@ test("buildEventEvidenceFallbackPost avoids analytic generic loop phrasing for k
 
   assert.doesNotMatch(text, /실제로 이어지는지 다시|행동으로 이어지는지 다시|다시 본다/u);
 });
+
+test("buildEventEvidenceFallbackPost can produce era-manifesto fallback without raw headline leakage", () => {
+  const createdAt = new Date().toISOString();
+  const text = buildEventEvidenceFallbackPost(
+    {
+      lane: "regulation",
+      focus: "court",
+      sceneFamily: "regulation:court:briefing+execution:court-lag",
+      event: {
+        id: "court-era",
+        lane: "regulation",
+        headline: "이번 국면은 판결보다 집행이 규제의 체급을 다시 정하는 시기다",
+        summary: "Court headlines are loud, but enforcement and capital reaction define the actual regime.",
+        source: "analysis:sharp",
+        trust: 0.84,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["판결", "집행", "국면"],
+      },
+      evidence: [
+        {
+          id: "court-era-a",
+          lane: "regulation",
+          nutrientId: "n:court-era-a",
+          source: "news",
+          label: "법원 일정",
+          value: "집중",
+          summary: "법원 일정은 크게 회자되지만 집행은 아직 더 늦게 붙는 장면이다.",
+          trust: 0.82,
+          freshness: 0.89,
+          digestScore: 0.76,
+          capturedAt: createdAt,
+        },
+        {
+          id: "court-era-b",
+          lane: "regulation",
+          nutrientId: "n:court-era-b",
+          source: "market",
+          label: "대기 자금 흐름",
+          value: "관망",
+          summary: "자금은 판결 기사보다 훨씬 늦게 몸을 싣고 있다.",
+          trust: 0.8,
+          freshness: 0.88,
+          digestScore: 0.73,
+          capturedAt: createdAt,
+        },
+      ],
+      hasOnchainEvidence: false,
+      hasCrossSourceEvidence: true,
+      evidenceSourceDiversity: 2,
+      plannerScore: 0.86,
+      plannerWarnings: [],
+      laneUsage: {
+        totalPosts: 0,
+        byLane: {
+          protocol: 0,
+          ecosystem: 0,
+          regulation: 0,
+          macro: 0,
+          onchain: 0,
+          "market-structure": 0,
+        },
+      },
+      laneProjectedRatio: 0,
+      laneQuotaLimited: false,
+    },
+    "ko",
+    300,
+    "era-manifesto",
+    2
+  );
+
+  assert.match(text, /(국면|질서|체급|사이클|시대)/);
+  assert.match(text, /(집행|판결|자금)/);
+  assert.doesNotMatch(text, /같은 화면에 둔다|시간차부터 잰다|court headlines/i);
+});
