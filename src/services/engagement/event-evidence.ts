@@ -1645,11 +1645,15 @@ function resolveVariantFallbackNarrativeMode(
   const focus = String(plan.focus || "general");
   const sceneFamily = String(plan.sceneFamily || "");
   const headline = sanitizeTweetText(plan.event.headline || "");
+  const longFormVariant = variant % 5 === 3 || variant % 5 === 4;
   const eraEligible =
     /(retention|builder|court|launch|durability|settlement|liquidity|flow)/.test(focus) ||
     /(lag|thin|split|return|habit|execution|settlement|validator|court|usage|wallet|capital|depth)/.test(sceneFamily) ||
     /(시대|세대|질서|국면|체제|전환|정당성|습관)/.test(headline);
-  if (eraEligible && variant % 3 === 2) {
+  const hardEraEligible =
+    /(court|launch|durability|settlement|retention|builder)/.test(focus) ||
+    /(verdict|execution|return|announcement|showcase|ops|validator|usage|cohort|wallet|depth|capital)/.test(sceneFamily);
+  if ((hardEraEligible && longFormVariant) || (eraEligible && variant % 3 === 2)) {
     return "era-manifesto";
   }
   return baseMode;

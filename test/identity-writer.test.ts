@@ -206,6 +206,30 @@ test("buildKoIdentityWriterCandidate avoids onchain second-sentence collapse acr
   assert.ok(secondSentences.size >= 3);
 });
 
+test("buildKoIdentityWriterCandidate avoids settlement second-sentence collapse across variants", () => {
+  const secondSentences = new Set(
+    Array.from({ length: 6 }, (_, variant) => {
+      const text = buildKoIdentityWriterCandidate(
+        {
+          ...baseInput,
+          lane: "market-structure",
+          mode: "philosophy-note",
+          headline: "현물 체결은 남는데 깊이가 늦게 붙는 장면",
+          primaryAnchor: "현물 체결 흐름",
+          secondaryAnchor: "호가 유동성",
+          preferredFocus: "settlement",
+          sceneFamily: "market-structure:settlement:execution+depth:execution-thin:book-thin",
+          seedHint: "identity-writer:settlement-second-sentence",
+        },
+        variant
+      );
+      return (text.split(/(?<=[.!?])\s+/u)[1] || "").trim();
+    }).filter(Boolean)
+  );
+
+  assert.ok(secondSentences.size >= 4);
+});
+
 test("buildKoIdentityWriterCandidate uses lane-aware question prompts", () => {
   const text = buildKoIdentityWriterCandidate({
     ...baseInput,

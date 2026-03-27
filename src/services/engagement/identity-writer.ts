@@ -2047,11 +2047,15 @@ function summarizeHeadline(headline: string): string {
     const directRangeRewrite = stem
       .replace(/얕은$/u, "얕다")
       .replace(/얕아진$/u, "얕아진다")
+      .replace(/얇은$/u, "얇다")
+      .replace(/얇아진$/u, "얇아진다")
       .replace(/늦은$/u, "늦다")
       .replace(/늦는$/u, "늦다")
       .replace(/느린$/u, "느리다")
       .replace(/조용한$/u, "조용하다")
       .replace(/큰$/u, "크다")
+      .replace(/커진$/u, "커진다")
+      .replace(/커지는$/u, "커진다")
       .replace(/빈$/u, "비어 있다")
       .replace(/비는$/u, "빈다")
       .replace(/빠지는$/u, "빠진다")
@@ -2355,6 +2359,122 @@ function pickFixationLine(
     "fixation",
   ].join("|");
   return pickContextualDistinctLine(pool, contextKey, variant, [lead, attitude, scene], 25 + seed);
+}
+
+function buildSceneFamilyEvidencePool(input: KoIdentityWriterInput, focus: WriterFocus): string[] {
+  const sceneFamily = input.sceneFamily || "";
+  const pool: string[] = [];
+
+  if (input.lane === "ecosystem" && focus === "retention") {
+    if (/retention\+usage|usage\+wallet|habit\+retention|return\+habit/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 살아도 {B}가 다음 날로 못 이어지면 그 생태계는 잔류 대신 습관 빈칸을 남긴다.",
+        "{A}가 붙어도 {B}가 하루를 못 넘기면 그 반응은 결국 생활 리듬까지 못 내려온다.",
+        "{A}가 남아도 {B}가 납작해지면 그 생태계 얘기는 복귀보다 생활 빈칸을 먼저 드러낸다."
+      );
+    }
+    if (/retention\+cohort|cohort\+retention/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 남아도 {B}가 얇아지면 그 생태계는 잔류선부터 먼저 잃는다.",
+        "{A}가 살아도 {B}가 못 버티면 그 반응은 다음 국면의 문턱을 넘지 못한다.",
+        "{A}가 붙어도 {B}가 줄어들면 그 서사는 사람 수보다 설명만 더 크게 남긴다."
+      );
+    }
+    if (/wallet\+retention|wallet\+usage/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 돌아와도 {B}가 비면 그 생태계는 복귀보다 잔류 빈칸이 더 크게 보인다.",
+        "{A}가 남아도 {B}가 안 붙으면 그 반응은 지갑 복귀보다 사람 이탈을 더 선명하게 남긴다.",
+        "{A}가 살아도 {B}가 약하면 그 생태계 얘기는 복귀 숫자보다 잔류 결핍을 먼저 드러낸다."
+      );
+    }
+  }
+
+  if (input.lane === "regulation" && focus === "court") {
+    if (/verdict\+execution|court\+execution/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 선명해도 {B}가 안 내려오면 그 법원 뉴스는 판결보다 집행 빈칸을 더 크게 남긴다.",
+        "{A}가 보여도 {B}가 얕으면 그 소송 뉴스는 법원 안에만 머물고 현장까지 못 내려온다.",
+        "{A}가 살아도 {B}가 늦으면 그 판결 뉴스는 기사보다 행동 지연을 먼저 드러낸다."
+      );
+    }
+    if (/order\+capital|capital\+execution|briefing\+execution|briefing\+capital/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 커도 {B}가 눕지 않으면 그 법원 뉴스는 브리핑 값만 키우고 돈의 자리는 비워 둔다.",
+        "{A}가 길어져도 {B}가 머뭇거리면 그 판결 뉴스는 법원보다 스튜디오 톤에 더 가깝다.",
+        "{A}가 선명해도 {B}가 빠지면 그 소송 뉴스는 기사보다 주문 빈칸을 더 크게 남긴다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "durability") {
+    if (/ops\+validator|validator\+log|ops\+log/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 남아도 {B}가 늦으면 그 개선은 합의보다 운영 빈칸을 더 크게 드러낸다.",
+        "{A}가 살아도 {B}가 비면 그 릴리스는 검증자 숫자보다 로그 지연을 먼저 남긴다.",
+        "{A}가 선명해도 {B}가 얕으면 그 업그레이드는 운영보다 발표 흔적에 더 가깝다."
+      );
+    }
+    if (/ops\+recovery|recovery\+validator|repair\+validator|repair\+ops|recovery\+ops/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 보여도 {B}가 못 붙으면 그 릴리스는 복구보다 발표값을 먼저 남긴다.",
+        "{A}가 남아도 {B}가 비면 그 개선은 장애 뒤 태도보다 박수 쪽으로 더 기운다.",
+        "{A}가 살아도 {B}가 약하면 그 업그레이드는 복구 체급을 끝내 못 얻는다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "launch") {
+    if (/return\+ops|launch\+ops|launch\+audience|return\+audience/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 커도 {B}가 비면 그 런치는 메인넷 문장보다 객석의 망설임을 더 크게 남긴다.",
+        "{A}가 보여도 {B}가 늦으면 그 출시는 운영보다 복귀 빈칸을 먼저 드러낸다.",
+        "{A}가 선명해도 {B}가 머뭇거리면 그 메인넷 얘기는 무대보다 객석에 더 오래 머문다."
+      );
+    }
+    if (/return\+announcement|return\+showcase|launch\+showcase|return\+launch|launch\+return/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 뜨거워도 {B}가 안 눕는 순간 그 런치는 발표 체급에서 더 못 올라간다.",
+        "{A}가 커도 {B}가 비면 그 메인넷 서사는 쇼케이스보다 복귀 빈칸을 더 크게 남긴다.",
+        "{A}가 보여도 {B}가 늦으면 그 출시는 준비도보다 무대 밖 망설임을 먼저 드러낸다."
+      );
+    }
+    if (/launch\+treasury|launch\+capital|capital\+launch/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 단단해도 {B}가 안 돌아오면 그 메인넷 얘기는 장부 바깥에서 반쪽으로 남는다.",
+        "{A}가 높아도 {B}가 비면 그 출시는 설명보다 자금 빈칸을 더 크게 남긴다.",
+        "{A}가 살아도 {B}가 머뭇거리면 그 런치는 준비도보다 복귀 지연을 먼저 들킨다."
+      );
+    }
+  }
+
+  if (input.lane === "market-structure" && focus === "settlement") {
+    if (/execution\+depth|fill\+depth|fill\+book/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 살아도 {B}가 못 눕는 순간 그 장면은 체결보다 깊이 빈칸을 더 크게 남긴다.",
+        "{A}가 보여도 {B}가 늦으면 그 반응은 체급보다 스크린 긴장을 먼저 키운다.",
+        "{A}가 선명해도 {B}가 비면 그 체결은 구조보다 속도전의 잔상으로 남는다.",
+        "{A}가 남아도 {B}가 얇으면 그 거래량은 깊이 대신 장면값을 더 많이 남긴다."
+      );
+    }
+    if (/volume\+depth|volume\+settlement|volume\+book/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 커도 {B}가 얕으면 그 반응은 거래 체급보다 숫자 체급으로 먼저 접힌다.",
+        "{A}가 남아도 {B}가 비면 그 장면은 볼륨보다 정산 빈칸을 더 크게 남긴다.",
+        "{A}가 살아도 {B}가 못 버티면 그 반응은 체결보다 차트 숫자에 더 가깝다.",
+        "{A}가 또렷해도 {B}가 늦으면 그 거래량은 깊이보다 화면값을 더 오래 남긴다."
+      );
+    }
+    if (/depth\+heat|settlement\+heat|depth\+settlement/.test(sceneFamily)) {
+      pool.push(
+        "{A}가 뜨거워도 {B}가 안 붙으면 그 장면은 과열보다 깊이 빈칸이 먼저 기억에 남는다.",
+        "{A}가 커도 {B}가 비면 그 반응은 정산보다 화면 열기에 더 가까워진다.",
+        "{A}가 선명해도 {B}가 얇으면 그 장면은 체결보다 분위기 쪽에서 먼저 값을 잃는다.",
+        "{A}가 남아도 {B}가 못 눕는 순간 그 과열은 정산 체급을 끝내 얻지 못한다."
+      );
+    }
+  }
+
+  return pool.filter(Boolean);
 }
 
 function buildSceneFamilyDecisionPool(input: KoIdentityWriterInput, focus: WriterFocus): string[] {
@@ -2706,6 +2826,21 @@ function buildPressureLine(
     input.sceneFamily && /recovery\+rollout|repair\+ops/.test(input.sceneFamily)
       ? "롤아웃 박수보다 복구 로그가 늦는 날의 빈칸을 끝까지 물고 늘어진다."
       : "",
+    input.sceneFamily && /retention\+usage|usage\+wallet|habit\+retention|return\+habit/.test(input.sceneFamily)
+      ? "사람이 다시 들어와도 생활 습관이 못 눕는 장면은 거의 늘 시대보다 캠페인 쪽으로 기운다."
+      : "",
+    input.sceneFamily && /retention\+cohort|wallet\+retention|cohort\+retention/.test(input.sceneFamily)
+      ? "남는 사람 수가 먼저 꺼지는 날은 좋은 생태계 문장도 결국 포스터 값으로 무너진다."
+      : "",
+    input.sceneFamily && /return\+ops|launch\+ops|return\+announcement|return\+showcase|launch\+showcase/.test(input.sceneFamily)
+      ? "메인넷 무대가 뜨거울수록 결국 들키는 건 객석의 돈이 늦게 눕는 자리다."
+      : "",
+    input.sceneFamily && /execution\+depth|fill\+depth|fill\+book|volume\+settlement|volume\+depth|depth\+settlement/.test(input.sceneFamily)
+      ? "체결 숫자가 살아도 깊이가 안 눕는 장면은 거의 늘 구조보다 화면 효과를 더 많이 닮는다."
+      : "",
+    input.sceneFamily && /verdict\+execution|court\+execution|order\+capital|capital\+execution/.test(input.sceneFamily)
+      ? "판결 문장이 무거워 보일수록 결국 드러나는 건 돈이 늦게 눕는 자리의 빈칸이다."
+      : "",
     continuityCore ? `지난번에 걸렸던 건 결국 ${continuityCore} 쪽이었다.` : "",
     continuityCore ? `이번에도 자꾸 같은 자리에서 ${continuityCore} 냄새가 올라온다.` : "",
     continuityCore ? `지난번에 물어뜯던 빈칸이 이번에도 ${continuityCore} 자리에서 다시 보인다.` : "",
@@ -2925,6 +3060,91 @@ function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
     return pick(lanePool, seed, 13);
   }
   return pick(QUESTION_FALLBACKS, seed, 17);
+}
+
+function buildEraNudgeLine(
+  input: KoIdentityWriterInput,
+  focus: WriterFocus,
+  variant: number,
+  seed: number,
+  stamp: string,
+  scene: string,
+  lead: string
+): string {
+  const pool = [sanitizeClause(stamp)].filter(Boolean);
+  const sceneFamily = input.sceneFamily || "";
+
+  if (input.lane === "ecosystem" && focus === "retention") {
+    pool.push(
+      "한 생태계의 세대는 결국 남는 사람 수가 정한다.",
+      "시대의 값은 결국 다시 돌아오는 습관 쪽이 다시 쓴다.",
+      "생태계의 시대감은 결국 남은 사람 수에서 드러난다."
+    );
+    if (/retention\+usage|habit\+retention|return\+habit/.test(sceneFamily)) {
+      pool.push(
+        "생활 리듬이 남는 쪽이 결국 다음 국면의 값을 다시 쓴다.",
+        "새 국면은 결국 다시 이어지는 습관 쪽이 먼저 연다."
+      );
+    }
+    if (/retention\+cohort|cohort\+retention|wallet\+retention/.test(sceneFamily)) {
+      pool.push(
+        "남는 사람 수가 비는 순간 생태계의 세대감도 바로 바뀐다.",
+        "돌아오는 사람 수가 결국 이 국면의 체급을 다시 매긴다."
+      );
+    }
+  }
+
+  if (input.lane === "regulation" && focus === "court") {
+    pool.push(
+      "규제의 시대감은 결국 문장보다 행동과 자금이 다시 쓴다.",
+      "정책의 체급은 결국 행동이 남는 자리에서 다시 매겨진다.",
+      "판결의 세대감은 결국 돈이 눕는 자리에서 갈린다."
+    );
+  }
+
+  if (input.lane === "protocol" && focus === "launch") {
+    pool.push(
+      "런치의 시대감은 결국 돌아오는 돈이 다시 드러낸다.",
+      "메인넷의 체급은 결국 복귀 자금이 다시 쓴다.",
+      "새 런치의 값은 결국 객석 밖으로 나온 돈이 정한다."
+    );
+  }
+
+  if (input.lane === "protocol" && focus === "durability") {
+    pool.push(
+      "업그레이드의 세대는 결국 복구 태도가 다시 쓴다.",
+      "프로토콜의 질서는 결국 로그와 복구가 정한다.",
+      "새 국면은 결국 장애 뒤 태도가 선언한다."
+    );
+  }
+
+  if (input.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) {
+    pool.push(
+      "새 질서는 결국 돈이 남은 자리에서 정리된다.",
+      "시장 구조의 시대는 결국 실제 돈이 다시 쓴다.",
+      "한 국면의 체급은 결국 깊이가 남는 자리에서 갈린다."
+    );
+  }
+
+  if (input.lane === "onchain") {
+    pool.push(
+      "온체인의 시대감은 결국 오래 버틴 흔적이 다시 쓴다.",
+      "한 장세의 질서는 결국 다음 날까지 남은 숫자가 정한다.",
+      "새 국면은 결국 버틴 주소와 자금 습관이 선언한다."
+    );
+  }
+
+  const contextKey = [
+    input.lane,
+    focus,
+    input.mode,
+    input.sceneFamily || "",
+    sanitizeClause(input.headline),
+    sanitizeClause(input.primaryAnchor),
+    sanitizeClause(input.secondaryAnchor),
+    "era-nudge",
+  ].join("|");
+  return pickContextualDistinctLine(pool.filter(Boolean), contextKey, variant, [scene, lead], 53 + seed);
 }
 
 function joinCandidate(lines: string[], maxChars: number): string {
@@ -3312,11 +3532,28 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     7 + selectionSeed
   );
   const focusEvidencePool = FOCUS_EVIDENCE_BY_LANE[input.lane]?.[focus] || [];
-  const evidence = fill(
-    pickPreferredVariantLine(focusEvidencePool, EVIDENCE_BY_LANE[input.lane], selectionSeed, variant, 11),
-    primaryAnchor,
-    secondaryAnchor
+  const sceneEvidencePool = buildSceneFamilyEvidencePool(input, focus);
+  const evidencePool = [...sceneEvidencePool, ...focusEvidencePool].filter(Boolean).length
+    ? [...sceneEvidencePool, ...focusEvidencePool].filter(Boolean)
+    : EVIDENCE_BY_LANE[input.lane];
+  const evidenceTemplate = pickContextualDistinctLine(
+    evidencePool,
+    [
+      input.lane,
+      focus,
+      input.mode,
+      input.sceneFamily || "",
+      sanitizeClause(input.headline),
+      primaryAnchor,
+      secondaryAnchor,
+      "evidence",
+      lengthProfile,
+    ].join("|"),
+    variant,
+    [lead, scene],
+    11 + selectionSeed
   );
+  const evidence = fill(evidenceTemplate, primaryAnchor, secondaryAnchor);
   const instinct = rewriteSoulHint(input, focus, selectionSeed + variant * 13 + 17);
   const attitude = pickAttitudeLine(input.lane, focus, selectionSeed + variant * 17 + 1, variant, lead, scene);
   const fixation = pickFixationLine(input, focus, selectionSeed + variant * 19 + 1, variant, lead, attitude, scene);
@@ -3428,6 +3665,22 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
         candidate = expanded;
       }
       if (candidate.length >= minTarget) break;
+    }
+  }
+
+  if (input.mode === "era-manifesto" && !/(국면|질서|시대|체급|사이클)/u.test(candidate)) {
+    const eraNudge = buildEraNudgeLine(input, focus, variant, selectionSeed, stamp, scene, lead);
+    const sentences = candidate.split(/(?<=[.!?])\s+/u).filter(Boolean);
+    const injected =
+      sentences.length >= 2
+        ? sanitizeTweetText([sentences[0], eraNudge, ...sentences.slice(1)].join(" "))
+        : sanitizeTweetText(`${candidate} ${eraNudge}`);
+    if (injected.length <= input.maxChars) {
+      candidate = injected;
+    } else {
+      const budget = Math.max(40, input.maxChars - eraNudge.length - 1);
+      const trimmed = finalizeGeneratedText(candidate, "ko", budget);
+      candidate = sanitizeTweetText(`${trimmed} ${eraNudge}`);
     }
   }
 
