@@ -103,6 +103,13 @@ test("finalizeGeneratedText removes dangling tail like 다음", () => {
   assert.equal(output, "좋은 해석은 결국 버티는 근거에서 나온다.");
 });
 
+test("finalizeGeneratedText removes dangling scene tail like 장면으로", () => {
+  const input =
+    "판결 기사와 자금이 따로 놀기 시작하면 그 뉴스는 절반짜리다. ETF 쪽 대기 주문이 비면 이 소송 뉴스는 설명만 큰 장면으로.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(output, "판결 기사와 자금이 따로 놀기 시작하면 그 뉴스는 절반짜리다.");
+});
+
 test("finalizeGeneratedText rewrites analyst jargon into natural korean", () => {
   const input =
     "지갑 군집 변화와 거래 목적지 집중도, 클라이언트 다양성, 헤지 포지셔닝 변화, 거래소 대응 속도를 같이 본다.";

@@ -230,6 +230,78 @@ test("buildKoIdentityWriterCandidate avoids settlement second-sentence collapse 
   assert.ok(secondSentences.size >= 4);
 });
 
+test("buildKoIdentityWriterCandidate widens protocol durability opener families across variants", () => {
+  const firstSentences = new Set(
+    Array.from({ length: 8 }, (_, variant) => {
+      const text = buildKoIdentityWriterCandidate(
+        {
+          ...baseInput,
+          lane: "protocol",
+          mode: "meta-reflection",
+          headline: "검증자는 버티는데 복구 로그는 늦게 붙는 장면",
+          primaryAnchor: "검증자 안정성",
+          secondaryAnchor: "복구 시간 분포",
+          preferredFocus: "durability",
+          sceneFamily: "protocol:durability:ops+validator:repair-thin:validator-holds",
+          seedHint: "identity-writer:durability-first-sentence",
+        },
+        variant
+      );
+      return (text.split(/(?<=[.!?])\s+/u)[0] || "").trim();
+    }).filter(Boolean)
+  );
+
+  assert.ok(firstSentences.size >= 5);
+});
+
+test("buildKoIdentityWriterCandidate avoids retention era-line collapse across variants", () => {
+  const secondSentences = new Set(
+    Array.from({ length: 8 }, (_, variant) => {
+      const text = buildKoIdentityWriterCandidate(
+        {
+          ...baseInput,
+          lane: "ecosystem",
+          mode: "era-manifesto",
+          headline: "지갑은 돌아오는데 다음 날 사람 수는 얕아지는 장면",
+          primaryAnchor: "사용자 재방문 흐름",
+          secondaryAnchor: "지갑 재방문",
+          preferredFocus: "retention",
+          sceneFamily: "ecosystem:retention:wallet+retention:retention-holds:wallet-thins",
+          seedHint: "identity-writer:retention-era-line",
+        },
+        variant
+      );
+      return (text.split(/(?<=[.!?])\s+/u)[1] || "").trim();
+    }).filter(Boolean)
+  );
+
+  assert.ok(secondSentences.size >= 4);
+});
+
+test("buildKoIdentityWriterCandidate avoids court era-line collapse across variants", () => {
+  const secondSentences = new Set(
+    Array.from({ length: 8 }, (_, variant) => {
+      const text = buildKoIdentityWriterCandidate(
+        {
+          ...baseInput,
+          lane: "regulation",
+          mode: "era-manifesto",
+          headline: "법원 일정은 커지는데 대기 자금은 비는 장면",
+          primaryAnchor: "법원 일정",
+          secondaryAnchor: "대기 자금 흐름",
+          preferredFocus: "court",
+          sceneFamily: "regulation:court:court+execution:capital-thin:verdict-holds",
+          seedHint: "identity-writer:court-era-line",
+        },
+        variant
+      );
+      return (text.split(/(?<=[.!?])\s+/u)[1] || "").trim();
+    }).filter(Boolean)
+  );
+
+  assert.ok(secondSentences.size >= 4);
+});
+
 test("buildKoIdentityWriterCandidate uses lane-aware question prompts", () => {
   const text = buildKoIdentityWriterCandidate({
     ...baseInput,

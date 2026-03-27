@@ -482,13 +482,17 @@ function trimTrailingFragment(text: string, language: "ko" | "en"): string {
       /(?:못하면|처음으로|여기서|이\s*해석은|이\s*문장은|이\s*생각은|오늘\s*결론은|기대는\s*순간|믿는\s*순간|매달리는\s*순간|급히\s*넘기지)$/.test(
         core
       );
+    const truncatedSceneTail =
+      !looksComplete &&
+      /(?:장면으로|기사로|해설로|방송으로|연출로|캠페인으로|쇼케이스로|포스터\s*값으로)$/.test(core);
     if (
       shouldDropKoTrailingSentence(core) ||
       (looksDangling && core.length <= 24) ||
       (core.length <= 8 && !looksComplete) ||
       danglingEvidenceList ||
       nounTailWithoutPredicate ||
-      truncatedThesisTail
+      truncatedThesisTail ||
+      truncatedSceneTail
     ) {
       return sanitizeTweetText(parts.slice(0, -1).join(" "));
     }
