@@ -1024,22 +1024,22 @@ function estimateExplicitEscapeBonus(
 
   const concentratedBase =
     (lane === "ecosystem" && focus === "builder" && /builder\+return$/.test(base)) ||
-    (lane === "ecosystem" && focus === "retention" && /(retention\+cohort|wallet\+retention|retention\+wallet|retention\+usage|habit\+retention|return\+habit)$/.test(base)) ||
-    (lane === "protocol" && focus === "launch" && /(return\+announcement|return\+launch|launch\+showcase|launch\+treasury|launch\+ops|launch\+audience|return\+audience)$/.test(base)) ||
-    (lane === "protocol" && focus === "durability" && /(recovery\+rollout|recovery\+validator|ops\+validator|ops\+recovery|rollout|rollout\+validator|ops\+log|repair\+log)$/.test(base)) ||
-    (lane === "regulation" && focus === "court" && /(briefing\+execution|court\+execution|briefing|briefing\+capital)$/.test(base)) ||
-    (lane === "market-structure" && focus === "settlement" && /(execution\+depth|volume\+depth|fill\+depth|fill\+book|volume\+book)$/.test(base));
+    (lane === "ecosystem" && focus === "retention" && /(retention\+cohort|wallet\+retention|retention\+wallet|retention\+usage|habit\+retention|return\+habit|community\+retention)$/.test(base)) ||
+    (lane === "protocol" && focus === "launch" && /(return\+announcement|return\+launch|launch\+showcase|launch\+treasury|launch\+ops|launch\+audience|return\+audience|return\+ops)$/.test(base)) ||
+    (lane === "protocol" && focus === "durability" && /(recovery\+rollout|recovery\+validator|ops\+validator|ops\+recovery|rollout|rollout\+validator|ops\+log|repair\+log|validator\+log)$/.test(base)) ||
+    (lane === "regulation" && focus === "court" && /(briefing\+execution|court\+execution|briefing|briefing\+capital|verdict\+execution|capital\+execution|order\+capital)$/.test(base)) ||
+    (lane === "market-structure" && focus === "settlement" && /(execution\+depth|volume\+depth|fill\+depth|fill\+book|volume\+book|volume\+settlement|depth\+settlement)$/.test(base));
 
   if (event.source === "evidence:structural-fallback") {
-    const penalty = concentratedBase ? 0.16 : 0.08;
-    return -clampNumber(penalty + (sameBaseCount - 1) * 0.04, 0, 0.24, 0);
+    const penalty = concentratedBase ? 0.22 : 0.1;
+    return -clampNumber(penalty + (sameBaseCount - 1) * 0.05, 0, 0.32, 0);
   }
 
-  let bonus = concentratedBase ? 0.12 : 0.06;
-  if (event.source === "analysis:sharp") bonus += 0.03;
+  let bonus = concentratedBase ? 0.18 : 0.08;
+  if (event.source === "analysis:sharp") bonus += 0.05;
   if (sameBaseCount >= 2) bonus += 0.04;
   if (sameBaseCount >= 3) bonus += 0.03;
-  return clampNumber(bonus, 0, 0.22, 0);
+  return clampNumber(bonus, 0, 0.3, 0);
 }
 
 function estimateStructuralFallbackFamilyBias(
@@ -1063,14 +1063,16 @@ function estimateStructuralFallbackFamilyBias(
       sceneFamilyMatches(sceneFamily, /retention\+cohort$/) ||
       sceneFamilyMatches(sceneFamily, /habit\+retention$/) ||
       sceneFamilyMatches(sceneFamily, /return\+habit$/)
-    ) return 0.07;
+    ) return 0.02;
+    if (sceneFamilyMatches(sceneFamily, /community\+retention$/)) return 0.12;
+    if (sceneFamilyMatches(sceneFamily, /cohort\+usage$/) || sceneFamilyMatches(sceneFamily, /usage\+wallet$/)) return 0.1;
   }
   if (lane === "protocol" && focus === "launch") {
     if (sceneFamilyMatches(sceneFamily, /capital\+launch$/) || sceneFamilyMatches(sceneFamily, /launch\+capital$/)) return -0.12;
     if (sceneFamilyMatches(sceneFamily, /return\+launch$/) || sceneFamilyMatches(sceneFamily, /launch\+return$/)) return 0.1;
-    if (sceneFamilyMatches(sceneFamily, /return\+announcement$/)) return 0.14;
-    if (sceneFamilyMatches(sceneFamily, /return\+ops$/)) return 0.18;
-    if (sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/)) return 0.16;
+    if (sceneFamilyMatches(sceneFamily, /return\+announcement$/)) return 0.06;
+    if (sceneFamilyMatches(sceneFamily, /return\+ops$/)) return 0.08;
+    if (sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/)) return 0.1;
     if (sceneFamilyMatches(sceneFamily, /return\+audience$/) || sceneFamilyMatches(sceneFamily, /audience\+return$/)) return 0.18;
     if (sceneFamilyMatches(sceneFamily, /launch\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+launch$/)) return 0.04;
     if (sceneFamilyMatches(sceneFamily, /launch\+audience$/) || sceneFamilyMatches(sceneFamily, /audience\+launch$/)) return 0.12;
@@ -1080,30 +1082,30 @@ function estimateStructuralFallbackFamilyBias(
   }
   if (lane === "regulation" && focus === "court") {
     if (sceneFamilyMatches(sceneFamily, /^regulation:court:court$/)) return -0.08;
-    if (sceneFamilyMatches(sceneFamily, /verdict\+execution$/)) return 0.1;
+    if (sceneFamilyMatches(sceneFamily, /verdict\+execution$/)) return 0.02;
     if (sceneFamilyMatches(sceneFamily, /briefing\+execution$/)) return 0.04;
-    if (sceneFamilyMatches(sceneFamily, /court\+execution$/) || sceneFamilyMatches(sceneFamily, /capital\+execution$/)) return 0.06;
-    if (sceneFamilyMatches(sceneFamily, /order\+capital$/)) return 0.12;
+    if (sceneFamilyMatches(sceneFamily, /court\+execution$/) || sceneFamilyMatches(sceneFamily, /capital\+execution$/)) return 0.08;
+    if (sceneFamilyMatches(sceneFamily, /order\+capital$/)) return 0.16;
   }
   if (lane === "protocol" && focus === "durability") {
     if (sceneFamilyMatches(sceneFamily, /repair\+validator$/)) return 0.12;
     if (sceneFamilyMatches(sceneFamily, /repair\+ops$/)) return 0.1;
     if (sceneFamilyMatches(sceneFamily, /repair\+log$/)) return 0.14;
-    if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) return 0.06;
+    if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) return 0.02;
     if (sceneFamilyMatches(sceneFamily, /ops\+log$/)) return 0.12;
     if (sceneFamilyMatches(sceneFamily, /ops\+recovery$/)) return 0.12;
     if (sceneFamilyMatches(sceneFamily, /rollout\+validator$/)) return 0.14;
   }
   if (lane === "market-structure" && focus === "settlement") {
-    if (sceneFamilyMatches(sceneFamily, /execution\+depth$/)) return 0.1;
+    if (sceneFamilyMatches(sceneFamily, /execution\+depth$/)) return 0.02;
     if (sceneFamilyMatches(sceneFamily, /volume\+depth$/)) return 0.06;
     if (sceneFamilyMatches(sceneFamily, /fill\+depth$/)) return 0.16;
     if (sceneFamilyMatches(sceneFamily, /fill\+book$/)) return 0.14;
-    if (sceneFamilyMatches(sceneFamily, /volume\+book$/)) return 0.12;
-    if (sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) return 0.14;
+    if (sceneFamilyMatches(sceneFamily, /volume\+book$/)) return 0.14;
+    if (sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) return 0.18;
     if (sceneFamilyMatches(sceneFamily, /settlement\+heat$/)) return 0.08;
     if (sceneFamilyMatches(sceneFamily, /depth\+heat$/)) return 0.03;
-    if (sceneFamilyMatches(sceneFamily, /depth\+settlement$/) || sceneFamilyMatches(sceneFamily, /execution\+settlement$/)) return 0.08;
+    if (sceneFamilyMatches(sceneFamily, /depth\+settlement$/) || sceneFamilyMatches(sceneFamily, /execution\+settlement$/)) return 0.14;
   }
   return 0;
 }
@@ -3449,14 +3451,14 @@ function buildDerivedExplicitHeadlineFromEvidence(
       sceneFamilyMatches(sceneFamily, /cohort\+usage$/) ||
       sceneFamilyMatches(sceneFamily, /usage\+wallet$/)
         ? [
-            "재방문은 남는데 생활 흔적이 다음 날까지 못 이어지는 구간",
-            "사람은 다시 들어오는데 체인 안쪽 습관은 아직 얇은 장면",
-            "복귀는 남는데 생활 흔적이 다음 날까지 못 눕는 생태계",
-            "다시 들어오는 사람은 있는데 실사용은 아직 납작한 장면",
-            "재방문은 버티는데 생활 흔적이 하루를 못 넘기는 장면",
-            "복귀한 지갑은 있는데 실사용은 아직 다음 날로 못 이어지는 생태계",
-            "재방문은 붙는데 생활 리듬이 다음 날까지 못 눕는 장면",
-            "지갑은 돌아오는데 생활 흔적은 아직 하루를 못 버티는 구간",
+            "사람은 돌아오는데 생활 흔적이 하루를 못 넘기는 생태계",
+            "재방문은 붙는데 다음 날 체인 안쪽 습관이 바로 끊기는 장면",
+            "사람 수는 남는데 생활 리듬이 하루를 못 버티는 생태계",
+            "다시 들어오는 사람은 있는데 실사용이 다음 날 바로 식는 장면",
+            "재방문은 살아도 생활 흔적이 다음 날까지 못 눕는 구간",
+            "복귀한 지갑은 있는데 일상 사용은 아직 하루를 못 넘기는 생태계",
+            "사람은 다시 오는데 체인 안쪽 리듬이 다음 날 바로 비는 장면",
+            "재방문 숫자는 남는데 생활 흔적은 아직 하루를 못 버티는 구간",
           ]
         : sceneFamilyMatches(sceneFamily, /cohort\+wallet$/) ||
           sceneFamilyMatches(sceneFamily, /retention\+wallet$/) ||
@@ -3498,12 +3500,12 @@ function buildDerivedExplicitHeadlineFromEvidence(
     const pool =
       sceneFamilyMatches(sceneFamily, /verdict\+execution$/)
         ? [
-            "판결은 선명한데 집행은 한 박자 늦는 구간",
-            "평결은 끝났는데 실제 집행은 아직 얕은 장면",
-            "판결 뉴스는 큰데 집행의 속도는 늦은 구간",
-            "평결보다 집행이 늦게 도착한 장면",
-            "판결은 또렷한데 집행은 아직 현장까지 못 내려온 구간",
-            "법원 판단은 끝났는데 집행 빈칸이 더 크게 보이는 장면",
+            "판결은 끝났는데 행동이 끝까지 안 눕는 규제 국면",
+            "평결은 선명한데 실제 집행은 아직 기사 바깥으로 못 나온 장면",
+            "판결 뉴스는 큰데 집행 속도는 아직 현장에 못 박힌 구간",
+            "평결보다 행동이 늦게 도착해 판결값을 깎는 장면",
+            "판결은 또렷한데 집행은 아직 현장 체급을 못 만든 구간",
+            "법원 판단은 끝났는데 집행 빈칸이 뉴스보다 크게 남는 장면",
           ]
         : sceneFamilyMatches(sceneFamily, /briefing\+execution$/)
         ? [
@@ -3563,23 +3565,25 @@ function buildDerivedExplicitHeadlineFromEvidence(
     const pool =
       sceneFamilyMatches(sceneFamily, /return\+announcement$/)
         ? [
-            "메인넷 발표는 큰데 복귀 자금은 아직 다른 말을 하는 출시",
-            "뉴스는 뜨거운데 돌아오는 돈은 아직 발표를 망설이는 장면",
-            "설명은 앞서는데 복귀 자금은 아직 발표값을 의심하는 메인넷 구간",
-            "기대는 큰데 돈은 아직 발표 바깥에서 머뭇거리는 출시",
-            "발표는 선명한데 돌아오는 돈은 아직 메인넷 설명을 못 따라오는 장면",
-            "메인넷 뉴스는 컸지만 복귀 자금은 아직 발표장 밖에 머문 구간",
-            "출시 설명은 앞서는데 돌아오는 돈은 아직 그 체급을 의심하는 장면",
-            "기대는 뜨거운데 복귀 자금은 아직 메인넷 박수를 망설이는 구간",
-            "메인넷 발표는 큰데 운영과 돈은 아직 같은 편에 안 선 장면",
-            "발표는 선명한데 복귀 자금과 운영 반응은 아직 늦는 출시",
+            "메인넷 발표는 큰데 돌아오는 돈은 아직 그 체급을 안 믿는 출시",
+            "뉴스는 뜨거운데 복귀 자금은 아직 발표값을 접수하지 않는 장면",
+            "설명은 앞서는데 돈은 아직 메인넷 박수에 서명하지 않는 구간",
+            "기대는 큰데 돈은 아직 발표장 바깥에서 손을 안 드는 출시",
+            "발표는 선명한데 돌아오는 돈은 아직 메인넷 설명을 보류하는 장면",
+            "메인넷 뉴스는 컸지만 복귀 자금은 아직 발표장 밖에 서 있는 구간",
+            "출시 설명은 앞서는데 돈은 아직 그 체급을 승인하지 않는 장면",
+            "기대는 뜨거운데 복귀 자금은 아직 메인넷 박수를 거절하는 구간",
+            "메인넷 발표는 큰데 운영과 돈은 아직 같은 편 문장에 안 서는 장면",
+            "발표는 선명한데 복귀 자금과 운영 반응은 아직 출시를 보류하는 구간",
           ]
         : sceneFamilyMatches(sceneFamily, /return\+ops$/)
         ? [
-            "메인넷 설명은 큰데 운영과 돈이 함께 늦는 출시",
-            "발표는 앞서는데 복귀 자금과 운영 로그는 아직 얕은 장면",
-            "메인넷 뉴스는 뜨거운데 운영과 돈이 같이 머뭇거리는 구간",
-            "출시 설명은 완성됐는데 운영과 복귀 자금은 아직 한 템포 늦은 장면",
+            "메인넷 설명은 큰데 운영과 돈이 함께 출시를 보류하는 장면",
+            "발표는 앞서는데 복귀 자금과 운영 로그는 아직 몸을 안 싣는 구간",
+            "메인넷 뉴스는 뜨거운데 운영과 돈이 같이 승인 버튼을 안 누르는 장면",
+            "출시 설명은 완성됐는데 운영과 복귀 자금은 아직 한 템포 뒤에서 버티는 구간",
+            "메인넷 발표는 큰데 운영과 돈이 끝까지 같은 편 문장을 안 쓰는 장면",
+            "런치 설명은 선명한데 복귀 자금과 운영 로그는 아직 출시를 인정하지 않는 구간",
           ]
         : sceneFamilyMatches(sceneFamily, /launch\+treasury$/) || sceneFamilyMatches(sceneFamily, /launch\+capital$/)
         ? [
@@ -3729,16 +3733,16 @@ function buildDerivedExplicitHeadlineFromEvidence(
   if (lane === "market-structure" && focus === "settlement") {
     if (sceneFamilyMatches(sceneFamily, /execution\+depth$/) || sceneFamilyMatches(sceneFamily, /fill\+depth$/)) {
       const executionDepthPool = [
-        `체결은 살아도 깊이가 늦게 붙는 장면은 구조보다 긴장이 먼저 남는다`,
-        `현물 체결은 뜨거운데 호가 두께가 못 따라오면 그 반응은 아직 반쪽이다`,
-        `체결 숫자는 보이는데 깊이가 비는 순간 그 장면은 체급을 못 만든다`,
-        `현물 체결이 남아도 깊이가 비면 그 반응은 결국 화면 쪽으로 눕는다`,
-        `주문 소화는 버티는데 깊이가 늦게 눕는 장면은 숫자가 구조를 이기지 못한다`,
-        `체결은 남는데 정산 깊이가 비면 그 반응은 결국 화면에 더 가깝다`,
-        `큰 주문 소화는 보이는데 호가 두께가 비면 그 반응은 아직 숫자에 머문다`,
-        `체결 흔적은 선명한데 깊이가 늦게 눕는 순간 그 장면은 구조값을 못 얻는다`,
+        `체결은 살아도 깊이가 늦게 붙는 장면은 구조보다 긴장감만 크게 남긴다`,
+        `현물 체결은 뜨거운데 호가 두께가 못 따라오면 그 반응은 아직 반쪽 흥분이다`,
+        `체결 숫자는 보이는데 깊이가 비는 순간 그 장면은 체급 대신 연출로 남는다`,
+        `현물 체결이 남아도 깊이가 비면 그 반응은 결국 화면 연출 쪽으로 눕는다`,
+        `주문 소화는 버티는데 깊이가 늦게 눕는 장면은 숫자가 구조 흉내만 낸다`,
+        `체결은 남는데 정산 깊이가 비면 그 반응은 결국 화면값으로 깎인다`,
+        `큰 주문 소화는 보이는데 호가 두께가 비면 그 반응은 아직 숫자 놀이에 머문다`,
+        `체결 흔적은 선명한데 깊이가 늦게 눕는 순간 그 장면은 구조 흉내를 못 벗어난다`,
         `현물 체결만 남고 깊이가 비는 장면은 결국 스크린 긴장만 크게 남긴다`,
-        `주문 소화가 살아도 깊이가 안 버티면 그 반응은 체급보다 속도만 남긴다`,
+        `주문 소화가 살아도 깊이가 안 버티면 그 반응은 체급보다 속도 자랑으로 남는다`,
       ];
       return sanitizeTweetText(executionDepthPool[seed % executionDepthPool.length]).slice(0, 140);
     }

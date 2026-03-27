@@ -3236,6 +3236,103 @@ test("planEventEvidenceAct escapes concentrated structural scene bases in favor 
   assert.equal(plan?.event.id, "court-explicit");
 });
 
+test("planEventEvidenceAct escapes concentrated structural retention base in favor of explicit retention event", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "retention-explicit",
+        lane: "ecosystem" as const,
+        headline: "사람은 돌아오는데 생활 흔적이 하루를 못 넘기는 생태계",
+        summary: "Users come back, but habit formation still fails to survive the next day.",
+        source: "analysis:sharp",
+        trust: 0.84,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["재방문", "생활 흔적", "생태계"],
+      },
+      {
+        id: "retention-fallback",
+        lane: "ecosystem" as const,
+        headline: "재방문은 남는데 생활 흔적이 다음 날까지 못 이어지는 구간",
+        summary: "Return flow survives, but usage does not make it into the next day.",
+        source: "evidence:structural-fallback",
+        trust: 0.82,
+        freshness: 0.89,
+        capturedAt: createdAt,
+        keywords: ["재방문", "생활 흔적"],
+        focusHint: "retention",
+        sceneFamilyHint: "ecosystem:retention:retention+usage",
+        evidenceLabelHints: ["사용자 재방문 흐름", "실사용 잔류"],
+      } as any,
+    ],
+    evidence: [
+      {
+        id: "retention-a",
+        lane: "ecosystem" as const,
+        nutrientId: "n:retention-a",
+        source: "news" as const,
+        label: "사용자 재방문 흐름",
+        value: "확대",
+        summary: "Returning users kept showing up after the initial spike.",
+        trust: 0.82,
+        freshness: 0.89,
+        digestScore: 0.78,
+        capturedAt: createdAt,
+      },
+      {
+        id: "retention-b",
+        lane: "ecosystem" as const,
+        nutrientId: "n:retention-b",
+        source: "onchain" as const,
+        label: "실사용 잔류",
+        value: "약화",
+        summary: "Actual day-two usage still fell away quickly.",
+        trust: 0.8,
+        freshness: 0.88,
+        digestScore: 0.76,
+        capturedAt: createdAt,
+      },
+      {
+        id: "retention-c",
+        lane: "ecosystem" as const,
+        nutrientId: "n:retention-c",
+        source: "onchain" as const,
+        label: "지갑 재방문",
+        value: "확대",
+        summary: "Wallet return stayed visible even as usage thinned.",
+        trust: 0.79,
+        freshness: 0.87,
+        digestScore: 0.74,
+        capturedAt: createdAt,
+      },
+    ],
+    recentPosts: [],
+    recentNarrativeThreads: [
+      {
+        lane: "ecosystem",
+        focus: "retention",
+        sceneFamily: "ecosystem:retention:retention+usage",
+        headline: "직전에도 재방문은 남는데 생활 흔적은 못 눕는 장면을 물고 있었다",
+      },
+      {
+        lane: "ecosystem",
+        focus: "retention",
+        sceneFamily: "ecosystem:retention:retention+usage:usage-gap",
+        headline: "사람은 돌아오는데 실사용 잔류가 다음 날까지 못 이어졌다",
+      },
+    ],
+    identityPressure: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 잔류다.",
+      grudgeLine: "재방문만 있고 생활 흔적이 비는 생태계를 제일 싫어한다.",
+      continuityLine: "지난번에도 다시 들어오는 사람보다 하루 뒤 습관이 먼저 무너졌다.",
+    },
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "retention-explicit");
+});
+
 test("buildEventEvidenceFallbackPost avoids analytic generic loop phrasing for korean synthetic headline", () => {
   const createdAt = new Date().toISOString();
   const text = buildEventEvidenceFallbackPost(
