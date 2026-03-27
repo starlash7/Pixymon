@@ -1963,24 +1963,6 @@ function pickVariantLine(pool: string[], seed: number, variant: number, offset =
   return pool[(baseIndex + variant) % pool.length];
 }
 
-function pickPreferredLine(primaryPool: string[], fallbackPool: string[], seed: number, offset = 0): string {
-  if (primaryPool.length > 0) {
-    return pick(primaryPool, seed, offset);
-  }
-  return pick(fallbackPool, seed, offset);
-}
-
-function pickPreferredVariantLine(
-  primaryPool: string[],
-  fallbackPool: string[],
-  seed: number,
-  variant: number,
-  offset = 0
-): string {
-  const effectivePool = primaryPool.length > 0 ? primaryPool : fallbackPool;
-  return pickVariantLine(effectivePool, seed, variant, offset);
-}
-
 function buildVariantSalt(input: KoIdentityWriterInput, focus: WriterFocus, primaryAnchor: string, secondaryAnchor: string): number {
   return stableSeedForPrelude(
     [

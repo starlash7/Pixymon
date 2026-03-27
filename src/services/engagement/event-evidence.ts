@@ -2095,17 +2095,6 @@ function extractSignedNumber(text: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function humanizeSignedOnchainValue(
-  text: string,
-  labels: { positive: string; neutral: string; negative: string }
-): string {
-  const value = extractSignedNumber(text);
-  if (value === null) return labels.neutral;
-  if (value > 0) return labels.positive;
-  if (value < 0) return labels.negative;
-  return labels.neutral;
-}
-
 function inferDirectionFromText(text: string): SignalDirection {
   const normalized = sanitizeTweetText(text || "").toLowerCase();
   if (!normalized) return "flat";
