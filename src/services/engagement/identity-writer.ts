@@ -1973,7 +1973,7 @@ const FOCUS_SOUL_HINT_POOLS: Partial<Record<TrendLane, Partial<Record<WriterFocu
     ],
     builder: [
       "코드만 남고 돈이 비면 좋은 빌드 서사도 금방 내부자 문장처럼 보인다.",
-      "개발자가 남는다고 끝이 아니다. 돈의 복귀가 붙어야 생태계 기세가 성립한다.",
+      "개발자 잔류만으로는 부족하다. 돈의 복귀가 붙어야 생태계 기세가 성립한다.",
       "빌더와 자금이 같은 편에 서지 않으면 좋은 설명도 오래 버티지 못한다.",
       "코드보다 느리게 돌아온 자금 쪽이 결국 이 생태계의 체급을 다시 매긴다.",
     ],
@@ -2441,6 +2441,119 @@ function buildSceneFamilyFixationPool(input: KoIdentityWriterInput, focus: Write
         "거래량이 먼저 커진 장면일수록 결국 늦게 남은 깊이 하나가 전체 체급을 다시 깎는다.",
         "숫자 크기보다 정산 깊이가 더 늦게 말하는 장면은 늘 거래량이 먼저 과장된다.",
         "거래량이 살아도 깊이가 비는 순간 그 반응은 체급보다 숫자값으로 더 빨리 접힌다."
+      );
+    }
+  }
+
+  return pool.filter(Boolean);
+}
+
+function buildSceneFamilyLeadPool(input: KoIdentityWriterInput, focus: WriterFocus): string[] {
+  const sceneFamily = input.sceneFamily || "";
+  const pool: string[] = [];
+
+  if (input.lane === "ecosystem" && focus === "retention") {
+    if (/retention\+usage|usage\+wallet|habit\+retention|return\+habit/.test(sceneFamily)) {
+      pool.push(
+        "생활 흔적이 하루를 못 넘기면 큰 생태계 서사도 바로 얇아진다.",
+        "남은 사용 습관이 못 눕는 순간 그 생태계 반응은 이미 절반이 빠진다.",
+        "다시 돌아오는 손이 보여도 생활 리듬이 안 붙으면 그 서사는 오래 못 간다."
+      );
+    }
+    if (/retention\+cohort|cohort\+retention/.test(sceneFamily)) {
+      pool.push(
+        "남은 사람 수가 꺾이는 순간 생태계 서사는 제일 먼저 체급을 잃는다.",
+        "잔류선이 얇아지는 날은 좋은 커뮤니티 문장도 금방 포스터 값으로 무너진다.",
+        "코호트가 못 버티는 장면은 늘 설명보다 이탈이 먼저 기억에 남는다."
+      );
+    }
+    if (/wallet\+retention|wallet\+usage/.test(sceneFamily)) {
+      pool.push(
+        "돌아오는 지갑보다 남는 사람이 적으면 그 생태계는 금방 가벼워진다.",
+        "복귀 지갑이 보여도 사람 수가 못 남는 순간 그 반응은 체급을 못 얻는다.",
+        "지갑은 돌아와도 사람이 안 남는 장면은 늘 복귀보다 이탈이 더 크게 남는다."
+      );
+    }
+  }
+
+  if (input.lane === "regulation" && focus === "court") {
+    if (/verdict\+execution|court\+execution/.test(sceneFamily)) {
+      pool.push(
+        "판결문이 선명해도 집행이 늦으면 그 뉴스는 기사값부터 깎인다.",
+        "법원 문장이 커도 돈이 안 눕는 순간 그 판결 뉴스는 반쪽으로 남는다.",
+        "판결보다 늦게 붙는 행동이 비면 그 규제 뉴스는 현장까지 못 내려온다."
+      );
+    }
+    if (/order\+capital|capital\+execution|briefing\+execution|briefing\+capital/.test(sceneFamily)) {
+      pool.push(
+        "브리핑이 길어질수록 결국 드러나는 건 돈이 늦게 눕는 자리다.",
+        "주문이 안 눕는 판결 뉴스는 법원보다 스튜디오 냄새가 더 진하다.",
+        "자금이 머뭇거리는 순간 그 소송 뉴스는 브리핑 체급으로 내려앉는다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "durability") {
+    if (/ops\+validator|validator\+log|ops\+log/.test(sceneFamily)) {
+      pool.push(
+        "검증자 숫자가 살아도 운영 로그가 늦으면 그 릴리스는 금방 얇아진다.",
+        "합의가 버텨도 로그가 비는 순간 좋은 업그레이드도 발표값으로 줄어든다.",
+        "운영 로그가 안 붙는 장면은 검증자 박수보다 빈칸이 더 오래 남는다."
+      );
+    }
+    if (/ops\+recovery|recovery\+validator|repair\+validator|repair\+ops|recovery\+ops/.test(sceneFamily)) {
+      pool.push(
+        "복구 태도가 얇은 릴리스는 시간이 갈수록 발표보다 빈칸을 더 많이 남긴다.",
+        "장애 뒤 기록이 못 버티는 순간 그 개선은 운영 문턱을 못 넘는다.",
+        "복구 속도가 머뭇거리면 좋은 업그레이드도 끝내 체급을 못 얻는다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "launch") {
+    if (/return\+ops|launch\+ops|launch\+audience|return\+audience/.test(sceneFamily)) {
+      pool.push(
+        "메인넷 무대가 뜨거워도 돌아오는 돈이 없으면 그 출시는 반쪽이다.",
+        "운영 반응보다 복귀 자금이 늦는 런치는 오래 못 버틴다.",
+        "객석이 비는 메인넷 발표는 결국 무대 밖 설득을 끝내지 못한다."
+      );
+    }
+    if (/return\+announcement|return\+showcase|launch\+showcase|return\+launch|launch\+return/.test(sceneFamily)) {
+      pool.push(
+        "쇼케이스가 뜨거워도 돈이 안 돌아오면 그 런치는 무대값으로 남는다.",
+        "발표는 선명한데 객석이 비는 메인넷은 금방 체급을 잃는다.",
+        "복귀 자금이 느린 런치는 준비도보다 발표 냄새를 더 오래 남긴다."
+      );
+    }
+    if (/launch\+treasury|launch\+capital|capital\+launch/.test(sceneFamily)) {
+      pool.push(
+        "메인넷 문장이 단단해도 돈이 늦으면 그 출시는 장부 바깥에서 꺼진다.",
+        "자금이 안 돌아오는 런치는 설명보다 빈칸이 먼저 기억에 남는다.",
+        "준비도는 보여도 복귀 자금이 비면 그 메인넷 얘기는 오래 못 버틴다."
+      );
+    }
+  }
+
+  if (input.lane === "market-structure" && focus === "settlement") {
+    if (/execution\+depth|fill\+depth|fill\+book/.test(sceneFamily)) {
+      pool.push(
+        "현물 체결이 커도 호가가 비면 그 반응은 아직 구조를 못 만든다.",
+        "체결 숫자가 살아도 깊이가 못 눕는 장면은 늘 장면값만 크게 남긴다.",
+        "호가 책이 비는 체결은 구조보다 속도전의 잔상에 더 가깝다."
+      );
+    }
+    if (/volume\+depth|volume\+settlement|volume\+book/.test(sceneFamily)) {
+      pool.push(
+        "거래량만 커지고 깊이가 비면 그 반응은 숫자 체급에서 끝난다.",
+        "볼륨은 뜨거운데 깊이가 못 버티는 장면은 늘 화면값이 더 크게 남는다.",
+        "정산 깊이가 안 붙는 거래량은 구조보다 숫자값에 더 가깝다."
+      );
+    }
+    if (/depth\+heat|settlement\+heat|depth\+settlement/.test(sceneFamily)) {
+      pool.push(
+        "과열은 커도 정산 깊이가 비면 그 장면은 오래 못 간다.",
+        "화면 열기만 큰 정산 장면은 결국 깊이 빈칸에서 체급이 깎인다.",
+        "정산보다 분위기가 먼저 커진 장면은 구조보다 연출 편에 가깝다."
       );
     }
   }
@@ -3020,6 +3133,7 @@ function buildPressureLine(
 function buildSceneLine(
   input: KoIdentityWriterInput,
   focus: WriterFocus,
+  lengthProfile: WriterLengthProfile,
   seed: number,
   variant: number,
   primaryAnchor: string,
@@ -3186,6 +3300,7 @@ function buildSceneLine(
     input.lane,
     focus,
     input.mode,
+    lengthProfile,
     input.sceneFamily || "",
     repairedSceneCore,
     primaryAnchor,
@@ -3285,26 +3400,70 @@ function buildEraNudgeLine(
   }
 
   if (input.lane === "protocol" && focus === "durability") {
+    if (/ops\+validator|validator\+log|log-gap/.test(sceneFamily)) {
+      return pickContextualDistinctLine(
+        [
+          "새 프로토콜의 값은 결국 운영 로그가 어디서 버티는지에서 다시 매겨진다.",
+          "프로토콜의 체급은 결국 검증자 숫자보다 늦게 남은 운영 로그가 정산한다.",
+          "업그레이드의 시대감은 결국 릴리스 속도보다 로그가 어디서 버티는지에서 갈린다.",
+          "새 질서는 결국 검증자 숫자보다 운영 로그가 어느 자리까지 남는지에서 정리된다."
+        ],
+        [input.lane, focus, input.mode, lengthProfile, sceneFamily, "era-nudge-log-gap"].join("|"),
+        variant,
+        [scene, lead],
+        53 + seed
+      );
+    }
+    if (/ops\+recovery|recovery\+validator|repair\+ops|rollout-lag|recovery\+ops/.test(sceneFamily)) {
+      return pickContextualDistinctLine(
+        [
+          "새 국면은 결국 복구 태도가 어디까지 버티는지에서 열린다.",
+          "개선의 시대감은 결국 롤아웃보다 복구가 남긴 자리에서 갈린다.",
+          "업그레이드의 체급은 결국 박수보다 복구 태도가 어디서 버티는지에서 정산된다.",
+          "새 질서는 결국 배포 속도보다 장애 뒤 복구가 남긴 자리에서 다시 정리된다."
+        ],
+        [input.lane, focus, input.mode, lengthProfile, sceneFamily, "era-nudge-recovery"].join("|"),
+        variant,
+        [scene, lead],
+        53 + seed
+      );
+    }
     pool.push(
       "업그레이드의 세대는 결국 복구 태도가 다시 쓴다.",
       "프로토콜의 질서는 결국 로그와 복구가 정한다.",
       "새 국면은 결국 장애 뒤 태도가 선언한다."
     );
-    if (/ops\+validator|validator\+log|log-gap/.test(sceneFamily)) {
-      pool.push(
-        "프로토콜의 무게는 결국 검증자 숫자보다 늦게 남은 운영 로그가 다시 쓴다.",
-        "업그레이드의 체급은 결국 릴리스보다 운영 로그의 지속 시간이 정산한다."
-      );
-    }
-    if (/ops\+recovery|recovery\+validator|repair\+ops|rollout-lag/.test(sceneFamily)) {
-      pool.push(
-        "새 질서는 결국 배포보다 장애 뒤 복구 태도가 더 늦게 연다.",
-        "개선의 시대감은 결국 롤아웃보다 복구가 어디서 버티는지에서 갈린다."
-      );
-    }
   }
 
   if (input.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) {
+    if (/book-thin|execution-thin/.test(sceneFamily)) {
+      return pickContextualDistinctLine(
+        [
+          "새 장세의 값은 결국 체결보다 늦게 붙은 깊이 빈칸이 다시 정산한다.",
+          "정산의 시대감은 결국 거래량보다 호가 책의 빈칸이 어디서 남는지에서 드러난다.",
+          "시장 구조의 체급은 결국 숫자보다 호가 책이 어디서 비는지에서 갈린다.",
+          "새 질서는 결국 거래량보다 늦게 남은 호가 두께가 다시 쓴다."
+        ],
+        [input.lane, focus, input.mode, lengthProfile, sceneFamily, "era-nudge-book-thin"].join("|"),
+        variant,
+        [scene, lead],
+        53 + seed
+      );
+    }
+    if (/size-only|settlement-lag/.test(sceneFamily)) {
+      return pickContextualDistinctLine(
+        [
+          "이 장세의 무게는 결국 거래량보다 늦게 눕은 깊이 쪽이 다시 정산한다.",
+          "시장 구조의 값은 결국 숫자 반응보다 깊이가 늦게 눕는 자리에서 정산된다.",
+          "정산의 체급은 결국 거래량보다 늦게 따라온 깊이가 다시 매긴다.",
+          "새 질서는 결국 숫자보다 정산 깊이가 어디서 따라오지 못하는지에서 정리된다."
+        ],
+        [input.lane, focus, input.mode, lengthProfile, sceneFamily, "era-nudge-settlement-lag"].join("|"),
+        variant,
+        [scene, lead],
+        53 + seed
+      );
+    }
     pool.push(
       "새 질서는 결국 돈이 남은 자리에서 정리된다.",
       "시장 구조의 시대는 결국 실제 돈이 다시 쓴다.",
@@ -3749,15 +3908,24 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const selectionSeed = seed + variantSalt;
   const frame = resolveWriterFrame(input.mode, focus, selectionSeed + variant);
   const lengthProfile = resolveWriterLengthProfile(input.maxChars);
+  const scene = buildSceneLine(
+    input,
+    focus,
+    lengthProfile,
+    selectionSeed + variant * 5 + 1,
+    variant,
+    primaryAnchor,
+    secondaryAnchor
+  );
   const focusLeadPool = FOCUS_CLAIM_BY_LANE[input.lane]?.[focus] || [];
   const focusCrossExamPool = FOCUS_CROSS_EXAM_BY_LANE[input.lane]?.[focus] || [];
+  const sceneLeadPool = buildSceneFamilyLeadPool(input, focus);
   const leadPool =
     frame === "cross-exam"
-      ? focusCrossExamPool.length ? focusCrossExamPool : CROSS_EXAM_BY_LANE[input.lane]
+      ? [...sceneLeadPool, ...(focusCrossExamPool.length ? focusCrossExamPool : CROSS_EXAM_BY_LANE[input.lane])].filter(Boolean)
       : frame === "field-note"
-        ? focusLeadPool.length ? focusLeadPool : FIELD_NOTES_BY_LANE[input.lane]
-        : focusLeadPool.length ? focusLeadPool : CLAIM_BY_LANE[input.lane];
-  const scene = buildSceneLine(input, focus, selectionSeed + variant * 5 + 1, variant, primaryAnchor, secondaryAnchor);
+        ? [...sceneLeadPool, ...(focusLeadPool.length ? focusLeadPool : FIELD_NOTES_BY_LANE[input.lane])].filter(Boolean)
+        : [...sceneLeadPool, ...(focusLeadPool.length ? focusLeadPool : CLAIM_BY_LANE[input.lane])].filter(Boolean);
   const lead = pickContextualDistinctLine(
     leadPool,
     [

@@ -230,6 +230,31 @@ test("buildKoIdentityWriterCandidate avoids settlement second-sentence collapse 
   assert.ok(secondSentences.size >= 4);
 });
 
+test("buildKoIdentityWriterCandidate widens settlement opener families across variants", () => {
+  const firstSentences = new Set(
+    Array.from({ length: 8 }, (_, variant) => {
+      const text = buildKoIdentityWriterCandidate(
+        {
+          ...baseInput,
+          lane: "market-structure",
+          mode: "era-manifesto",
+          headline: "현물 체결은 살아 있는데 호가 책이 비는 구간",
+          primaryAnchor: "현물 체결 흐름",
+          secondaryAnchor: "호가 유동성",
+          preferredFocus: "settlement",
+          sceneFamily: "market-structure:settlement:execution+depth:execution-thin:book-thin",
+          seedHint: "identity-writer:settlement-first-sentence",
+          maxChars: 240,
+        },
+        variant
+      );
+      return (text.split(/(?<=[.!?])\s+/u)[0] || "").trim();
+    }).filter(Boolean)
+  );
+
+  assert.ok(firstSentences.size >= 5);
+});
+
 test("buildKoIdentityWriterCandidate widens protocol durability opener families across variants", () => {
   const firstSentences = new Set(
     Array.from({ length: 8 }, (_, variant) => {
@@ -276,6 +301,31 @@ test("buildKoIdentityWriterCandidate avoids retention era-line collapse across v
   );
 
   assert.ok(secondSentences.size >= 4);
+});
+
+test("buildKoIdentityWriterCandidate widens retention opener families across variants", () => {
+  const firstSentences = new Set(
+    Array.from({ length: 8 }, (_, variant) => {
+      const text = buildKoIdentityWriterCandidate(
+        {
+          ...baseInput,
+          lane: "ecosystem",
+          mode: "era-manifesto",
+          headline: "재방문은 남는데 생활 흔적이 다음 날까지 못 이어지는 구간",
+          primaryAnchor: "사용자 재방문 흐름",
+          secondaryAnchor: "체인 안쪽 사용",
+          preferredFocus: "retention",
+          sceneFamily: "ecosystem:retention:retention+usage:habit-gap:cohort-thin",
+          seedHint: "identity-writer:retention-first-sentence",
+          maxChars: 240,
+        },
+        variant
+      );
+      return (text.split(/(?<=[.!?])\s+/u)[0] || "").trim();
+    }).filter(Boolean)
+  );
+
+  assert.ok(firstSentences.size >= 5);
 });
 
 test("buildKoIdentityWriterCandidate avoids court era-line collapse across variants", () => {
