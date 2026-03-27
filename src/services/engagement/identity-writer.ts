@@ -2357,6 +2357,104 @@ function pickFixationLine(
   return pickContextualDistinctLine(pool, contextKey, variant, [lead, attitude, scene], 25 + seed);
 }
 
+function buildSceneFamilyDecisionPool(input: KoIdentityWriterInput, focus: WriterFocus): string[] {
+  const sceneFamily = input.sceneFamily || "";
+  const pool: string[] = [];
+
+  if (input.lane === "ecosystem" && focus === "retention") {
+    if (/retention\+usage|usage\+wallet|habit\+retention|return\+habit/.test(sceneFamily)) {
+      pool.push(
+        "생활 흔적이 못 붙는 순간 이 반응은 성장보다 체험 홍보에 더 가까워진다.",
+        "다음 날 습관이 비면 이 생태계 얘기는 잔류보다 캠페인 쪽으로 눕는다.",
+        "생활 리듬이 못 남는 순간 이 반응은 사용자 수보다 허세를 더 많이 남긴다."
+      );
+    }
+    if (/retention\+cohort|cohort\+retention/.test(sceneFamily)) {
+      pool.push(
+        "남는 사람 수가 줄어드는 순간 이 생태계 서사는 체급부터 깎인다.",
+        "잔류선이 먼저 꺾이면 이 반응은 성장보다 하루치 열기에 더 가깝다.",
+        "코호트가 못 버티는 순간 좋은 서사도 결국 커뮤니티 포스터 쪽으로 접힌다."
+      );
+    }
+    if (/wallet\+retention/.test(sceneFamily)) {
+      pool.push(
+        "지갑만 돌아오고 사람이 안 남는 순간 이 생태계 얘기는 바로 가벼워진다.",
+        "돌아오는 지갑이 보여도 사람 수가 안 남으면 이 반응은 체급을 못 얻는다."
+      );
+    }
+  }
+
+  if (input.lane === "regulation" && focus === "court") {
+    if (/verdict\+execution|court\+execution/.test(sceneFamily)) {
+      pool.push(
+        "집행이 늦는 순간 그 판결 뉴스는 기사 체급으로 바로 낮아진다.",
+        "법원 문장만 남고 돈이 안 붙으면 이 뉴스는 현장보다 해설 쪽으로 접힌다.",
+        "판결이 선명해도 자금이 눕지 않으면 이 뉴스는 법원 바깥으로 못 내려온다."
+      );
+    }
+    if (/order\+capital|capital\+execution|briefing\+execution/.test(sceneFamily)) {
+      pool.push(
+        "브리핑만 길고 주문이 안 눕는 순간 이 판결 뉴스는 스튜디오 값으로 돌아간다.",
+        "대기 자금이 비면 이 법원 뉴스는 집행보다 헤드라인 쪽으로 더 빨리 기운다.",
+        "주문이 식는 순간 그 소송 뉴스는 판결보다 브리핑 문장으로 더 오래 남는다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "durability") {
+    if (/ops\+validator|validator\+log/.test(sceneFamily)) {
+      pool.push(
+        "운영 로그가 늦는 순간 이 개선은 합의보다 발표 체급으로 다시 눕는다.",
+        "검증자 숫자만 남고 로그가 비면 이 릴리스는 운영보다 발표 쪽으로 접힌다.",
+        "합의는 버텨도 로그가 늦는 순간 이 업그레이드 얘기는 반쪽이 된다."
+      );
+    }
+    if (/ops\+recovery|recovery\+validator|repair\+validator/.test(sceneFamily)) {
+      pool.push(
+        "복구 속도가 늦는 순간 이 개선은 박수보다 빈칸을 더 크게 남긴다.",
+        "장애 뒤 태도가 얕으면 이 릴리스는 운영 문턱을 끝내 못 넘는다.",
+        "복구 기록이 가벼우면 좋은 업그레이드도 결국 발표값으로 되돌아간다."
+      );
+    }
+  }
+
+  if (input.lane === "protocol" && focus === "launch") {
+    if (/return\+ops|launch\+ops/.test(sceneFamily)) {
+      pool.push(
+        "운영은 붙는데 돈이 안 돌아오면 이 런치는 메인넷보다 발표에 더 가깝다.",
+        "복귀 자금이 비는 순간 이 출시는 운영 문장보다 객석의 주저함을 더 크게 남긴다.",
+        "운영 반응만 남고 자금이 늦으면 이 메인넷 얘기는 발표회 쪽으로 기운다."
+      );
+    }
+    if (/return\+announcement|return\+showcase|launch\+showcase/.test(sceneFamily)) {
+      pool.push(
+        "쇼케이스가 뜨거워도 돈이 안 돌아오면 이 런치는 무대값만 남긴다.",
+        "발표는 선명한데 객석이 비면 이 출시는 설득보다 연출 쪽에 더 가깝다.",
+        "복귀 자금이 객석에 머무는 순간 이 메인넷 얘기는 브리핑 체급으로 내려앉는다."
+      );
+    }
+  }
+
+  if (input.lane === "market-structure" && focus === "settlement") {
+    if (/execution\+depth|fill\+depth|fill\+book/.test(sceneFamily)) {
+      pool.push(
+        "체결은 찍혀도 깊이가 비면 이 반응은 구조보다 속도전 쪽으로 더 기운다.",
+        "깊이가 못 눕는 순간 이 체결 반응은 숫자보다 얕은 장면으로 남는다.",
+        "호가가 비는 체결은 구조보다 연출의 잔상에 더 가깝다."
+      );
+    }
+    if (/volume\+settlement|volume\+depth|depth\+settlement/.test(sceneFamily)) {
+      pool.push(
+        "거래량만 선명하고 깊이가 비면 이 반응은 체급 대신 숫자값으로 접힌다.",
+        "정산 깊이가 안 붙는 거래량은 구조보다 화면값으로 더 빨리 내려앉는다.",
+        "볼륨이 커도 깊이가 못 버티는 순간 이 장면은 체결보다 분위기 쪽으로 기운다."
+      );
+    }
+  }
+
+  return pool.filter(Boolean);
+}
+
 function buildSceneFamilyConsequencePool(input: KoIdentityWriterInput, focus: WriterFocus): string[] {
   const sceneFamily = input.sceneFamily || "";
   const pool: string[] = [];
@@ -3236,7 +3334,10 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   );
   const pressure = buildPressureLine(input, focus, selectionSeed + variant * 29 + 1, variant, lead, attitude);
   const focusDecisionPool = FOCUS_DECISION_BY_LANE[input.lane]?.[focus] || [];
-  const decisionPool = focusDecisionPool.length ? focusDecisionPool : DECISION_BY_LANE[input.lane];
+  const sceneDecisionPool = buildSceneFamilyDecisionPool(input, focus);
+  const decisionPool = [...focusDecisionPool, ...sceneDecisionPool].filter(Boolean).length
+    ? [...focusDecisionPool, ...sceneDecisionPool].filter(Boolean)
+    : DECISION_BY_LANE[input.lane];
   const decision = pickContextualDistinctLine(
     decisionPool,
     [
