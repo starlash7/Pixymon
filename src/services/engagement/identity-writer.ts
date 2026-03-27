@@ -1390,6 +1390,10 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
       "프로토콜의 시대는 출시 박수가 아니라 운영 태도가 바꾼다.",
       "업그레이드의 세대는 결국 복구 기록이 늦게 다시 쓴다.",
       "새 국면은 늘 릴리스 노트보다 장애 뒤 태도가 선언한다.",
+      "프로토콜의 체급은 결국 배포 속도보다 복구 태도가 다시 매긴다.",
+      "새 질서는 출시 무대보다 장애 뒤 운영 반응이 더 늦게 정리한다.",
+      "업그레이드의 시대감은 결국 검증자 박수보다 복구 기록이 다시 쓴다.",
+      "릴리스의 체급은 결국 운영 태도가 어디서 버티는지가 다시 매긴다.",
     ],
     "identity-journal": [
       "출시 박수보다 늦게 붙는 운영 반응 쪽이 결국 더 정확하다.",
@@ -2897,7 +2901,7 @@ function buildSceneLine(
     .replace(/거리라는\s+점/u, "거리")
     .replace(/\s{2,}/g, " ")
     .trim();
-  const safeSceneCore = /(늦게 붙는|빠지는|비는|남는|엇갈리는|갈라지는|뒤처지는|머뭇거리는|못 눕는|못 이어지는|못 따라오는|안 붙는|안 눕는|납작한|얇은|헐거운|느린|가벼운|무거운|성급한|굼뜬)$/u.test(
+  const safeSceneCore = /(늦게 붙는|빠지는|비는|남는|엇갈리는|갈라지는|뒤처지는|머뭇거리는|못 눕는|못 이어지는|못 따라오는|안 붙는|안 눕는|납작한|얇은|얇아진|헐거운|느린|가벼운|무거운|성급한|굼뜬|커진|낮아진)$/u.test(
     normalizedSceneCore
   )
     ? `${normalizedSceneCore} 장면`
@@ -2915,12 +2919,15 @@ function buildSceneLine(
     .replace(/안 눕는에서/gu, "안 눕는 자리에서")
     .replace(/납작한에서/gu, "납작한 자리에서")
     .replace(/얇은에서/gu, "얇은 자리에서")
+    .replace(/얇아진에서/gu, "얇아진 자리에서")
     .replace(/헐거운에서/gu, "헐거운 자리에서")
     .replace(/느린에서/gu, "느린 자리에서")
     .replace(/가벼운에서/gu, "가벼운 자리에서")
     .replace(/무거운에서/gu, "무거운 자리에서")
     .replace(/성급한에서/gu, "성급한 자리에서")
-    .replace(/굼뜬에서/gu, "굼뜬 자리에서");
+    .replace(/굼뜬에서/gu, "굼뜬 자리에서")
+    .replace(/커진에서/gu, "커진 자리에서")
+    .replace(/낮아진에서/gu, "낮아진 자리에서");
   if (
     /[가-힣)]다$/u.test(repairedSceneCore) &&
     !/(장면|지점|거리|온도 차|시차|틈|간격|연결|지속성 차이|엇갈림|균열|쪽)$/u.test(repairedSceneCore)
@@ -3670,17 +3677,18 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
 
   if (input.mode === "era-manifesto" && !/(국면|질서|시대|체급|사이클)/u.test(candidate)) {
     const eraNudge = buildEraNudgeLine(input, focus, variant, selectionSeed, stamp, scene, lead);
+    const eraSentence = /[?؟.]$/u.test(eraNudge) ? eraNudge : `${sanitizeClause(eraNudge)}.`;
     const sentences = candidate.split(/(?<=[.!?])\s+/u).filter(Boolean);
     const injected =
       sentences.length >= 2
-        ? sanitizeTweetText([sentences[0], eraNudge, ...sentences.slice(1)].join(" "))
-        : sanitizeTweetText(`${candidate} ${eraNudge}`);
+        ? sanitizeTweetText([sentences[0], eraSentence, ...sentences.slice(1)].join(" "))
+        : sanitizeTweetText(`${candidate} ${eraSentence}`);
     if (injected.length <= input.maxChars) {
       candidate = injected;
     } else {
-      const budget = Math.max(40, input.maxChars - eraNudge.length - 1);
+      const budget = Math.max(40, input.maxChars - eraSentence.length - 1);
       const trimmed = finalizeGeneratedText(candidate, "ko", budget);
-      candidate = sanitizeTweetText(`${trimmed} ${eraNudge}`);
+      candidate = sanitizeTweetText(`${trimmed} ${eraSentence}`);
     }
   }
 

@@ -342,6 +342,28 @@ test("buildKoIdentityWriterCandidate gives era-manifesto mode a period-scale the
   assert.match(text, /(국면|질서|시대|체급|사이클)/);
   assert.match(text, /(돈|체결|호가|시장)/);
   assert.doesNotMatch(text, /먼저 본다|확인한다|미룬다/);
+  assert.doesNotMatch(text, /\.\./);
+});
+
+test("buildKoIdentityWriterCandidate repairs thin scene headlines without malformed 에서 tails", () => {
+  const text = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "ecosystem",
+      mode: "meta-reflection",
+      headline: "지갑은 움직이는데 다음 날 사람 수는 얇아진 구간",
+      primaryAnchor: "사용자 재방문 흐름",
+      secondaryAnchor: "지갑 재방문",
+      preferredFocus: "retention",
+      seedHint: "identity-writer:thin-scene-tail",
+      maxChars: 196,
+    },
+    0
+  );
+
+  assert.doesNotMatch(text, /얇아진에서|커진에서|낮아진에서/);
+  assert.doesNotMatch(text, /구간/);
+  assert.match(text, /(생활 흔적|습관|장면|빈칸)/);
 });
 
 test("buildKoIdentityWriterCandidate can surface lane fixation instead of generic instinct", () => {
