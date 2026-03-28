@@ -4111,42 +4111,48 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
     if (sceneFamilyMatches(sceneFamily, /^ecosystem:retention:retention$/)) return -0.18;
     if (sceneFamilyMatches(sceneFamily, /cohort\+wallet$/)) return -0.24;
     if (sceneFamilyMatches(sceneFamily, /wallet\+usage$/)) return -0.18;
-    if (sceneFamilyMatches(sceneFamily, /usage\+wallet$/) || sceneFamilyMatches(sceneFamily, /cohort\+usage$/)) return 0.24;
-    if (sceneFamilyMatches(sceneFamily, /retention\+wallet$/) || sceneFamilyMatches(sceneFamily, /wallet\+retention$/)) return 0.3;
-    if (sceneFamilyMatches(sceneFamily, /cohort\+retention$/) || sceneFamilyMatches(sceneFamily, /retention\+cohort$/)) return 0.14;
-    if (sceneFamilyMatches(sceneFamily, /retention\+usage$/) || sceneFamilyMatches(sceneFamily, /retention\+usage/)) return 0.26;
-    if (sceneFamilyMatches(sceneFamily, /community\+retention$/)) return 0.24;
+    if (sceneFamilyMatches(sceneFamily, /usage\+wallet$/) || sceneFamilyMatches(sceneFamily, /cohort\+usage$/)) return 0.32;
+    if (sceneFamilyMatches(sceneFamily, /retention\+wallet$/) || sceneFamilyMatches(sceneFamily, /wallet\+retention$/)) return 0.24;
+    if (sceneFamilyMatches(sceneFamily, /cohort\+retention$/) || sceneFamilyMatches(sceneFamily, /retention\+cohort$/)) return 0.18;
+    if (sceneFamilyMatches(sceneFamily, /habit\+retention$/) || sceneFamilyMatches(sceneFamily, /return\+habit$/)) return 0.34;
+    if (sceneFamilyMatches(sceneFamily, /retention\+usage$/) || sceneFamilyMatches(sceneFamily, /retention\+usage/)) return 0.08;
+    if (sceneFamilyMatches(sceneFamily, /community\+retention$/)) return 0.3;
   }
   if (lane === "protocol" && focus === "launch") {
     if (sceneFamilyMatches(sceneFamily, /^protocol:launch:launch$/)) return -0.14;
     if (sceneFamilyMatches(sceneFamily, /capital\+launch$/) || sceneFamilyMatches(sceneFamily, /launch\+capital$/)) return -0.3;
-    if (sceneFamilyMatches(sceneFamily, /return\+launch$/) || sceneFamilyMatches(sceneFamily, /launch\+return$/)) return 0.4;
-    if (sceneFamilyMatches(sceneFamily, /return\+announcement$/)) return 0.3;
-    if (sceneFamilyMatches(sceneFamily, /return\+ops$/)) return 0.38;
-    if (sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/)) return 0.46;
+    if (sceneFamilyMatches(sceneFamily, /return\+launch$/) || sceneFamilyMatches(sceneFamily, /launch\+return$/)) return 0.18;
+    if (sceneFamilyMatches(sceneFamily, /return\+announcement$/)) return 0.24;
+    if (sceneFamilyMatches(sceneFamily, /return\+ops$/)) return 0.18;
+    if (sceneFamilyMatches(sceneFamily, /return\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+return$/)) return 0.38;
+    if (sceneFamilyMatches(sceneFamily, /return\+audience$/) || sceneFamilyMatches(sceneFamily, /audience\+return$/)) return 0.34;
     if (sceneFamilyMatches(sceneFamily, /launch\+capital$/) || sceneFamilyMatches(sceneFamily, /capital\+launch$/)) return -0.18;
-    if (sceneFamilyMatches(sceneFamily, /launch\+ops$/) || sceneFamilyMatches(sceneFamily, /ops\+launch$/)) return 0.34;
-    if (sceneFamilyMatches(sceneFamily, /launch\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+launch$/)) return 0.18;
-    if (sceneFamilyMatches(sceneFamily, /capital\+rollout$/) || sceneFamilyMatches(sceneFamily, /rollout\+capital$/)) return 0.36;
-    if (sceneFamilyMatches(sceneFamily, /launch\+rollout$/)) return 0.34;
+    if (sceneFamilyMatches(sceneFamily, /launch\+ops$/) || sceneFamilyMatches(sceneFamily, /ops\+launch$/)) return 0.22;
+    if (sceneFamilyMatches(sceneFamily, /launch\+showcase$/) || sceneFamilyMatches(sceneFamily, /showcase\+launch$/)) return 0.32;
+    if (sceneFamilyMatches(sceneFamily, /launch\+audience$/) || sceneFamilyMatches(sceneFamily, /audience\+launch$/)) return 0.3;
+    if (sceneFamilyMatches(sceneFamily, /launch\+treasury$/)) return 0.06;
+    if (sceneFamilyMatches(sceneFamily, /capital\+rollout$/) || sceneFamilyMatches(sceneFamily, /rollout\+capital$/)) return 0.3;
+    if (sceneFamilyMatches(sceneFamily, /launch\+rollout$/)) return 0.28;
     if (sceneFamilyMatches(sceneFamily, /launch$/)) return 0.02;
   }
   if (lane === "regulation" && focus === "court") {
     if (sceneFamilyMatches(sceneFamily, /^regulation:court:court$/)) return -0.32;
-    if (sceneFamilyMatches(sceneFamily, /verdict\+execution$/)) return 0.28;
-    if (sceneFamilyMatches(sceneFamily, /briefing\+execution$/)) return 0.2;
+    if (sceneFamilyMatches(sceneFamily, /verdict\+execution$/)) return 0.12;
+    if (sceneFamilyMatches(sceneFamily, /briefing\+execution$/)) return 0.08;
     if (sceneFamilyMatches(sceneFamily, /briefing\+capital$/)) return -0.1;
-    if (sceneFamilyMatches(sceneFamily, /court\+execution$/)) return 0.4;
-    if (sceneFamilyMatches(sceneFamily, /capital\+court$/)) return -0.14;
-    if (sceneFamilyMatches(sceneFamily, /capital\+execution$/)) return 0.36;
+    if (sceneFamilyMatches(sceneFamily, /court\+execution$/)) return 0.12;
+    if (sceneFamilyMatches(sceneFamily, /capital\+court$/)) return 0.12;
+    if (sceneFamilyMatches(sceneFamily, /capital\+execution$/)) return 0.24;
+    if (sceneFamilyMatches(sceneFamily, /order\+capital$/)) return 0.34;
   }
   if (lane === "protocol" && focus === "durability") {
     if (sceneFamilyMatches(sceneFamily, /recovery\+rollout$/)) return 0.28;
-    if (sceneFamilyMatches(sceneFamily, /recovery\+validator$/)) return -0.12;
+    if (sceneFamilyMatches(sceneFamily, /recovery\+validator$/)) return -0.22;
     if (sceneFamilyMatches(sceneFamily, /rollout\+validator$/)) return 0.26;
-    if (sceneFamilyMatches(sceneFamily, /ops\+recovery$/)) return 0.22;
-    if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) return 0.08;
-    if (sceneFamilyMatches(sceneFamily, /validator\+log$/) || sceneFamilyMatches(sceneFamily, /ops\+log$/)) return 0.24;
+    if (sceneFamilyMatches(sceneFamily, /ops\+recovery$/) || sceneFamilyMatches(sceneFamily, /recovery\+ops$/)) return 0.28;
+    if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) return -0.04;
+    if (sceneFamilyMatches(sceneFamily, /validator\+log$/) || sceneFamilyMatches(sceneFamily, /ops\+log$/)) return 0.32;
+    if (sceneFamilyMatches(sceneFamily, /repair\+log$/)) return 0.34;
   }
   if (lane === "market-structure") {
     if (focus === "liquidity") {
@@ -4154,11 +4160,12 @@ function estimateSceneFamilyBonus(lane: TrendLane, focus: PlannerFocus, sceneFam
       if (sceneFamilyMatches(sceneFamily, /depth\+execution$/)) return 0.06;
     }
     if (focus === "settlement") {
-      if (sceneFamilyMatches(sceneFamily, /execution\+depth$/)) return 0.04;
-      if (sceneFamilyMatches(sceneFamily, /volume\+depth$/)) return 0.08;
-      if (sceneFamilyMatches(sceneFamily, /fill\+depth$/) || sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) return 0.12;
+      if (sceneFamilyMatches(sceneFamily, /execution\+depth$/)) return -0.04;
+      if (sceneFamilyMatches(sceneFamily, /volume\+depth$/)) return -0.08;
+      if (sceneFamilyMatches(sceneFamily, /fill\+depth$/) || sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) return 0.18;
       if (sceneFamilyMatches(sceneFamily, /depth\+heat$/)) return 0.02;
-      if (sceneFamilyMatches(sceneFamily, /depth\+settlement$/) || sceneFamilyMatches(sceneFamily, /execution\+settlement$/)) return 0.08;
+      if (sceneFamilyMatches(sceneFamily, /depth\+settlement$/) || sceneFamilyMatches(sceneFamily, /execution\+settlement$/)) return 0.2;
+      if (sceneFamilyMatches(sceneFamily, /fill\+book$/) || sceneFamilyMatches(sceneFamily, /volume\+book$/)) return 0.14;
     }
   }
   if (lane === "ecosystem" && focus === "builder") {
@@ -4179,11 +4186,12 @@ function estimateSceneFamilyMonopolyPenalty(
   if (familyCount <= 1) return 0;
   let penalty = 0.05 * (familyCount - 1);
   if (
-    (lane === "ecosystem" && focus === "retention" && sceneFamilyMatches(sceneFamily, /(cohort\+wallet|retention\+usage|wallet\+usage)$/)) ||
+    (lane === "ecosystem" && focus === "retention" && sceneFamilyMatches(sceneFamily, /(cohort\+wallet|retention\+usage|wallet\+usage|return\+habit)$/)) ||
     (lane === "ecosystem" && focus === "builder" && sceneFamilyMatches(sceneFamily, /builder\+capital$/)) ||
-    (lane === "protocol" && focus === "launch" && sceneFamilyMatches(sceneFamily, /(capital\+launch|launch\+capital|return\+launch|return\+announcement|return\+ops|return\+showcase|launch\+ops)$/)) ||
-    (lane === "regulation" && focus === "court" && sceneFamilyMatches(sceneFamily, /^regulation:court:court$|briefing\+capital/)) ||
-    (lane === "protocol" && focus === "durability" && sceneFamilyMatches(sceneFamily, /(recovery\+validator|ops\+validator|rollout\+validator|validator\+log)$/))
+    (lane === "protocol" && focus === "launch" && sceneFamilyMatches(sceneFamily, /(capital\+launch|launch\+capital|launch\+treasury|return\+launch|return\+announcement|return\+ops|return\+showcase|launch\+ops)$/)) ||
+    (lane === "regulation" && focus === "court" && sceneFamilyMatches(sceneFamily, /^regulation:court:court$|briefing\+capital|briefing\+execution|verdict\+execution|court\+execution/)) ||
+    (lane === "protocol" && focus === "durability" && sceneFamilyMatches(sceneFamily, /(recovery\+validator|ops\+validator|rollout\+validator|validator\+log)$/)) ||
+    (lane === "market-structure" && focus === "settlement" && sceneFamilyMatches(sceneFamily, /(volume\+depth|execution\+depth|fill\+book)$/))
   ) {
     penalty += lane === "regulation" && focus === "court" ? 0.14 : 0.1;
   }
@@ -4899,7 +4907,7 @@ function diversifyDerivedSceneFamilyForVariant(
       "ecosystem:retention:usage+wallet",
       "ecosystem:retention:habit+retention",
       "ecosystem:retention:return+habit",
-      "ecosystem:retention:retention+usage",
+      "ecosystem:retention:wallet+retention",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
@@ -4909,14 +4917,14 @@ function diversifyDerivedSceneFamilyForVariant(
     /(regulation:court:briefing\+execution|regulation:court:briefing\+capital|regulation:court:capital\+execution|regulation:court:court\+execution|regulation:court:order\+capital|regulation:court:verdict\+execution)/.test(base)
   ) {
     const rotated = [
-      "regulation:court:court+execution",
+      "regulation:court:order+capital",
       "regulation:court:order+capital",
       "regulation:court:capital+execution",
       "regulation:court:briefing+capital",
       "regulation:court:briefing+execution",
       "regulation:court:verdict+execution",
-      "regulation:court:court+execution",
-      "regulation:court:order+capital",
+      "regulation:court:capital+court",
+      "regulation:court:capital+court",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
@@ -4930,10 +4938,10 @@ function diversifyDerivedSceneFamilyForVariant(
       "protocol:launch:launch+showcase",
       "protocol:launch:return+announcement",
       "protocol:launch:launch+rollout",
-      "protocol:launch:return+ops",
       "protocol:launch:launch+audience",
-      "protocol:launch:launch+treasury",
-      "protocol:launch:return+launch",
+      "protocol:launch:launch+audience",
+      "protocol:launch:capital+rollout",
+      "protocol:launch:return+showcase",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
@@ -4946,11 +4954,11 @@ function diversifyDerivedSceneFamilyForVariant(
       "protocol:durability:validator+log",
       "protocol:durability:repair+ops",
       "protocol:durability:repair+log",
-      "protocol:durability:recovery+validator",
+      "protocol:durability:recovery+ops",
       "protocol:durability:recovery+ops",
       "protocol:durability:ops+log",
       "protocol:durability:rollout+validator",
-      "protocol:durability:ops+validator",
+      "protocol:durability:repair+log",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
@@ -5125,13 +5133,13 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
     if (/(생활|습관|리듬|다음 날)/.test(merged)) {
       facetKey = facets.includes("wallet") ? "return+habit" : "habit+retention";
     } else if (/(실사용|생활 흔적|사용 흔적|체인 안쪽 사용)/.test(merged) && facets.includes("usage")) {
-      facetKey = facets.includes("wallet") ? "usage+wallet" : "retention+usage";
+      facetKey = facets.includes("wallet") ? "usage+wallet" : facets.includes("cohort") ? "cohort+usage" : "retention+usage";
     } else if (/(커뮤니티|열기|광고|홍보|포스터)/.test(merged)) {
       facetKey = "community+retention";
     } else if (facets.includes("wallet") && (facets.includes("cohort") || facets.includes("retention"))) {
       facetKey = "wallet+retention";
     } else if (facets.includes("retention") && facets.includes("usage")) {
-      facetKey = "retention+usage";
+      facetKey = facets.includes("cohort") ? "cohort+usage" : "retention+usage";
     } else if (facets.includes("cohort") && facets.includes("retention")) {
       facetKey = "retention+cohort";
     } else if (facets.includes("community") && facets.includes("retention")) {
@@ -5149,7 +5157,7 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
     } else if (/(운영|로그|복구|배포|롤아웃)/.test(merged) && facets.includes("return")) {
       facetKey = "return+ops";
     } else if (/(자금|돈|treasury|예치 자금|복귀 자금)/.test(merged) && facets.includes("launch")) {
-      facetKey = "launch+treasury";
+      facetKey = /(롤아웃|배포|운영)/.test(merged) ? "capital+rollout" : "capital+launch";
     } else if (facets.includes("showcase") && facets.includes("return")) {
       facetKey = "return+showcase";
     } else if (facets.includes("showcase") && facets.includes("launch")) {
@@ -5168,14 +5176,18 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
   if (lane === "market-structure" && focus === "settlement") {
     if (/(호가 책|호가|book)/.test(merged) && facets.includes("execution")) {
       facetKey = "fill+book";
+    } else if (/(거래량|숫자|볼륨)/.test(merged) && /(호가|깊이|book)/.test(merged) && facets.includes("depth")) {
+      facetKey = /(현물 체결|체결|주문 소화)/.test(merged) ? "fill+book" : "volume+book";
+    } else if (/(거래량|숫자|볼륨)/.test(merged) && /(정산|settlement)/.test(merged) && facets.includes("depth")) {
+      facetKey = "volume+settlement";
     } else if (/(거래량|숫자|볼륨)/.test(merged) && facets.includes("depth")) {
-      facetKey = "volume+depth";
+      facetKey = /(현물 체결|체결|주문 소화)/.test(merged) ? "execution+settlement" : "volume+book";
     } else if (/(정산|settlement)/.test(merged) && facets.includes("depth")) {
       facetKey = "depth+settlement";
     } else if (facets.includes("execution") && facets.includes("depth")) {
-      facetKey = "execution+depth";
+      facetKey = /(정산|settlement)/.test(merged) ? "execution+settlement" : "fill+depth";
     } else if (facets.includes("volume") && facets.includes("depth")) {
-      facetKey = "volume+depth";
+      facetKey = "volume+settlement";
     } else if (facets.includes("depth") && facets.includes("heat")) {
       facetKey = "depth+heat";
     } else if (facets.includes("depth")) {
