@@ -3765,6 +3765,8 @@ function buildDerivedExplicitHeadlineFromEvidence(
         `거래량은 남는데 정산 깊이가 얕으면 그 반응은 숫자 체급에서 더 못 올라간다`,
         `볼륨은 분명한데 깊이가 비는 구간은 결국 차트보다 화면에 더 가깝다`,
         `숫자는 살아도 깊이가 늦으면 그 장면은 체결보다 연출이 먼저 기억에 남는다`,
+        `거래량은 앞서는데 깊이가 비는 장면은 체급보다 조급함만 크게 남긴다`,
+        `볼륨이 분주해도 정산 깊이가 못 버티면 그 반응은 구조보다 속도 자국으로 남는다`,
       ];
       return sanitizeTweetText(volumeDepthPool[seed % volumeDepthPool.length]).slice(0, 140);
     }
@@ -3785,13 +3787,14 @@ function buildDerivedExplicitHeadlineFromEvidence(
       "현물 체결은 보이는데 호가 두께가 비는 장면",
       "숫자는 큰데 깊이가 못 따라오는 구간",
       "현물 체결은 남는데 깊이는 아직 얕은 장면",
-      "숫자는 요란한데 실제 깊이는 못 눕는 구간",
+      "거래량만 커지고 실제 깊이는 못 눕는 구간",
       "체결 신호는 보이는데 호가 두께는 뒤처지는 장면",
       "깊이가 비는데 체결 숫자만 커지는 구간",
       "체결은 남는데 깊이가 대답을 미루는 장면",
       "화면 열기만 커지고 실제 돈은 아직 얕은 구간",
       "분위기는 뜨거운데 체급은 못 붙이는 장면",
       "거래량 숫자만 크고 깊이는 아직 대답을 미루는 구간",
+      "정산은 얕은데 숫자만 먼저 커진 장면",
     ];
     return sanitizeTweetText(pool[seed % pool.length]).slice(0, 140);
   }
@@ -4623,8 +4626,14 @@ function augmentSceneFamilyBaseWithHeadline(
     }
   }
   if (lane === "regulation" && focus === "court" && base === "regulation:court:briefing+execution") {
-    if (/(자금|돈|capital|대기 자금|주문)/.test(normalized)) {
+    if (/(주문|ETF|대기 주문|매수 자리)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:order+capital");
+    }
+    if (/(자금|돈|capital|대기 자금)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "regulation:court:capital+execution");
+    }
+    if (/(판결|법원|소송|court|lawsuit)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:capital+court");
     }
   }
   if (lane === "regulation" && focus === "court" && base === "regulation:court:verdict+execution") {
@@ -4656,10 +4665,16 @@ function augmentSceneFamilyBaseWithHeadline(
     if (/(주문|ETF|대기 주문|매수 자리)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "regulation:court:order+capital");
     }
+    if (/(자금|돈|capital|대기 자금)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:capital+court");
+    }
+    if (/(브리핑|해설|기사|뉴스)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "regulation:court:briefing+capital");
+    }
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:cohort+wallet") {
     if (/(실사용|생활 흔적|체인 사용)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+usage");
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+usage");
     }
     if (/(지갑|wallet)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:wallet+retention");
@@ -4670,7 +4685,7 @@ function augmentSceneFamilyBaseWithHeadline(
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:retention+cohort") {
     if (/(실사용|생활 흔적|체인 사용|사용 흔적)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+usage");
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+usage");
     }
     if (/(생활 리듬|습관|habits?)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:habit+retention");
@@ -4684,7 +4699,7 @@ function augmentSceneFamilyBaseWithHeadline(
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:wallet+retention") {
     if (/(생활 흔적|실사용|체인 사용)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+usage");
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:wallet+usage");
     }
     if (/(생활 리듬|습관|habits?)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:return+habit");
@@ -4703,10 +4718,10 @@ function augmentSceneFamilyBaseWithHeadline(
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:return+habit") {
     if (/(실사용|생활 흔적|체인 사용|사용 흔적)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+usage");
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:community+retention");
     }
     if (/(다음 날|남는 사람|사람 수|잔류)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+cohort");
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+retention");
     }
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:wallet+usage") {
@@ -4755,10 +4770,10 @@ function augmentSceneFamilyBaseWithHeadline(
   }
   if (lane === "market-structure" && focus === "settlement" && base === "market-structure:settlement:execution+settlement") {
     if (/(거래량|숫자|볼륨)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+depth");
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+settlement");
     }
     if (/(현물 체결|체결)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:execution+depth");
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:fill+depth");
     }
     if (/(화면|분위기|과열)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:depth+heat");
@@ -4785,18 +4800,24 @@ function augmentSceneFamilyBaseWithHeadline(
     if (/(호가|깊이|book)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:fill+book");
     }
+    if (/(거래량|숫자|볼륨|정산|settlement)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:execution+settlement");
+    }
   }
   if (lane === "market-structure" && focus === "settlement" && base === "market-structure:settlement:volume+depth") {
     if (/(호가|깊이|book)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+book");
     }
+    if (/(정산|settlement)/.test(normalized)) {
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+settlement");
+    }
   }
   if (lane === "market-structure" && focus === "settlement" && base === "market-structure:settlement:execution") {
     if (/(거래량|숫자|볼륨)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+depth");
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:volume+settlement");
     }
     if (/(현물 체결|체결|주문 소화)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:execution+depth");
+      return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:execution+settlement");
     }
     if (/(화면|과열|분위기|호가|깊이)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "market-structure:settlement:depth+heat");
@@ -4907,7 +4928,7 @@ function diversifyDerivedSceneFamilyForVariant(
       "ecosystem:retention:usage+wallet",
       "ecosystem:retention:habit+retention",
       "ecosystem:retention:return+habit",
-      "ecosystem:retention:wallet+retention",
+      "ecosystem:retention:community+retention",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
@@ -4924,7 +4945,7 @@ function diversifyDerivedSceneFamilyForVariant(
       "regulation:court:briefing+execution",
       "regulation:court:verdict+execution",
       "regulation:court:capital+court",
-      "regulation:court:capital+court",
+      "regulation:court:capital+execution",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
@@ -4968,14 +4989,14 @@ function diversifyDerivedSceneFamilyForVariant(
     /(market-structure:settlement:execution\+depth|market-structure:settlement:volume\+depth|market-structure:settlement:depth\+settlement|market-structure:settlement:depth\+heat|market-structure:settlement:execution\+settlement|market-structure:settlement:volume\+settlement|market-structure:settlement:fill\+depth|market-structure:settlement:settlement\+heat|market-structure:settlement:fill\+book|market-structure:settlement:volume\+book)/.test(base)
   ) {
     const rotated = [
-      "market-structure:settlement:fill+depth",
+      "market-structure:settlement:execution+settlement",
       "market-structure:settlement:volume+book",
       "market-structure:settlement:depth+settlement",
       "market-structure:settlement:volume+settlement",
       "market-structure:settlement:execution+settlement",
       "market-structure:settlement:depth+heat",
-      "market-structure:settlement:fill+book",
-      "market-structure:settlement:execution+depth",
+      "market-structure:settlement:fill+depth",
+      "market-structure:settlement:volume+book",
     ][index];
     return rewriteSceneFamilyBase(sceneFamily, rotated);
   }
