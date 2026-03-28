@@ -1230,6 +1230,8 @@ export function buildEventEvidenceFallbackPost(
   mode?: NarrativeMode,
   variant: number = 0
 ): string {
+  const lengthBand =
+    maxChars <= 110 ? "flash" : maxChars <= 155 ? "short" : maxChars <= 230 ? "standard" : maxChars <= 285 ? "long" : "essay";
   const stripKoHeadlinePrefix = (text: string): string => {
     let output = String(text || "").trim();
     for (let i = 0; i < 2; i += 1) {
@@ -1255,7 +1257,7 @@ export function buildEventEvidenceFallbackPost(
       pool[
         (
           stableSeed(
-            `${plan.event.id}|${cleaned}|${plan.lane}|${plan.focus || "general"}|${plan.sceneFamily || "none"}|ko-event`
+            `${plan.event.id}|${cleaned}|${plan.lane}|${plan.focus || "general"}|${plan.sceneFamily || "none"}|${lengthBand}|ko-event`
           ) + variant
         ) % pool.length
       ];
@@ -1340,6 +1342,7 @@ export function buildEventEvidenceFallbackPost(
         .replace(/빠지는$/u, "빠진다")
         .replace(/머무는$/u, "머문다")
         .replace(/머뭇거리는$/u, "머뭇거린다")
+        .replace(/미루는$/u, "미룬다")
         .replace(/뒤처지는$/u, "뒤처진다")
         .replace(/못 내려온$/u, "못 내려온다")
         .replace(/안 눕는$/u, "안 눕는다")
@@ -1449,7 +1452,11 @@ export function buildEventEvidenceFallbackPost(
         "다시 들어오는 흔적은 남는데 열기만 먼저 비어 가는 구간이다",
         "지갑은 돌아오는데 커뮤니티 열기만 먼저 얇아지는 자리다",
         "남은 사람과 식는 열기가 같은 화면에 겹치는 날이다",
-        "재방문은 버티는데 열기만 먼저 가라앉는 장면이다"
+        "재방문은 버티는데 열기만 먼저 가라앉는 장면이다",
+        "생활 리듬은 남는데 커뮤니티 서사만 먼저 납작해지는 날이다",
+        "다시 들어오는 사람은 남는데 바깥 열기만 먼저 허전해지는 장면이다",
+        "남는 습관은 버티는데 커뮤니티 온도만 먼저 식어 가는 구간이다",
+        "열기는 큰데 다음 날 다시 돌아오는 흔적이 먼저 빈 자리가 드러난다"
       );
     }
     if (plan.lane === "protocol" && focus === "launch") {
@@ -1477,7 +1484,7 @@ export function buildEventEvidenceFallbackPost(
       pool[
         (
           stableSeed(
-            `${plan.event.id}|${plan.lane}|${focus}|${plan.sceneFamily || "none"}|${(plan.event.evidenceLabelHints || []).join("|")}|era-headline|${variant}`
+            `${plan.event.id}|${plan.lane}|${focus}|${plan.sceneFamily || "none"}|${(plan.event.evidenceLabelHints || []).join("|")}|${lengthBand}|era-headline|${variant}`
           ) + variant
         ) % pool.length
       ];
@@ -1487,7 +1494,10 @@ export function buildEventEvidenceFallbackPost(
           "이 국면은 커뮤니티 온도보다 남는 생활 습관의 밀도를 더 엄격하게 심문한다",
           "새 생태계의 질서는 결국 다시 이어지는 습관이 어디에 남는지에서 갈린다",
           "이번 사이클은 반응보다 다음 날에도 이어지는 습관 쪽에 더 비싼 값을 매긴다",
-          "생태계의 다음 세대는 결국 남은 사람보다 남은 생활 리듬이 먼저 연다"
+          "생태계의 다음 세대는 결국 남은 사람보다 남은 생활 리듬이 먼저 연다",
+          "새 질서는 결국 커뮤니티 반응보다 다음 날에도 이어지는 생활 리듬에서 열린다",
+          "이 생태계의 세대감은 결국 남는 열기보다 남는 습관이 먼저 정산한다",
+          "이번 국면의 본색은 결국 박수보다 남겨진 생활 리듬이 다시 쓴다"
         );
       }
       if (/wallet-thins|wallet\+retention|cohort-thin/.test(plan.sceneFamily || "")) {
@@ -1495,14 +1505,19 @@ export function buildEventEvidenceFallbackPost(
           "이 국면은 커뮤니티 열기보다 남는 지갑과 사람 수의 간극을 더 차갑게 본다",
           "새 생태계의 체급은 결국 돌아오는 지갑보다 남는 사람 수가 다시 쓴다",
           "이번 사이클은 재방문 숫자보다 끝까지 남은 사람 수의 밀도로 값이 갈린다",
-          "열기보다 남는 사람 수가 비는 순간 생태계의 시대감도 바로 바뀐다"
+          "열기보다 남는 사람 수가 비는 순간 생태계의 시대감도 바로 바뀐다",
+          "생태계의 체급은 결국 돌아온 지갑보다 끝까지 남은 사람 수가 정산한다",
+          "이번 세대는 결국 커뮤니티 열기보다 남는 사람 수의 방향에서 다시 갈린다",
+          "새 생태계의 질서는 결국 재방문 숫자보다 남겨진 사람 수가 다시 쓴다"
         );
       }
       return pickEraVariant(
         "이번 국면은 열기보다 남는 사람 수에 더 비싼 값을 매긴다",
         "이 사이클은 커뮤니티 온도보다 재방문 습관을 더 엄격하게 심문한다",
         "생태계의 시대감은 결국 다시 돌아오는 사람 수가 다시 쓴다",
-        "지금 바뀌는 건 열기가 아니라 남는 습관의 질서다"
+        "지금 바뀌는 건 열기가 아니라 남는 습관의 질서다",
+        "새 질서는 결국 커뮤니티 반응보다 남겨진 생활 습관이 먼저 연다",
+        "이번 생태계 국면은 열기보다 남는 사람 수의 밀도에서 더 선명해진다"
       );
     }
     if (plan.lane === "ecosystem" && focus === "builder") {
@@ -1510,7 +1525,10 @@ export function buildEventEvidenceFallbackPost(
         "이 국면은 코드보다 돌아오는 돈의 태도를 더 오래 본다",
         "생태계의 체급은 결국 빌더와 자금이 같은 편에 서는지에서 갈린다",
         "이번 사이클은 개발 흔적보다 복귀 자금의 성격이 더 많은 걸 말한다",
-        "생태계의 다음 세대는 결국 코드와 돈이 함께 버틴 자리에서 열린다"
+        "생태계의 다음 세대는 결국 코드와 돈이 함께 버틴 자리에서 열린다",
+        "새 생태계의 본색은 결국 코드보다 돈이 다시 눕는 자리에서 더 선명해진다",
+        "이 세대의 체급은 결국 빌더의 잔류보다 복귀 자금이 어디에 붙는지에서 갈린다",
+        "다음 생태계 질서는 결국 코드와 돈이 같이 버틴 시간에서 다시 적힌다"
       );
     }
     if (plan.lane === "regulation" && focus === "court") {
@@ -1519,7 +1537,10 @@ export function buildEventEvidenceFallbackPost(
           "소송 국면의 무게는 결국 판결문보다 늦게 붙는 자금 쪽이 다시 쓴다",
           "법원 뉴스의 시대감은 결국 해설 길이보다 눕지 못한 돈의 자리에서 갈린다",
           "규제 뉴스의 체급은 결국 판결보다 자금이 어느 자리에서 멈추는지에서 정산된다",
-          "판결 뉴스의 값은 결국 기사보다 늦게 붙는 돈의 방향이 다시 매긴다"
+          "판결 뉴스의 값은 결국 기사보다 늦게 붙는 돈의 방향이 다시 매긴다",
+          "법원 문장의 무게는 결국 판결보다 돈이 끝내 비는 자리에서 다시 정산된다",
+          "규제 국면의 값은 결국 해설보다 자금이 멈춰 선 자리에서 더 정확해진다",
+          "소송 뉴스의 체급은 결국 기사보다 돈이 어느 자리에서 물러나는지에서 갈린다"
         );
       }
       if (/briefing-gap|briefing\+execution/.test(plan.sceneFamily || "")) {
@@ -1527,7 +1548,10 @@ export function buildEventEvidenceFallbackPost(
           "규제 국면의 체급은 결국 브리핑보다 집행이 붙는 속도에서 갈린다",
           "법원 해설의 무게는 결국 기사 길이보다 집행 빈칸이 다시 정산한다",
           "이 국면의 규제 뉴스는 결국 브리핑보다 현장 집행의 밀도로 값이 갈린다",
-          "소송 뉴스의 세대감은 결국 판결보다 집행 흔적이 어디까지 내려오는지에서 열린다"
+          "소송 뉴스의 세대감은 결국 판결보다 집행 흔적이 어디까지 내려오는지에서 열린다",
+          "법원 브리핑의 값은 결국 기사 길이보다 집행이 비는 속도에서 다시 깎인다",
+          "규제 뉴스의 질서는 결국 브리핑보다 현장 집행이 남긴 자리에서 다시 쓴다",
+          "소송 해설의 체급은 결국 판결보다 집행이 어느 자리까지 내려오는지에서 갈린다"
         );
       }
       return pickEraVariant(
@@ -1584,7 +1608,10 @@ export function buildEventEvidenceFallbackPost(
           "이 국면은 거래량보다 늦게 남는 호가 두께가 체급을 다시 쓴다",
           "시장 구조의 체급은 결국 숫자보다 호가 책이 어디서 비는지에서 갈린다",
           "새 장세의 값은 결국 체결보다 늦게 붙는 깊이 빈칸이 다시 정산한다",
-          "정산의 시대감은 결국 거래량보다 호가 책의 빈칸이 어디서 남는지에서 드러난다"
+          "정산의 시대감은 결국 거래량보다 호가 책의 빈칸이 어디서 남는지에서 드러난다",
+          "이 장세의 무게는 결국 숫자보다 호가 책의 빈칸이 어디까지 버티는지에서 갈린다",
+          "새 시장 질서는 결국 거래량보다 깊이의 빈칸이 먼저 선언한다",
+          "시장 구조의 세대감은 결국 체결보다 호가 두께가 어디서 꺼지는지에서 정산된다"
         );
       }
       if (/size-only|settlement-lag/.test(plan.sceneFamily || "")) {
@@ -1592,7 +1619,10 @@ export function buildEventEvidenceFallbackPost(
           "이 국면은 숫자 크기보다 정산 깊이가 어디서 따라오지 못하는지에서 갈린다",
           "새 장세의 질서는 결국 거래량보다 정산 깊이의 지연이 다시 쓴다",
           "시장 구조의 값은 결국 숫자 반응보다 깊이가 늦게 눕는 자리에서 정산된다",
-          "정산의 체급은 결국 거래량보다 늦게 따라온 깊이가 다시 매긴다"
+          "정산의 체급은 결국 거래량보다 늦게 따라온 깊이가 다시 매긴다",
+          "이 장세의 본색은 결국 숫자보다 정산 깊이가 비는 자리에서 더 크게 남는다",
+          "새 질서는 결국 거래량보다 늦게 눕는 깊이가 어디서 멈추는지에서 갈린다",
+          "시장 국면의 체급은 결국 숫자보다 정산 깊이가 따라오지 못한 자리에서 정산된다"
         );
       }
       return pickEraVariant(

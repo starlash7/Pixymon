@@ -485,6 +485,9 @@ function trimTrailingFragment(text: string, language: "ko" | "en"): string {
     const truncatedSceneTail =
       !looksComplete &&
       /(?:장면으로|기사로|해설로|방송으로|연출로|캠페인으로|쇼케이스로|포스터\s*값으로)$/.test(core);
+    const truncatedDescriptorTail =
+      !looksComplete &&
+      /(?:설명만\s*큰|기사만\s*큰|해설만\s*큰|반응만\s*큰|열기만\s*큰|포장만\s*큰|발표만\s*큰)$/.test(core);
     const demonstrativeNounFragment =
       !looksComplete &&
       /^(?:이|그|저)\s+(?:소송|발표|뉴스|장면|반응|런치|출시|메인넷\s*얘기|법원\s*뉴스|규제\s*뉴스|생태계\s*얘기|업그레이드\s*얘기|거래량|체결|과열)$/.test(
@@ -498,6 +501,7 @@ function trimTrailingFragment(text: string, language: "ko" | "en"): string {
       nounTailWithoutPredicate ||
       truncatedThesisTail ||
       truncatedSceneTail ||
+      truncatedDescriptorTail ||
       demonstrativeNounFragment
     ) {
       return sanitizeTweetText(parts.slice(0, -1).join(" "));
