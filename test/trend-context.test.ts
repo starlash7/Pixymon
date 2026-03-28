@@ -1916,6 +1916,122 @@ test("buildStructuralFallbackEventsFromEvidence can split retention and launch f
   );
 });
 
+test("buildStructuralFallbackEventsFromEvidence keeps community-heavy retention evidence on usage/cohort families", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "retention-community-a",
+      lane: "ecosystem" as const,
+      nutrientId: "n-retention-community-a",
+      source: "onchain" as const,
+      label: "체인 안쪽 사용",
+      value: "둔화",
+      summary: "커뮤니티 열기는 뜨거운데 생활 흔적은 얇아진 장면",
+      trust: 0.82,
+      freshness: 0.9,
+      digestScore: 0.77,
+      capturedAt: createdAt,
+    },
+    {
+      id: "retention-community-b",
+      lane: "ecosystem" as const,
+      nutrientId: "n-retention-community-b",
+      source: "onchain" as const,
+      label: "사용자 재방문",
+      value: "둔화",
+      summary: "재방문은 약해졌는데 커뮤니티 반응은 과열된 장면",
+      trust: 0.81,
+      freshness: 0.89,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "retention-community-c",
+      lane: "ecosystem" as const,
+      nutrientId: "n-retention-community-c",
+      source: "news" as const,
+      label: "커뮤니티 열기",
+      value: "과열",
+      summary: "광고 문장은 커졌지만 다음 날 리듬은 얇아졌다",
+      trust: 0.79,
+      freshness: 0.88,
+      digestScore: 0.73,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 8);
+  const families = new Set(
+    events
+      .map((item) => `${item.lane}:${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`)
+      .filter(Boolean)
+  );
+
+  assert.ok(
+    [...families].some((family) => family.startsWith("ecosystem:retention:cohort+usage")) ||
+      [...families].some((family) => family.startsWith("ecosystem:retention:usage+wallet")) ||
+      [...families].some((family) => family.startsWith("ecosystem:retention:wallet+usage"))
+  );
+});
+
+test("buildStructuralFallbackEventsFromEvidence can surface repair-validator durability family", () => {
+  const createdAt = new Date().toISOString();
+  const evidence = [
+    {
+      id: "durability-repair-a",
+      lane: "protocol" as const,
+      nutrientId: "n-durability-repair-a",
+      source: "news" as const,
+      label: "복구 속도",
+      value: "지연",
+      summary: "장애 뒤 복구 기록이 느리고 운영 로그도 얇은 장면",
+      trust: 0.81,
+      freshness: 0.9,
+      digestScore: 0.76,
+      capturedAt: createdAt,
+    },
+    {
+      id: "durability-repair-b",
+      lane: "protocol" as const,
+      nutrientId: "n-durability-repair-b",
+      source: "onchain" as const,
+      label: "검증자 안정성",
+      value: "유지",
+      summary: "검증자 숫자는 버티는데 복구 로그가 늦는 장면",
+      trust: 0.82,
+      freshness: 0.89,
+      digestScore: 0.77,
+      capturedAt: createdAt,
+    },
+    {
+      id: "durability-repair-c",
+      lane: "protocol" as const,
+      nutrientId: "n-durability-repair-c",
+      source: "market" as const,
+      label: "운영 로그",
+      value: "지연",
+      summary: "운영 기록이 늦게 붙어 박수보다 빈칸이 커지는 구간",
+      trust: 0.8,
+      freshness: 0.88,
+      digestScore: 0.74,
+      capturedAt: createdAt,
+    },
+  ];
+
+  const events = buildStructuralFallbackEventsFromEvidence(evidence, createdAt, 8);
+  const families = new Set(
+    events
+      .map((item) => `${item.lane}:${item.focusHint || "general"}:${item.sceneFamilyHint || "generic"}`)
+      .filter(Boolean)
+  );
+
+  assert.ok(
+    [...families].some((family) => family.startsWith("protocol:durability:repair+validator")) ||
+      [...families].some((family) => family.startsWith("protocol:durability:ops+recovery")) ||
+      [...families].some((family) => family.startsWith("protocol:durability:ops+validator"))
+  );
+});
+
 test("buildStructuralFallbackEventsFromEvidence prefers execution/depth facets over generic heat base", () => {
   const createdAt = new Date().toISOString();
   const evidence = [

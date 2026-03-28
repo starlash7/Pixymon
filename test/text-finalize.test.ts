@@ -117,6 +117,13 @@ test("finalizeGeneratedText removes dangling descriptor tail like 설명만 큰"
   assert.equal(output, "판결 기사와 자금이 따로 놀기 시작하면 그 뉴스는 절반짜리다.");
 });
 
+test("finalizeGeneratedText repairs malformed 보이는에서 scene tail", () => {
+  const input = "법원 일정은 긴데 돈이 머무는 자리는 늦게 보이는에서 빈칸이 먼저 드러난다.";
+  const output = finalizeGeneratedText(input, "ko", 220);
+  assert.equal(output.includes("보이는에서"), false);
+  assert.equal(output.includes("보이는 자리에서"), true);
+});
+
 test("finalizeGeneratedText rewrites analyst jargon into natural korean", () => {
   const input =
     "지갑 군집 변화와 거래 목적지 집중도, 클라이언트 다양성, 헤지 포지셔닝 변화, 거래소 대응 속도를 같이 본다.";

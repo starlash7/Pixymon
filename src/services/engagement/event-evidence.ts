@@ -989,17 +989,31 @@ function estimateSceneFamilyBasePenalty(
     (lane === "market-structure" && focus === "settlement" && /(execution\+settlement|depth\+settlement|execution\+depth|volume\+depth|fill\+depth|fill\+book|volume\+book)$/.test(base))
   ) {
     if (lane === "market-structure" && focus === "settlement") {
-      penalty += /execution\+depth$/.test(base) ? 0.16 : 0.12;
+      if (/volume\+settlement$/.test(base)) {
+        penalty += 0.18;
+      } else if (/execution\+settlement$/.test(base)) {
+        penalty += 0.14;
+      } else {
+        penalty += /execution\+depth$/.test(base) ? 0.16 : 0.12;
+      }
     } else if (lane === "ecosystem" && focus === "retention" && /retention\+usage$/.test(base)) {
       penalty += 0.1;
+    } else if (lane === "ecosystem" && focus === "retention" && /community\+retention$/.test(base)) {
+      penalty += 0.16;
+    } else if (lane === "ecosystem" && focus === "retention" && /wallet\+retention$/.test(base)) {
+      penalty += 0.12;
     } else if (lane === "regulation" && focus === "court" && /verdict\+execution$/.test(base)) {
       penalty += 0.1;
+    } else if (lane === "regulation" && focus === "court" && /court\+execution$/.test(base)) {
+      penalty += 0.14;
     } else if (lane === "regulation" && focus === "court" && /briefing$/.test(base)) {
       penalty += 0.1;
     } else if (lane === "protocol" && focus === "launch" && /return\+launch$/.test(base)) {
-      penalty += 0.1;
+      penalty += 0.16;
     } else if (lane === "protocol" && focus === "durability" && /rollout$/.test(base)) {
       penalty += 0.1;
+    } else if (lane === "protocol" && focus === "durability" && /recovery\+validator$/.test(base)) {
+      penalty += 0.14;
     } else if (lane === "protocol" && focus === "durability" && /ops\+validator$/.test(base)) {
       penalty += 0.08;
     } else if (lane === "protocol" && focus === "launch" && /launch\+ops$/.test(base)) {
@@ -1045,6 +1059,16 @@ function estimateExplicitEscapeBonus(
 
   let bonus = concentratedBase ? 0.18 : 0.08;
   if (event.source === "analysis:sharp") bonus += 0.05;
+  const localizedHeadline = containsKorean(event.headline)
+    ? sanitizeTweetText(event.headline)
+    : localizeTrendHeadline(event.headline, lane, event.summary || "");
+  if (
+    /(반쪽|연출|기사값|발표값|광고 냄새|포스터|쇼케이스|브리핑|슬라이드|방송|얇아진다|헐거워진다|못 벗어난다|못 내려온다|못 넘어간다)/.test(
+      localizedHeadline
+    )
+  ) {
+    bonus += 0.04;
+  }
   if (sameBaseCount >= 2) bonus += 0.04;
   if (sameBaseCount >= 3) bonus += 0.03;
   return clampNumber(bonus, 0, 0.3, 0);
@@ -2891,6 +2915,24 @@ function buildStructuralHeadlineFromEvidence(
       ];
       return sanitizeTweetText(recoveryPool[seed % recoveryPool.length]).slice(0, 140);
     }
+    if (sceneFamilyMatches(sceneFamily, /ops\+validator$/)) {
+      const opsValidatorPool = [
+        `운영 로그는 늦는데 검증자 숫자만 버티면 그 개선은 발표보다 구조를 못 만든다`,
+        `검증자 안정성만 남고 운영 기록이 비면 그 업그레이드는 결국 쇼케이스 쪽이다`,
+        `운영 태도가 비는 순간 검증자 숫자도 발표용 근거처럼 얇아진다`,
+        `로그 없는 안정성은 오래 못 간다. 그런 업그레이드는 결국 박수 쪽으로 눕는다`,
+      ];
+      return sanitizeTweetText(opsValidatorPool[seed % opsValidatorPool.length]).slice(0, 140);
+    }
+    if (sceneFamilyMatches(sceneFamily, /ops\+recovery$/)) {
+      const opsRecoveryPool = [
+        `운영 로그와 복구 기록이 같은 편이 아니면 그 개선은 아직 발표 바깥으로 못 나왔다`,
+        `복구 흔적은 남는데 운영 로그가 얇으면 그 업그레이드는 구조보다 설명이 앞선다`,
+        `운영 태도와 복구 기록이 갈라지는 날엔 릴리스 노트가 가장 먼저 반값이 된다`,
+        `복구는 됐는데 운영 로그가 비면 그 개선은 결국 발표 자료처럼 눕는다`,
+      ];
+      return sanitizeTweetText(opsRecoveryPool[seed % opsRecoveryPool.length]).slice(0, 140);
+    }
     if (sceneFamilyMatches(sceneFamily, /recovery\+rollout$/)) {
       const rolloutPool = [
         `배포 기세와 복구 기록이 같이 남아야 업그레이드도 오래 버틴다`,
@@ -2924,7 +2966,7 @@ function buildStructuralHeadlineFromEvidence(
     if (sceneFamilyMatches(sceneFamily, /return\+ops$/)) {
       const returnOpsPool = [
         `메인넷 설명은 살아도 운영 로그와 복귀 자금이 아직 같은 편에 서지 않은 장면이다`,
-        `운영 흔적은 느리고 돈의 복귀도 늦어서 발표보다 빈칸이 먼저 보이는 구간이다`,
+        `운영 흔적은 느리고 돈의 복귀도 늦어서 발표보다 빈칸이 먼저 드러나는 구간이다`,
         `복귀 자금은 더디고 운영 로그도 얕아 이 런치가 아직 종이 밖으로 못 나온 장면이다`,
         `메인넷 뉴스는 큰데 운영과 복귀 자금이 함께 머뭇거리는 구간이다`,
       ];
@@ -3011,7 +3053,7 @@ function buildStructuralHeadlineFromEvidence(
     if (sceneFamilyMatches(sceneFamily, /briefing\+execution$/)) {
       const briefingExecutionPool = [
         `법원 브리핑은 요란한데 집행은 아직 장부까지 못 내려온 장면이다`,
-        `기사 해설은 큰데 실제 집행은 아직 빈칸이 더 크게 보이는 구간이다`,
+        `기사 해설은 큰데 실제 집행은 아직 빈칸이 더 크게 드러나는 구간이다`,
         `브리핑이 앞서고 집행이 늦는 장면에선 해설보다 빈칸이 먼저 남는다`,
         `뉴스 해설은 길지만 집행이 비는 순간 그 장면은 현장보다 방송에 가깝다`,
       ];
@@ -3079,9 +3121,10 @@ function buildStructuralHeadlineFromEvidence(
     }
     if (sceneFamilyMatches(sceneFamily, /community\+retention$/)) {
       const retentionCommunityPool = [
-        `재방문 흐름과 커뮤니티 열기가 같이 남아야 생태계 기세도 오래 버틴다`,
-        `재방문 흐름과 커뮤니티 열기가 갈라지면 반응보다 잔류가 먼저 중요해진다`,
-        `재방문 흐름과 커뮤니티 열기가 따로 놀면 큰 생태계 서사도 금방 포스터처럼 얇아진다`,
+        `커뮤니티 열기와 재방문이 같은 편이 아니면 그 생태계는 결국 포스터로 끝난다`,
+        `열기는 뜨거운데 재방문이 비면 그 생태계 얘기는 사람보다 구호를 붙잡고 있는 셈이다`,
+        `커뮤니티 반응이 커도 재방문이 안 남으면 그 서사는 다음 날 바로 광고 냄새를 낸다`,
+        `열기만 남고 재방문이 비는 날엔 큰 생태계 서사가 제일 먼저 얇아진다`,
       ];
       return sanitizeTweetText(retentionCommunityPool[seed % retentionCommunityPool.length]).slice(0, 140);
     }
@@ -3127,6 +3170,24 @@ function buildStructuralHeadlineFromEvidence(
       ];
       return sanitizeTweetText(depthExecutionPool[seed % depthExecutionPool.length]).slice(0, 140);
     }
+  }
+  if (lane === "market-structure" && focus === "settlement" && sceneFamilyMatches(sceneFamily, /volume\+settlement$/)) {
+    const volumeSettlementPool = [
+      `거래량 숫자만 크고 정산 깊이가 안 붙으면 그 과열은 결국 화면값으로 내려앉는다`,
+      `볼륨은 요란한데 정산이 얕으면 그 장면은 체결보다 분위기가 앞선 셈이다`,
+      `거래량이 커도 정산 깊이가 비면 그 자신감은 구조보다 연출 쪽에 남는다`,
+      `숫자만 붓고 정산이 못 눕는 날엔 과열이 아니라 화면 효과로 처리한다`,
+    ];
+    return sanitizeTweetText(volumeSettlementPool[seed % volumeSettlementPool.length]).slice(0, 140);
+  }
+  if (lane === "market-structure" && focus === "settlement" && sceneFamilyMatches(sceneFamily, /execution\+settlement$/)) {
+    const executionSettlementPool = [
+      `체결은 살아도 정산이 얕으면 그 반응은 아직 장부 바깥에서만 돈다`,
+      `주문 소화가 보여도 정산이 못 눕는 날엔 구조보다 연출이 더 가깝다`,
+      `체결 반응은 뜨거운데 정산 깊이가 비면 그 장면은 곧 가벼워진다`,
+      `체결만 앞서고 정산이 비면 결국 실제 돈보다 화면 열기가 먼저 식는다`,
+    ];
+    return sanitizeTweetText(executionSettlementPool[seed % executionSettlementPool.length]).slice(0, 140);
   }
   if (lane === "ecosystem" && focus === "builder") {
     if (sceneFamilyMatches(sceneFamily, /builder\+capital$/)) {
@@ -3591,7 +3652,7 @@ function buildDerivedExplicitHeadlineFromEvidence(
             "법원 뉴스는 큰데 자금 반응이 늦는 구간",
             "판결 기사보다 돈의 방향이 늦게 붙는 장면",
             "소송 해설은 큰데 자금이 아직 안 눕는 구간",
-            "법원 일정은 긴데 돈이 머무는 자리는 늦게 보이는 구간",
+            "법원 일정은 긴데 돈이 머무는 자리는 늦게 드러나는 구간",
             "판결 문장은 커졌는데 자금 반응은 한 박자 늦은 장면",
             "법원 해설은 길어도 돈이 눕는 자리는 아직 얕은 구간",
             "법원 기사보다 돈이 늦게 대답하는 장면",
@@ -4748,7 +4809,7 @@ function augmentSceneFamilyBaseWithHeadline(
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:return+habit") {
     if (/(실사용|생활 흔적|체인 사용|사용 흔적)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:community+retention");
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+usage");
     }
     if (/(다음 날|남는 사람|사람 수|잔류)/.test(normalized)) {
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+retention");
@@ -4762,7 +4823,7 @@ function augmentSceneFamilyBaseWithHeadline(
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:retention+cohort");
     }
     if (/(커뮤니티|열기|광고|홍보)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:community+retention");
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+usage");
     }
   }
   if (lane === "ecosystem" && focus === "retention" && base === "ecosystem:retention:usage+wallet") {
@@ -4773,7 +4834,7 @@ function augmentSceneFamilyBaseWithHeadline(
       return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:cohort+retention");
     }
     if (/(커뮤니티|열기|광고|홍보)/.test(normalized)) {
-      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:community+retention");
+      return rewriteSceneFamilyBase(sceneFamily, "ecosystem:retention:usage+wallet");
     }
   }
   if (lane === "ecosystem" && focus === "builder" && base === "ecosystem:builder:builder+capital") {
@@ -5210,6 +5271,28 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
     }
   }
 
+  if (lane === "regulation" && focus === "court") {
+    if (/(주문|etf|대기 주문|매수 자리)/.test(merged) && (facets.includes("order") || facets.includes("capital"))) {
+      facetKey = "order+capital";
+    } else if (/(판결|평결|verdict)/.test(merged) && facets.includes("execution")) {
+      facetKey = facets.includes("capital") ? "capital+execution" : "verdict+execution";
+    } else if (/(브리핑|해설|기사|뉴스)/.test(merged) && facets.includes("execution")) {
+      facetKey = facets.includes("capital") ? "briefing+capital" : "briefing+execution";
+    } else if (facets.includes("court") && facets.includes("capital")) {
+      facetKey = "capital+court";
+    } else if (facets.includes("verdict") && facets.includes("execution")) {
+      facetKey = "verdict+execution";
+    } else if (facets.includes("briefing") && facets.includes("capital")) {
+      facetKey = "briefing+capital";
+    } else if (facets.includes("briefing") && facets.includes("execution")) {
+      facetKey = "briefing+execution";
+    } else if (facets.includes("court") && facets.includes("execution")) {
+      facetKey = "court+execution";
+    } else if (facets.includes("capital") && facets.includes("execution")) {
+      facetKey = "capital+execution";
+    }
+  }
+
   if (lane === "protocol" && focus === "launch") {
     if (/(쇼케이스|데모|무대|객석|발표회|포스터)/.test(merged) && facets.includes("return")) {
       facetKey = "return+showcase";
@@ -5217,6 +5300,8 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
       facetKey = "return+announcement";
     } else if (/(운영|로그|복구|배포|롤아웃)/.test(merged) && facets.includes("return")) {
       facetKey = "return+ops";
+    } else if (facets.includes("return") && facets.includes("capital")) {
+      facetKey = /(객석|무대|쇼케이스|발표회|포스터|데모)/.test(merged) ? "return+audience" : "capital+launch";
     } else if (/(자금|돈|treasury|예치 자금|복귀 자금)/.test(merged) && facets.includes("launch")) {
       facetKey = /(롤아웃|배포|운영)/.test(merged) ? "capital+rollout" : "capital+launch";
     } else if (facets.includes("showcase") && facets.includes("return")) {
@@ -5234,8 +5319,34 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
     }
   }
 
+  if (lane === "protocol" && focus === "durability") {
+    if (/(운영|로그|기록)/.test(merged) && /(검증자|validator|합의)/.test(merged)) {
+      facetKey = /(복구|장애)/.test(merged) ? "repair+validator" : "validator+log";
+    } else if (/(복구|장애)/.test(merged) && /(운영|로그|기록)/.test(merged)) {
+      facetKey = /(검증자|validator|합의)/.test(merged) ? "repair+validator" : "ops+recovery";
+    } else if (/(복구|장애)/.test(merged) && /(배포|롤아웃)/.test(merged)) {
+      facetKey = "recovery+rollout";
+    } else if (/(배포|롤아웃)/.test(merged) && /(검증자|validator|합의)/.test(merged)) {
+      facetKey = "rollout+validator";
+    } else if (facets.includes("ops") && facets.includes("validator")) {
+      facetKey = "ops+validator";
+    } else if (facets.includes("ops") && facets.includes("recovery")) {
+      facetKey = "ops+recovery";
+    } else if (facets.includes("recovery") && facets.includes("validator")) {
+      facetKey = "recovery+validator";
+    } else if (facets.includes("rollout") && facets.includes("validator")) {
+      facetKey = "rollout+validator";
+    } else if (facets.includes("ops") && facets.includes("rollout")) {
+      facetKey = "ops+log";
+    }
+  }
+
   if (lane === "market-structure" && focus === "settlement") {
-    if (/(호가 책|호가|book)/.test(merged) && facets.includes("execution")) {
+    if (/(거래량|숫자|볼륨)/.test(merged) && /(화면|과열|분위기)/.test(merged)) {
+      facetKey = "depth+heat";
+    } else if (/(정산|settlement)/.test(merged) && /(자금 쏠림|자금 흐름|funding|capital)/.test(merged)) {
+      facetKey = "depth+settlement";
+    } else if (/(호가 책|호가|book)/.test(merged) && facets.includes("execution")) {
       facetKey = "fill+book";
     } else if (/(거래량|숫자|볼륨)/.test(merged) && /(호가|깊이|book)/.test(merged) && facets.includes("depth")) {
       facetKey = /(현물 체결|체결|주문 소화)/.test(merged) ? "fill+book" : "volume+book";

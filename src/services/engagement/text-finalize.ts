@@ -22,7 +22,11 @@ export function finalizeGeneratedText(text: string, language: "ko" | "en", maxCh
   const selfSoftened = language === "ko" ? softenExplicitSelfReferenceKo(varied) : varied;
   const conceptAdjusted = language === "ko" ? rebalanceKoConceptLead(selfSoftened) : selfSoftened;
   const particleAdjusted = language === "ko" ? correctKoParticles(conceptAdjusted) : conceptAdjusted;
-  const cleaned = cleanupDanglingTail(trimTrailingFragment(pruneIncompleteSentences(particleAdjusted, language), language), language);
+  const sceneTailAdjusted = language === "ko" ? repairMalformedKoSceneTails(particleAdjusted) : particleAdjusted;
+  const cleaned = cleanupDanglingTail(
+    trimTrailingFragment(pruneIncompleteSentences(sceneTailAdjusted, language), language),
+    language
+  );
   const punctuated = ensureTerminalPunctuation(cleaned, maxChars);
   return punctuated.length <= maxChars ? punctuated : truncateAtWordBoundary(punctuated, maxChars);
 }
@@ -184,6 +188,14 @@ function cleanupDanglingTail(text: string, language: "ko" | "en"): string {
     .replace(/\s+(?:if|because|and|but|or)$/gi, "")
     .replace(/\s*[,:;]\s*$/g, "")
     .trim();
+}
+
+function repairMalformedKoSceneTails(text: string): string {
+  return sanitizeTweetText(text)
+    .replace(/보이는에서/gu, "보이는 자리에서")
+    .replace(/드러나는에서/gu, "드러나는 자리에서")
+    .replace(/머무는에서/gu, "머무는 자리에서")
+    .replace(/주저앉는에서/gu, "주저앉는 자리에서");
 }
 
 function softenExplicitSelfReferenceKo(text: string): string {

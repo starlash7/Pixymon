@@ -3018,10 +3018,11 @@ function pickModeStampForLane(
   scene: string,
   sceneFamily = ""
 ): string {
+  const scenePool = buildSceneFamilyStampPool(lane, focus, mode, sceneFamily);
   const focusLanePool = FOCUS_MODE_STAMP_BY_LANE_AND_MODE[lane]?.[focus]?.[mode] || [];
   const lanePool = MODE_STAMP_BY_LANE_AND_MODE[lane]?.[mode] || [];
   const pool = lanePool.length ? lanePool : MODE_STAMP_BY_MODE[mode];
-  const effectivePool = focusLanePool.length ? focusLanePool : pool;
+  const effectivePool = [...scenePool, ...(focusLanePool.length ? focusLanePool : pool)].filter(Boolean);
   if (!effectivePool?.length) return "";
   const tiltSalt = sceneFamily
     ? stableSeedForPrelude(String(sceneFamily).split(":").slice(3).join(":"))
@@ -3045,6 +3046,67 @@ function pickModeStampForLane(
     [lead, attitude, fixation, scene],
     31 + tiltSalt + seed
   );
+}
+
+function buildSceneFamilyStampPool(
+  lane: TrendLane,
+  focus: WriterFocus,
+  mode: string,
+  sceneFamily: string
+): string[] {
+  if (mode !== "era-manifesto" || !sceneFamily) return [];
+
+  if (lane === "protocol" && focus === "durability") {
+    if (/ops\+validator|validator\+log|ops\+log/.test(sceneFamily)) {
+      return [
+        "새 프로토콜의 값은 결국 운영 로그가 어느 자리까지 남는지에서 다시 매겨진다.",
+        "검증자 숫자보다 늦게 남은 로그 자리 쪽이 결국 이 업그레이드의 체급을 다시 쓴다.",
+        "합의보다 로그 빈칸이 더 오래 남는 장면에서 새 질서의 무게가 갈린다.",
+        "운영 로그가 버틴 자리만 결국 이 릴리스가 발표를 넘겼는지 말해 준다.",
+      ];
+    }
+    if (/recovery\+validator|recovery\+rollout|repair\+validator|repair\+ops|ops\+recovery|recovery\+ops/.test(sceneFamily)) {
+      return [
+        "새 국면은 결국 복구 태도가 어디까지 버티는지에서 열린다.",
+        "개선의 시대감은 결국 롤아웃보다 복구가 남긴 자리에서 갈린다.",
+        "장애 뒤 태도가 버틴 자리만 결국 이 업그레이드의 체급을 다시 연다.",
+        "복구 기록이 남는 방식이 결국 이번 릴리스의 세대감을 다시 쓴다.",
+      ];
+    }
+  }
+
+  if (lane === "protocol" && focus === "launch") {
+    if (/return\+launch|return\+announcement|return\+showcase|launch\+showcase/.test(sceneFamily)) {
+      return [
+        "출시의 체급은 결국 객석 밖으로 나온 복귀 자금이 다시 적는다.",
+        "메인넷의 세대는 결국 발표보다 돌아오는 돈이 어느 편에 서는지가 다시 쓴다.",
+        "런치의 무게는 결국 무대보다 객석 밖에서 늦게 움직인 돈이 정산한다.",
+        "복귀 자금이 어느 자리에서 주저앉는지가 결국 이 런치의 시대감을 다시 정한다.",
+        "메인넷의 체급은 결국 돌아오는 돈이 어느 자리까지 버티는지에서 갈린다.",
+      ];
+    }
+  }
+
+  if (lane === "regulation" && focus === "court") {
+    if (/verdict\+execution|court\+execution/.test(sceneFamily)) {
+      return [
+        "판결의 세대감은 결국 법원 문장보다 늦게 붙는 집행 자리에서 갈린다.",
+        "소송 뉴스의 무게는 결국 기사보다 돈이 어느 자리에서 주저앉는지가 다시 쓴다.",
+        "법원 국면의 체급은 결국 판결보다 집행이 어디까지 내려오는지에서 갈린다.",
+        "규제의 새 질서는 결국 판결문보다 늦게 붙는 돈의 태도가 다시 정산한다.",
+      ];
+    }
+    if (/briefing\+execution|order\+capital|capital\+execution|briefing\+capital/.test(sceneFamily)) {
+      return [
+        "브리핑 국면의 값은 결국 주문이 어느 자리에서 멈추는지가 다시 적는다.",
+        "법원 뉴스의 시대감은 결국 해설보다 자금이 어느 자리에서 눕는지에서 갈린다.",
+        "판결 브리핑의 체급은 결국 돈이 늦게 붙는 자리에서 다시 깎인다.",
+        "소송 국면의 질서는 결국 기사보다 주문과 자금이 어느 자리에서 물러나는지에서 정리된다.",
+      ];
+    }
+  }
+
+  return [];
 }
 
 function buildPressureLine(
@@ -3183,6 +3245,7 @@ function buildSceneLine(
     : normalizedSceneCore;
   const repairedSceneCore = safeSceneCore
     .replace(/늦게 붙는에서/gu, "늦게 붙는 자리에서")
+    .replace(/보이는에서/gu, "보이는 자리에서")
     .replace(/비는에서/gu, "비는 자리에서")
     .replace(/남는에서/gu, "남는 자리에서")
     .replace(/빠지는에서/gu, "빠지는 자리에서")
