@@ -543,3 +543,23 @@ test("buildKoIdentityWriterCandidate honors preferred focus when planner already
   assert.match(text, /(개발자|빌드|코드|자금 복귀|예치 자금|빌더)/);
   assert.doesNotMatch(text, /광고 냄새|홍보 문구|과열이지 성장은 아니다/);
 });
+
+test("buildKoIdentityWriterCandidate keeps protocol durability identity-journal stamp path safe", () => {
+  const text = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "protocol",
+      mode: "identity-journal",
+      headline: "업그레이드 공지 뒤에도 그대로 붙어 있는 검증자부터 먼저 짚는다",
+      primaryAnchor: "검증자 안정성",
+      secondaryAnchor: "낮아진 체인 사용 압박",
+      preferredFocus: "durability",
+      sceneFamily: "protocol:durability:durability+validator:durability-holds:validator-gap",
+      seedHint: "identity-writer:durability-identity-journal-safe",
+    },
+    0
+  );
+
+  assert.ok(text.length > 0);
+  assert.match(text, /(업그레이드|검증자|운영|복구|로그)/);
+});

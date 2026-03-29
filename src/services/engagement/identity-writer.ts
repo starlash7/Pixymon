@@ -3018,10 +3018,15 @@ function pickModeStampForLane(
   scene: string,
   sceneFamily = ""
 ): string {
-  const scenePool = buildSceneFamilyStampPool(lane, focus, mode, sceneFamily);
-  const focusLanePool = FOCUS_MODE_STAMP_BY_LANE_AND_MODE[lane]?.[focus]?.[mode] || [];
-  const lanePool = MODE_STAMP_BY_LANE_AND_MODE[lane]?.[mode] || [];
-  const pool = lanePool.length ? lanePool : MODE_STAMP_BY_MODE[mode];
+  const scenePoolRaw = buildSceneFamilyStampPool(lane, focus, mode, sceneFamily);
+  const focusLanePoolRaw = FOCUS_MODE_STAMP_BY_LANE_AND_MODE[lane]?.[focus]?.[mode];
+  const lanePoolRaw = MODE_STAMP_BY_LANE_AND_MODE[lane]?.[mode];
+  const modePoolRaw = MODE_STAMP_BY_MODE[mode];
+  const scenePool = Array.isArray(scenePoolRaw) ? scenePoolRaw : [];
+  const focusLanePool = Array.isArray(focusLanePoolRaw) ? focusLanePoolRaw : [];
+  const lanePool = Array.isArray(lanePoolRaw) ? lanePoolRaw : [];
+  const modePool = Array.isArray(modePoolRaw) ? modePoolRaw : [];
+  const pool = lanePool.length ? lanePool : modePool;
   const effectivePool = [...scenePool, ...(focusLanePool.length ? focusLanePool : pool)].filter(Boolean);
   if (!effectivePool?.length) return "";
   const tiltSalt = sceneFamily
