@@ -2138,6 +2138,12 @@ function summarizeAnchor(anchor: string): string {
   for (const [pattern, replacement] of ANCHOR_REWRITES) {
     if (pattern.test(cleaned)) return replacement;
   }
+  if (/얼마나\s+빨리\s+복구되는지$/u.test(cleaned)) {
+    return cleaned.replace(/얼마나\s+빨리\s+복구되는지$/u, "복구 속도").trim();
+  }
+  if (/복구되는지$/u.test(cleaned)) {
+    return cleaned.replace(/복구되는지$/u, "복구 속도").trim();
+  }
   if (/는지$|인지$|일지$|할지$|될지$|붙는지$|남는지$|갈리는지$|버티는지$|무너지는지$/u.test(cleaned)) {
     return cleaned
       .replace(/^실제\s*사용자가\s*다시\s*돌아오는지$/u, "재방문 흐름")
@@ -2145,6 +2151,7 @@ function summarizeAnchor(anchor: string): string {
       .replace(/^가격\s*서사가\s*먼저\s*달아오르는지$/u, "가격 서사 과열")
       .replace(/^체인\s*수수료가\s*실제로\s*따라오는지$/u, "체인 수수료 추종")
       .replace(/는지$|인지$|일지$|할지$|될지$|붙는지$|남는지$|갈리는지$|버티는지$|무너지는지$/u, "")
+      .replace(/복구되$/u, "복구 속도")
       .trim();
   }
   return cleaned;

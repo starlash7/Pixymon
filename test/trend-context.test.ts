@@ -2414,6 +2414,220 @@ test("planEventEvidenceAct promotes onchain usage and capital pair out of genera
   assert.ok(!plan?.plannerWarnings?.includes("focus-general"));
 });
 
+test("planEventEvidenceAct avoids protocol durability drift into retention evidence when ops pair exists", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:protocol:durability-drift",
+        lane: "protocol",
+        headline: "검증자와 복구 태도가 같이 버티는지 다시 본다",
+        summary: "Validator stability only matters if recovery logs keep up.",
+        source: "analysis:sharp",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["validator", "recovery", "protocol"],
+      },
+    ],
+    evidence: [
+      {
+        id: "ev-protocol-validator",
+        lane: "protocol" as const,
+        nutrientId: "n-protocol-validator",
+        source: "news" as const,
+        label: "검증자 반응",
+        value: "유지",
+        summary: "검증자 반응은 유지되지만 운영 기록이 같이 따라오는지가 핵심이다.",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        digestScore: 0.74,
+      },
+      {
+        id: "ev-protocol-ops",
+        lane: "protocol" as const,
+        nutrientId: "n-protocol-ops",
+        source: "news" as const,
+        label: "운영 로그",
+        value: "지연",
+        summary: "운영 로그가 늦으면 좋은 업그레이드도 운영 체급을 못 얻는다.",
+        trust: 0.78,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        digestScore: 0.72,
+      },
+      {
+        id: "ev-ecosystem-wallet",
+        lane: "ecosystem" as const,
+        nutrientId: "n-eco-wallet",
+        source: "onchain" as const,
+        label: "지갑 재방문",
+        value: "확대",
+        summary: "재방문 지갑은 늘었지만 이 단서만으로 프로토콜 체급을 말하긴 이르다.",
+        trust: 0.86,
+        freshness: 0.94,
+        capturedAt: createdAt,
+        digestScore: 0.84,
+      },
+    ],
+    recentPosts: [],
+    requireOnchainEvidence: false,
+    requireCrossSourceEvidence: false,
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.focus, "durability");
+  assert.deepEqual(
+    [...(plan?.evidence.map((item) => item.label) || [])].sort(),
+    ["검증자 반응", "운영 로그"].sort()
+  );
+  assert.ok(!plan?.plannerWarnings?.includes("focus-drift"));
+});
+
+test("planEventEvidenceAct avoids ecosystem retention drift into recovery evidence when retention pair exists", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:ecosystem:retention-drift",
+        lane: "ecosystem",
+        headline: "사람은 돌아오는데 생활 리듬은 아직 얕은 장면",
+        summary: "Retention only matters if the habit survives after the first return.",
+        source: "analysis:sharp",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["retention", "habit", "ecosystem"],
+      },
+    ],
+    evidence: [
+      {
+        id: "ev-eco-retention",
+        lane: "ecosystem" as const,
+        nutrientId: "n-eco-retention",
+        source: "news" as const,
+        label: "사용자 재방문 흐름",
+        value: "유지",
+        summary: "사람은 다시 들어오지만 다음 날까지 남는 습관이 핵심이다.",
+        trust: 0.81,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        digestScore: 0.75,
+      },
+      {
+        id: "ev-eco-wallet",
+        lane: "ecosystem" as const,
+        nutrientId: "n-eco-wallet",
+        source: "onchain" as const,
+        label: "지갑 재방문",
+        value: "확대",
+        summary: "지갑은 돌아오지만 남는 습관까지 연결되는지는 아직 더 봐야 한다.",
+        trust: 0.84,
+        freshness: 0.93,
+        capturedAt: createdAt,
+        digestScore: 0.8,
+      },
+      {
+        id: "ev-protocol-recovery",
+        lane: "protocol" as const,
+        nutrientId: "n-protocol-recovery",
+        source: "news" as const,
+        label: "장애 뒤 얼마나 빨리 복구되는지",
+        value: "지연",
+        summary: "복구 속도가 늦으면 좋은 발표도 오래 못 간다.",
+        trust: 0.79,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        digestScore: 0.72,
+      },
+    ],
+    recentPosts: [],
+    requireOnchainEvidence: false,
+    requireCrossSourceEvidence: false,
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.focus, "retention");
+  assert.deepEqual(
+    [...(plan?.evidence.map((item) => item.label) || [])].sort(),
+    ["사용자 재방문 흐름", "지갑 재방문"].sort()
+  );
+  assert.ok(!plan?.plannerWarnings?.includes("focus-drift"));
+});
+
+test("planEventEvidenceAct avoids macro general drift into liquidity and ops evidence when macro pair exists", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "event:macro:flow-drift",
+        lane: "macro",
+        headline: "달러 쪽이 출렁여도 실제 배치는 아직 늦게 움직이는지 본다",
+        summary: "Macro direction should still be anchored by funding and FX behavior.",
+        source: "analysis:sharp",
+        trust: 0.8,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["macro", "usd", "capital"],
+      },
+    ],
+    evidence: [
+      {
+        id: "ev-macro-capital",
+        lane: "macro" as const,
+        nutrientId: "n-macro-capital",
+        source: "market" as const,
+        label: "관망 자금 유입",
+        value: "증가",
+        summary: "자금 배치가 실제로 바뀌는지는 관망 자금의 유입 속도에서 먼저 드러난다.",
+        trust: 0.81,
+        freshness: 0.91,
+        capturedAt: createdAt,
+        digestScore: 0.75,
+      },
+      {
+        id: "ev-macro-fx",
+        lane: "macro" as const,
+        nutrientId: "n-macro-fx",
+        source: "news" as const,
+        label: "달러 쪽 움직임",
+        value: "확대",
+        summary: "달러 반응이 자금 습관보다 빠르게 흔들리는 장면이다.",
+        trust: 0.79,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        digestScore: 0.72,
+      },
+      {
+        id: "ev-drift-ops",
+        lane: "protocol" as const,
+        nutrientId: "n-drift-ops",
+        source: "news" as const,
+        label: "운영 로그",
+        value: "지연",
+        summary: "운영 로그가 늦으면 좋은 업그레이드도 오래 못 간다.",
+        trust: 0.77,
+        freshness: 0.87,
+        capturedAt: createdAt,
+        digestScore: 0.71,
+      },
+    ],
+    recentPosts: [],
+    requireOnchainEvidence: false,
+    requireCrossSourceEvidence: false,
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.focus, "flow");
+  assert.deepEqual(
+    [...(plan?.evidence.map((item) => item.label) || [])].sort(),
+    ["관망 자금 유입", "달러 쪽 움직임"].sort()
+  );
+  assert.ok(!plan?.plannerWarnings?.includes("focus-general"));
+  assert.ok(!plan?.plannerWarnings?.includes("focus-drift"));
+});
+
 test("planEventEvidenceAct avoids price-like evidence for ecosystem lane when structural pair exists", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({

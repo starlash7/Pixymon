@@ -67,6 +67,22 @@ test("buildKoIdentityWriterCandidate rewrites clause-like anchors into natural n
   assert.doesNotMatch(text, /는지가 남는지|가까가|돌아오는지가/);
 });
 
+test("buildKoIdentityWriterCandidate rewrites recovery clause anchors without malformed tails", () => {
+  const text = buildKoIdentityWriterCandidate({
+    ...baseInput,
+    lane: "ecosystem",
+    mode: "meta-reflection",
+    headline: "사람은 돌아오는데 생활 리듬은 아직 얕은 장면",
+    primaryAnchor: "사용자 재방문 흐름",
+    secondaryAnchor: "장애 뒤 얼마나 빨리 복구되는지",
+    preferredFocus: "retention",
+    seedHint: "identity-writer:recovery-clause-anchor",
+  });
+
+  assert.match(text, /(복구 속도|재방문|생활 리듬|습관)/);
+  assert.doesNotMatch(text, /복구되가|복구되\s|복구되는지가|얼마나 빨리 복구되는지가/);
+});
+
 
 test("buildKoIdentityWriterCandidate uses evaluative voice instead of checklist verbs in ecosystem mode", () => {
   const text = buildKoIdentityWriterCandidate({

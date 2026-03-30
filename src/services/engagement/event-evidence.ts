@@ -605,6 +605,7 @@ export function planEventEvidenceAct(params: {
         focus
       );
       const narrativeTension = estimateNarrativeTension(pair.evidence, event.lane, focus, sceneFamily);
+      const focusDriftPenalty = estimateFocusDriftPenalty(event.lane, focus, pair.evidence, sceneFamily);
       const hasSharpExplicitAlternative = candidateEvents.some(
         (candidate) =>
           candidate.id !== event.id &&
@@ -684,6 +685,7 @@ export function planEventEvidenceAct(params: {
         hasCrossSourceEvidence: pair.hasCrossSourceEvidence,
         evidenceSourceDiversity: pair.evidenceSourceDiversity,
         recentNarrativeThreads: params.recentNarrativeThreads || [],
+        focusDriftPenalty,
       });
       const repeatWarningPenalty =
         plannerWarnings.includes("scene-repeat") && event.source === "evidence:structural-fallback"
@@ -708,6 +710,7 @@ export function planEventEvidenceAct(params: {
         headlineCommodityPenalty * 1.25 -
         structuralSourcePenalty +
         explicitSourceBonus -
+        focusDriftPenalty * 1.2 -
         (quotaLimited ? 0.35 : 0) -
         laneRepeatPenalty -
         recentFocusPenalty * 1.15 -
@@ -1150,6 +1153,7 @@ function buildPlannerWarnings(params: {
   hasCrossSourceEvidence: boolean;
   evidenceSourceDiversity: number;
   recentNarrativeThreads: Array<{ lane: TrendLane; focus?: string; sceneFamily?: string; headline?: string }>;
+  focusDriftPenalty?: number;
 }): string[] {
   const warnings = new Set<string>();
   const { event, pair, focus, sceneFamily } = params;
@@ -1159,6 +1163,7 @@ function buildPlannerWarnings(params: {
   if (event.source === "evidence:structural-fallback") warnings.add("structural-fallback");
   if (event.lane !== "onchain" && !params.hasCrossSourceEvidence) warnings.add("single-source");
   if (params.evidenceSourceDiversity < 2) warnings.add("low-diversity");
+  if ((params.focusDriftPenalty || 0) >= 0.16) warnings.add("focus-drift");
   if (
     params.recentNarrativeThreads.some(
       (item) => item.lane === event.lane && (item.focus || "general") === focus
@@ -4098,6 +4103,7 @@ function selectEvidencePairCandidatesForLane(
       const narrativeBucketBonus = estimateNarrativeBucketBonus(pair, lane);
       const sceneFamilyBonus = estimateSceneFamilyBonus(lane, focus, sceneFamily);
       const narrativeTension = estimateNarrativeTension(pair, lane, focus, sceneFamily);
+      const focusDriftPenalty = estimateFocusDriftPenalty(lane, focus, pair, sceneFamily);
       if (pairIsTooGenericForLane(pair, lane)) continue;
       if (lane === "market-structure" && !semanticSupport) continue;
       if (lane !== "onchain" && lane !== "market-structure" && !semanticSupport && genericPairPenalty >= 0.1) {
@@ -4115,6 +4121,9 @@ function selectEvidencePairCandidatesForLane(
         pair.some((item) => /(커뮤니티 잔류|실사용 잔류|커뮤니티 반응|체인 안쪽 사용)/.test(item.label)) &&
         genericPairPenalty >= 0.08
       ) {
+        continue;
+      }
+      if (focusDriftPenalty >= 0.24 && lane !== "onchain") {
         continue;
       }
       const score =
@@ -4441,6 +4450,9 @@ function resolvePlannerFocus(lane: TrendLane, pair: OnchainEvidence[]): PlannerF
   if (lane === "market-structure") {
     if (has("settlement") || /(호가 유동성|현물 체결|깊이)/.test(merged)) return "settlement";
     if (has("liquidity")) return "liquidity";
+  }
+  if (lane === "macro") {
+    if (hasFacet("capital") || hasFacet("fx") || /(자금 습관|배치|달러|금리|물가)/.test(merged)) return "flow";
   }
 
   return "general";
@@ -5437,6 +5449,131 @@ function estimateNarrativeBucketBonus(pair: OnchainEvidence[], lane: TrendLane):
 
   return clampNumber(bonus, -0.2, 0.28, 0);
 }
+
+function estimateFocusDriftPenalty(
+  lane: TrendLane,
+  focus: PlannerFocus,
+  pair: OnchainEvidence[],
+  sceneFamily: string
+): number {
+  const buckets = pair.map((item) => classifyNarrativeBucket(item));
+  const facets = pair.map((item) => resolvePlannerSceneFacet(item, lane));
+  const merged = sanitizeTweetText(pair.map((item) => `${item.label} ${item.value} ${item.summary}`).join(" | ")).toLowerCase();
+  const hasBucket = (bucket: NarrativeBucket) => buckets.includes(bucket);
+  const hasFacet = (...targets: string[]) => facets.some((facet) => targets.includes(facet));
+  const countFacets = (...targets: string[]) => facets.filter((facet) => targets.includes(facet)).length;
+  let penalty = 0;
+
+  if (lane === "protocol" && focus === "durability") {
+    const hasProtocolCore = hasFacet("ops", "validator", "recovery", "rollout") || hasBucket("ops") || hasBucket("durability");
+    if ((hasFacet("wallet", "cohort", "retention", "community") || hasBucket("retention") || hasBucket("heat")) && !hasProtocolCore) {
+      penalty += 0.3;
+    } else if ((hasFacet("wallet", "cohort", "retention") || hasBucket("retention")) && !hasFacet("ops", "recovery", "rollout")) {
+      penalty += hasFacet("validator") ? 0.26 : 0.2;
+    }
+    if (
+      /(지갑 재방문|사용자 재방문 흐름|커뮤니티 반응)/.test(merged) &&
+      !/(운영 로그|복구|배포 큐|롤아웃)/.test(merged)
+    ) {
+      penalty += hasFacet("validator") ? 0.14 : 0.12;
+    }
+    if (/protocol:durability:(retention|wallet|community|usage)\+validator/.test(sceneFamilyBase(sceneFamily))) {
+      penalty += 0.28;
+    }
+  }
+
+  if (lane === "protocol" && focus === "launch") {
+    const hasLaunchCore = hasFacet("launch", "return", "capital", "showcase", "ops", "rollout");
+    if ((hasFacet("wallet", "cohort", "retention", "community") || hasBucket("retention") || hasBucket("heat")) && !hasLaunchCore) {
+      penalty += 0.26;
+    }
+    if (hasFacet("community") && !hasFacet("return", "capital", "showcase")) {
+      penalty += 0.1;
+    }
+  }
+
+  if (lane === "regulation" && focus === "court") {
+    const hasCourtCore = hasFacet("court", "verdict", "briefing", "execution", "order", "capital") || hasBucket("legal");
+    if ((hasFacet("wallet", "cohort", "retention", "community") || hasBucket("retention") || hasBucket("heat")) && !hasCourtCore) {
+      penalty += 0.28;
+    }
+    if (hasFacet("usage") && !hasFacet("execution", "capital", "order")) {
+      penalty += 0.12;
+    }
+  }
+
+  if (lane === "market-structure" && focus === "settlement") {
+    const hasSettlementCore = hasFacet("execution", "volume", "depth", "heat", "capital") || hasBucket("liquidity") || hasBucket("settlement");
+    if ((hasFacet("wallet", "cohort", "retention", "community") || hasBucket("retention") || hasBucket("legal") || hasBucket("builder")) && !hasSettlementCore) {
+      penalty += 0.28;
+    }
+    if (hasFacet("capital") && !hasFacet("execution", "depth", "volume")) {
+      penalty += 0.1;
+    }
+  }
+
+  if (lane === "ecosystem" && focus === "retention") {
+    const retentionFacetCount = countFacets("wallet", "cohort", "retention", "usage");
+    const hasRetentionCore = retentionFacetCount >= 2 || (hasFacet("retention") && hasFacet("usage"));
+    const hasProtocolDrift = hasFacet("ops", "recovery", "validator", "rollout") || hasBucket("ops");
+    if ((hasBucket("legal") || hasBucket("ops")) && !hasFacet("wallet", "cohort", "retention", "usage")) {
+      penalty += 0.2;
+    }
+    if (hasProtocolDrift && !hasRetentionCore) {
+      penalty += 0.26;
+    }
+    if (
+      /(복구|운영 로그|배포 큐|롤아웃|검증자|validator)/.test(merged) &&
+      retentionFacetCount < 2
+    ) {
+      penalty += 0.18;
+    }
+    if (hasFacet("community") && !hasFacet("wallet", "cohort", "retention", "usage")) {
+      penalty += 0.08;
+    }
+    if (hasFacet("capital") && !hasFacet("wallet", "cohort", "retention", "usage", "community")) {
+      penalty += 0.1;
+    }
+  }
+
+  if (lane === "macro") {
+    const macroFacetCount = countFacets("fx", "rates", "inflation", "capital");
+    const hasMacroCore = macroFacetCount >= 1 || hasBucket("capital");
+    const hasForeignFacet =
+      hasFacet(
+        "ops",
+        "recovery",
+        "validator",
+        "rollout",
+        "execution",
+        "depth",
+        "volume",
+        "wallet",
+        "cohort",
+        "retention",
+        "community",
+        "builder",
+        "court",
+        "verdict",
+        "briefing",
+        "order",
+        "launch",
+        "showcase"
+      ) || hasBucket("ops") || hasBucket("retention") || hasBucket("settlement") || hasBucket("liquidity") || hasBucket("legal");
+    if (hasForeignFacet && !hasMacroCore) {
+      penalty += 0.32;
+    }
+    if (
+      /(운영 로그|복구|검증자|배포 큐|호가|체결|재방문|커뮤니티|개발자)/.test(merged) &&
+      macroFacetCount === 0
+    ) {
+      penalty += 0.18;
+    }
+  }
+
+  return clampNumber(penalty, 0, 0.4, 0);
+}
+
 function pairSupportsLaneSemantics(pair: OnchainEvidence[], lane: TrendLane): boolean {
   if (lane === "onchain") return true;
   const merged = sanitizeTweetText(

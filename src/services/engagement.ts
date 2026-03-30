@@ -1021,6 +1021,8 @@ export async function postTrendUpdate(
         anchors: localAnchors,
         language: runtimeSettings.postLanguage,
         laneHint: eventPlan.lane,
+        preferredFocus: eventPlan.focus,
+        sceneFamily: eventPlan.sceneFamily,
         recentPosts: recentBriefingPosts,
         recentReflection: recentReflectionText,
         intentLine: soulIntent.intentLine,
@@ -3977,10 +3979,10 @@ function ensureEventHeadlineAnchor(
       /(부터\s*먼저|먼저다)$/.test(eventStem)
         ? buildCompactEventAnchorLine(eventPlan.lane || "market-structure", eventPlan.event.headline, `event-anchor-fallback|${eventPlan.event.id || ""}`)
         : /(는지|인지|일지|할지|될지|붙는지|남는지|이어지는지|갈리는지|버티는지|무너지는지)$/.test(eventStem)
-        ? `이번 쟁점은 ${eventStem}다.`
+        ? `${eventStem}가 핵심이다.`
         : /(다|한다|된다|보인다|남는다|갈린다|가깝다)$/.test(eventStem)
           ? `${eventStem}.`
-          : `이번 쟁점은 ${eventStem}다.`;
+          : `이번 쟁점은 ${eventStem}이다.`;
     return truncateAtWordBoundary(`${clause} ${normalized}`, maxChars);
   }
   return truncateAtWordBoundary(`${eventHeadline}. ${normalized}`, maxChars);
@@ -4820,6 +4822,8 @@ interface BuildPreviewFallbackCandidatesInput {
   anchors: string;
   language: "ko" | "en";
   laneHint?: TrendLane;
+  preferredFocus?: string;
+  sceneFamily?: string;
   recentPosts: Array<{ content: string }>;
   recentReflection?: string;
   intentLine?: string;
@@ -5271,7 +5275,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       primaryAnchor,
       secondaryAnchor,
       lane,
+      preferredFocus: (input.preferredFocus as any) || undefined,
       mode,
+      sceneFamily: input.sceneFamily,
       worldviewHint,
       signatureBelief,
       recentReflection: recentReflectionHint || philosophyFrame,
