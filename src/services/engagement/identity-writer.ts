@@ -563,7 +563,7 @@ const FOCUS_CROSS_EXAM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterF
       "돈이 안 붙은 과열은 제일 먼저 잘라낸다.",
     ],
     settlement: [
-      "거래량 숫자만 남고 깊이가 비면 그 장면은 구조보다 연출 쪽이다.",
+      "거래량 숫자만 앞서고 깊이가 비면 그 장면은 구조보다 속도전 쪽이다.",
       "호가 두께 없이 커진 거래량은 오래 못 믿는다.",
       "깊이 없는 체결 반응은 숫자만 번쩍인 장면으로 남는다.",
       "현물 체결이 커도 깊이가 비면 그 장면은 화면 반응에 더 가깝다.",
@@ -571,7 +571,7 @@ const FOCUS_CROSS_EXAM_BY_LANE: Partial<Record<TrendLane, Partial<Record<WriterF
       "깊이 없는 거래량은 숫자만 남고 체급은 못 만든다.",
       "체결량은 살아도 호가 책이 비면 그 반응은 스크린에서만 두꺼워진다.",
       "숫자가 앞서도 정산 깊이가 못 따라오는 장면은 구조보다 화면을 더 닮는다.",
-      "정산은 얕은데 거래량만 선명한 장면은 결국 연출 값으로 남는다.",
+      "정산이 얕은데 거래량만 선명한 장면은 결국 숫자 장면으로 눕는다.",
     ],
   },
 };
@@ -1433,12 +1433,12 @@ const MODE_STAMP_BY_LANE_AND_MODE: Partial<Record<TrendLane, Partial<Record<stri
   protocol: {
     "era-manifesto": [
       "프로토콜의 시대는 출시 박수가 아니라 운영 태도가 바꾼다.",
-      "업그레이드의 세대는 결국 복구 기록이 늦게 다시 쓴다.",
+      "업그레이드의 세대는 결국 복구 기록이 남는 자리에서 갈린다.",
       "새 국면은 늘 릴리스 노트보다 장애 뒤 태도가 선언한다.",
-      "프로토콜의 체급은 결국 배포 속도보다 복구 태도가 다시 매긴다.",
+      "프로토콜의 체급은 결국 배포 속도보다 복구 태도가 남는 자리에서 갈린다.",
       "새 질서는 출시 무대보다 장애 뒤 운영 반응이 더 늦게 정리한다.",
-      "업그레이드의 시대감은 결국 검증자 박수보다 복구 기록이 다시 쓴다.",
-      "릴리스의 체급은 결국 운영 태도가 어디서 버티는지가 다시 매긴다.",
+      "업그레이드의 시대감은 결국 검증자 박수보다 복구 기록이 남는 자리에서 갈린다.",
+      "릴리스의 체급은 결국 운영 태도가 어디서 버티는지에서 갈린다.",
       "프로토콜의 세대는 결국 배포 박수보다 장애 뒤 운영 태도가 먼저 바꾼다.",
       "업그레이드 국면의 체급은 결국 릴리스 속도보다 복구 기록의 지속 시간이 다시 정한다.",
       "새 프로토콜의 무게는 결국 쇼케이스보다 운영 태도가 어디서 버티는지에서 갈린다.",
@@ -2120,6 +2120,40 @@ function hasBatchim(text: string): boolean {
 
 function sanitizeClause(text: string): string {
   return sanitizeTweetText(String(text || "")).replace(/[.!?]+$/g, "").trim();
+}
+
+function diversifySelectedCadenceLine(
+  text: string,
+  lane: TrendLane,
+  focus: WriterFocus,
+  sceneFamily: string,
+  segment: "stamp" | "pressure" | "decision" | "consequence",
+  seed: number
+): string {
+  let cleaned = sanitizeTweetText(String(text || "")).trim();
+  if (!cleaned) return cleaned;
+
+  cleaned = cleaned.replace(/(.+?)이 다시 드러낸다\.$/u, (_match, subject: string) => {
+    const trimmed = sanitizeClause(subject);
+    if (!trimmed) return cleaned;
+    const connector = /(돈|자금|주문|호가|체결|깊이|흐름|태도|반응|속도|기세|밀도)$/u.test(trimmed)
+      ? " 쪽에서"
+      : "에서";
+    return `${trimmed}${connector} 드러난다.`;
+  });
+
+  const cadenceSeed = stableSeedForPrelude([lane, focus, sceneFamily, segment, String(seed), cleaned].join("|"));
+  const writeObjectPool = ["다시 매긴다.", "정산한다.", "정리한다."];
+  const recordObjectPool = ["정리한다.", "정산한다.", "다시 매긴다."];
+
+  if (/(?:을|를)\s*다시 쓴다\.$/u.test(cleaned)) {
+    cleaned = cleaned.replace(/다시 쓴다\.$/u, writeObjectPool[cadenceSeed % writeObjectPool.length]);
+  }
+  if (/(?:을|를)\s*다시 적는다\.$/u.test(cleaned)) {
+    cleaned = cleaned.replace(/다시 적는다\.$/u, recordObjectPool[cadenceSeed % recordObjectPool.length]);
+  }
+
+  return cleaned;
 }
 
 function fill(template: string, primaryAnchor: string, secondaryAnchor: string): string {
@@ -3436,16 +3470,16 @@ function buildEraNudgeLine(
   if (input.lane === "ecosystem" && focus === "retention") {
     pool.push(
       "한 생태계의 세대는 결국 남는 사람 수가 정한다.",
-      "시대의 값은 결국 다시 돌아오는 습관 쪽이 다시 쓴다.",
+      "시대의 값은 결국 다시 돌아오는 습관 쪽에서 갈린다.",
       "생태계의 시대감은 결국 남은 사람 수에서 드러난다.",
       "생태계의 다음 계절은 결국 다시 돌아오는 생활 리듬이 먼저 연다.",
       "결국 다음 질서를 여는 건 반응이 아니라 남은 습관 쪽이다.",
-      "끝내 남는 생태계 문장은 결국 다시 돌아오는 사람 수가 다시 적는다.",
+      "끝내 남는 생태계 문장의 체급은 결국 다시 돌아오는 사람 수가 정한다.",
       "새 생태계의 체급은 결국 열기보다 다음 날까지 남은 습관이 먼저 연다."
     );
     if (/retention\+usage|habit\+retention|return\+habit/.test(sceneFamily)) {
       pool.push(
-        "생활 리듬이 남는 쪽이 결국 다음 국면의 값을 다시 쓴다.",
+        "생활 리듬이 남는 쪽이 결국 다음 국면의 값을 다시 매긴다.",
         "새 국면은 결국 다시 이어지는 습관 쪽이 먼저 연다.",
         "돌아오는 생활 리듬이 붙는 쪽이 결국 다음 장면의 체급을 정한다.",
         "다음 국면은 결국 남겨진 사용 습관이 먼저 문을 연다."
@@ -3456,14 +3490,14 @@ function buildEraNudgeLine(
         "남는 사람 수가 비는 순간 생태계의 세대감도 바로 바뀐다.",
         "돌아오는 사람 수가 결국 이 국면의 체급을 다시 매긴다.",
         "지갑만 남고 사람이 비는 순간 이 생태계의 다음 국면도 함께 얇아진다.",
-        "결국 다음 세대는 돌아오는 사람 수가 얼마나 버티는지가 다시 쓴다."
+        "결국 다음 세대는 돌아오는 사람 수가 얼마나 버티는지에서 갈린다."
       );
     }
   }
 
   if (input.lane === "regulation" && focus === "court") {
     pool.push(
-      "규제의 시대감은 결국 문장보다 행동과 자금이 다시 쓴다.",
+      "규제의 시대감은 결국 문장보다 행동과 자금이 남는 자리에서 갈린다.",
       "정책의 체급은 결국 행동이 남는 자리에서 다시 매겨진다.",
       "판결의 세대감은 결국 돈이 눕는 자리에서 갈린다."
     );
@@ -3483,11 +3517,11 @@ function buildEraNudgeLine(
 
   if (input.lane === "protocol" && focus === "launch") {
     pool.push(
-      "런치의 시대감은 결국 돌아오는 돈이 다시 드러낸다.",
-      "메인넷의 체급은 결국 복귀 자금이 다시 쓴다.",
+      "런치의 시대감은 결국 돌아오는 돈 쪽에서 드러난다.",
+      "메인넷의 체급은 결국 복귀 자금이 남는 자리에서 갈린다.",
       "새 런치의 값은 결국 객석 밖으로 나온 돈이 정한다.",
-      "런치의 무게는 결국 메인넷 문장보다 돌아오는 돈이 먼저 다시 쓴다.",
-      "출시의 체급은 결국 객석 밖으로 나온 복귀 자금이 다시 적는다."
+      "런치의 무게는 결국 메인넷 문장보다 돌아오는 돈 쪽에서 먼저 갈린다.",
+      "출시의 체급은 결국 객석 밖으로 나온 복귀 자금이 다시 정한다."
     );
     if (/showcase|audience-gap/.test(sceneFamily)) {
       pool.push(
@@ -3533,12 +3567,12 @@ function buildEraNudgeLine(
       );
     }
     pool.push(
-      "업그레이드의 세대는 결국 복구 태도가 다시 쓴다.",
+      "업그레이드의 세대는 결국 복구 태도가 남는 자리에서 갈린다.",
       "프로토콜의 질서는 결국 로그와 복구가 정한다.",
       "새 국면은 결국 장애 뒤 태도가 선언한다.",
       "끝까지 버틴 쪽은 릴리스 노트가 아니라 장애 뒤 복구 태도다.",
       "설명보다 오래 가는 건 결국 복구 속도다.",
-      "새 프로토콜의 체급은 결국 박수보다 장애 뒤 로그가 다시 쓴다."
+      "새 프로토콜의 체급은 결국 박수보다 장애 뒤 로그가 다시 정산한다."
     );
   }
 
@@ -3549,7 +3583,7 @@ function buildEraNudgeLine(
           "새 장세의 값은 결국 체결보다 늦게 붙은 깊이 빈칸이 다시 정산한다.",
           "정산의 시대감은 결국 거래량보다 호가 책의 빈칸이 어디서 남는지에서 드러난다.",
           "시장 구조의 체급은 결국 숫자보다 호가 책이 어디서 비는지에서 갈린다.",
-          "새 질서는 결국 거래량보다 늦게 남은 호가 두께가 다시 쓴다."
+          "새 질서는 결국 거래량보다 늦게 남은 호가 두께에서 갈린다."
         ],
         [input.lane, focus, input.mode, lengthProfile, sceneFamily, "era-nudge-book-thin"].join("|"),
         variant,
@@ -3573,18 +3607,18 @@ function buildEraNudgeLine(
     }
     pool.push(
       "새 질서는 결국 돈이 남은 자리에서 정리된다.",
-      "시장 구조의 시대는 결국 실제 돈이 다시 쓴다.",
+      "시장 구조의 시대는 결국 실제 돈이 다시 정한다.",
       "한 국면의 체급은 결국 깊이가 남는 자리에서 갈린다.",
       "새 장세의 무게는 결국 깊이가 어디에 눕는지에서 다시 정산된다.",
       "시장 국면은 결국 정산 깊이가 남은 자리에서 체급이 갈린다.",
-      "정산의 본색은 결국 숫자보다 남은 깊이가 다시 적는다.",
+      "정산의 본색은 결국 숫자보다 남은 깊이에서 드러난다.",
       "시장 구조의 다음 장면은 결국 호가 책이 남긴 빈칸이 다시 연다."
     );
   }
 
   if (input.lane === "onchain") {
     pool.push(
-      "온체인의 시대감은 결국 오래 버틴 흔적이 다시 쓴다.",
+      "온체인의 시대감은 결국 오래 버틴 흔적이 다시 정한다.",
       "한 장세의 질서는 결국 다음 날까지 남은 숫자가 정한다.",
       "새 국면은 결국 버틴 주소와 자금 습관이 선언한다."
     );
@@ -4077,41 +4111,62 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const instinct = rewriteSoulHint(input, focus, selectionSeed + variant * 13 + 17);
   const attitude = pickAttitudeLine(input.lane, focus, selectionSeed + variant * 17 + 1, variant, lead, scene);
   const fixation = pickFixationLine(input, focus, selectionSeed + variant * 19 + 1, variant, lead, attitude, scene);
-  const stamp = pickModeStampForLane(
+  const stamp = diversifySelectedCadenceLine(
+    pickModeStampForLane(
+      input.lane,
+      focus,
+      input.mode,
+      lengthProfile,
+      selectionSeed + variant * 23 + 1,
+      variant,
+      lead,
+      attitude,
+      fixation,
+      scene,
+      input.sceneFamily || ""
+    ),
     input.lane,
     focus,
-    input.mode,
-    lengthProfile,
-    selectionSeed + variant * 23 + 1,
-    variant,
-    lead,
-    attitude,
-    fixation,
-    scene,
-    input.sceneFamily || ""
+    input.sceneFamily || "",
+    "stamp",
+    selectionSeed + variant * 23 + 1
   );
-  const pressure = buildPressureLine(input, focus, lengthProfile, selectionSeed + variant * 29 + 1, variant, lead, attitude);
+  const pressure = diversifySelectedCadenceLine(
+    buildPressureLine(input, focus, lengthProfile, selectionSeed + variant * 29 + 1, variant, lead, attitude),
+    input.lane,
+    focus,
+    input.sceneFamily || "",
+    "pressure",
+    selectionSeed + variant * 29 + 1
+  );
   const focusDecisionPool = FOCUS_DECISION_BY_LANE[input.lane]?.[focus] || [];
   const sceneDecisionPool = buildSceneFamilyDecisionPool(input, focus);
   const decisionPool = [...sceneDecisionPool, ...focusDecisionPool].filter(Boolean).length
     ? [...sceneDecisionPool, ...focusDecisionPool].filter(Boolean)
     : DECISION_BY_LANE[input.lane];
-  const decision = pickContextualDistinctLine(
-    decisionPool,
-    [
-      input.lane,
-      focus,
-      input.mode,
-      input.sceneFamily || "",
-      sanitizeClause(lead),
-      sanitizeClause(scene),
-      primaryAnchor,
-      secondaryAnchor,
-      "decision",
-      lengthProfile,
-    ].join("|"),
-    variant,
-    [lead, scene, attitude, fixation],
+  const decision = diversifySelectedCadenceLine(
+    pickContextualDistinctLine(
+      decisionPool,
+      [
+        input.lane,
+        focus,
+        input.mode,
+        input.sceneFamily || "",
+        sanitizeClause(lead),
+        sanitizeClause(scene),
+        primaryAnchor,
+        secondaryAnchor,
+        "decision",
+        lengthProfile,
+      ].join("|"),
+      variant,
+      [lead, scene, attitude, fixation],
+      29 + selectionSeed
+    ),
+    input.lane,
+    focus,
+    input.sceneFamily || "",
+    "decision",
     29 + selectionSeed
   );
   const focusConsequencePool = FOCUS_CONSEQUENCE_BY_LANE[input.lane]?.[focus] || [];
@@ -4119,21 +4174,28 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const consequencePool = [...sceneConsequencePool, ...focusConsequencePool].filter(Boolean).length
     ? [...sceneConsequencePool, ...focusConsequencePool].filter(Boolean)
     : CONSEQUENCE_BY_LANE[input.lane];
-  const consequence = pickContextualDistinctLine(
-    consequencePool,
-    [
-      input.lane,
-      focus,
-      input.mode,
-      input.sceneFamily || "",
-      sanitizeClause(decision),
-      primaryAnchor,
-      secondaryAnchor,
-      "consequence",
-      lengthProfile,
-    ].join("|"),
-    variant,
-    [lead, scene, stamp, decision],
+  const consequence = diversifySelectedCadenceLine(
+    pickContextualDistinctLine(
+      consequencePool,
+      [
+        input.lane,
+        focus,
+        input.mode,
+        input.sceneFamily || "",
+        sanitizeClause(decision),
+        primaryAnchor,
+        secondaryAnchor,
+        "consequence",
+        lengthProfile,
+      ].join("|"),
+      variant,
+      [lead, scene, stamp, decision],
+      31 + selectionSeed
+    ),
+    input.lane,
+    focus,
+    input.sceneFamily || "",
+    "consequence",
     31 + selectionSeed
   );
   const question = buildQuestion(input, selectionSeed + variant * 37 + 19);

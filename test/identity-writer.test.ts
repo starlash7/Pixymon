@@ -579,3 +579,25 @@ test("buildKoIdentityWriterCandidate keeps protocol durability identity-journal 
   assert.ok(text.length > 0);
   assert.match(text, /(업그레이드|검증자|운영|복구|로그)/);
 });
+
+test("buildKoIdentityWriterCandidate avoids malformed era cadence in hot protocol launch families", () => {
+  const outputs = Array.from({ length: 8 }, (_, variant) =>
+    buildKoIdentityWriterCandidate(
+      {
+        ...baseInput,
+        lane: "protocol",
+        mode: "era-manifesto",
+        headline: "메인넷 설명보다 복귀 자금이 늦게 붙는 구간",
+        primaryAnchor: "복귀 자금",
+        secondaryAnchor: "운영 반응",
+        preferredFocus: "launch",
+        sceneFamily: "protocol:launch:return+launch:return-lag",
+        seedHint: "identity-writer:launch-era-cadence",
+      },
+      variant
+    )
+  );
+
+  assert.ok(outputs.every((text) => !/다시 드러낸다|다시 적는다/.test(text)));
+  assert.ok(outputs.some((text) => /(정산|정한다|다시 매긴다|드러난다)/.test(text)));
+});
