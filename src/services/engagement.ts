@@ -865,6 +865,9 @@ export async function postTrendUpdate(
           bookFragment: soulIntent.bookFragment,
           selfNarrative: soulIntent.selfNarrative,
           signatureBelief: soulIntent.signatureBelief,
+          canonSoulLine: soulIntent.canonSoulLine,
+          canonMemoryLine: soulIntent.canonMemoryLine,
+          dreamLine: soulIntent.dreamLine,
           preferredForm: soulIntent.narrativeForm,
           maxChars: runtimeSettings.postMaxChars,
         });
@@ -1035,6 +1038,9 @@ export async function postTrendUpdate(
         bookFragment: soulIntent.bookFragment,
         selfNarrative: soulIntent.selfNarrative,
         signatureBelief: soulIntent.signatureBelief,
+        canonSoulLine: soulIntent.canonSoulLine,
+        canonMemoryLine: soulIntent.canonMemoryLine,
+        dreamLine: soulIntent.dreamLine,
         preferredForm: soulIntent.narrativeForm,
         maxChars: runtimeSettings.postMaxChars,
       });
@@ -1374,6 +1380,9 @@ export async function postTrendUpdate(
 - 집착선: ${soulIntent.obsessionLine}
 - 혐오/압력선: ${soulIntent.grudgeLine}
 - 연속성 메모: ${soulIntent.continuityLine}
+- 정전 Soul: ${soulIntent.canonSoulLine}
+- 정전 Memory: ${soulIntent.canonMemoryLine}
+- 정전 Dreams: ${soulIntent.dreamLine}
 - 열린 질문: ${soulIntent.activeQuestion}
 - 대화 유도 질문: ${soulIntent.interactionMission}
 - 철학 프레임: ${soulIntent.philosophyFrame}
@@ -1458,6 +1467,9 @@ Character intent (highest priority):
 - Obsession line: ${soulIntent.obsessionLine}
 - Pressure line: ${soulIntent.grudgeLine}
 - Continuity note: ${soulIntent.continuityLine}
+- Canon soul: ${soulIntent.canonSoulLine}
+- Canon memory: ${soulIntent.canonMemoryLine}
+- Canon dreams: ${soulIntent.dreamLine}
 - Open question: ${soulIntent.activeQuestion}
 - Community prompt: ${soulIntent.interactionMission}
 - Philosophy frame: ${soulIntent.philosophyFrame}
@@ -4836,6 +4848,9 @@ interface BuildPreviewFallbackCandidatesInput {
   bookFragment?: string;
   selfNarrative?: string;
   signatureBelief?: string;
+  canonSoulLine?: string;
+  canonMemoryLine?: string;
+  dreamLine?: string;
   preferredForm?: string;
   maxChars: number;
 }
@@ -4942,8 +4957,19 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const bookFragment = cleanSoulHint(input.bookFragment || "", 52);
   const selfNarrative = cleanSoulHint(input.selfNarrative || "", 54);
   const signatureBelief = cleanSoulHint(input.signatureBelief || "", 54);
+  const canonSoulLine = cleanSoulHint(input.canonSoulLine || "", 58);
+  const canonMemoryLine = cleanSoulHint(input.canonMemoryLine || "", 58);
+  const dreamLine = cleanSoulHint(input.dreamLine || "", 58);
   const worldviewHint = compactThought(
-    recentReflectionHint || philosophyFrame || signatureBelief || selfNarrative || intentLine || "",
+    recentReflectionHint ||
+      canonMemoryLine ||
+      philosophyFrame ||
+      signatureBelief ||
+      canonSoulLine ||
+      dreamLine ||
+      selfNarrative ||
+      intentLine ||
+      "",
     58
   );
   const lane = input.laneHint || inferTrendLaneFromText(headlineBase);

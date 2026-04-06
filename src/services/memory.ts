@@ -33,6 +33,7 @@ import {
   TrendLane,
   WorldviewKernel,
 } from "../types/agent.js";
+import { getCharacterCanonSlice } from "./character-docs.js";
 import { quarantineCorruptFile } from "./quarantine.js";
 
 /**
@@ -245,6 +246,9 @@ interface SoulIntentPlan {
   obsessionLine: string;
   grudgeLine: string;
   continuityLine: string;
+  canonSoulLine: string;
+  canonMemoryLine: string;
+  dreamLine: string;
 }
 
 // 데이터 타입 정의
@@ -1881,6 +1885,7 @@ export class MemoryService {
       .reverse();
     const activeQuestion = soul.curiosity.openQuestions[0] || "";
     const latestReflection = this.data.qualityTelemetry.reflectionMemos.slice(-1)[0];
+    const canon = getCharacterCanonSlice(language);
 
     if (language === "en") {
       const lines: string[] = ["### Soul State"];
@@ -1907,6 +1912,15 @@ export class MemoryService {
       }
       if (activeQuestion) {
         lines.push(`- Open question: ${activeQuestion}`);
+      }
+      if (canon.soulLine) {
+        lines.push(`- Canon soul: ${canon.soulLine}`);
+      }
+      if (canon.memoryLine) {
+        lines.push(`- Canon memory: ${canon.memoryLine}`);
+      }
+      if (canon.dreamLine) {
+        lines.push(`- Canon dream: ${canon.dreamLine}`);
       }
       if (soul.worldview.philosophyNotes.length > 0) {
         lines.push(`- Philosophy frame: ${soul.worldview.philosophyNotes[0]}`);
@@ -1952,6 +1966,15 @@ export class MemoryService {
     if (activeQuestion) {
       lines.push(`- 열린 질문: ${activeQuestion}`);
     }
+    if (canon.soulLine) {
+      lines.push(`- 정전 Soul: ${canon.soulLine}`);
+    }
+    if (canon.memoryLine) {
+      lines.push(`- 정전 Memory: ${canon.memoryLine}`);
+    }
+    if (canon.dreamLine) {
+      lines.push(`- 정전 Dreams: ${canon.dreamLine}`);
+    }
     if (soul.worldview.philosophyNotes.length > 0) {
       lines.push(`- 철학 프레임: ${soul.worldview.philosophyNotes[0]}`);
     }
@@ -1983,6 +2006,7 @@ export class MemoryService {
     const obsessionLine = this.buildObsessionLine(language, laneHint, recentThreads);
     const grudgeLine = this.buildGrudgeLine(language, laneHint);
     const continuityLine = this.buildContinuityLine(language, laneHint, recentThreads);
+    const canon = getCharacterCanonSlice(language, laneHint);
     const styleDirective =
       language === "ko"
         ? `1인칭 시점, rhythm=${soul.style.rhythm}, 비유밀도=${Math.round(soul.style.metaphorDensity * 100)}%, 유머=${Math.round(soul.style.humorTemperature * 100)}%`
@@ -2009,6 +2033,9 @@ export class MemoryService {
       obsessionLine,
       grudgeLine,
       continuityLine,
+      canonSoulLine: canon.soulLine,
+      canonMemoryLine: canon.memoryLine,
+      dreamLine: canon.dreamLine,
     };
   }
 

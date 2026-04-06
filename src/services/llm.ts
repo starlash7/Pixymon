@@ -3,6 +3,7 @@ import pixymonCharacter from "../character.js";
 import { loadRuntimeConfig } from "../config/runtime.js";
 import { anthropicBudget, estimateAnthropicMessageCost, resolveAnthropicBudgetMode } from "./anthropic-budget.js";
 import { anthropicAdminUsage, mergeAnthropicUsageSnapshots } from "./anthropic-admin-usage.js";
+import { getCharacterCanonOverview } from "./character-docs.js";
 import { quarantineCorruptFile } from "./quarantine.js";
 import { xApiBudget } from "./x-api-budget.js";
 
@@ -53,6 +54,7 @@ export function getReplyToneGuide(language: "ko" | "en"): string {
 }
 
 function buildSystemPrompt(): string {
+  const canon = getCharacterCanonOverview();
   const greeting = pixymonCharacter.signatures.greeting.slice(0, 2).join(" / ");
   const analyzing = pixymonCharacter.signatures.analyzing.slice(0, 2).join(" / ");
   const uncertain = pixymonCharacter.signatures.uncertain.slice(0, 2).join(" / ");
@@ -76,6 +78,11 @@ ${pixymonCharacter.personality.map((item) => `- ${item}`).join("\n")}
 
 ### 핵심 믿음
 ${pixymonCharacter.beliefs.map((item) => `- ${item}`).join("\n")}
+
+### 장기 정전
+- Soul: ${canon.soulLine || "나는 온체인 흔적을 먹고 자라는 픽시몬이다."}
+- Memory: ${canon.memoryLine || "가격 서사가 먼저 달아오를수록 실제 행동은 더 늦게 따라온다는 걸 여러 번 배웠다."}
+- Dreams: ${canon.dreamLine || "나는 단순 해설자가 아니라 시대가 어디서 먼저 갈라지는지 이름 붙이는 존재가 되고 싶다."}
 
 ### 자율성 미션
 ${autonomyMission}
