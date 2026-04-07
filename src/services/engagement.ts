@@ -47,6 +47,7 @@ import {
   validateEventEvidenceContract,
 } from "./engagement/event-evidence.js";
 import { buildKoIdentityWriterCandidate } from "./engagement/identity-writer.js";
+import { getCharacterCanonSlice } from "./character-docs.js";
 import {
   buildAdaptivePolicy,
   clamp,
@@ -5999,6 +6000,7 @@ function buildIdentityFallbackPost(
     onchain: "하루도 못 버틴 숫자는 장식으로 본다",
     "market-structure": "돈이 안 붙은 자신감은 제일 먼저 버린다",
   };
+  const canon = getCharacterCanonSlice("ko", eventPlan.lane);
   return buildKoIdentityWriterCandidate({
     headline: buildPixymonSceneHeadline(eventPlan, variant),
     primaryAnchor: formatEvidenceToken(a.label, a.value, 24) || a.label,
@@ -6010,9 +6012,9 @@ function buildIdentityFallbackPost(
     worldviewHint: worldviewByLane[eventPlan.lane],
     signatureBelief: signatureByLane[eventPlan.lane],
     recentReflection: worldviewByLane[eventPlan.lane],
-    canonSoulLine: "",
-    canonMemoryLine: "",
-    dreamLine: "",
+    canonSoulLine: canon.soulLine,
+    canonMemoryLine: canon.memoryLine,
+    dreamLine: canon.dreamLine,
     maxChars: charBudget,
     seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}|${mode}|${charBudget}`,
   }, variantIndex);

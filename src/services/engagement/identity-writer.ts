@@ -2094,11 +2094,6 @@ function pick<T>(pool: T[], seed: number, offset = 0): T {
   return pool[(seed + offset) % pool.length];
 }
 
-function pickVariantLine(pool: string[], seed: number, variant: number, offset = 0): string {
-  const baseIndex = Math.abs(seed + offset) % pool.length;
-  return pool[(baseIndex + variant) % pool.length];
-}
-
 function buildVariantSalt(input: KoIdentityWriterInput, focus: WriterFocus, primaryAnchor: string, secondaryAnchor: string): number {
   return stableSeedForPrelude(
     [
@@ -2115,13 +2110,6 @@ function buildVariantSalt(input: KoIdentityWriterInput, focus: WriterFocus, prim
       sanitizeClause(input.dreamLine || ""),
     ].join("|")
   );
-}
-
-function hasBatchim(text: string): boolean {
-  const last = text[text.length - 1];
-  const code = last?.charCodeAt(0) ?? 0;
-  if (code < 0xac00 || code > 0xd7a3) return false;
-  return (code - 0xac00) % 28 !== 0;
 }
 
 function sanitizeClause(text: string): string {
