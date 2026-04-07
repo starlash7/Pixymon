@@ -3743,6 +3743,105 @@ test("planEventEvidenceAct escapes concentrated structural retention base in fav
   assert.equal(plan?.event.id, "retention-explicit");
 });
 
+test("planEventEvidenceAct lets canon memory and dreams push explicit settlement plans over hot base repeats", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "settlement-explicit-memory",
+        lane: "market-structure" as const,
+        headline: "거래량보다 정산 깊이 빈칸이 먼저 체급을 깎는 국면",
+        summary: "Printed volume stays loud while settlement depth still refuses to sit down.",
+        source: "analysis:sharp",
+        trust: 0.84,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["거래량", "정산", "깊이"],
+      },
+      {
+        id: "settlement-fallback-memory",
+        lane: "market-structure" as const,
+        headline: "거래량은 큰데 실제 깊이는 못 눕는 구간",
+        summary: "Volume looks strong while settlement depth remains thin.",
+        source: "evidence:structural-fallback",
+        trust: 0.82,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        keywords: ["거래량", "깊이"],
+        focusHint: "settlement",
+        sceneFamilyHint: "market-structure:settlement:volume+settlement",
+        evidenceLabelHints: ["거래량", "정산 깊이"],
+      } as any,
+    ],
+    evidence: [
+      {
+        id: "settlement-a",
+        lane: "market-structure" as const,
+        nutrientId: "n:settlement-a",
+        source: "market" as const,
+        label: "거래량",
+        value: "확대",
+        summary: "숫자와 화면 반응은 빠르게 커졌지만 실제 정산은 아직 늦다.",
+        trust: 0.82,
+        freshness: 0.89,
+        digestScore: 0.79,
+        capturedAt: createdAt,
+      },
+      {
+        id: "settlement-b",
+        lane: "market-structure" as const,
+        nutrientId: "n:settlement-b",
+        source: "market" as const,
+        label: "정산 깊이",
+        value: "얇음",
+        summary: "실제 돈이 눕는 깊이는 아직 화면 열기만큼 따라오지 않는다.",
+        trust: 0.83,
+        freshness: 0.89,
+        digestScore: 0.8,
+        capturedAt: createdAt,
+      },
+      {
+        id: "settlement-c",
+        lane: "market-structure" as const,
+        nutrientId: "n:settlement-c",
+        source: "market" as const,
+        label: "호가 두께",
+        value: "정체",
+        summary: "호가 두께도 거래량과 같은 속도로 눕지 못하는 장면이다.",
+        trust: 0.79,
+        freshness: 0.87,
+        digestScore: 0.74,
+        capturedAt: createdAt,
+      },
+    ],
+    recentPosts: [],
+    recentNarrativeThreads: [
+      {
+        lane: "market-structure",
+        focus: "settlement",
+        sceneFamily: "market-structure:settlement:volume+settlement:execution-thin:size-only",
+        headline: "직전에도 거래량만 크고 깊이가 눕지 않는 장면을 물고 있었다",
+      },
+      {
+        lane: "market-structure",
+        focus: "settlement",
+        sceneFamily: "market-structure:settlement:fill+book:execution-thin:book-thin",
+        headline: "호가보다 체결이 늦게 남는 쪽을 더 오래 붙들었다",
+      },
+    ],
+    identityPressure: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 분위기보다 실제 돈이다.",
+      grudgeLine: "체결은 없는데 자신감만 큰 화면을 제일 싫어한다.",
+      continuityLine: "지난번에도 거래량보다 깊이 빈칸이 더 오래 남았다.",
+      canonMemoryLine: "거래량이 요란해도 정산 깊이가 눕지 않으면 화면만 남고 실제 돈은 비었다.",
+      dreamLine: "무대와 체급, 거래량과 깊이를 다시 갈라내는 존재가 되고 싶다.",
+    },
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "settlement-explicit-memory");
+});
+
 test("buildEventEvidenceFallbackPost avoids analytic generic loop phrasing for korean synthetic headline", () => {
   const createdAt = new Date().toISOString();
   const text = buildEventEvidenceFallbackPost(

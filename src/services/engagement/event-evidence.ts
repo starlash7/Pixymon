@@ -670,14 +670,16 @@ export function planEventEvidenceAct(params: {
         event.lane,
         focus,
         sceneFamily,
-        params.recentNarrativeThreads || []
+        params.recentNarrativeThreads || [],
+        params.identityPressure
       );
       const explicitEscapeBonus = estimateExplicitEscapeBonus(
         event,
         event.lane,
         focus,
         sceneFamily,
-        params.recentNarrativeThreads || []
+        params.recentNarrativeThreads || [],
+        params.identityPressure
       );
       const plannerWarnings = buildPlannerWarnings({
         event,
@@ -999,7 +1001,15 @@ function estimateSceneFamilyBasePenalty(
   lane: TrendLane,
   focus: PlannerFocus,
   sceneFamily: string,
-  recentThreads: Array<{ lane: TrendLane; focus?: string; sceneFamily?: string; headline?: string }>
+  recentThreads: Array<{ lane: TrendLane; focus?: string; sceneFamily?: string; headline?: string }>,
+  pressure?:
+    | {
+        obsessionLine?: string;
+        grudgeLine?: string;
+        continuityLine?: string;
+        canonMemoryLine?: string;
+        dreamLine?: string;
+      }
 ): number {
   if (!recentThreads.length) return 0;
   const base = sceneFamilyBase(sceneFamily);
@@ -1060,7 +1070,35 @@ function estimateSceneFamilyBasePenalty(
     }
   }
 
-  return clampNumber(penalty, 0, 0.34, 0);
+  const canonMemory = sanitizeTweetText(pressure?.canonMemoryLine || "").toLowerCase();
+  const dream = sanitizeTweetText(pressure?.dreamLine || "").toLowerCase();
+  if (canonMemory || dream) {
+    const canonAntiHeat = /(재방문 없는 열기|포스터처럼 식|사람은 조용히 떠|겉열기에 속아|사용의 빈칸)/.test(canonMemory);
+    const canonAntiCourt = /(판결 기사|집행 흔적|기사값|판결 기사만 커지고 자금이 눕지)/.test(canonMemory);
+    const canonAntiLaunch = /(박수만 큰 업그레이드|운영 로그|반값|메인넷 무대|객석에 남은 출시는 곧 발표값)/.test(canonMemory);
+    const canonAntiSettlement = /(실제 돈이 눕는 방향|거래량이 요란해도 정산 깊이가 눕지 않으면|화면만 남고 실제 돈은 비었다)/.test(canonMemory);
+    const dreamEraAggression = /(시대|국면|이름을 붙이는 존재|무대와 체급|거래량과 깊이|판결과 집행)/.test(dream);
+
+    if (lane === "ecosystem" && focus === "retention" && canonAntiHeat && /(community\+retention|wallet\+retention|retention\+usage|retention\+cohort|habit\+retention|return\+habit)$/.test(base)) {
+      penalty += 0.06;
+    }
+    if (lane === "regulation" && focus === "court" && canonAntiCourt && /(court\+execution|briefing\+execution|verdict\+execution|capital\+execution)$/.test(base)) {
+      penalty += 0.06;
+    }
+    if (lane === "protocol" && (focus === "launch" || focus === "durability") && canonAntiLaunch && /(return\+launch|return\+announcement|return\+showcase|return\+ops|recovery\+rollout|recovery\+validator|ops\+validator|ops\+recovery)$/.test(base)) {
+      penalty += 0.06;
+    }
+    if (lane === "market-structure" && (focus === "settlement" || focus === "liquidity") && canonAntiSettlement && /(volume\+settlement|depth\+heat|fill\+book|volume\+book|depth\+settlement|execution\+settlement)$/.test(base)) {
+      penalty += 0.06;
+    }
+    if (dreamEraAggression) {
+      if (lane === "regulation" && focus === "court" && /(briefing|court\+execution)$/.test(base)) penalty += 0.03;
+      if (lane === "market-structure" && focus === "settlement" && /(depth\+heat|volume\+settlement|fill\+book)$/.test(base)) penalty += 0.03;
+      if (lane === "protocol" && focus === "launch" && /(return\+launch|return\+announcement)$/.test(base)) penalty += 0.03;
+    }
+  }
+
+  return clampNumber(penalty, 0, 0.42, 0);
 }
 
 function estimateExplicitEscapeBonus(
@@ -1068,7 +1106,15 @@ function estimateExplicitEscapeBonus(
   lane: TrendLane,
   focus: PlannerFocus,
   sceneFamily: string,
-  recentThreads: Array<{ lane: TrendLane; focus?: string; sceneFamily?: string; headline?: string }>
+  recentThreads: Array<{ lane: TrendLane; focus?: string; sceneFamily?: string; headline?: string }>,
+  pressure?:
+    | {
+        obsessionLine?: string;
+        grudgeLine?: string;
+        continuityLine?: string;
+        canonMemoryLine?: string;
+        dreamLine?: string;
+      }
 ): number {
   if (!recentThreads.length) return 0;
   const base = sceneFamilyBase(sceneFamily);
@@ -1106,9 +1152,23 @@ function estimateExplicitEscapeBonus(
   ) {
     bonus += 0.04;
   }
+  const canonMemory = sanitizeTweetText(pressure?.canonMemoryLine || "").toLowerCase();
+  const dream = sanitizeTweetText(pressure?.dreamLine || "").toLowerCase();
+  if (event.source === "analysis:sharp") {
+    if (dream && /(시대|국면|이름을 붙이는 존재|무대와 체급|거래량과 깊이|판결과 집행)/.test(dream)) {
+      if (/(반쪽|연출|기사값|발표값|광고|얇아진다|정산한다|승인하지 않는다|기각한다|기사지|쇼케이스|무대)/.test(localizedHeadline)) {
+        bonus += 0.04;
+      }
+    }
+    if (canonMemory && /(포스터처럼 식|기사값|반값|실제 돈은 비었다|발표값)/.test(canonMemory)) {
+      if (/(반쪽|연출|기사값|발표값|광고|포스터|반값|얇아진다|쇼케이스)/.test(localizedHeadline)) {
+        bonus += 0.04;
+      }
+    }
+  }
   if (sameBaseCount >= 2) bonus += 0.04;
   if (sameBaseCount >= 3) bonus += 0.03;
-  return clampNumber(bonus, 0, 0.3, 0);
+  return clampNumber(bonus, 0, 0.36, 0);
 }
 
 function estimateStructuralFallbackFamilyBias(
