@@ -3046,6 +3046,13 @@ test("planEventEvidenceAct prefers explicit sharp launch event over structural f
       },
     ]),
     recentPosts: [],
+    identityPressure: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 릴리스 박수보다 복귀 자금이다.",
+      grudgeLine: "복귀 자금이 늦는데 출시 박수만 큰 업그레이드를 제일 싫어한다.",
+      continuityLine: "지난번에도 메인넷 발표보다 복귀 자금이 늦게 붙는 자리를 더 오래 붙들었다.",
+      canonMemoryLine: "박수만 큰 업그레이드는 결국 메인넷보다 브리핑 냄새를 더 오래 남겼다.",
+      dreamLine: "나는 단순 해설자가 아니라, 시대가 어디서 먼저 갈라지는지 이름 붙이는 존재가 되고 싶다.",
+    },
   });
 
   assert.ok(plan);
@@ -3236,6 +3243,182 @@ test("planEventEvidenceAct escapes concentrated structural scene bases in favor 
   assert.equal(plan?.event.id, "court-explicit");
 });
 
+test("planEventEvidenceAct lets canon memory and dreams push explicit court execution plans", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "court-explicit-memory",
+        lane: "regulation" as const,
+        headline: "판결 기사만 커졌고 자금은 아직 눕지 않은 국면",
+        summary: "Court headlines grew louder while capital still refused to settle.",
+        source: "analysis:sharp",
+        trust: 0.84,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["판결", "자금", "집행"],
+      },
+      {
+        id: "court-fallback-memory",
+        lane: "regulation" as const,
+        headline: "판결은 큰데 집행은 늦는 구간",
+        summary: "Court tone remains large while execution lags.",
+        source: "evidence:structural-fallback",
+        trust: 0.82,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        keywords: ["판결", "집행"],
+        focusHint: "court",
+        sceneFamilyHint: "regulation:court:court+execution",
+        evidenceLabelHints: ["법원 일정", "대기 자금 흐름"],
+      } as any,
+    ],
+    evidence: [
+      {
+        id: "court-capital",
+        lane: "regulation" as const,
+        nutrientId: "n-court-capital",
+        source: "onchain" as const,
+        label: "대기 자금 흐름",
+        value: "관망",
+        summary: "판결 기사 뒤에 실제로 자금이 눕는지 보는 단서다.",
+        trust: 0.82,
+        freshness: 0.9,
+        digestScore: 0.79,
+        capturedAt: createdAt,
+      },
+      {
+        id: "court-execution",
+        lane: "regulation" as const,
+        nutrientId: "n-court-execution",
+        source: "news" as const,
+        label: "집행 흔적",
+        value: "지연",
+        summary: "기사보다 늦게 붙는 실제 집행 속도를 보는 단서다.",
+        trust: 0.83,
+        freshness: 0.89,
+        digestScore: 0.8,
+        capturedAt: createdAt,
+      },
+    ],
+    recentPosts: [],
+    recentNarrativeThreads: [
+      {
+        lane: "regulation",
+        focus: "court",
+        sceneFamily: "regulation:court:court+execution:capital-lag",
+        headline: "직전에도 판결 기사보다 집행이 늦게 붙는 장면을 물고 있었다",
+      },
+    ],
+    identityPressure: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 기사보다 집행 속도다.",
+      grudgeLine: "판결 기사만 크고 자금이 안 눕는 규제 서사를 제일 싫어한다.",
+      continuityLine: "지난번에도 기사보다 집행이 늦게 붙는 쪽을 더 오래 붙들었다.",
+      canonMemoryLine: "판결 기사만 커지고 자금이 눕지 않은 날엔 규제 서사가 결국 기사값 이상을 못 했다.",
+      dreamLine: "나는 단순 해설자가 아니라, 시대가 어디서 먼저 갈라지는지 이름 붙이는 존재가 되고 싶다.",
+    },
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "court-explicit-memory");
+});
+
+test("planEventEvidenceAct escapes concentrated structural retention base in favor of explicit retention event", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "retention-explicit",
+        lane: "ecosystem" as const,
+        headline: "사람은 돌아오는데 생활 흔적이 하루를 못 넘기는 생태계",
+        summary: "Users come back, but habit formation still fails to survive the next day.",
+        source: "analysis:sharp",
+        trust: 0.84,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["재방문", "생활 흔적", "생태계"],
+      },
+      {
+        id: "retention-fallback",
+        lane: "ecosystem" as const,
+        headline: "재방문은 남는데 생활 흔적이 다음 날까지 못 이어지는 구간",
+        summary: "Return flow survives, but usage does not make it into the next day.",
+        source: "evidence:structural-fallback",
+        trust: 0.82,
+        freshness: 0.89,
+        capturedAt: createdAt,
+        keywords: ["재방문", "생활 흔적"],
+        focusHint: "retention",
+        sceneFamilyHint: "ecosystem:retention:retention+usage",
+        evidenceLabelHints: ["사용자 재방문 흐름", "실사용 잔류"],
+      } as any,
+    ],
+    evidence: [
+      {
+        id: "retention-a",
+        lane: "ecosystem" as const,
+        nutrientId: "n:retention-a",
+        source: "news" as const,
+        label: "사용자 재방문 흐름",
+        value: "확대",
+        summary: "Returning users kept showing up after the initial spike.",
+        trust: 0.82,
+        freshness: 0.89,
+        digestScore: 0.78,
+        capturedAt: createdAt,
+      },
+      {
+        id: "retention-b",
+        lane: "ecosystem" as const,
+        nutrientId: "n:retention-b",
+        source: "onchain" as const,
+        label: "실사용 잔류",
+        value: "약화",
+        summary: "Actual day-two usage still fell away quickly.",
+        trust: 0.8,
+        freshness: 0.88,
+        digestScore: 0.76,
+        capturedAt: createdAt,
+      },
+      {
+        id: "retention-c",
+        lane: "ecosystem" as const,
+        nutrientId: "n:retention-c",
+        source: "onchain" as const,
+        label: "지갑 재방문",
+        value: "확대",
+        summary: "Wallet return stayed visible even as usage thinned.",
+        trust: 0.79,
+        freshness: 0.87,
+        digestScore: 0.74,
+        capturedAt: createdAt,
+      },
+    ],
+    recentPosts: [],
+    recentNarrativeThreads: [
+      {
+        lane: "ecosystem",
+        focus: "retention",
+        sceneFamily: "ecosystem:retention:retention+usage",
+        headline: "직전에도 재방문은 남는데 생활 흔적은 못 눕는 장면을 물고 있었다",
+      },
+      {
+        lane: "ecosystem",
+        focus: "retention",
+        sceneFamily: "ecosystem:retention:retention+usage:usage-gap",
+        headline: "사람은 돌아오는데 실사용 잔류가 다음 날까지 못 이어졌다",
+      },
+    ],
+    identityPressure: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 잔류다.",
+      grudgeLine: "재방문만 있고 생활 흔적이 비는 생태계를 제일 싫어한다.",
+      continuityLine: "지난번에도 다시 들어오는 사람보다 하루 뒤 습관이 먼저 무너졌다.",
+    },
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "retention-explicit");
+});
 test("buildEventEvidenceFallbackPost avoids analytic generic loop phrasing for korean synthetic headline", () => {
   const createdAt = new Date().toISOString();
   const text = buildEventEvidenceFallbackPost(

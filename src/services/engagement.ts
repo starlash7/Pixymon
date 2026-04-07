@@ -47,6 +47,7 @@ import {
   validateEventEvidenceContract,
 } from "./engagement/event-evidence.js";
 import { buildKoIdentityWriterCandidate } from "./engagement/identity-writer.js";
+import { getCharacterCanonSlice } from "./character-docs.js";
 import {
   buildAdaptivePolicy,
   clamp,
@@ -738,6 +739,8 @@ export async function postTrendUpdate(
         obsessionLine: soulIntent.obsessionLine,
         grudgeLine: soulIntent.grudgeLine,
         continuityLine: soulIntent.continuityLine,
+        canonMemoryLine: soulIntent.canonMemoryLine,
+        dreamLine: soulIntent.dreamLine,
       },
     });
     if (!eventPlan) {
@@ -760,6 +763,8 @@ export async function postTrendUpdate(
             obsessionLine: soulIntent.obsessionLine,
             grudgeLine: soulIntent.grudgeLine,
             continuityLine: soulIntent.continuityLine,
+            canonMemoryLine: soulIntent.canonMemoryLine,
+            dreamLine: soulIntent.dreamLine,
           },
         });
         if (eventPlan) {
@@ -778,6 +783,8 @@ export async function postTrendUpdate(
               obsessionLine: soulIntent.obsessionLine,
               grudgeLine: soulIntent.grudgeLine,
               continuityLine: soulIntent.continuityLine,
+              canonMemoryLine: soulIntent.canonMemoryLine,
+              dreamLine: soulIntent.dreamLine,
             },
           });
           if (relaxedStructuralPlan && isStrongOnchainStructuralPlan(relaxedStructuralPlan)) {
@@ -812,6 +819,8 @@ export async function postTrendUpdate(
             obsessionLine: soulIntent.obsessionLine,
             grudgeLine: soulIntent.grudgeLine,
             continuityLine: soulIntent.continuityLine,
+            canonMemoryLine: soulIntent.canonMemoryLine,
+            dreamLine: soulIntent.dreamLine,
           },
         });
         if (replanned?.hasCrossSourceEvidence) {
@@ -930,6 +939,8 @@ export async function postTrendUpdate(
       eventPlan,
       recentPosts: recentBriefingPosts as NarrativeRecentPost[],
       language: runtimeSettings.postLanguage,
+      dreamLine: soulIntent.dreamLine,
+      continuityLine: soulIntent.continuityLine,
     });
 
     const trendFocus = pickTrendFocus([eventPlan.event.headline, ...trend.headlines], recentBriefingPosts);
@@ -5301,6 +5312,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       worldviewHint,
       signatureBelief,
       recentReflection: recentReflectionHint || philosophyFrame,
+      canonSoulLine,
+      canonMemoryLine,
+      dreamLine,
       obsessionLine: input.obsessionLine,
       grudgeLine: input.grudgeLine,
       continuityLine: input.continuityLine,
@@ -5915,6 +5929,8 @@ function buildPixymonDecisionLine(
 function buildIdentityFallbackPost(
   eventPlan: {
     lane: TrendLane;
+    focus?: string;
+    sceneFamily?: string;
     event: { id?: string; headline: string };
     evidence: Array<{ label: string; value: string }>;
   },
@@ -5945,23 +5961,36 @@ function buildIdentityFallbackPost(
     onchain: "하루도 못 버틴 숫자는 장식으로 본다",
     "market-structure": "돈이 안 붙은 자신감은 제일 먼저 버린다",
   };
-    return buildKoIdentityWriterCandidate({
+  const mode = modeByVariant[variant];
+  const charBudget = maxChars;
+  const canon = getCharacterCanonSlice("ko", eventPlan.lane);
+  return buildKoIdentityWriterCandidate(
+    {
       headline: buildPixymonSceneHeadline(eventPlan, variant),
       primaryAnchor: formatEvidenceToken(a.label, a.value, 24) || a.label,
       secondaryAnchor: formatEvidenceToken(b.label, b.value, 24) || b.label,
-    lane: eventPlan.lane,
-    mode: modeByVariant[variant],
+      lane: eventPlan.lane,
+      sceneFamily: eventPlan.sceneFamily,
+      preferredFocus: eventPlan.focus as any,
+      mode,
       worldviewHint: worldviewByLane[eventPlan.lane],
       signatureBelief: signatureByLane[eventPlan.lane],
       recentReflection: worldviewByLane[eventPlan.lane],
-      maxChars,
-      seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}`,
-    }, variantIndex);
+      canonSoulLine: canon.soulLine,
+      canonMemoryLine: canon.memoryLine,
+      dreamLine: canon.dreamLine,
+      maxChars: charBudget,
+      seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}|${mode}|${charBudget}`,
+    },
+    variantIndex
+  );
 }
 
 function buildHardContractPost(
   eventPlan: {
     lane: TrendLane;
+    focus?: string;
+    sceneFamily?: string;
     event: { headline: string };
     evidence: Array<{ label: string; value: string }>;
   },
@@ -6014,6 +6043,8 @@ function buildHardContractPost(
 function buildRescueContractPost(
   eventPlan: {
     lane: TrendLane;
+    focus?: string;
+    sceneFamily?: string;
     event: { headline: string };
     evidence: Array<{ label: string; value: string }>;
   },
@@ -6066,6 +6097,8 @@ function buildRescueContractPost(
 function buildEmergencyContractPost(
   eventPlan: {
     lane: TrendLane;
+    focus?: string;
+    sceneFamily?: string;
     event: { headline: string };
     evidence: Array<{ label: string; value: string }>;
   },

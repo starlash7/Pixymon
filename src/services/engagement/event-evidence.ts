@@ -416,6 +416,8 @@ export function planEventEvidenceAct(params: {
     obsessionLine?: string;
     grudgeLine?: string;
     continuityLine?: string;
+    canonMemoryLine?: string;
+    dreamLine?: string;
   };
 }): EventEvidencePlan | null {
   const events = Array.isArray(params.events) ? params.events : [];
@@ -814,6 +816,8 @@ function estimateIdentityPressureBonus(
         obsessionLine?: string;
         grudgeLine?: string;
         continuityLine?: string;
+        canonMemoryLine?: string;
+        dreamLine?: string;
       }
     | undefined
 ): number {
@@ -829,6 +833,8 @@ function estimateIdentityPressureBonus(
   const obsession = sanitizeTweetText(pressure.obsessionLine || "").toLowerCase();
   const grudge = sanitizeTweetText(pressure.grudgeLine || "").toLowerCase();
   const continuity = sanitizeTweetText(pressure.continuityLine || "").toLowerCase();
+  const canonMemory = sanitizeTweetText(pressure.canonMemoryLine || "").toLowerCase();
+  const dream = sanitizeTweetText(pressure.dreamLine || "").toLowerCase();
   const tilt = sceneFamilyTilt(sceneFamily);
 
   let bonus = 0;
@@ -863,6 +869,34 @@ function estimateIdentityPressureBonus(
   }
   if (continuity && merged.includes(normalizeHeadlineKey(continuity).slice(0, 8))) {
     bonus += 0.05;
+  }
+  if (focus === "retention" && /(재방문 없는 열기|포스터처럼 식|사람은 조용히 떠)/.test(canonMemory)) {
+    bonus += 0.08;
+  }
+  if ((focus === "court" || focus === "execution") && /(판결 기사|집행 흔적|기사값)/.test(canonMemory)) {
+    bonus += 0.08;
+  }
+  if ((focus === "launch" || focus === "durability") && /(박수만 큰 업그레이드|운영 로그|반값)/.test(canonMemory)) {
+    bonus += 0.08;
+  }
+  if ((focus === "liquidity" || focus === "settlement") && /(실제 돈이 눕는 방향|돈이 눕는 방향)/.test(canonMemory)) {
+    bonus += 0.08;
+  }
+  if (dream) {
+    if (/(시대|국면|이름 붙이는 존재|진화|감지)/.test(dream) && /(lag|split|thin|court|launch|settlement|validator|rollout|execution)/.test(sceneFamily)) {
+      bonus += 0.06;
+    }
+    if (/(허세보다 운영|설명보다 집행|열기보다 잔류)/.test(dream)) {
+      if ((focus === "durability" || focus === "launch") && /(운영|복구|validator|rollout|launch)/.test(merged)) {
+        bonus += 0.05;
+      }
+      if ((focus === "retention" || focus === "hype") && /(재방문|잔류|retention|usage|wallet|community)/.test(merged)) {
+        bonus += 0.05;
+      }
+      if ((focus === "court" || focus === "execution") && /(집행|court|verdict|capital)/.test(merged)) {
+        bonus += 0.05;
+      }
+    }
   }
 
   return clampNumber(bonus, 0, 0.24, 0);
@@ -1520,6 +1554,10 @@ export function buildEventEvidenceFallbackPost(
     "meta-reflection": [
       `I rush conclusions when noise gets loud. So I re-check ${eventHeadline} with ${evidenceA} and ${evidenceB}, and I drop it if opposite evidence persists.`,
       `On ${eventHeadline}, I avoid single-signal bias by holding ${evidenceA} and ${evidenceB} together, then revise if the key condition breaks.`,
+    ],
+    "era-manifesto": [
+      `${eventHeadline}. This is the kind of scene that reprices the next regime only if ${evidenceA} and ${evidenceB} stay on the same side.`,
+      `${eventHeadline}. I only call it a new era when ${evidenceA} and ${evidenceB} keep writing the same order into the tape.`,
     ],
     "fable-essay": [
       `While everyone raises volume, I read ${eventHeadline} through ${evidenceA} and ${evidenceB}. I verify first and reverse course if falsified.`,
@@ -4917,6 +4955,127 @@ function resolvePlannerSceneTilt(
   return "";
 }
 
+function pickSceneFamilyBase(
+  lane: TrendLane,
+  focus: PlannerFocus,
+  merged: string,
+  facets: string[],
+  candidates: string[],
+  fallback: string
+): string {
+  const pool = [...new Set(candidates.filter(Boolean))];
+  if (!pool.length) return fallback;
+  const seed = stableSeed(`${lane}|${focus}|${merged}|${facets.join("+")}|${pool.join("|")}`);
+  return pool[Math.abs(seed) % pool.length] || fallback;
+}
+
+function resolveRetentionSceneBase(merged: string, facets: string[]): string {
+  const candidates: string[] = [];
+  if (/(생활|습관|리듬|다음 날)/.test(merged)) {
+    candidates.push("habit+retention", "return+habit", "cohort+retention");
+  }
+  if (/(실사용|생활 흔적|사용 흔적|체인 안쪽 사용)/.test(merged) && facets.includes("usage")) {
+    candidates.push("retention+usage", "usage+wallet", "cohort+usage");
+  }
+  if (/(커뮤니티|열기|광고|홍보|포스터)/.test(merged)) {
+    candidates.push("community+retention", "cohort+retention", "wallet+retention");
+  }
+  if (facets.includes("wallet")) {
+    candidates.push("wallet+retention", "retention+wallet");
+  }
+  if (facets.includes("cohort") || facets.includes("retention")) {
+    candidates.push("cohort+retention", "retention+cohort");
+  }
+  if (!candidates.length) {
+    if (facets.includes("usage")) candidates.push("retention+usage", "usage+wallet");
+    if (facets.includes("community")) candidates.push("community+retention");
+  }
+  return pickSceneFamilyBase("ecosystem", "retention", merged, facets, candidates, facets.includes("wallet") ? "wallet+retention" : "retention+usage");
+}
+
+function resolveCourtSceneBase(merged: string, facets: string[]): string {
+  const candidates: string[] = [];
+  if (/(판결|평결|법원|소송|court)/.test(merged)) {
+    candidates.push("verdict+execution", "court+execution", "capital+court");
+  }
+  if (/(브리핑|해설|기사|뉴스)/.test(merged)) {
+    candidates.push("briefing+execution", "briefing+capital", "order+capital");
+  }
+  if (facets.includes("order")) {
+    candidates.push("order+capital");
+  }
+  if (facets.includes("capital")) {
+    candidates.push("capital+court", "capital+execution");
+  }
+  if (facets.includes("execution")) {
+    candidates.push("court+execution", "verdict+execution", "briefing+execution");
+  }
+  return pickSceneFamilyBase("regulation", "court", merged, facets, candidates, facets.includes("order") ? "order+capital" : "court+execution");
+}
+
+function resolveLaunchSceneBase(merged: string, facets: string[]): string {
+  const candidates: string[] = [];
+  if (/(쇼케이스|데모|무대|객석|발표회|포스터)/.test(merged)) {
+    candidates.push("return+showcase", "launch+showcase", "launch+audience");
+  }
+  if (/(박수|발표|브리핑|기사|뉴스|기대)/.test(merged)) {
+    candidates.push("return+announcement", "launch+audience", "return+launch");
+  }
+  if (/(운영|로그|복구|배포|롤아웃)/.test(merged)) {
+    candidates.push("return+ops", "launch+ops", "capital+rollout");
+  }
+  if (/(자금|돈|treasury|예치 자금|복귀 자금)/.test(merged)) {
+    candidates.push("capital+launch", "launch+treasury", "return+launch");
+  }
+  if (facets.includes("showcase")) candidates.push("return+showcase", "launch+showcase", "launch+audience");
+  if (facets.includes("ops")) candidates.push("return+ops", "launch+ops", "capital+rollout");
+  if (facets.includes("capital")) candidates.push("capital+launch", "launch+treasury", "return+launch");
+  if (facets.includes("return")) candidates.push("return+launch", "return+announcement", "return+showcase");
+  return pickSceneFamilyBase("protocol", "launch", merged, facets, candidates, facets.includes("capital") ? "capital+launch" : "return+launch");
+}
+
+function resolveDurabilitySceneBase(merged: string, facets: string[]): string {
+  const candidates: string[] = [];
+  if (/(로그|기록|운영 로그)/.test(merged)) {
+    candidates.push("ops+log", "repair+log", "validator+log");
+  }
+  if (/(복구|회복|장애|recovery)/.test(merged)) {
+    candidates.push("recovery+validator", "recovery+rollout", "ops+recovery");
+  }
+  if (/(수리|패치|repair)/.test(merged)) {
+    candidates.push("repair+validator", "repair+ops", "repair+log");
+  }
+  if (/(배포|롤아웃|rollout)/.test(merged)) {
+    candidates.push("rollout+validator", "recovery+rollout", "ops+recovery");
+  }
+  if (facets.includes("validator")) candidates.push("repair+validator", "ops+validator", "recovery+validator");
+  if (facets.includes("ops")) candidates.push("ops+validator", "ops+log", "ops+recovery");
+  if (facets.includes("recovery")) candidates.push("recovery+validator", "recovery+rollout", "ops+recovery");
+  if (facets.includes("rollout")) candidates.push("rollout+validator", "recovery+rollout");
+  return pickSceneFamilyBase("protocol", "durability", merged, facets, candidates, facets.includes("validator") ? "repair+validator" : "ops+recovery");
+}
+
+function resolveSettlementSceneBase(merged: string, facets: string[]): string {
+  const candidates: string[] = [];
+  if (/(호가 책|호가|book)/.test(merged)) {
+    candidates.push("fill+book", "volume+book", "execution+settlement");
+  }
+  if (/(거래량|숫자|볼륨|volume)/.test(merged)) {
+    candidates.push("volume+settlement", "volume+depth", "fill+depth");
+  }
+  if (/(정산|settlement)/.test(merged)) {
+    candidates.push("depth+settlement", "execution+settlement", "settlement+heat");
+  }
+  if (/(깊이|depth)/.test(merged)) {
+    candidates.push("depth+heat", "depth+settlement", "execution+depth");
+  }
+  if (facets.includes("execution")) candidates.push("execution+depth", "execution+settlement", "fill+depth");
+  if (facets.includes("volume")) candidates.push("volume+settlement", "volume+book", "volume+depth");
+  if (facets.includes("depth")) candidates.push("depth+heat", "depth+settlement", "execution+depth");
+  if (facets.includes("settlement")) candidates.push("execution+settlement", "settlement+heat", "volume+settlement");
+  return pickSceneFamilyBase("market-structure", "settlement", merged, facets, candidates, facets.includes("depth") ? "depth+settlement" : "volume+settlement");
+}
+
 function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: OnchainEvidence[]): string {
   const facets = [...new Set(pair.map((item) => resolvePlannerSceneFacet(item, lane)).filter(Boolean))].sort().slice(0, 3);
   const merged = sanitizeTweetText(pair.map((item) => `${item.label} ${item.value} ${item.summary}`).join(" | ")).toLowerCase();
@@ -4937,65 +5096,23 @@ function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: O
   }
 
   if (lane === "ecosystem" && focus === "retention") {
-    if (/(생활|습관|리듬|다음 날)/.test(merged)) {
-      facetKey = facets.includes("wallet") ? "return+habit" : "habit+retention";
-    } else if (/(실사용|생활 흔적|사용 흔적|체인 안쪽 사용)/.test(merged) && facets.includes("usage")) {
-      facetKey = facets.includes("wallet") ? "usage+wallet" : "retention+usage";
-    } else if (/(커뮤니티|열기|광고|홍보|포스터)/.test(merged)) {
-      facetKey = "community+retention";
-    } else if (facets.includes("wallet") && (facets.includes("cohort") || facets.includes("retention"))) {
-      facetKey = "wallet+retention";
-    } else if (facets.includes("retention") && facets.includes("usage")) {
-      facetKey = "retention+usage";
-    } else if (facets.includes("cohort") && facets.includes("retention")) {
-      facetKey = "retention+cohort";
-    } else if (facets.includes("community") && facets.includes("retention")) {
-      facetKey = "community+retention";
-    } else if (facets.includes("wallet")) {
-      facetKey = "wallet+retention";
-    }
+    facetKey = resolveRetentionSceneBase(merged, facets);
   }
 
   if (lane === "protocol" && focus === "launch") {
-    if (/(쇼케이스|데모|무대|객석|발표회|포스터)/.test(merged) && facets.includes("return")) {
-      facetKey = "return+showcase";
-    } else if (/(박수|발표|브리핑|기사|뉴스|기대)/.test(merged) && facets.includes("return")) {
-      facetKey = "return+announcement";
-    } else if (/(운영|로그|복구|배포|롤아웃)/.test(merged) && facets.includes("return")) {
-      facetKey = "return+ops";
-    } else if (/(자금|돈|treasury|예치 자금|복귀 자금)/.test(merged) && facets.includes("launch")) {
-      facetKey = "launch+treasury";
-    } else if (facets.includes("showcase") && facets.includes("return")) {
-      facetKey = "return+showcase";
-    } else if (facets.includes("showcase") && facets.includes("launch")) {
-      facetKey = "launch+showcase";
-    } else if (facets.includes("ops") && (facets.includes("launch") || facets.includes("return"))) {
-      facetKey = "launch+ops";
-    } else if (facets.includes("return") && (facets.includes("launch") || facets.includes("capital"))) {
-      facetKey = "return+launch";
-    } else if (facets.includes("capital") && facets.includes("launch")) {
-      facetKey = "capital+launch";
-    } else if (facets.includes("capital") && facets.includes("rollout")) {
-      facetKey = "capital+rollout";
-    }
+    facetKey = resolveLaunchSceneBase(merged, facets);
   }
 
   if (lane === "market-structure" && focus === "settlement") {
-    if (/(호가 책|호가|book)/.test(merged) && facets.includes("execution")) {
-      facetKey = "fill+book";
-    } else if (/(거래량|숫자|볼륨)/.test(merged) && facets.includes("depth")) {
-      facetKey = "volume+depth";
-    } else if (/(정산|settlement)/.test(merged) && facets.includes("depth")) {
-      facetKey = "depth+settlement";
-    } else if (facets.includes("execution") && facets.includes("depth")) {
-      facetKey = "execution+depth";
-    } else if (facets.includes("volume") && facets.includes("depth")) {
-      facetKey = "volume+depth";
-    } else if (facets.includes("depth") && facets.includes("heat")) {
-      facetKey = "depth+heat";
-    } else if (facets.includes("depth")) {
-      facetKey = "depth+settlement";
-    }
+    facetKey = resolveSettlementSceneBase(merged, facets);
+  }
+
+  if (lane === "protocol" && focus === "durability") {
+    facetKey = resolveDurabilitySceneBase(merged, facets);
+  }
+
+  if (lane === "regulation" && focus === "court") {
+    facetKey = resolveCourtSceneBase(merged, facets);
   }
 
   const tilt = resolvePlannerSceneTilt(lane, focus, pair, facets);

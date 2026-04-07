@@ -98,6 +98,33 @@ test("buildNarrativePlan defaults protocol posts away from philosophy-heavy mode
   assert.ok(["identity-journal", "meta-reflection"].includes(plan.mode));
 });
 
+test("buildNarrativePlan can bias toward era-manifesto when dreams describe regime naming", () => {
+  const plan = buildNarrativePlan({
+    eventPlan: {
+      ...baseEventPlan(),
+      lane: "regulation",
+      focus: "court",
+      sceneFamily: "regulation:court:briefing+execution:capital-lag",
+      event: {
+        ...baseEventPlan().event,
+        lane: "regulation",
+        headline: "브리핑은 커졌는데 집행은 아직 늦다",
+      },
+    },
+    language: "ko",
+    dreamLine: "나는 단순 해설자가 아니라, 시대가 어디서 먼저 갈라지는지 이름 붙이는 존재가 되고 싶다.",
+    continuityLine: "지난번에도 기사보다 집행이 늦게 붙는 쪽을 더 오래 붙들었다.",
+    recentPosts: [
+      { content: "오늘은 이 장면부터 적어 둔다. 정책 문장보다 집행이 더 늦게 붙는다.", timestamp: nowIso, meta: { lane: "regulation", narrativeMode: "identity-journal" } },
+      { content: "먼저 걸리는 건 규제 기사보다 자금이 눕는 속도다.", timestamp: nowIso, meta: { lane: "regulation", narrativeMode: "meta-reflection" } },
+      { content: "여기서는 네 판단이 궁금하다. 판결보다 집행이 먼저 남는가.", timestamp: nowIso, meta: { lane: "regulation", narrativeMode: "interaction-experiment" } },
+      { content: "읽던 문장을 오늘 체인 위에 겹쳐 보면 규제는 늘 시차를 만든다.", timestamp: nowIso, meta: { lane: "regulation", narrativeMode: "philosophy-note" } },
+    ],
+  });
+
+  assert.equal(plan.mode, "era-manifesto");
+});
+
 test("validateNarrativeNovelty rejects repeated opening pattern", () => {
   const plan = buildNarrativePlan({
     eventPlan: baseEventPlan(),

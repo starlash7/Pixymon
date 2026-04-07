@@ -5,6 +5,7 @@ import {
   buildStructuralFallbackEventsFromEvidence,
   planEventEvidenceAct,
 } from "../src/services/engagement/event-evidence.ts";
+import { getCharacterCanonSlice } from "../src/services/character-docs.ts";
 import type { OnchainEvidence, TrendEvent, TrendLane, NarrativeMode } from "../src/types/agent.ts";
 import type { RecentPostRecord } from "../src/services/engagement/types.ts";
 
@@ -40,6 +41,13 @@ type PlannerSample = {
   secondSentence: string;
 };
 
+type HardCheck = {
+  name: string;
+  threshold: number;
+  actual: number;
+  passed: boolean;
+};
+
 function sceneFamilyBase(sceneFamily: string): string {
   const parts = String(sceneFamily || "")
     .split(":")
@@ -59,39 +67,65 @@ function sceneFamilyTilt(sceneFamily: string): string {
 }
 
 function identityPressureForLane(lane: TrendLane) {
+  const canon = getCharacterCanonSlice("ko", lane);
   const map: Record<
     TrendLane,
-    { obsessionLine: string; grudgeLine: string; continuityLine: string }
+    {
+      obsessionLine: string;
+      grudgeLine: string;
+      continuityLine: string;
+      canonSoulLine: string;
+      canonMemoryLine: string;
+      dreamLine: string;
+    }
   > = {
     protocol: {
       obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 릴리스보다 운영 로그다.",
       grudgeLine: "운영이 비어 있는데 릴리스 노트만 큰 서사를 제일 싫어한다.",
       continuityLine: '직전 스레드 "릴리스 박수보다 복구 태도"에서 걸린 지점을 이번에도 다시 확인한다.',
+      canonSoulLine: canon.soulLine,
+      canonMemoryLine: canon.memoryLine,
+      dreamLine: canon.dreamLine,
     },
     ecosystem: {
       obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 재방문과 잔류다.",
       grudgeLine: "사람은 안 남는데 커뮤니티 열기만 큰 얘기를 제일 싫어한다.",
       continuityLine: '직전 스레드 "서사보다 남은 사람 수"에서 걸린 지점을 이번에도 다시 확인한다.',
+      canonSoulLine: canon.soulLine,
+      canonMemoryLine: canon.memoryLine,
+      dreamLine: canon.dreamLine,
     },
     regulation: {
       obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 기사보다 집행 흔적이다.",
       grudgeLine: "집행은 없는데 기사만 큰 규제 해설을 제일 싫어한다.",
       continuityLine: '직전 스레드 "판결 기사보다 실제 자금 반응"에서 걸린 지점을 이번에도 다시 확인한다.',
+      canonSoulLine: canon.soulLine,
+      canonMemoryLine: canon.memoryLine,
+      dreamLine: canon.dreamLine,
     },
     macro: {
       obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 큰 해설보다 자금 습관 변화다.",
       grudgeLine: "배치가 안 바뀌는데 거시 해설만 커지는 장면을 제일 싫어한다.",
       continuityLine: '직전 스레드 "해설보다 자금 습관"에서 걸린 지점을 이번에도 다시 확인한다.',
+      canonSoulLine: canon.soulLine,
+      canonMemoryLine: canon.memoryLine,
+      dreamLine: canon.dreamLine,
     },
     onchain: {
       obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 하루를 버틴 온체인 신호다.",
       grudgeLine: "하루도 못 버티는 온체인 숫자를 제일 안 믿는다.",
       continuityLine: '직전 스레드 "튀는 숫자보다 남은 흔적"에서 걸린 지점을 이번에도 다시 확인한다.',
+      canonSoulLine: canon.soulLine,
+      canonMemoryLine: canon.memoryLine,
+      dreamLine: canon.dreamLine,
     },
     "market-structure": {
       obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 분위기보다 실제 돈이다.",
       grudgeLine: "체결은 없는데 자신감만 큰 화면을 제일 싫어한다.",
       continuityLine: '직전 스레드 "호가보다 실제 체결"에서 걸린 지점을 이번에도 다시 확인한다.',
+      canonSoulLine: canon.soulLine,
+      canonMemoryLine: canon.memoryLine,
+      dreamLine: canon.dreamLine,
     },
   };
   return map[lane];
@@ -426,6 +460,36 @@ function countTop(items: string[]): Array<[string, number]> {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
+function buildHardChecks(params: {
+  topFirstSentences: Array<[string, number]>;
+  topSecondSentences: Array<[string, number]>;
+  topSceneFamilyBases: Array<[string, number]>;
+}): HardCheck[] {
+  const firstSentenceMax = params.topFirstSentences[0]?.[1] || 0;
+  const secondSentenceMax = params.topSecondSentences[0]?.[1] || 0;
+  const sceneFamilyBaseMax = params.topSceneFamilyBases[0]?.[1] || 0;
+  return [
+    {
+      name: "top_first_sentence_max",
+      threshold: 2,
+      actual: firstSentenceMax,
+      passed: firstSentenceMax <= 2,
+    },
+    {
+      name: "top_second_sentence_max",
+      threshold: 2,
+      actual: secondSentenceMax,
+      passed: secondSentenceMax <= 2,
+    },
+    {
+      name: "top_scene_family_base_max",
+      threshold: 4,
+      actual: sceneFamilyBaseMax,
+      passed: sceneFamilyBaseMax <= 4,
+    },
+  ];
+}
+
 function generateSamples(variantCount: number): PlannerSample[] {
   const samples: PlannerSample[] = [];
 
@@ -514,6 +578,11 @@ function main() {
   const sceneFamilyBaseTop = countTop(samples.map((sample) => sceneFamilyBase(sample.sceneFamily))).slice(0, 10);
   const sceneFamilyTiltTop = countTop(samples.map((sample) => sceneFamilyTilt(sample.sceneFamily))).slice(0, 10);
   const warningTop = countTop(samples.flatMap((sample) => sample.plannerWarnings)).slice(0, 10);
+  const hardChecks = buildHardChecks({
+    topFirstSentences: firstSentenceTop,
+    topSecondSentences: secondSentenceTop,
+    topSceneFamilyBases: sceneFamilyBaseTop,
+  });
 
   const outDir = path.resolve(".test-data");
   fs.mkdirSync(outDir, { recursive: true });
@@ -536,6 +605,7 @@ function main() {
         topSceneFamilyBases: sceneFamilyBaseTop,
         topSceneFamilyTilts: sceneFamilyTiltTop,
         topPlannerWarnings: warningTop,
+        hardChecks,
       },
       null,
       2
@@ -554,6 +624,14 @@ function main() {
   console.log("top second sentences:");
   for (const [text, count] of secondSentenceTop.slice(0, 5)) {
     console.log(`- ${count}x ${text}`);
+  }
+  console.log("");
+  console.log("hard checks:");
+  for (const check of hardChecks) {
+    console.log(`- ${check.passed ? "PASS" : "FAIL"} ${check.name}: ${check.actual} (threshold ${check.threshold})`);
+  }
+  if (hardChecks.some((check) => !check.passed)) {
+    process.exitCode = 1;
   }
 }
 

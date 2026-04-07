@@ -26,6 +26,8 @@ interface BuildNarrativePlanInput {
   eventPlan: EventEvidencePlan;
   recentPosts: NarrativeRecentPost[];
   language: "ko" | "en";
+  dreamLine?: string;
+  continuityLine?: string;
 }
 
 interface NarrativeNoveltyPenalty {
@@ -45,16 +47,17 @@ const MODE_ORDER: NarrativeMode[] = [
   "meta-reflection",
   "interaction-experiment",
   "philosophy-note",
+  "era-manifesto",
   "fable-essay",
 ];
 
 const MODE_BY_LANE: Record<TrendLane, NarrativeMode[]> = {
-  protocol: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  ecosystem: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  regulation: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  macro: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  onchain: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
-  "market-structure": ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "fable-essay"],
+  protocol: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  ecosystem: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  regulation: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  macro: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  onchain: ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
+  "market-structure": ["identity-journal", "meta-reflection", "interaction-experiment", "philosophy-note", "era-manifesto", "fable-essay"],
 };
 
 const MODE_INTRINSIC_PENALTY: Record<NarrativeMode, number> = {
@@ -62,6 +65,7 @@ const MODE_INTRINSIC_PENALTY: Record<NarrativeMode, number> = {
   "meta-reflection": 0.03,
   "interaction-experiment": 0.12,
   "philosophy-note": 0.4,
+  "era-manifesto": 0.36,
   "fable-essay": 0.46,
 };
 
@@ -96,6 +100,12 @@ const OPENING_BY_MODE_KO: Record<NarrativeMode, string[]> = {
     "비유 없이 적어도 충분히 이상한 장면은",
     "한 문단보다 더 짧게 줄이면",
   ],
+  "era-manifesto": [
+    "이 국면을 이름 붙이면 먼저 보이는 건",
+    "다음 질서를 가르는 장면은",
+    "새 시대의 체급을 다시 매기는 쪽은",
+    "국면이 갈라지는 자리는 결국",
+  ],
 };
 
 const OPENING_BY_MODE_EN: Record<NarrativeMode, string[]> = {
@@ -124,11 +134,16 @@ const OPENING_BY_MODE_EN: Record<NarrativeMode, string[]> = {
     "If I leave this in one paragraph:",
     "If I borrow one metaphor first:",
   ],
+  "era-manifesto": [
+    "If I name the regime shift first:",
+    "The scene that reprices the next order is this:",
+    "If I call the next era too early, I still start here:",
+  ],
 };
 
 export function buildNarrativePlan(input: BuildNarrativePlanInput): NarrativePlan {
   const lane = input.eventPlan.lane;
-  const mode = pickNarrativeMode(lane, input.recentPosts);
+  const mode = pickNarrativeMode(lane, input.recentPosts, input.dreamLine, input.continuityLine, input.eventPlan);
   const bannedOpeners = buildBannedOpeners(input.recentPosts);
   const openingPool = input.language === "ko" ? OPENING_BY_MODE_KO[mode] : OPENING_BY_MODE_EN[mode];
   const openingDirective = pickFirstNonBanned(openingPool, bannedOpeners) || openingPool[0];
@@ -212,7 +227,13 @@ export function validateNarrativeNovelty(
   };
 }
 
-function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]): NarrativeMode {
+function pickNarrativeMode(
+  lane: TrendLane,
+  recentPosts: NarrativeRecentPost[],
+  dreamLine?: string,
+  continuityLine?: string,
+  eventPlan?: EventEvidencePlan
+): NarrativeMode {
   const ordered = MODE_BY_LANE[lane] || MODE_ORDER;
   const usage = new Map<NarrativeMode, number>();
   MODE_ORDER.forEach((mode) => usage.set(mode, 0));
@@ -227,10 +248,15 @@ function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]):
     usage.set(inferred, (usage.get(inferred) || 0) + 1);
   }
 
+  const dreamBias = estimateDreamModeBias(lane, dreamLine, continuityLine, eventPlan);
   const ranked = ordered
     .map((mode, index) => ({
       mode,
-      score: (usage.get(mode) || 0) + (MODE_INTRINSIC_PENALTY[mode] || 0) + index * 0.03,
+      score:
+        (usage.get(mode) || 0) +
+        (MODE_INTRINSIC_PENALTY[mode] || 0) +
+        index * 0.03 +
+        (dreamBias[mode] || 0),
     }))
     .sort((a, b) => a.score - b.score);
 
@@ -241,6 +267,55 @@ function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]):
     return best.mode;
   }
   return nearBest[Math.floor(Math.random() * nearBest.length)]?.mode || best.mode;
+}
+
+function estimateDreamModeBias(
+  lane: TrendLane,
+  dreamLine?: string,
+  continuityLine?: string,
+  eventPlan?: EventEvidencePlan
+): Record<NarrativeMode, number> {
+  const output: Record<NarrativeMode, number> = {
+    "identity-journal": 0,
+    "meta-reflection": 0,
+    "interaction-experiment": 0,
+    "philosophy-note": 0,
+    "era-manifesto": 0,
+    "fable-essay": 0,
+  };
+  const merged = [
+    normalizeNarrativeText(dreamLine || ""),
+    normalizeNarrativeText(continuityLine || ""),
+    normalizeNarrativeText(eventPlan?.event.headline || ""),
+    normalizeNarrativeText(eventPlan?.sceneFamily || ""),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (!merged) return output;
+
+  const regimeSignal = /(시대|국면|질서|진화|이름 붙이는 존재|regime|cycle|era|repricing|redrawing|becoming)/.test(
+    merged
+  );
+  const identitySignal = /(먹기|소화|진화|같은 사건을 다시|끝까지 물어뜯|archive|same being)/.test(merged);
+  const laneEraEligible =
+    lane === "regulation" || lane === "macro" || lane === "protocol" || lane === "market-structure";
+  const eventEraEligible = /(lag|split|thin|return|execution|court|launch|settlement|validator|rollout)/.test(
+    normalizeNarrativeText(eventPlan?.sceneFamily || "")
+  );
+
+  if (regimeSignal && (laneEraEligible || eventEraEligible)) {
+    output["era-manifesto"] -= 0.22;
+    output["philosophy-note"] -= 0.04;
+  }
+  if (identitySignal) {
+    output["identity-journal"] -= 0.08;
+    output["meta-reflection"] -= 0.03;
+  }
+  if (/(허세보다 운영|설명보다 집행|열기보다 잔류|운영 over|execution over heat)/.test(merged)) {
+    output["era-manifesto"] -= 0.06;
+    output["identity-journal"] -= 0.04;
+  }
+  return output;
 }
 
 function inferModeFromText(text: string): NarrativeMode {
@@ -277,6 +352,7 @@ function buildBodyDirective(mode: NarrativeMode, language: "ko" | "en"): string 
     if (mode === "philosophy-note") return "추상 문장을 그대로 쓰지 말고 현재 크립토 장면으로 풀어 번역";
     if (mode === "interaction-experiment") return "질문은 1개만 두고, 먼저 내 판단의 근거 2개를 짧게 제시";
     if (mode === "meta-reflection") return "내가 놓칠 수 있는 지점을 먼저 말하고 왜 다시 보는지 짧게 적음";
+    if (mode === "era-manifesto") return "국면, 질서, 세대감 같은 큰 프레임을 쓰되 근거 2개가 실제로 그 프레임을 떠받치게 적음";
     return "짧은 산문처럼 쓰되 템플릿 티를 없애고 근거 2개는 자연스럽게 녹임";
   }
 
@@ -284,6 +360,7 @@ function buildBodyDirective(mode: NarrativeMode, language: "ko" | "en"): string 
   if (mode === "philosophy-note") return "Use one philosophy/book frame and translate it into current crypto context";
   if (mode === "interaction-experiment") return "Include one concrete audience question and attach evidence";
   if (mode === "meta-reflection") return "State your potential failure mode first, then define verification condition";
+  if (mode === "era-manifesto") return "Name a regime or era shift, but keep it grounded in two concrete evidence points";
   return "Keep essay tone with one metaphor max, grounded by two evidence points";
 }
 
@@ -291,11 +368,13 @@ function buildEndingDirective(mode: NarrativeMode, language: "ko" | "en"): strin
   if (language === "ko") {
     if (mode === "interaction-experiment") return "끝은 바로 답할 수 있는 짧은 질문으로 마무리";
     if (mode === "meta-reflection") return "끝은 틀릴 조건을 짚거나 다시 볼 포인트를 남김";
+    if (mode === "era-manifesto") return "끝은 교훈보다 국면 판단이나 질서 재평가로 마무리";
     return "끝은 너무 교훈적으로 닫지 말고, 질문형 또는 열린 관찰형으로 마무리";
   }
 
   if (mode === "interaction-experiment") return "End with an open question that invites a direct reply";
   if (mode === "meta-reflection") return "End with a falsifiable open question";
+  if (mode === "era-manifesto") return "End by repricing the regime, not by moralizing";
   return "End with an open dialogue invitation";
 }
 

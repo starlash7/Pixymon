@@ -14,6 +14,7 @@ export type NarrativeMode =
   | "philosophy-note"
   | "interaction-experiment"
   | "meta-reflection"
+  | "era-manifesto"
   | "fable-essay";
 export type HypothesisStatus = "open" | "watching" | "resolved" | "dropped";
 export type ClaimResolution = "supported" | "invalidated" | "superseded";
