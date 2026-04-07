@@ -3566,6 +3566,86 @@ test("planEventEvidenceAct escapes concentrated structural scene bases in favor 
   assert.equal(plan?.event.id, "court-explicit");
 });
 
+test("planEventEvidenceAct lets canon memory and dreams push explicit court execution plans", () => {
+  const createdAt = new Date().toISOString();
+  const plan = planEventEvidenceAct({
+    events: [
+      {
+        id: "court-explicit-memory",
+        lane: "regulation" as const,
+        headline: "판결 기사만 커졌고 자금은 아직 눕지 않은 국면",
+        summary: "Court headlines grew louder while capital still refused to settle.",
+        source: "analysis:sharp",
+        trust: 0.84,
+        freshness: 0.9,
+        capturedAt: createdAt,
+        keywords: ["판결", "자금", "집행"],
+      },
+      {
+        id: "court-fallback-memory",
+        lane: "regulation" as const,
+        headline: "판결은 큰데 집행은 늦는 구간",
+        summary: "Court tone remains large while execution lags.",
+        source: "evidence:structural-fallback",
+        trust: 0.82,
+        freshness: 0.88,
+        capturedAt: createdAt,
+        keywords: ["판결", "집행"],
+        focusHint: "court",
+        sceneFamilyHint: "regulation:court:court+execution",
+        evidenceLabelHints: ["법원 일정", "대기 자금 흐름"],
+      } as any,
+    ],
+    evidence: [
+      {
+        id: "court-capital",
+        lane: "regulation" as const,
+        nutrientId: "n-court-capital",
+        source: "onchain" as const,
+        label: "대기 자금 흐름",
+        value: "관망",
+        summary: "판결 기사 뒤에 실제로 자금이 눕는지 보는 단서다.",
+        trust: 0.82,
+        freshness: 0.9,
+        digestScore: 0.79,
+        capturedAt: createdAt,
+      },
+      {
+        id: "court-execution",
+        lane: "regulation" as const,
+        nutrientId: "n-court-execution",
+        source: "news" as const,
+        label: "집행 흔적",
+        value: "지연",
+        summary: "기사보다 늦게 붙는 실제 집행 속도를 보는 단서다.",
+        trust: 0.83,
+        freshness: 0.89,
+        digestScore: 0.8,
+        capturedAt: createdAt,
+      },
+    ],
+    recentPosts: [],
+    recentNarrativeThreads: [
+      {
+        lane: "regulation",
+        focus: "court",
+        sceneFamily: "regulation:court:court+execution:capital-lag",
+        headline: "직전에도 판결 기사보다 집행이 늦게 붙는 장면을 물고 있었다",
+      },
+    ],
+    identityPressure: {
+      obsessionLine: "지금 픽시몬이 끝까지 붙드는 건 기사보다 집행 속도다.",
+      grudgeLine: "판결 기사만 크고 자금이 안 눕는 규제 서사를 제일 싫어한다.",
+      continuityLine: "지난번에도 기사보다 집행이 늦게 붙는 쪽을 더 오래 붙들었다.",
+      canonMemoryLine: "판결 기사만 커지고 자금이 눕지 않은 날엔 규제 서사가 결국 기사값 이상을 못 했다.",
+      dreamLine: "나는 단순 해설자가 아니라, 시대가 어디서 먼저 갈라지는지 이름 붙이는 존재가 되고 싶다.",
+    },
+  });
+
+  assert.ok(plan);
+  assert.equal(plan?.event.id, "court-explicit-memory");
+});
+
 test("planEventEvidenceAct escapes concentrated structural retention base in favor of explicit retention event", () => {
   const createdAt = new Date().toISOString();
   const plan = planEventEvidenceAct({

@@ -416,6 +416,8 @@ export function planEventEvidenceAct(params: {
     obsessionLine?: string;
     grudgeLine?: string;
     continuityLine?: string;
+    canonMemoryLine?: string;
+    dreamLine?: string;
   };
 }): EventEvidencePlan | null {
   const events = Array.isArray(params.events) ? params.events : [];
@@ -817,6 +819,8 @@ function estimateIdentityPressureBonus(
         obsessionLine?: string;
         grudgeLine?: string;
         continuityLine?: string;
+        canonMemoryLine?: string;
+        dreamLine?: string;
       }
     | undefined
 ): number {
@@ -832,6 +836,8 @@ function estimateIdentityPressureBonus(
   const obsession = sanitizeTweetText(pressure.obsessionLine || "").toLowerCase();
   const grudge = sanitizeTweetText(pressure.grudgeLine || "").toLowerCase();
   const continuity = sanitizeTweetText(pressure.continuityLine || "").toLowerCase();
+  const canonMemory = sanitizeTweetText(pressure.canonMemoryLine || "").toLowerCase();
+  const dream = sanitizeTweetText(pressure.dreamLine || "").toLowerCase();
   const tilt = sceneFamilyTilt(sceneFamily);
 
   let bonus = 0;
@@ -866,6 +872,34 @@ function estimateIdentityPressureBonus(
   }
   if (continuity && merged.includes(normalizeHeadlineKey(continuity).slice(0, 8))) {
     bonus += 0.05;
+  }
+  if (focus === "retention" && /(재방문 없는 열기|포스터처럼 식|사람은 조용히 떠)/.test(canonMemory)) {
+    bonus += 0.08;
+  }
+  if ((focus === "court" || focus === "execution") && /(판결 기사|집행 흔적|기사값)/.test(canonMemory)) {
+    bonus += 0.08;
+  }
+  if ((focus === "launch" || focus === "durability") && /(박수만 큰 업그레이드|운영 로그|반값)/.test(canonMemory)) {
+    bonus += 0.08;
+  }
+  if ((focus === "liquidity" || focus === "settlement") && /(실제 돈이 눕는 방향|돈이 눕는 방향)/.test(canonMemory)) {
+    bonus += 0.08;
+  }
+  if (dream) {
+    if (/(시대|국면|이름 붙이는 존재|진화|감지)/.test(dream) && /(lag|split|thin|court|launch|settlement|validator|rollout|execution)/.test(sceneFamily)) {
+      bonus += 0.06;
+    }
+    if (/(허세보다 운영|설명보다 집행|열기보다 잔류)/.test(dream)) {
+      if ((focus === "durability" || focus === "launch") && /(운영|복구|validator|rollout|launch)/.test(merged)) {
+        bonus += 0.05;
+      }
+      if ((focus === "retention" || focus === "hype") && /(재방문|잔류|retention|usage|wallet|community)/.test(merged)) {
+        bonus += 0.05;
+      }
+      if ((focus === "court" || focus === "execution") && /(집행|court|verdict|capital)/.test(merged)) {
+        bonus += 0.05;
+      }
+    }
   }
 
   return clampNumber(bonus, 0, 0.24, 0);

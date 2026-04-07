@@ -738,6 +738,8 @@ export async function postTrendUpdate(
         obsessionLine: soulIntent.obsessionLine,
         grudgeLine: soulIntent.grudgeLine,
         continuityLine: soulIntent.continuityLine,
+        canonMemoryLine: soulIntent.canonMemoryLine,
+        dreamLine: soulIntent.dreamLine,
       },
     });
     if (!eventPlan) {
@@ -760,6 +762,8 @@ export async function postTrendUpdate(
             obsessionLine: soulIntent.obsessionLine,
             grudgeLine: soulIntent.grudgeLine,
             continuityLine: soulIntent.continuityLine,
+            canonMemoryLine: soulIntent.canonMemoryLine,
+            dreamLine: soulIntent.dreamLine,
           },
         });
         if (eventPlan) {
@@ -778,6 +782,8 @@ export async function postTrendUpdate(
               obsessionLine: soulIntent.obsessionLine,
               grudgeLine: soulIntent.grudgeLine,
               continuityLine: soulIntent.continuityLine,
+              canonMemoryLine: soulIntent.canonMemoryLine,
+              dreamLine: soulIntent.dreamLine,
             },
           });
           if (relaxedStructuralPlan && isStrongOnchainStructuralPlan(relaxedStructuralPlan)) {
@@ -812,6 +818,8 @@ export async function postTrendUpdate(
             obsessionLine: soulIntent.obsessionLine,
             grudgeLine: soulIntent.grudgeLine,
             continuityLine: soulIntent.continuityLine,
+            canonMemoryLine: soulIntent.canonMemoryLine,
+            dreamLine: soulIntent.dreamLine,
           },
         });
         if (replanned?.hasCrossSourceEvidence) {
@@ -930,6 +938,8 @@ export async function postTrendUpdate(
       eventPlan,
       recentPosts: recentBriefingPosts as NarrativeRecentPost[],
       language: runtimeSettings.postLanguage,
+      dreamLine: soulIntent.dreamLine,
+      continuityLine: soulIntent.continuityLine,
     });
 
     const trendFocus = pickTrendFocus([eventPlan.event.headline, ...trend.headlines], recentBriefingPosts);
@@ -5307,6 +5317,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       worldviewHint,
       signatureBelief,
       recentReflection: recentReflectionHint || philosophyFrame,
+      canonSoulLine,
+      canonMemoryLine,
+      dreamLine,
       obsessionLine: input.obsessionLine,
       grudgeLine: input.grudgeLine,
       continuityLine: input.continuityLine,
@@ -5997,6 +6010,9 @@ function buildIdentityFallbackPost(
     worldviewHint: worldviewByLane[eventPlan.lane],
     signatureBelief: signatureByLane[eventPlan.lane],
     recentReflection: worldviewByLane[eventPlan.lane],
+    canonSoulLine: "",
+    canonMemoryLine: "",
+    dreamLine: "",
     maxChars: charBudget,
     seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}|${mode}|${charBudget}`,
   }, variantIndex);

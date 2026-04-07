@@ -26,6 +26,8 @@ interface BuildNarrativePlanInput {
   eventPlan: EventEvidencePlan;
   recentPosts: NarrativeRecentPost[];
   language: "ko" | "en";
+  dreamLine?: string;
+  continuityLine?: string;
 }
 
 interface NarrativeNoveltyPenalty {
@@ -141,7 +143,7 @@ const OPENING_BY_MODE_EN: Record<NarrativeMode, string[]> = {
 
 export function buildNarrativePlan(input: BuildNarrativePlanInput): NarrativePlan {
   const lane = input.eventPlan.lane;
-  const mode = pickNarrativeMode(lane, input.recentPosts);
+  const mode = pickNarrativeMode(lane, input.recentPosts, input.dreamLine, input.continuityLine, input.eventPlan);
   const bannedOpeners = buildBannedOpeners(input.recentPosts);
   const openingPool = input.language === "ko" ? OPENING_BY_MODE_KO[mode] : OPENING_BY_MODE_EN[mode];
   const openingDirective = pickFirstNonBanned(openingPool, bannedOpeners) || openingPool[0];
@@ -225,7 +227,13 @@ export function validateNarrativeNovelty(
   };
 }
 
-function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]): NarrativeMode {
+function pickNarrativeMode(
+  lane: TrendLane,
+  recentPosts: NarrativeRecentPost[],
+  dreamLine?: string,
+  continuityLine?: string,
+  eventPlan?: EventEvidencePlan
+): NarrativeMode {
   const ordered = MODE_BY_LANE[lane] || MODE_ORDER;
   const usage = new Map<NarrativeMode, number>();
   MODE_ORDER.forEach((mode) => usage.set(mode, 0));
@@ -240,10 +248,15 @@ function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]):
     usage.set(inferred, (usage.get(inferred) || 0) + 1);
   }
 
+  const dreamBias = estimateDreamModeBias(lane, dreamLine, continuityLine, eventPlan);
   const ranked = ordered
     .map((mode, index) => ({
       mode,
-      score: (usage.get(mode) || 0) + (MODE_INTRINSIC_PENALTY[mode] || 0) + index * 0.03,
+      score:
+        (usage.get(mode) || 0) +
+        (MODE_INTRINSIC_PENALTY[mode] || 0) +
+        index * 0.03 +
+        (dreamBias[mode] || 0),
     }))
     .sort((a, b) => a.score - b.score);
 
@@ -254,6 +267,55 @@ function pickNarrativeMode(lane: TrendLane, recentPosts: NarrativeRecentPost[]):
     return best.mode;
   }
   return nearBest[Math.floor(Math.random() * nearBest.length)]?.mode || best.mode;
+}
+
+function estimateDreamModeBias(
+  lane: TrendLane,
+  dreamLine?: string,
+  continuityLine?: string,
+  eventPlan?: EventEvidencePlan
+): Record<NarrativeMode, number> {
+  const output: Record<NarrativeMode, number> = {
+    "identity-journal": 0,
+    "meta-reflection": 0,
+    "interaction-experiment": 0,
+    "philosophy-note": 0,
+    "era-manifesto": 0,
+    "fable-essay": 0,
+  };
+  const merged = [
+    normalizeNarrativeText(dreamLine || ""),
+    normalizeNarrativeText(continuityLine || ""),
+    normalizeNarrativeText(eventPlan?.event.headline || ""),
+    normalizeNarrativeText(eventPlan?.sceneFamily || ""),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (!merged) return output;
+
+  const regimeSignal = /(시대|국면|질서|진화|이름 붙이는 존재|regime|cycle|era|repricing|redrawing|becoming)/.test(
+    merged
+  );
+  const identitySignal = /(먹기|소화|진화|같은 사건을 다시|끝까지 물어뜯|archive|same being)/.test(merged);
+  const laneEraEligible =
+    lane === "regulation" || lane === "macro" || lane === "protocol" || lane === "market-structure";
+  const eventEraEligible = /(lag|split|thin|return|execution|court|launch|settlement|validator|rollout)/.test(
+    normalizeNarrativeText(eventPlan?.sceneFamily || "")
+  );
+
+  if (regimeSignal && (laneEraEligible || eventEraEligible)) {
+    output["era-manifesto"] -= 0.22;
+    output["philosophy-note"] -= 0.04;
+  }
+  if (identitySignal) {
+    output["identity-journal"] -= 0.08;
+    output["meta-reflection"] -= 0.03;
+  }
+  if (/(허세보다 운영|설명보다 집행|열기보다 잔류|운영 over|execution over heat)/.test(merged)) {
+    output["era-manifesto"] -= 0.06;
+    output["identity-journal"] -= 0.04;
+  }
+  return output;
 }
 
 function inferModeFromText(text: string): NarrativeMode {

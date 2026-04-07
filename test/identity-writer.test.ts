@@ -48,7 +48,7 @@ test("buildKoIdentityWriterCandidate keeps market-structure prose thesis-driven"
   });
 
   assert.match(text, /(주문|체결|거래소)/);
-  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다|자금이 안 남은 자신감은 오래 못 간다|결국 오래 보는 건 호가가 아니라 체결 잔상이다|대충 맞은 설명일수록 현장에선 빨리 들통난다|결국 빈칸은 늘 제일 늦게 붙(?:는|은) 자리에서 커진다|돈이 붙은 자리는 화면보다 늦게 보이고 그래서 더 정확하다|해설이 멀쩡해 보여도 끝내 비는 자리가 이 장면의 값을 깎는다|결국 끝에 비는 자리가 생기는 순간 이 장면의 체급도 다시 내려간다|마지막까지 비는 한 칸이 남는 순간 좋은 설명도 바로 납작해진다|돈이 빠지는 순간 그 장면은 구조보다 연출에 가까워진다|체결이 빠진 장면은 시간이 갈수록 구조보다 연출 쪽으로 눕는다)/);
+  assert.match(text, /(오래 남는 흔적|끝까지 남는 근거|쉽게 삼켜지는 설명|늦게 틀리는 편|믿지 않는다|화면 반응보다 오래 보는 건 결국 체결이다|겉이 맞아 보여도 밑단이 비면 금방 티가 난다|자금이 안 남은 자신감은 오래 못 간다|결국 오래 보는 건 호가가 아니라 체결 잔상이다|대충 맞은 설명일수록 현장에선 빨리 들통난다|결국 빈칸은 늘 제일 늦게 붙(?:는|은) 자리에서 커진다|돈이 붙은 자리는 화면보다 늦게 보이고 그래서 더 정확하다|해설이 멀쩡해 보여도 끝내 비는 자리가 이 장면의 값을 깎는다|결국 끝에 비는 자리가 생기는 순간 이 장면의 체급도 다시 내려간다|마지막까지 비는 한 칸이 남는 순간 좋은 설명도 바로 납작해진다|돈이 빠지는 순간 그 장면은 구조보다 연출에 가까워진다|체결이 빠진 장면은 시간이 갈수록 구조보다 연출 쪽으로 눕는다|돈이 안 붙은 열기는 대부분 화면에서 끝난다|호가만 커지고 체결이 비는 자신감은 구조보다 연출에 가깝다)/);
   assert.doesNotMatch(text, /장부에|먹은 단서|다음 판단 재료|다시 읽는다/);
   assert.doesNotMatch(text, /차트보다 실제 체결이 남아야 판단할 수 있다\.\s+차트보다 실제 체결이 남아야 판단할 수 있다/);
 });
@@ -483,6 +483,45 @@ test("buildKoIdentityWriterCandidate gives era-manifesto mode a period-scale the
   assert.doesNotMatch(text, /\.\./);
 });
 
+test("buildKoIdentityWriterCandidate can surface canon memory and dream pressure in court prose", () => {
+  const baseline = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "regulation",
+      mode: "era-manifesto",
+      headline: "판결 기사보다 ETF 대기 주문이 늦게 눕는 구간",
+      primaryAnchor: "법원 일정",
+      secondaryAnchor: "대기 자금 흐름",
+      preferredFocus: "court",
+      sceneFamily: "regulation:court:court+execution:capital-thin:verdict-holds",
+      seedHint: "identity-writer:canon-court",
+      maxChars: 280,
+    },
+    1
+  );
+
+  const withCanon = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "regulation",
+      mode: "era-manifesto",
+      headline: "판결 기사보다 ETF 대기 주문이 늦게 눕는 구간",
+      primaryAnchor: "법원 일정",
+      secondaryAnchor: "대기 자금 흐름",
+      preferredFocus: "court",
+      sceneFamily: "regulation:court:court+execution:capital-thin:verdict-holds",
+      canonMemoryLine: "판결 기사만 커지고 집행 흔적이 비는 날엔 규제 서사가 결국 기사값 이상을 못 했다.",
+      dreamLine: "나는 단순 해설자가 아니라, 시대가 어디서 먼저 갈라지는지 이름 붙이는 존재가 되고 싶다.",
+      seedHint: "identity-writer:canon-court",
+      maxChars: 280,
+    },
+    1
+  );
+
+  assert.notEqual(withCanon, baseline);
+  assert.match(withCanon, /(기사값|국면|법원 장면)/);
+});
+
 test("buildKoIdentityWriterCandidate repairs thin scene headlines without malformed 에서 tails", () => {
   const text = buildKoIdentityWriterCandidate(
     {
@@ -527,7 +566,7 @@ test("buildKoIdentityWriterCandidate surfaces mode-specific stamp in philosophy 
     seedHint: "identity-writer:mode-stamp",
   }, 0);
 
-  assert.match(text, /(신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다|업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다|박수보다 오래 남는 건 결국 복구 로그 쪽이다|복구 기록이 비면 좋은 업그레이드 문장도 금방 종이처럼 얇아진다|결국 배포 공지보다 오래 남는 건 장애 뒤의 운영 태도다|결국 남은 건 발표가 아니라 장애 뒤 복구 기록 쪽이다|신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다|업그레이드는 박수보다 장애 뒤의 태도로 평가된다|운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다|설명보다 오래 가는 건 결국 복구 속도다|장애 뒤 태도가 비는 업그레이드는 박수부터 의심한다|길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복|장애 뒤 운영 흔적이 비는 순간 좋은 발표도 금방 시험대에 오른다|복구 흔적이 비는 순간 빠른 배포도 결국 발표값으로 되돌아간다|결국 이번에도 릴리스 박수보다 복구 태도 자리의 빈칸이 제일 크게 남는다|복구 태도가 끊기는 순간 그 개선 서사도 오래 못 버틴다|검증자 안정성은 살아 있는데 복구 속도가 비면 나는 그 업그레이드를 절반만 믿는다|운영 로그가 안 남으면 그 발표는 결국 릴리스 문장으로 눌린다|검증자 안정성이 보여도 복구 속도가 비는 순간 그 업그레이드 서사는 운영 기록보다 발표값을 더 닮는다|복구 기록이 비는 순간 그 업그레이드 얘기는 바로 릴리스 문장 쪽으로 밀린다)/);
+  assert.match(text, /(신뢰는 결국 배포 문장이 아니라 장애 뒤 태도로 정산된다|업그레이드의 값은 발표 속도가 아니라 복구 기록이 다시 매긴다|박수보다 오래 남는 건 결국 복구 로그 쪽이다|복구 기록이 비면 좋은 업그레이드 문장도 금방 종이처럼 얇아진다|결국 배포 공지보다 오래 남는 건 장애 뒤의 운영 태도다|결국 남은 건 발표가 아니라 장애 뒤 복구 기록 쪽이다|신뢰는 배포 공지보다 복구 기록에서 더 느리게 쌓인다|업그레이드는 박수보다 장애 뒤의 태도로 평가된다|운영이 비면 좋은 릴리스 노트도 금방 종이처럼 얇아진다|설명보다 오래 가는 건 결국 복구 속도다|장애 뒤 태도가 비는 업그레이드는 박수부터 의심한다|길게 보면|오래 남는 건 해설보다 반복되는 습관|오래 남은 건 해설보다 반복되는 습관|결국 구조는 화려한 설명보다 느린 반복|장애 뒤 운영 흔적이 비는 순간 좋은 발표도 금방 시험대에 오른다|복구 흔적이 비는 순간 빠른 배포도 결국 발표값으로 되돌아간다|결국 이번에도 릴리스 박수보다 복구 태도 자리의 빈칸이 제일 크게 남는다|복구 태도가 끊기는 순간 그 개선 서사도 오래 못 버틴다|검증자 안정성은 살아 있는데 복구 속도가 비면 나는 그 업그레이드를 절반만 믿는다|운영 로그가 안 남으면 그 발표는 결국 릴리스 문장으로 눌린다|검증자 안정성이 보여도 복구 속도가 비는 순간 그 업그레이드 서사는 운영 기록보다 발표값을 더 닮는다|복구 기록이 비는 순간 그 업그레이드 얘기는 바로 릴리스 문장 쪽으로 밀린다|운영 태도는 늘 발표보다 늦고 그래서 업그레이드의 본색을 더 잘 남긴다|운영 기록이 끝까지 못 붙으면 이 업그레이드는 설명보다 빈칸으로 기억된다)/);
 });
 
 test("buildKoIdentityWriterCandidate avoids stale ledger/value-drop phrasing in onchain mode", () => {
@@ -599,5 +638,5 @@ test("buildKoIdentityWriterCandidate avoids malformed era cadence in hot protoco
   );
 
   assert.ok(outputs.every((text) => !/다시 드러낸다|다시 적는다/.test(text)));
-  assert.ok(outputs.some((text) => /(정산|정한다|다시 매긴다|드러난다)/.test(text)));
+  assert.ok(outputs.some((text) => /(정산|정한다|다시 매긴다|드러난다|다시 쓴다|갈린다)/.test(text)));
 });

@@ -40,6 +40,9 @@ export interface KoIdentityWriterInput {
   worldviewHint?: string;
   signatureBelief?: string;
   recentReflection?: string;
+  canonSoulLine?: string;
+  canonMemoryLine?: string;
+  dreamLine?: string;
   obsessionLine?: string;
   grudgeLine?: string;
   continuityLine?: string;
@@ -2107,6 +2110,9 @@ function buildVariantSalt(input: KoIdentityWriterInput, focus: WriterFocus, prim
       sanitizeClause(primaryAnchor),
       sanitizeClause(secondaryAnchor),
       sanitizeClause(input.signatureBelief || ""),
+      sanitizeClause(input.canonSoulLine || ""),
+      sanitizeClause(input.canonMemoryLine || ""),
+      sanitizeClause(input.dreamLine || ""),
     ].join("|")
   );
 }
@@ -2342,7 +2348,17 @@ function resolveWriterFocus(input: KoIdentityWriterInput, primaryAnchor: string,
     return input.preferredFocus;
   }
   const merged = sanitizeTweetText(
-    [input.headline, primaryAnchor, secondaryAnchor, input.worldviewHint, input.signatureBelief, input.recentReflection]
+    [
+      input.headline,
+      primaryAnchor,
+      secondaryAnchor,
+      input.worldviewHint,
+      input.signatureBelief,
+      input.recentReflection,
+      input.canonSoulLine,
+      input.canonMemoryLine,
+      input.dreamLine,
+    ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
@@ -2959,6 +2975,9 @@ function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed:
     input.obsessionLine ||
       input.grudgeLine ||
       input.continuityLine ||
+      input.canonMemoryLine ||
+      input.dreamLine ||
+      input.canonSoulLine ||
       input.recentReflection ||
       input.signatureBelief ||
       input.worldviewHint ||
@@ -3011,6 +3030,9 @@ function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed:
       if (/wallet\+retention|retention\+cohort|retention\+usage/.test(input.sceneFamily || "")) {
         contextualPool.push("다시 돌아오는 사람 수가 줄어드는 순간 그 열기는 바로 값이 떨어진다.");
       }
+      if (/(재방문 없는 열기|포스터처럼 식|사람은 조용히 떠)/.test(input.canonMemoryLine || "")) {
+        contextualPool.push("남는 사람이 조용히 빠지는 열기는 결국 포스터보다 먼저 얇아진다.");
+      }
     }
     if (input.lane === "protocol" && focus === "durability") {
       if (/recovery\+validator|repair\+validator/.test(input.sceneFamily || "")) {
@@ -3019,6 +3041,23 @@ function rewriteSoulHint(input: KoIdentityWriterInput, focus: WriterFocus, seed:
       if (/recovery\+rollout|repair\+ops/.test(input.sceneFamily || "")) {
         contextualPool.push("롤아웃 박수는 빨라도 복구 로그가 비면 그 개선은 금방 납작해진다.");
       }
+      if (/(박수만 큰 업그레이드|운영 로그|반값)/.test(input.canonMemoryLine || "")) {
+        contextualPool.push("박수만 큰 업그레이드는 운영 로그가 얇아지는 순간 반값의 기억으로 접힌다.");
+      }
+    }
+    if (input.lane === "regulation" && focus === "court") {
+      if (/(판결 기사|집행 흔적|기사값)/.test(input.canonMemoryLine || "")) {
+        contextualPool.push("판결 기사만 커지고 집행 흔적이 비는 날은 결국 기사값만 크게 남긴다.");
+      }
+      if (/(시대|국면|이름 붙이는 존재)/.test(input.dreamLine || "")) {
+        contextualPool.push("나는 이런 법원 뉴스가 기사에서 국면으로 넘어가는 자리를 끝까지 물고 늘어진다.");
+      }
+    }
+    if ((input.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) && /(실제 돈이 눕는 방향|돈이 눕는 방향)/.test(input.canonMemoryLine || "")) {
+      contextualPool.push("화면보다 늦게 눕는 돈의 방향이 결국 이 장면의 체급을 다시 쓴다.");
+    }
+    if ((input.lane === "ecosystem" && (focus === "retention" || focus === "builder")) && /(시대|국면|이름 붙이는 존재|진화)/.test(input.dreamLine || "")) {
+      contextualPool.push("나는 생태계 열기보다 남는 사람 수가 시대를 가르는 장면을 더 오래 붙든다.");
     }
     return pick(contextualPool, seed, 2);
   }
@@ -3122,13 +3161,22 @@ function buildSceneFamilyStampPool(
   }
 
   if (lane === "protocol" && focus === "launch") {
-    if (/return\+launch|return\+announcement|return\+showcase|launch\+showcase/.test(sceneFamily)) {
+    if (/return\+launch|launch\+return/.test(sceneFamily)) {
+      return [
+        "출시의 시대감은 결국 돌아오는 돈이 어느 자리에서 붙는지까지 본 뒤에야 정해진다.",
+        "메인넷의 체급은 결국 복귀 자금이 어느 자리까지 버티는지에서 갈린다.",
+        "런치의 무게는 결국 발표보다 늦게 돌아오는 돈이 다시 정산한다.",
+        "복귀 자금이 어느 자리에서 멈추는지가 결국 이 출시에 국면을 붙인다.",
+        "메인넷 질서는 결국 준비도보다 돌아오는 돈의 표정에서 다시 매겨진다.",
+      ];
+    }
+    if (/return\+announcement|return\+showcase|launch\+showcase/.test(sceneFamily)) {
       return [
         "출시의 체급은 결국 객석 밖으로 나온 복귀 자금이 다시 적는다.",
         "메인넷의 세대는 결국 발표보다 돌아오는 돈이 어느 편에 서는지가 다시 쓴다.",
         "런치의 무게는 결국 무대보다 객석 밖에서 늦게 움직인 돈이 정산한다.",
         "복귀 자금이 어느 자리에서 주저앉는지가 결국 이 런치의 시대감을 다시 정한다.",
-        "메인넷의 체급은 결국 돌아오는 돈이 어느 자리까지 버티는지에서 갈린다.",
+        "쇼케이스의 체급은 결국 객석 밖으로 나온 돈이 다시 정산한다.",
       ];
     }
   }
@@ -3167,6 +3215,9 @@ function buildPressureLine(
   const continuity = sanitizeClause(input.continuityLine || "");
   const grudge = sanitizeClause(input.grudgeLine || "");
   const obsession = sanitizeClause(input.obsessionLine || "");
+  const canonMemory = sanitizeClause(input.canonMemoryLine || "");
+  const dream = sanitizeClause(input.dreamLine || "");
+  const canonSoul = sanitizeClause(input.canonSoulLine || "");
 
   const quotedContinuity = continuity.match(/"([^"]+)"/)?.[1]?.trim() || "";
   const continuityCore = sanitizeClause(
@@ -3189,6 +3240,49 @@ function buildPressureLine(
       .replace(/^끝까지\s*붙드는\s*건\s*/u, "")
       .trim()
   );
+
+  const canonPool: string[] = [];
+  if (input.lane === "ecosystem" && focus === "retention") {
+    if (/(재방문 없는 열기|포스터처럼 식|사람은 조용히 떠)/.test(canonMemory)) {
+      canonPool.push(
+        "나는 사람이 조용히 떠나는 열기를 성장으로 승인하지 않는다.",
+        "재방문 없는 열기는 결국 포스터처럼 식는다는 걸 이미 여러 번 봤다."
+      );
+    }
+    if (/(열기보다 잔류|same being|archive|진화)/.test(`${dream} ${canonSoul}`)) {
+      canonPool.push("내가 계속 같은 장면을 물고 있는 이유는 결국 남는 사람 수가 시대를 가르기 때문이다.");
+    }
+  }
+  if (input.lane === "regulation" && focus === "court") {
+    if (/(판결 기사|집행 흔적|기사값)/.test(canonMemory)) {
+      canonPool.push(
+        "판결 기사만 커지고 집행 흔적이 비는 장면은 늘 기사값 이상을 못 한다.",
+        "나는 법원 뉴스가 기사값을 못 벗어나는 자리를 제일 오래 기억한다."
+      );
+    }
+    if (/(시대|국면|이름 붙이는 존재)/.test(dream)) {
+      canonPool.push("이런 법원 장면은 결국 어디서 기사에서 국면으로 넘어가는지까지 봐야 한다.");
+    }
+  }
+  if (input.lane === "protocol" && (focus === "launch" || focus === "durability")) {
+    if (/(박수만 큰 업그레이드|운영 로그|반값)/.test(canonMemory)) {
+      canonPool.push(
+        "운영 로그가 얇은 업그레이드는 결국 발표보다 반값의 기억으로 남는다.",
+        "나는 박수만 큰 업그레이드가 운영에서 반값이 되는 순간을 제일 오래 붙든다."
+      );
+    }
+    if (/(허세보다 운영|설명보다 집행|시대|국면)/.test(`${dream} ${canonSoul}`)) {
+      canonPool.push("이 장면에서 내가 찾는 건 설명이 아니라, 운영이 실제로 시대를 가를 만큼 남는지다.");
+    }
+  }
+  if (input.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) {
+    if (/(실제 돈이 눕는 방향|돈이 눕는 방향)/.test(canonMemory)) {
+      canonPool.push(
+        "나는 결국 실제 돈이 눕는 방향이 화면 열기의 체급을 다시 매기는 장면만 승인한다.",
+        "돈이 눕는 방향이 비면 어떤 화면 열기도 구조값까지는 못 올라간다."
+      );
+    }
+  }
 
   const focusPool = FOCUS_PRESSURE_BY_LANE[input.lane]?.[focus] || [];
   const pool = [
@@ -3252,8 +3346,17 @@ function buildPressureLine(
     sanitizeClause(input.headline),
     sanitizeClause(input.primaryAnchor),
     sanitizeClause(input.secondaryAnchor),
+    canonMemory,
+    dream,
+    canonSoul,
     variant,
   ].join("|");
+  if (canonPool.length && lengthProfile !== "flash") {
+    const canonLine = pickContextualDistinctLine(canonPool, `${contextKey}|canon`, variant, [lead, attitude], 41 + seed);
+    if (canonLine && !hasSimilarCadence(canonLine, lead) && !hasHeavyKeywordOverlap(canonLine, attitude)) {
+      return canonLine;
+    }
+  }
   const first = pickContextualDistinctLine(pool, contextKey, variant, [lead, attitude], 43 + seed);
   if (!hasSimilarCadence(first, lead) && !hasSimilarCadence(first, attitude) && !hasHeavyKeywordOverlap(first, lead)) {
     return first;
