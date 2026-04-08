@@ -625,6 +625,7 @@ function shouldDropKoTrailingSentence(core: string): boolean {
   }
 
   return (
+    /(?:남지|붙지|버티지|움직이|이어지|보이|갈리|흔들리|밀리|꺾이|식지|빠지|머무르지)$/.test(normalized) ||
     /(?:뒤에야|그제야|끝에야)\s*(?:다음|그다음)$/.test(normalized) ||
     /(?:다음|그다음)$/.test(normalized)
   );

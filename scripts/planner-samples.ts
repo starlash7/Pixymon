@@ -6,6 +6,7 @@ import {
   planEventEvidenceAct,
 } from "../src/services/engagement/event-evidence.ts";
 import { getCharacterCanonSlice } from "../src/services/character-docs.ts";
+import { sceneFamilyBase, sceneFamilyTilt } from "../src/services/engagement/planner/scene-family.ts";
 import type { OnchainEvidence, TrendEvent, TrendLane, NarrativeMode } from "../src/types/agent.ts";
 import type { RecentPostRecord } from "../src/services/engagement/types.ts";
 
@@ -34,6 +35,8 @@ type PlannerSample = {
   eventSource: string;
   focus: string;
   sceneFamily: string;
+  sceneBase: string;
+  sceneTilt: string;
   plannerScore: number;
   plannerWarnings: string[];
   text: string;
@@ -47,24 +50,6 @@ type HardCheck = {
   actual: number;
   passed: boolean;
 };
-
-function sceneFamilyBase(sceneFamily: string): string {
-  const parts = String(sceneFamily || "")
-    .split(":")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length <= 3) return parts.join(":");
-  return parts.slice(0, 3).join(":");
-}
-
-function sceneFamilyTilt(sceneFamily: string): string {
-  const parts = String(sceneFamily || "")
-    .split(":")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length <= 3) return "";
-  return parts.slice(3).join(":");
-}
 
 function identityPressureForLane(lane: TrendLane) {
   const canon = getCharacterCanonSlice("ko", lane);
@@ -529,6 +514,8 @@ function generateSamples(variantCount: number): PlannerSample[] {
         eventSource: plan.event.source,
         focus: plan.focus,
         sceneFamily: plan.sceneFamily || "",
+        sceneBase: plan.sceneBase || sceneFamilyBase(plan.sceneFamily || ""),
+        sceneTilt: plan.sceneTilt || sceneFamilyTilt(plan.sceneFamily || ""),
         plannerScore: plan.plannerScore,
         plannerWarnings: plan.plannerWarnings,
         text,
@@ -555,7 +542,7 @@ function buildMarkdown(samples: PlannerSample[]): string {
   const lines: string[] = ["# Pixymon Planner-Aware Samples", ""];
   for (const sample of samples) {
     lines.push(
-      `## ${sample.caseId} / ${sample.lane} / ${sample.mode} / ${sample.focus} / ${sample.sceneFamily || "none"} / v${sample.variant}`
+      `## ${sample.caseId} / ${sample.lane} / ${sample.mode} / ${sample.focus} / ${sample.sceneBase || "none"} / ${sample.sceneTilt || "none"} / v${sample.variant}`
     );
     lines.push("");
     lines.push(`- plannerScore: ${sample.plannerScore}`);

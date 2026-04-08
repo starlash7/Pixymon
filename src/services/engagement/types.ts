@@ -6,6 +6,7 @@ import {
   ObservabilityRuntimeSettings,
   XApiCostRuntimeSettings,
 } from "../../types/runtime.js";
+import type { PlannerFocus } from "./planner/spec.js";
 
 export interface DailyQuotaOptions {
   dailyTarget?: number;
@@ -42,8 +43,10 @@ export interface LaneUsageWindow {
 
 export interface EventEvidencePlan {
   lane: TrendLane;
-  focus: string;
+  focus: PlannerFocus;
   sceneFamily?: string;
+  sceneBase?: string;
+  sceneTilt?: string;
   event: TrendEvent;
   evidence: OnchainEvidence[];
   hasOnchainEvidence: boolean;

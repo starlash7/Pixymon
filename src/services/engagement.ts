@@ -47,7 +47,7 @@ import {
   validateEventEvidenceContract,
 } from "./engagement/event-evidence.js";
 import { buildKoIdentityWriterCandidate } from "./engagement/identity-writer.js";
-import { getCharacterCanonSlice } from "./character-docs.js";
+import { buildPlannerWriterInput } from "./engagement/planner/writer-bridge.js";
 import {
   buildAdaptivePolicy,
   clamp,
@@ -5963,25 +5963,21 @@ function buildIdentityFallbackPost(
   };
   const mode = modeByVariant[variant];
   const charBudget = maxChars;
-  const canon = getCharacterCanonSlice("ko", eventPlan.lane);
   return buildKoIdentityWriterCandidate(
-    {
+    buildPlannerWriterInput({
+      lane: eventPlan.lane,
+      focus: (eventPlan.focus as any) || "general",
+      sceneFamily: eventPlan.sceneFamily,
       headline: buildPixymonSceneHeadline(eventPlan, variant),
       primaryAnchor: formatEvidenceToken(a.label, a.value, 24) || a.label,
       secondaryAnchor: formatEvidenceToken(b.label, b.value, 24) || b.label,
-      lane: eventPlan.lane,
-      sceneFamily: eventPlan.sceneFamily,
-      preferredFocus: eventPlan.focus as any,
       mode,
       worldviewHint: worldviewByLane[eventPlan.lane],
       signatureBelief: signatureByLane[eventPlan.lane],
       recentReflection: worldviewByLane[eventPlan.lane],
-      canonSoulLine: canon.soulLine,
-      canonMemoryLine: canon.memoryLine,
-      dreamLine: canon.dreamLine,
       maxChars: charBudget,
       seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}|${mode}|${charBudget}`,
-    },
+    }),
     variantIndex
   );
 }
