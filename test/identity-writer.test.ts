@@ -63,7 +63,7 @@ test("buildKoIdentityWriterCandidate rewrites clause-like anchors into natural n
     seedHint: "identity-writer:ecosystem-anchor",
   });
 
-  assert.match(text, /(재방문 흐름|돌아오는 사람이|남는 사람 수|사용이 남는지|재방문이 빠진 열기)/);
+  assert.match(text, /(재방문 흐름|돌아오는 사람이|남는 사람 수|사용이 남는지|재방문이 빠진 열기|사람이 안 돌아오는 장면|성장인지 과열인지)/);
   assert.doesNotMatch(text, /는지가 남는지|가까가|돌아오는지가/);
 });
 
@@ -357,7 +357,29 @@ test("buildKoIdentityWriterCandidate can surface canon memory and dream pressure
   );
 
   assert.notEqual(withCanon, baseline);
-  assert.match(withCanon, /(기사값|국면|법원 장면|해설값|판결 문장)/);
+  assert.match(withCanon, /(기사값|국면|법원 장면|해설값|판결 문장|방송 해설|기사 단계에서 멈춘다|현장보다 해설 쪽)/);
+});
+
+test("buildKoIdentityWriterCandidate can surface canon enemy ritual and social pressure", () => {
+  const text = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "ecosystem",
+      mode: "interaction-experiment",
+      headline: "커뮤니티 반응은 뜨거운데 다시 돌아오는 사람 수가 얇아진 구간",
+      primaryAnchor: "사용자 재방문 흐름",
+      secondaryAnchor: "지갑 재방문",
+      preferredFocus: "retention",
+      canonEnemyLine: "나는 재방문 없는 커뮤니티 열기를 성장으로 승인하지 않는다.",
+      canonRitualLine: "오늘 승인하지 않는 것: 아직 성장으로 부르지 않을 장면을 분명히 적는다.",
+      canonSocialLine: "나는 설득보다 반증 질문을 던지는 쪽을 택한다.",
+      seedHint: "identity-writer:canon-enemy-ritual-social",
+      maxChars: 280,
+    },
+    2
+  );
+
+  assert.match(text, /(광고 냄새|성장으로 승인하지 않는다|승인하지 않는|다른 근거 하나로 이 장면을 뒤집겠나|반증)/);
 });
 
 test("buildKoIdentityWriterCandidate repairs thin scene headlines without malformed 에서 tails", () => {

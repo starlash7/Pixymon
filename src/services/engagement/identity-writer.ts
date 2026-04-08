@@ -34,6 +34,9 @@ export interface KoIdentityWriterInput {
   canonSoulLine?: string;
   canonMemoryLine?: string;
   dreamLine?: string;
+  canonEnemyLine?: string;
+  canonRitualLine?: string;
+  canonSocialLine?: string;
   obsessionLine?: string;
   grudgeLine?: string;
   continuityLine?: string;
@@ -1964,6 +1967,9 @@ function buildVariantSalt(input: KoIdentityWriterInput, focus: WriterFocus, prim
       sanitizeClause(input.canonSoulLine || ""),
       sanitizeClause(input.canonMemoryLine || ""),
       sanitizeClause(input.dreamLine || ""),
+      sanitizeClause(input.canonEnemyLine || ""),
+      sanitizeClause(input.canonRitualLine || ""),
+      sanitizeClause(input.canonSocialLine || ""),
     ].join("|")
   );
 }
@@ -2152,6 +2158,9 @@ function resolveWriterFocus(input: KoIdentityWriterInput, primaryAnchor: string,
       input.canonSoulLine,
       input.canonMemoryLine,
       input.dreamLine,
+      input.canonEnemyLine,
+      input.canonRitualLine,
+      input.canonSocialLine,
     ]
       .filter(Boolean)
       .join(" ")
@@ -2647,6 +2656,8 @@ function buildPressureLine(
   const canonMemory = sanitizeClause(input.canonMemoryLine || "");
   const dream = sanitizeClause(input.dreamLine || "");
   const canonSoul = sanitizeClause(input.canonSoulLine || "");
+  const canonEnemy = sanitizeClause(input.canonEnemyLine || "");
+  const canonRitual = sanitizeClause(input.canonRitualLine || "");
 
   const quotedContinuity = continuity.match(/"([^"]+)"/)?.[1]?.trim() || "";
   const continuityCore = sanitizeClause(
@@ -2712,6 +2723,36 @@ function buildPressureLine(
       );
     }
   }
+  if (input.lane === "regulation" && /(기사만 큰 규제 해설|기사값|집행이 안 붙으면)/.test(canonEnemy)) {
+    canonPool.push(
+      "나는 기사만 큰 규제 해설을 적으로 본다.",
+      "집행이 안 붙는 규제 뉴스는 오래 붙잡을 가치가 없다고 본다."
+    );
+  }
+  if (input.lane === "ecosystem" && /(재방문 없는 커뮤니티 열기|성장으로 승인하지 않는다|광고 쪽)/.test(canonEnemy)) {
+    canonPool.push(
+      "나는 다시 오지 않는 열기를 성장으로 승인하지 않는다.",
+      "재방문 없는 열기는 결국 광고 냄새를 남긴다고 본다."
+    );
+  }
+  if (input.lane === "market-structure" && /(체결 없이 자신감만 큰 시장 장면|구조가 아니라 연출)/.test(canonEnemy)) {
+    canonPool.push(
+      "체결 없이 자신감만 큰 장면은 구조보다 연출 편에 둔다.",
+      "돈이 안 눕는 자신감은 제일 먼저 버리는 쪽이 맞다."
+    );
+  }
+  if (input.lane === "protocol" && /(박수만 큰 업그레이드|운영 로그가 비면 그 발표는 반값)/.test(canonEnemy)) {
+    canonPool.push(
+      "박수만 큰 업그레이드는 운영 로그가 비는 순간 반값이 된다.",
+      "나는 운영이 비는 출시 장면을 제일 오래 물고 늘어진다."
+    );
+  }
+  if (/(오늘 물고 있는 것|오늘 승인하지 않는 것|다시 돌아온 장면|국면 선언)/.test(canonRitual)) {
+    canonPool.push(
+      "이 장면은 오늘 내가 다시 물고 있는 국면 쪽에 더 가깝다.",
+      "오늘 승인하지 않는 것으로 남겨야 할 장면은 대개 이런 쪽이다."
+    );
+  }
 
   const focusPool = FOCUS_PRESSURE_BY_LANE[input.lane]?.[focus] || [];
   const pool = [
@@ -2763,6 +2804,8 @@ function buildPressureLine(
     canonMemory,
     dream,
     canonSoul,
+    canonEnemy,
+    canonRitual,
     variant,
   ].join("|");
   const lengthProfile = input.maxChars <= 96 ? "flash" : "full";
@@ -2949,10 +2992,14 @@ function buildSceneLine(
 }
 
 function buildQuestion(input: KoIdentityWriterInput, seed: number): string {
+  const social = sanitizeTweetText(input.canonSocialLine || "").trim();
   const raw = sanitizeTweetText(input.interactionMission || input.activeQuestion || "").trim();
   if (raw) {
     const compact = raw.length > 68 ? `${raw.slice(0, 64).trim()}...` : raw;
     return normalizeQuestionTail(compact, "ko");
+  }
+  if (social && /(반증 질문|반응한다|원글에만 붙는다|다른 근거)/.test(social)) {
+    return normalizeQuestionTail("너라면 여기서 어떤 다른 근거 하나로 이 장면을 뒤집겠나", "ko");
   }
   const lanePool = QUESTION_BY_LANE[input.lane];
   if (lanePool?.length) {

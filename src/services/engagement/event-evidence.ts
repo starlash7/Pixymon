@@ -428,6 +428,8 @@ export function planEventEvidenceAct(params: {
     continuityLine?: string;
     canonMemoryLine?: string;
     dreamLine?: string;
+    canonEnemyLine?: string;
+    canonRitualLine?: string;
   };
 }): EventEvidencePlan | null {
   const events = Array.isArray(params.events) ? params.events : [];
@@ -828,12 +830,14 @@ function estimateIdentityPressureBonus(
   focus: PlannerFocus,
   sceneFamily: string,
   pressure:
-    | {
+      | {
         obsessionLine?: string;
         grudgeLine?: string;
         continuityLine?: string;
         canonMemoryLine?: string;
         dreamLine?: string;
+        canonEnemyLine?: string;
+        canonRitualLine?: string;
       }
     | undefined
 ): number {
@@ -851,6 +855,8 @@ function estimateIdentityPressureBonus(
   const continuity = sanitizeTweetText(pressure.continuityLine || "").toLowerCase();
   const canonMemory = sanitizeTweetText(pressure.canonMemoryLine || "").toLowerCase();
   const dream = sanitizeTweetText(pressure.dreamLine || "").toLowerCase();
+  const canonEnemy = sanitizeTweetText(pressure.canonEnemyLine || "").toLowerCase();
+  const canonRitual = sanitizeTweetText(pressure.canonRitualLine || "").toLowerCase();
   const tilt = sceneFamilyTilt(sceneFamily);
 
   let bonus = 0;
@@ -897,6 +903,21 @@ function estimateIdentityPressureBonus(
   }
   if ((focus === "liquidity" || focus === "settlement") && /(실제 돈이 눕는 방향|돈이 눕는 방향)/.test(canonMemory)) {
     bonus += 0.08;
+  }
+  if (focus === "retention" && /(재방문 없는 커뮤니티 열기|광고 쪽|성장으로 승인하지 않는다)/.test(canonEnemy)) {
+    bonus += 0.08;
+  }
+  if ((focus === "court" || focus === "execution") && /(기사만 큰 규제 해설|기사값)/.test(canonEnemy)) {
+    bonus += 0.08;
+  }
+  if ((focus === "launch" || focus === "durability") && /(박수만 큰 업그레이드|운영 로그가 비면 그 발표는 반값)/.test(canonEnemy)) {
+    bonus += 0.08;
+  }
+  if ((focus === "liquidity" || focus === "settlement") && /(체결 없이 자신감만 큰 시장 장면|구조가 아니라 연출)/.test(canonEnemy)) {
+    bonus += 0.08;
+  }
+  if (/(오늘 물고 있는 것|다시 돌아온 장면|국면 선언)/.test(canonRitual) && /(lag|split|thin|court|launch|settlement|validator|rollout|execution)/.test(sceneFamily)) {
+    bonus += 0.05;
   }
   if (dream) {
     if (/(시대|국면|이름 붙이는 존재|진화|감지)/.test(dream) && /(lag|split|thin|court|launch|settlement|validator|rollout|execution)/.test(sceneFamily)) {

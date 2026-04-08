@@ -741,6 +741,8 @@ export async function postTrendUpdate(
         continuityLine: soulIntent.continuityLine,
         canonMemoryLine: soulIntent.canonMemoryLine,
         dreamLine: soulIntent.dreamLine,
+        canonEnemyLine: soulIntent.canonEnemyLine,
+        canonRitualLine: soulIntent.canonRitualLine,
       },
     });
     if (!eventPlan) {
@@ -765,6 +767,8 @@ export async function postTrendUpdate(
             continuityLine: soulIntent.continuityLine,
             canonMemoryLine: soulIntent.canonMemoryLine,
             dreamLine: soulIntent.dreamLine,
+            canonEnemyLine: soulIntent.canonEnemyLine,
+            canonRitualLine: soulIntent.canonRitualLine,
           },
         });
         if (eventPlan) {
@@ -785,6 +789,8 @@ export async function postTrendUpdate(
               continuityLine: soulIntent.continuityLine,
               canonMemoryLine: soulIntent.canonMemoryLine,
               dreamLine: soulIntent.dreamLine,
+              canonEnemyLine: soulIntent.canonEnemyLine,
+              canonRitualLine: soulIntent.canonRitualLine,
             },
           });
           if (relaxedStructuralPlan && isStrongOnchainStructuralPlan(relaxedStructuralPlan)) {
@@ -821,6 +827,8 @@ export async function postTrendUpdate(
             continuityLine: soulIntent.continuityLine,
             canonMemoryLine: soulIntent.canonMemoryLine,
             dreamLine: soulIntent.dreamLine,
+            canonEnemyLine: soulIntent.canonEnemyLine,
+            canonRitualLine: soulIntent.canonRitualLine,
           },
         });
         if (replanned?.hasCrossSourceEvidence) {
@@ -877,6 +885,9 @@ export async function postTrendUpdate(
           canonSoulLine: soulIntent.canonSoulLine,
           canonMemoryLine: soulIntent.canonMemoryLine,
           dreamLine: soulIntent.dreamLine,
+          canonEnemyLine: soulIntent.canonEnemyLine,
+          canonRitualLine: soulIntent.canonRitualLine,
+          canonSocialLine: soulIntent.canonSocialLine,
           preferredForm: soulIntent.narrativeForm,
           maxChars: runtimeSettings.postMaxChars,
         });
@@ -1050,6 +1061,9 @@ export async function postTrendUpdate(
         canonSoulLine: soulIntent.canonSoulLine,
         canonMemoryLine: soulIntent.canonMemoryLine,
         dreamLine: soulIntent.dreamLine,
+        canonEnemyLine: soulIntent.canonEnemyLine,
+        canonRitualLine: soulIntent.canonRitualLine,
+        canonSocialLine: soulIntent.canonSocialLine,
         preferredForm: soulIntent.narrativeForm,
         maxChars: runtimeSettings.postMaxChars,
       });
@@ -1392,6 +1406,9 @@ export async function postTrendUpdate(
 - 정전 Soul: ${soulIntent.canonSoulLine}
 - 정전 Memory: ${soulIntent.canonMemoryLine}
 - 정전 Dreams: ${soulIntent.dreamLine}
+- 정전 Enemy: ${soulIntent.canonEnemyLine}
+- 정전 Ritual: ${soulIntent.canonRitualLine}
+- 정전 Social: ${soulIntent.canonSocialLine}
 - 열린 질문: ${soulIntent.activeQuestion}
 - 대화 유도 질문: ${soulIntent.interactionMission}
 - 철학 프레임: ${soulIntent.philosophyFrame}
@@ -1479,6 +1496,9 @@ Character intent (highest priority):
 - Canon soul: ${soulIntent.canonSoulLine}
 - Canon memory: ${soulIntent.canonMemoryLine}
 - Canon dreams: ${soulIntent.dreamLine}
+- Canon enemy: ${soulIntent.canonEnemyLine}
+- Canon ritual: ${soulIntent.canonRitualLine}
+- Canon social: ${soulIntent.canonSocialLine}
 - Open question: ${soulIntent.activeQuestion}
 - Community prompt: ${soulIntent.interactionMission}
 - Philosophy frame: ${soulIntent.philosophyFrame}
@@ -4858,6 +4878,9 @@ interface BuildPreviewFallbackCandidatesInput {
   canonSoulLine?: string;
   canonMemoryLine?: string;
   dreamLine?: string;
+  canonEnemyLine?: string;
+  canonRitualLine?: string;
+  canonSocialLine?: string;
   preferredForm?: string;
   maxChars: number;
 }
@@ -4967,9 +4990,14 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   const canonSoulLine = cleanSoulHint(input.canonSoulLine || "", 58);
   const canonMemoryLine = cleanSoulHint(input.canonMemoryLine || "", 58);
   const dreamLine = cleanSoulHint(input.dreamLine || "", 58);
+  const canonEnemyLine = cleanSoulHint(input.canonEnemyLine || "", 58);
+  const canonRitualLine = cleanSoulHint(input.canonRitualLine || "", 58);
+  const canonSocialLine = cleanSoulHint(input.canonSocialLine || "", 58);
   const worldviewHint = compactThought(
     recentReflectionHint ||
       canonMemoryLine ||
+      canonEnemyLine ||
+      canonRitualLine ||
       philosophyFrame ||
       signatureBelief ||
       canonSoulLine ||
@@ -5315,6 +5343,9 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
       canonSoulLine,
       canonMemoryLine,
       dreamLine,
+      canonEnemyLine,
+      canonRitualLine,
+      canonSocialLine,
       obsessionLine: input.obsessionLine,
       grudgeLine: input.grudgeLine,
       continuityLine: input.continuityLine,

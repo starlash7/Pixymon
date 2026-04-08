@@ -2,25 +2,34 @@ import fs from "fs";
 import path from "path";
 import { TrendLane } from "../types/agent.js";
 
-type CharacterDocKey = "soul" | "memory" | "dreams";
+type CharacterDocKey = "soul" | "memory" | "dreams" | "enemies" | "rituals" | "social";
 
 export interface CharacterDocsSnapshot {
   rootDir: string;
   soul: string[];
   memory: string[];
   dreams: string[];
+  enemies: string[];
+  rituals: string[];
+  social: string[];
 }
 
 export interface CharacterCanonSlice {
   soulLine: string;
   memoryLine: string;
   dreamLine: string;
+  enemyLine: string;
+  ritualLine: string;
+  socialLine: string;
 }
 
 const DOC_FILES: Record<CharacterDocKey, string> = {
   soul: "SOUL.md",
   memory: "MEMORY.md",
   dreams: "DREAMS.md",
+  enemies: "ENEMIES.md",
+  rituals: "RITUALS.md",
+  social: "SOCIAL.md",
 };
 
 const LANE_KEYWORDS: Record<TrendLane, string[]> = {
@@ -122,6 +131,15 @@ function scoreCanonLine(line: string, laneHint?: TrendLane, key?: CharacterDocKe
   if (key === "dreams" && /(되고 싶다|궁금해해야 한다|만들고 싶다|진화하고 싶다)/.test(line)) {
     score += 2;
   }
+  if (key === "enemies" && /(싫어|믿지 않는다|승인하지 않는다|적으로 본다|물어뜯|반값|기사값|광고|버린다)/.test(line)) {
+    score += 2;
+  }
+  if (key === "rituals" && /(오늘 물고 있는 것|오늘 승인하지 않는 것|다시 돌아온 장면|국면 선언|의식|반드시)/.test(line)) {
+    score += 2;
+  }
+  if (key === "social" && /(말을 건다|반응한다|인용|댓글|대댓글|무시|원글|답한다)/.test(line)) {
+    score += 2;
+  }
   return score;
 }
 
@@ -155,6 +173,9 @@ export function loadCharacterDocs(rootDir?: string): CharacterDocsSnapshot {
     soul: normalizeDocLines(readDocFile(resolvedRoot, DOC_FILES.soul)),
     memory: normalizeDocLines(readDocFile(resolvedRoot, DOC_FILES.memory)),
     dreams: normalizeDocLines(readDocFile(resolvedRoot, DOC_FILES.dreams)),
+    enemies: normalizeDocLines(readDocFile(resolvedRoot, DOC_FILES.enemies)),
+    rituals: normalizeDocLines(readDocFile(resolvedRoot, DOC_FILES.rituals)),
+    social: normalizeDocLines(readDocFile(resolvedRoot, DOC_FILES.social)),
   };
   docsCache = { cacheKey, snapshot };
   return snapshot;
@@ -171,6 +192,9 @@ export function getCharacterCanonSlice(
     soulLine: pickCanonLine("soul", docs.soul, laneHint),
     memoryLine: pickCanonLine("memory", docs.memory, laneHint),
     dreamLine: pickCanonLine("dreams", docs.dreams, laneHint),
+    enemyLine: pickCanonLine("enemies", docs.enemies, laneHint),
+    ritualLine: pickCanonLine("rituals", docs.rituals, laneHint),
+    socialLine: pickCanonLine("social", docs.social, laneHint),
   };
 }
 

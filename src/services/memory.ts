@@ -249,6 +249,9 @@ interface SoulIntentPlan {
   canonSoulLine: string;
   canonMemoryLine: string;
   dreamLine: string;
+  canonEnemyLine: string;
+  canonRitualLine: string;
+  canonSocialLine: string;
 }
 
 // 데이터 타입 정의
@@ -1922,6 +1925,15 @@ export class MemoryService {
       if (canon.dreamLine) {
         lines.push(`- Canon dream: ${canon.dreamLine}`);
       }
+      if (canon.enemyLine) {
+        lines.push(`- Canon enemy: ${canon.enemyLine}`);
+      }
+      if (canon.ritualLine) {
+        lines.push(`- Canon ritual: ${canon.ritualLine}`);
+      }
+      if (canon.socialLine) {
+        lines.push(`- Canon social: ${canon.socialLine}`);
+      }
       if (soul.worldview.philosophyNotes.length > 0) {
         lines.push(`- Philosophy frame: ${soul.worldview.philosophyNotes[0]}`);
       }
@@ -1974,6 +1986,15 @@ export class MemoryService {
     }
     if (canon.dreamLine) {
       lines.push(`- 정전 Dreams: ${canon.dreamLine}`);
+    }
+    if (canon.enemyLine) {
+      lines.push(`- 정전 Enemy: ${canon.enemyLine}`);
+    }
+    if (canon.ritualLine) {
+      lines.push(`- 정전 Ritual: ${canon.ritualLine}`);
+    }
+    if (canon.socialLine) {
+      lines.push(`- 정전 Social: ${canon.socialLine}`);
     }
     if (soul.worldview.philosophyNotes.length > 0) {
       lines.push(`- 철학 프레임: ${soul.worldview.philosophyNotes[0]}`);
@@ -2036,6 +2057,9 @@ export class MemoryService {
       canonSoulLine: canon.soulLine,
       canonMemoryLine: canon.memoryLine,
       dreamLine: canon.dreamLine,
+      canonEnemyLine: canon.enemyLine,
+      canonRitualLine: canon.ritualLine,
+      canonSocialLine: canon.socialLine,
     };
   }
 
