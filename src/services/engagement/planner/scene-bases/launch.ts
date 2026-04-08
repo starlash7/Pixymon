@@ -1,6 +1,7 @@
+import type { RecentNarrativeThread } from "../spec.js";
 import { pickSceneFamilyBase } from "./shared.js";
 
-export function resolveLaunchSceneBase(merged: string, facets: string[]): string {
+export function resolveLaunchSceneBase(merged: string, facets: string[], recentThreads: RecentNarrativeThread[] = []): string {
   const candidates: string[] = [];
   if (/(쇼케이스|데모|무대|객석|발표회|포스터)/.test(merged)) {
     candidates.push("return+showcase", "launch+showcase", "launch+audience");
@@ -24,6 +25,7 @@ export function resolveLaunchSceneBase(merged: string, facets: string[]): string
     merged,
     facets,
     candidates,
-    facets.includes("capital") ? "capital+launch" : "return+launch"
+    facets.includes("capital") ? "capital+launch" : "return+launch",
+    recentThreads
   );
 }

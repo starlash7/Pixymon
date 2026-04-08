@@ -1193,7 +1193,9 @@ export async function postTrendUpdate(
           eventPlan,
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars,
-          narrativePlan.mode
+          narrativePlan.mode,
+          0,
+          recentBriefingPosts
         );
         if (localFallback) {
           let localPost = applySoulPreludeToFallback(
@@ -1291,7 +1293,13 @@ export async function postTrendUpdate(
 
       if (!postText) {
         latestFailReason = latestFailReason || "local-fallback-empty";
-        const hardFallback = buildHardContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+        const hardFallback = buildHardContractPost(
+          eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          0,
+          recentBriefingPosts.map((post) => post.content)
+        );
         if (hardFallback) {
           const deconflictedHardFallback = deconflictOpening(
             hardFallback,
@@ -1328,7 +1336,13 @@ export async function postTrendUpdate(
       }
 
       if (!postText) {
-        const rescueFallback = buildRescueContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars);
+        const rescueFallback = buildRescueContractPost(
+          eventPlan,
+          runtimeSettings.postLanguage,
+          runtimeSettings.postMaxChars,
+          0,
+          recentBriefingPosts.map((post) => post.content)
+        );
         if (rescueFallback) {
           const deconflictedRescueFallback = deconflictOpening(
             rescueFallback,
@@ -1373,7 +1387,9 @@ export async function postTrendUpdate(
         const emergencyFallback = buildEmergencyContractPost(
           eventPlan,
           runtimeSettings.postLanguage,
-          runtimeSettings.postMaxChars
+          runtimeSettings.postMaxChars,
+          0,
+          recentBriefingPosts.map((post) => post.content)
         );
         if (emergencyFallback) {
           postText = deconflictOpening(
@@ -1803,7 +1819,8 @@ Rules:
           runtimeSettings.postLanguage,
           runtimeSettings.postMaxChars,
           narrativePlan.mode,
-          index
+          index,
+          recentBriefingPosts
         )
       ).filter(Boolean);
       let fallbackPost: string | null = selectBestFallbackVariant(
@@ -2000,7 +2017,13 @@ Rules:
     if (!postText) {
       const hardFallback = selectBestFallbackVariant(
         Array.from({ length: 4 }, (_, index) =>
-          buildHardContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars, index)
+          buildHardContractPost(
+            eventPlan,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            index,
+            recentBriefingPosts.map((post) => post.content)
+          )
         ).filter(Boolean),
         recentBriefingPosts as NarrativeRecentPost[],
         narrativePlan,
@@ -2049,7 +2072,13 @@ Rules:
     if (!postText) {
       const rescueFallback = selectBestFallbackVariant(
         Array.from({ length: 4 }, (_, index) =>
-          buildRescueContractPost(eventPlan, runtimeSettings.postLanguage, runtimeSettings.postMaxChars, index)
+          buildRescueContractPost(
+            eventPlan,
+            runtimeSettings.postLanguage,
+            runtimeSettings.postMaxChars,
+            index,
+            recentBriefingPosts.map((post) => post.content)
+          )
         ).filter(Boolean),
         recentBriefingPosts as NarrativeRecentPost[],
         narrativePlan,
@@ -2114,7 +2143,8 @@ Rules:
             eventPlan,
             runtimeSettings.postLanguage,
             runtimeSettings.postMaxChars,
-            index
+            index,
+            recentBriefingPosts.map((post) => post.content)
           )
         ).filter(Boolean),
         recentBriefingPosts as NarrativeRecentPost[],
@@ -2243,7 +2273,9 @@ Rules:
       const rescueAtDispatch = buildRescueContractPost(
         eventPlan,
         runtimeSettings.postLanguage,
-        runtimeSettings.postMaxChars
+        runtimeSettings.postMaxChars,
+        0,
+        recentBriefingPosts.map((post) => post.content)
       );
       if (rescueAtDispatch) {
         postText = finalizeNarrativeSurface(
@@ -2259,7 +2291,9 @@ Rules:
           const emergencyAtDispatch = buildEmergencyContractPost(
             eventPlan,
             runtimeSettings.postLanguage,
-            runtimeSettings.postMaxChars
+            runtimeSettings.postMaxChars,
+            0,
+            recentBriefingPosts.map((post) => post.content)
           );
           if (emergencyAtDispatch) {
             postText = finalizeNarrativeSurface(
@@ -5973,7 +6007,8 @@ function buildIdentityFallbackPost(
   },
   variant: "hard" | "rescue" | "emergency",
   maxChars: number,
-  variantIndex: number = 0
+  variantIndex: number = 0,
+  recentRenderedPosts: string[] = []
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
@@ -6012,6 +6047,7 @@ function buildIdentityFallbackPost(
       worldviewHint: worldviewByLane[eventPlan.lane],
       signatureBelief: signatureByLane[eventPlan.lane],
       recentReflection: worldviewByLane[eventPlan.lane],
+      recentRenderedPosts,
       maxChars: charBudget,
       seedHint: `${eventPlan.event.id || "event"}|${variant}|live-identity-fallback|${variantIndex}|${mode}|${charBudget}`,
     }),
@@ -6029,7 +6065,8 @@ function buildHardContractPost(
   },
   language: "ko" | "en",
   maxChars: number,
-  variantIndex: number = 0
+  variantIndex: number = 0,
+  recentRenderedPosts: string[] = []
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
@@ -6041,7 +6078,7 @@ function buildHardContractPost(
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "ko") {
-    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "hard", maxChars, variantIndex), language, maxChars);
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "hard", maxChars, variantIndex, recentRenderedPosts), language, maxChars);
   }
 
   if (language === "en") {
@@ -6083,7 +6120,8 @@ function buildRescueContractPost(
   },
   language: "ko" | "en",
   maxChars: number,
-  variantIndex: number = 0
+  variantIndex: number = 0,
+  recentRenderedPosts: string[] = []
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
@@ -6095,7 +6133,7 @@ function buildRescueContractPost(
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "ko") {
-    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "rescue", maxChars, variantIndex), language, maxChars);
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "rescue", maxChars, variantIndex, recentRenderedPosts), language, maxChars);
   }
 
   if (language === "en") {
@@ -6137,7 +6175,8 @@ function buildEmergencyContractPost(
   },
   language: "ko" | "en",
   maxChars: number,
-  variantIndex: number = 0
+  variantIndex: number = 0,
+  recentRenderedPosts: string[] = []
 ): string {
   const [a, b] = eventPlan.evidence.slice(0, 2);
   if (!a || !b) return "";
@@ -6149,7 +6188,7 @@ function buildEmergencyContractPost(
     : sanitizeTweetText(eventPlan.event.headline).replace(/\.$/, "");
 
   if (language === "ko") {
-    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "emergency", maxChars, variantIndex), language, maxChars);
+    return finalizeGeneratedText(buildIdentityFallbackPost(eventPlan, "emergency", maxChars, variantIndex, recentRenderedPosts), language, maxChars);
   }
 
   if (language === "en") {

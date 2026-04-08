@@ -1,6 +1,7 @@
+import type { RecentNarrativeThread } from "../spec.js";
 import { pickSceneFamilyBase } from "./shared.js";
 
-export function resolveCourtSceneBase(merged: string, facets: string[]): string {
+export function resolveCourtSceneBase(merged: string, facets: string[], recentThreads: RecentNarrativeThread[] = []): string {
   const candidates: string[] = [];
   if (/(판결|평결|법원|소송|court)/.test(merged)) {
     candidates.push("verdict+execution", "court+execution", "capital+court");
@@ -23,6 +24,7 @@ export function resolveCourtSceneBase(merged: string, facets: string[]): string 
     merged,
     facets,
     candidates,
-    facets.includes("order") ? "order+capital" : "court+execution"
+    facets.includes("order") ? "order+capital" : "court+execution",
+    recentThreads
   );
 }

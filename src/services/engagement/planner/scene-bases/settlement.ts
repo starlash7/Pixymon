@@ -1,6 +1,7 @@
+import type { RecentNarrativeThread } from "../spec.js";
 import { pickSceneFamilyBase } from "./shared.js";
 
-export function resolveSettlementSceneBase(merged: string, facets: string[]): string {
+export function resolveSettlementSceneBase(merged: string, facets: string[], recentThreads: RecentNarrativeThread[] = []): string {
   const candidates: string[] = [];
   if (/(호가 책|호가|book)/.test(merged)) {
     candidates.push("fill+book", "volume+book", "execution+settlement");
@@ -24,6 +25,7 @@ export function resolveSettlementSceneBase(merged: string, facets: string[]): st
     merged,
     facets,
     candidates,
-    facets.includes("depth") ? "depth+settlement" : "volume+settlement"
+    facets.includes("depth") ? "depth+settlement" : "volume+settlement",
+    recentThreads
   );
 }

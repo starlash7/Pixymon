@@ -1,6 +1,7 @@
+import type { RecentNarrativeThread } from "../spec.js";
 import { pickSceneFamilyBase } from "./shared.js";
 
-export function resolveDurabilitySceneBase(merged: string, facets: string[]): string {
+export function resolveDurabilitySceneBase(merged: string, facets: string[], recentThreads: RecentNarrativeThread[] = []): string {
   const candidates: string[] = [];
   if (/(로그|기록|운영 로그)/.test(merged)) {
     candidates.push("ops+log", "repair+log", "validator+log");
@@ -24,6 +25,7 @@ export function resolveDurabilitySceneBase(merged: string, facets: string[]): st
     merged,
     facets,
     candidates,
-    facets.includes("validator") ? "repair+validator" : "ops+recovery"
+    facets.includes("validator") ? "repair+validator" : "ops+recovery",
+    recentThreads
   );
 }

@@ -504,7 +504,7 @@ function generateSamples(variantCount: number): PlannerSample[] {
         throw new Error(`planner returned null for case ${item.id} variant ${variant}`);
       }
 
-      const text = buildEventEvidenceFallbackPost(plan, "ko", 260, item.mode, variant);
+      const text = buildEventEvidenceFallbackPost(plan, "ko", 260, item.mode, variant, syntheticRecentPosts);
       const sentences = splitSentences(text);
       samples.push({
         caseId: item.id,

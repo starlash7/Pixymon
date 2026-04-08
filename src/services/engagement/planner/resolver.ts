@@ -1,6 +1,6 @@
 import type { OnchainEvidence, TrendLane } from "../../../types/agent.js";
 import { sanitizeTweetText } from "../quality.js";
-import type { PlannerFocus } from "./spec.js";
+import type { PlannerFocus, RecentNarrativeThread } from "./spec.js";
 import { resolveSettlementSceneBase } from "./scene-bases/settlement.js";
 import { resolveLaunchSceneBase } from "./scene-bases/launch.js";
 import { resolveDurabilitySceneBase } from "./scene-bases/durability.js";
@@ -598,7 +598,12 @@ function resolvePlannerSceneTilt(
   return "";
 }
 
-export function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, pair: OnchainEvidence[]): string {
+export function resolvePlannerSceneFamily(
+  lane: TrendLane,
+  focus: PlannerFocus,
+  pair: OnchainEvidence[],
+  recentNarrativeThreads: RecentNarrativeThread[] = []
+): string {
   const facets = [...new Set(pair.map((item) => resolvePlannerSceneFacet(item, lane)).filter(Boolean))].sort().slice(0, 3);
   const merged = sanitizeTweetText(pair.map((item) => `${item.label} ${item.value} ${item.summary}`).join(" | ")).toLowerCase();
   let facetKey = facets.length > 0 ? facets.join("+") : "generic";
@@ -617,11 +622,11 @@ export function resolvePlannerSceneFamily(lane: TrendLane, focus: PlannerFocus, 
     }
   }
 
-  if (lane === "ecosystem" && focus === "retention") facetKey = resolveRetentionSceneBase(merged, facets);
-  if (lane === "protocol" && focus === "launch") facetKey = resolveLaunchSceneBase(merged, facets);
-  if (lane === "market-structure" && focus === "settlement") facetKey = resolveSettlementSceneBase(merged, facets);
-  if (lane === "protocol" && focus === "durability") facetKey = resolveDurabilitySceneBase(merged, facets);
-  if (lane === "regulation" && focus === "court") facetKey = resolveCourtSceneBase(merged, facets);
+  if (lane === "ecosystem" && focus === "retention") facetKey = resolveRetentionSceneBase(merged, facets, recentNarrativeThreads);
+  if (lane === "protocol" && focus === "launch") facetKey = resolveLaunchSceneBase(merged, facets, recentNarrativeThreads);
+  if (lane === "market-structure" && focus === "settlement") facetKey = resolveSettlementSceneBase(merged, facets, recentNarrativeThreads);
+  if (lane === "protocol" && focus === "durability") facetKey = resolveDurabilitySceneBase(merged, facets, recentNarrativeThreads);
+  if (lane === "regulation" && focus === "court") facetKey = resolveCourtSceneBase(merged, facets, recentNarrativeThreads);
 
   const tilt = resolvePlannerSceneTilt(lane, focus, pair, facets);
   return tilt ? `${lane}:${focus}:${facetKey}:${tilt}` : `${lane}:${focus}:${facetKey}`;

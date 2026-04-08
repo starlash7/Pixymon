@@ -1,6 +1,7 @@
+import type { RecentNarrativeThread } from "../spec.js";
 import { pickSceneFamilyBase } from "./shared.js";
 
-export function resolveRetentionSceneBase(merged: string, facets: string[]): string {
+export function resolveRetentionSceneBase(merged: string, facets: string[], recentThreads: RecentNarrativeThread[] = []): string {
   const candidates: string[] = [];
   if (/(생활|습관|리듬|다음 날)/.test(merged)) {
     candidates.push("habit+retention", "return+habit", "cohort+retention");
@@ -27,6 +28,7 @@ export function resolveRetentionSceneBase(merged: string, facets: string[]): str
     merged,
     facets,
     candidates,
-    facets.includes("wallet") ? "wallet+retention" : "retention+usage"
+    facets.includes("wallet") ? "wallet+retention" : "retention+usage",
+    recentThreads
   );
 }

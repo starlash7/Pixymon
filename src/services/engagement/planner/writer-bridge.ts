@@ -35,6 +35,7 @@ type PlannerWriterBridgeInput = Pick<
   worldviewHint?: string;
   signatureBelief?: string;
   recentReflection?: string;
+  recentRenderedPosts?: string[];
   interactionMission?: string;
   activeQuestion?: string;
 };
@@ -57,6 +58,7 @@ export function buildPlannerWriterInput(input: PlannerWriterBridgeInput): KoIden
     worldviewHint: input.worldviewHint || WORLDVIEW_BY_LANE[input.lane],
     signatureBelief: input.signatureBelief || SIGNATURE_BY_LANE[input.lane],
     recentReflection: input.recentReflection || WORLDVIEW_BY_LANE[input.lane],
+    recentRenderedPosts: input.recentRenderedPosts,
     canonSoulLine: canon.soulLine,
     canonMemoryLine: canon.memoryLine,
     dreamLine: canon.dreamLine,

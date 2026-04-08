@@ -3,6 +3,7 @@ import { finalizeGeneratedText, normalizeQuestionTail, stableSeedForPrelude } fr
 import { TrendLane } from "../../types/agent.js";
 import { sceneFamilyBase, sceneFamilyTilt } from "./planner/scene-family.js";
 import { buildFrameLayouts } from "./writer/layouts.js";
+import { buildWriterOpenerQuotaContext, candidateWithinOpenerQuota, prioritizeLayoutsForOpenerQuota } from "./writer/quota.js";
 import type { KoWriterFrame, WriterFocus, WriterSegment } from "./writer/types.js";
 
 export type { WriterFocus } from "./writer/types.js";
@@ -31,6 +32,7 @@ export interface KoIdentityWriterInput {
   interactionMission?: string;
   activeQuestion?: string;
   preferredFocus?: WriterFocus;
+  recentRenderedPosts?: string[];
   maxChars: number;
   seedHint?: string;
 }
@@ -2700,7 +2702,17 @@ function buildPressureLine(
       );
     }
     if (/(허세보다 운영|설명보다 집행|시대|국면)/.test(`${dream} ${canonSoul}`)) {
-      canonPool.push("이 장면에서 내가 찾는 건 설명이 아니라, 운영이 실제로 시대를 가를 만큼 남는지다.");
+      if (focus === "launch") {
+        canonPool.push(
+          "이 메인넷 장면에서 내가 찾는 건 발표가 아니라 돌아오는 돈과 운영 반응이 같은 편인지다.",
+          "이 출시 장면에서 내가 끝까지 보는 건 설명이 아니라 복귀와 운영이 실제로 붙는지다."
+        );
+      } else {
+        canonPool.push(
+          "이 릴리스 장면에서 내가 찾는 건 설명이 아니라 복구 기록이 실제로 신뢰를 남기는지다.",
+          "이 업그레이드 장면에서 내가 끝까지 보는 건 발표가 아니라 운영 흔적이 버티는지다."
+        );
+      }
     }
   }
   if (input.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) {
@@ -2720,26 +2732,78 @@ function buildPressureLine(
   if (input.lane === "ecosystem" && /(재방문 없는 커뮤니티 열기|성장으로 승인하지 않는다|광고 쪽)/.test(canonEnemy)) {
     canonPool.push(
       "나는 다시 오지 않는 열기를 성장으로 승인하지 않는다.",
-      "재방문 없는 열기는 결국 광고 냄새를 남긴다고 본다."
+      "재방문 없는 열기는 결국 광고 냄새를 남긴다고 본다.",
+      "사람이 빠진 열기는 결국 홍보 문구 쪽으로 기운다고 본다.",
+      "다음 날 사람이 안 돌아오는 열기는 성장보다 포스터에 가깝다고 본다."
     );
   }
   if (input.lane === "market-structure" && /(체결 없이 자신감만 큰 시장 장면|구조가 아니라 연출)/.test(canonEnemy)) {
     canonPool.push(
       "체결 없이 자신감만 큰 장면은 구조보다 연출 편에 둔다.",
-      "돈이 안 눕는 자신감은 제일 먼저 버리는 쪽이 맞다."
+      "돈이 안 눕는 자신감은 제일 먼저 버리는 쪽이 맞다.",
+      "호가만 남고 체결이 비는 자신감은 구조값까지 못 올라간다.",
+      "깊이가 안 눕은 자신감은 화면 장면으로 취급하는 쪽이 맞다."
     );
   }
   if (input.lane === "protocol" && /(박수만 큰 업그레이드|운영 로그가 비면 그 발표는 반값)/.test(canonEnemy)) {
-    canonPool.push(
-      "박수만 큰 업그레이드는 운영 로그가 비는 순간 반값이 된다.",
-      "나는 운영이 비는 출시 장면을 제일 오래 물고 늘어진다."
-    );
+    if (focus === "launch") {
+      canonPool.push(
+        "박수만 큰 출시는 운영이 비는 순간 바로 반값으로 내려간다.",
+        "나는 운영이 비는 출시 장면을 제일 오래 물고 늘어진다.",
+        "복귀보다 발표가 앞서는 출시는 메인넷 기세보다 무대값이 더 크다.",
+        "운영이 늦는 출시는 박수보다 객석 밖의 망설임을 더 오래 남긴다."
+      );
+    } else {
+      canonPool.push(
+        "박수만 큰 업그레이드는 운영 로그가 비는 순간 반값이 된다.",
+        "나는 운영 로그가 늦는 릴리스 장면을 제일 오래 물고 늘어진다.",
+        "복구가 늦는 업그레이드는 발표보다 로그 빈칸을 더 크게 남긴다.",
+        "운영 기록이 얇은 개선은 릴리스 노트보다 빈칸으로 기억된다."
+      );
+    }
   }
   if (/(오늘 물고 있는 것|오늘 승인하지 않는 것|다시 돌아온 장면|국면 선언)/.test(canonRitual)) {
-    canonPool.push(
-      "이 장면은 오늘 내가 다시 물고 있는 국면 쪽에 더 가깝다.",
-      "오늘 승인하지 않는 것으로 남겨야 할 장면은 대개 이런 쪽이다."
-    );
+    if (input.lane === "ecosystem" && focus === "retention") {
+      canonPool.push(
+        "다시 돌아온 장면은 결국 사람이 남지 않은 열기 쪽이다.",
+        "오늘 승인하지 않는 장면은 열기보다 잔류가 비는 쪽이다.",
+        "다시 물고 있는 장면은 결국 생활 리듬보다 열기만 먼저 남는 쪽이다.",
+        "오늘 승인하지 않는 장면은 다시 오는 사람보다 포스터가 먼저 커지는 쪽이다."
+      );
+    } else if (input.lane === "regulation" && focus === "court") {
+      canonPool.push(
+        "다시 돌아온 장면은 결국 판결보다 돈이 늦는 법원 쪽이다.",
+        "오늘 승인하지 않는 장면은 기사보다 집행이 비는 판결 쪽이다.",
+        "다시 물고 있는 장면은 결국 브리핑보다 자금이 늦는 법원 쪽이다.",
+        "오늘 승인하지 않는 장면은 판결문보다 돈이 빈칸으로 남는 쪽이다."
+      );
+    } else if (input.lane === "protocol" && focus === "launch") {
+      canonPool.push(
+        "다시 돌아온 장면은 결국 메인넷 박수보다 복귀가 늦는 쪽이다.",
+        "오늘 승인하지 않는 장면은 발표보다 운영과 돈이 늦는 출시 쪽이다.",
+        "다시 물고 있는 장면은 결국 런치 박수보다 복귀가 망설이는 쪽이다.",
+        "오늘 승인하지 않는 장면은 무대보다 객석 밖 돈이 늦는 출시 쪽이다."
+      );
+    } else if (input.lane === "protocol" && focus === "durability") {
+      canonPool.push(
+        "다시 돌아온 장면은 결국 박수보다 복구 기록이 늦는 릴리스 쪽이다.",
+        "오늘 승인하지 않는 장면은 발표보다 운영 로그가 비는 업그레이드 쪽이다.",
+        "다시 물고 있는 장면은 결국 설명보다 복구 태도가 늦는 릴리스 쪽이다.",
+        "오늘 승인하지 않는 장면은 배포보다 장애 뒤 기록이 비는 개선 쪽이다."
+      );
+    } else if (input.lane === "market-structure" && (focus === "settlement" || focus === "liquidity")) {
+      canonPool.push(
+        "다시 돌아온 장면은 결국 거래량보다 깊이 빈칸이 남는 시장 쪽이다.",
+        "오늘 승인하지 않는 장면은 체결보다 호가 두께가 비는 쪽이다.",
+        "다시 물고 있는 장면은 결국 숫자보다 정산 깊이가 늦는 시장 쪽이다.",
+        "오늘 승인하지 않는 장면은 거래량보다 책 두께가 먼저 비는 쪽이다."
+      );
+    } else {
+      canonPool.push(
+        "이 장면은 오늘 내가 다시 물고 있는 국면 쪽에 더 가깝다.",
+        "오늘 승인하지 않는 것으로 남겨야 할 장면은 대개 이런 쪽이다."
+      );
+    }
   }
 
   const focusPool = FOCUS_PRESSURE_BY_LANE[input.lane]?.[focus] || [];
@@ -3034,6 +3098,7 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   const variantSalt = buildVariantSalt(input, focus, primaryAnchor, secondaryAnchor);
   const selectionSeed = seed + variantSalt;
   const frame = resolveWriterFrame(input.mode, focus, selectionSeed + variant);
+  const openerQuotaContext = buildWriterOpenerQuotaContext(input.recentRenderedPosts || [], input.lane, focus, input.mode);
   const focusLeadPool = FOCUS_CLAIM_BY_LANE[input.lane]?.[focus] || [];
   const focusCrossExamPool = FOCUS_CROSS_EXAM_BY_LANE[input.lane]?.[focus] || [];
   const leadPool =
@@ -3136,13 +3201,21 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
     question,
   };
 
-  const layouts = rotateLayouts(buildFrameLayouts(frame, input.mode, input.lane, focus), selectionSeed + variant * 41 + 1);
+  const layouts = prioritizeLayoutsForOpenerQuota(
+    rotateLayouts(buildFrameLayouts(frame, input.mode, input.lane, focus), selectionSeed + variant * 41 + 1),
+    openerQuotaContext
+  );
   let candidate = "";
+  let rejectedCandidate = "";
   for (const layout of layouts) {
     const lines = materializeLayout(layout, segments, input.maxChars);
     if (!lines.length) continue;
     const draft = joinCandidate(lines, input.maxChars);
     if (draft) {
+      if (!candidateWithinOpenerQuota(draft, openerQuotaContext)) {
+        if (!rejectedCandidate) rejectedCandidate = draft;
+        continue;
+      }
       candidate = draft;
       break;
     }
@@ -3150,6 +3223,9 @@ export function buildKoIdentityWriterCandidate(input: KoIdentityWriterInput, var
   if (!candidate) {
     const fallbackLines = materializeLayout(["lead", "evidence", "decision", frame === "quest" ? "question" : "consequence"], segments, input.maxChars);
     candidate = joinCandidate(fallbackLines, input.maxChars);
+    if (!candidateWithinOpenerQuota(candidate, openerQuotaContext) && rejectedCandidate) {
+      candidate = rejectedCandidate;
+    }
   }
 
   if (frame === "quest" && !/[?؟]$/.test(candidate)) {

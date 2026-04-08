@@ -382,6 +382,30 @@ test("buildKoIdentityWriterCandidate can surface canon enemy ritual and social p
   assert.match(text, /(광고 냄새|성장으로 승인하지 않는다|승인하지 않는|다른 근거 하나로 이 장면을 뒤집겠나|반증)/);
 });
 
+test("buildKoIdentityWriterCandidate avoids third reuse of canon ritual opener with recent rendered posts", () => {
+  const repeated = "오늘 승인하지 않은 것으로 남겨야 할 장면은 대개 이런 쪽이다. 재방문 없는 열기는 결국 포스터처럼 식는다는 걸 이미 여러 번 봤다.";
+  const text = buildKoIdentityWriterCandidate(
+    {
+      ...baseInput,
+      lane: "ecosystem",
+      mode: "era-manifesto",
+      headline: "커뮤니티 반응은 뜨거운데 다시 돌아오는 사람 수가 얇아진 구간",
+      primaryAnchor: "사용자 재방문 흐름",
+      secondaryAnchor: "지갑 재방문",
+      preferredFocus: "retention",
+      canonEnemyLine: "나는 재방문 없는 커뮤니티 열기를 성장으로 승인하지 않는다.",
+      canonRitualLine: "오늘 승인하지 않는 것: 아직 성장으로 부르지 않을 장면을 분명히 적는다.",
+      recentRenderedPosts: [repeated, repeated],
+      seedHint: "identity-writer:ritual-opener-quota",
+      maxChars: 280,
+    },
+    0
+  );
+
+  const firstSentence = text.split(/(?<=[.!?])\s+/u)[0] || text;
+  assert.notEqual(firstSentence, "오늘 승인하지 않은 것으로 남겨야 할 장면은 대개 이런 쪽이다.");
+});
+
 test("buildKoIdentityWriterCandidate repairs thin scene headlines without malformed 에서 tails", () => {
   const text = buildKoIdentityWriterCandidate(
     {

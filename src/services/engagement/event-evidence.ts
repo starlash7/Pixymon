@@ -25,6 +25,7 @@ import {
   estimateSceneFamilyDominancePenalty,
   type PlannerIdentityPressure,
 } from "./planner/pressure.js";
+import { estimateSceneFamilyBaseQuotaPenalty, sceneFamilyBaseQuotaLimited } from "./planner/quota.js";
 
 const TREND_LANES: TrendLane[] = [
   "protocol",
@@ -496,7 +497,7 @@ export function planEventEvidenceAct(params: {
           if (directPair.length >= 2) {
             const directFocus = resolvePlannerFocus(event.lane, directPair);
             const directSceneFamily = augmentSceneFamilyWithHeadline(
-              resolvePlannerSceneFamily(event.lane, directFocus, directPair),
+              resolvePlannerSceneFamily(event.lane, directFocus, directPair, recentNarrativeThreads),
               event.headline,
               event.lane,
               directFocus
@@ -616,7 +617,7 @@ export function planEventEvidenceAct(params: {
       const eventEvidenceMismatchPenalty = estimateEventEvidenceMismatchPenalty(event, pair.evidence);
       const focus = resolvePlannerFocus(event.lane, pair.evidence);
       const sceneFamily = augmentSceneFamilyWithHeadline(
-        resolvePlannerSceneFamily(event.lane, focus, pair.evidence),
+        resolvePlannerSceneFamily(event.lane, focus, pair.evidence, params.recentNarrativeThreads || []),
         event.headline,
         event.lane,
         focus
@@ -688,6 +689,18 @@ export function planEventEvidenceAct(params: {
         sceneFamily,
         params.recentNarrativeThreads || []
       );
+      const sceneBaseQuotaPenalty = estimateSceneFamilyBaseQuotaPenalty(
+        event.lane,
+        focus,
+        sceneBase,
+        params.recentNarrativeThreads || []
+      );
+      const sceneBaseQuotaLimited = sceneFamilyBaseQuotaLimited(
+        event.lane,
+        focus,
+        sceneBase,
+        params.recentNarrativeThreads || []
+      );
       const explicitEscapeBonus = estimateExplicitEscapeBonus(
         event,
         event.lane,
@@ -704,6 +717,9 @@ export function planEventEvidenceAct(params: {
         evidenceSourceDiversity: pair.evidenceSourceDiversity,
         recentNarrativeThreads: params.recentNarrativeThreads || [],
       });
+      if (sceneBaseQuotaLimited && !plannerWarnings.includes("base-quota")) {
+        plannerWarnings.push("base-quota");
+      }
       const repeatWarningPenalty =
         plannerWarnings.includes("scene-repeat") && event.source === "evidence:structural-fallback"
           ? 0.12
@@ -722,6 +738,7 @@ export function planEventEvidenceAct(params: {
         identityPressureBonus -
         sceneDominancePenalty +
         sceneBasePenalty * -1.05 +
+        sceneBaseQuotaPenalty * -1.2 +
         explicitEscapeBonus +
         laneScarcityBoost -
         headlineCommodityPenalty * 1.25 -
@@ -749,6 +766,7 @@ export function planEventEvidenceAct(params: {
         plannerWarnings,
         projectedRatio,
         quotaLimited,
+        sceneBaseQuotaLimited,
       };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
@@ -758,7 +776,7 @@ export function planEventEvidenceAct(params: {
     return null;
   }
 
-  const notLimited = scored.filter((row) => !row.quotaLimited);
+  const notLimited = scored.filter((row) => !row.quotaLimited && !row.sceneBaseQuotaLimited);
   const explorationPool = (notLimited.length > 0 ? notLimited : scored).slice(0, 4);
   const preferred = pickPreferredPlanCandidate(explorationPool);
   return {
@@ -956,8 +974,14 @@ export function buildEventEvidenceFallbackPost(
   language: "ko" | "en",
   maxChars: number = 220,
   mode?: NarrativeMode,
-  variant: number = 0
+  variant: number = 0,
+  recentPosts: Array<{ content: string } | string> = []
 ): string {
+  const recentRenderedPosts = recentPosts
+    .map((item) => (typeof item === "string" ? item : item?.content || ""))
+    .map((item) => sanitizeTweetText(item))
+    .filter(Boolean)
+    .slice(-8);
   const stripKoHeadlinePrefix = (text: string): string => {
     let output = String(text || "").trim();
     for (let i = 0; i < 2; i += 1) {
@@ -1220,6 +1244,7 @@ export function buildEventEvidenceFallbackPost(
         mode: narrativeMode,
         maxChars,
         seedHint: `${plan.event.id}|${plan.sceneFamily || "none"}|fallback|${narrativeMode}|${variant}`,
+        recentRenderedPosts,
       }),
       variant
     );
@@ -2282,7 +2307,7 @@ function buildStructuralHeadlineFromEvidence(
   const b = humanizeStructuralEvidenceLabel(secondary.label);
   const pair = joinKoPair(a, b);
   const focus = resolvePlannerFocus(lane, [primary, secondary]);
-  const sceneFamily = resolvePlannerSceneFamily(lane, focus, [primary, secondary]);
+  const sceneFamily = resolvePlannerSceneFamily(lane, focus, [primary, secondary], []);
   const tilt = sceneFamilyTilt(sceneFamily);
   const seed = stableSeed(`${lane}|${a}|${b}|headline|v${variant}`);
 
@@ -2690,7 +2715,7 @@ function buildStructuralSummaryFromEvidence(
   const b = humanizeStructuralEvidenceLabel(secondary.label);
   const pair = joinKoPair(a, b);
   const focus = resolvePlannerFocus(lane, [primary, secondary]);
-  const sceneFamily = resolvePlannerSceneFamily(lane, focus, [primary, secondary]);
+  const sceneFamily = resolvePlannerSceneFamily(lane, focus, [primary, secondary], []);
   const tilt = sceneFamilyTilt(sceneFamily);
   const focusPoolByLane: Partial<Record<TrendLane, Partial<Record<PlannerFocus, string[]>>>> = {
     ecosystem: {
@@ -3540,7 +3565,7 @@ function selectEvidencePairCandidatesForLane(
       const weakEvidencePenalty = estimateWeakEvidencePenalty(pair);
       const genericPairPenalty = estimateGenericEvidencePairPenalty(pair, lane);
       const focus = resolvePlannerFocus(lane, pair);
-      const sceneFamily = resolvePlannerSceneFamily(lane, focus, pair);
+      const sceneFamily = resolvePlannerSceneFamily(lane, focus, pair, []);
       const narrativeBucketBonus = estimateNarrativeBucketBonus(pair, lane);
       const sceneFamilyBonus = estimateSceneFamilyBonus(lane, focus, sceneFamily);
       const narrativeTension = estimateNarrativeTension(pair, lane, focus, sceneFamily);
@@ -3605,7 +3630,7 @@ function selectEvidencePairCandidatesForLane(
         evidenceSourceDiversity: new Set(fallback.map((item) => item.source)).size,
         score: 0.01,
         focus,
-        sceneFamily: resolvePlannerSceneFamily(lane, focus, fallback),
+        sceneFamily: resolvePlannerSceneFamily(lane, focus, fallback, []),
       },
     ];
   }
