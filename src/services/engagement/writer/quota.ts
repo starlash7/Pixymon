@@ -5,6 +5,7 @@ import type { WriterFocus, WriterSegment } from "./types.js";
 export interface WriterOpenerQuotaContext {
   recentFirstSentenceCounts: Map<string, number>;
   recentFamilyCounts: Map<string, number>;
+  recentSecondSentenceCounts: Map<string, number>;
   lane: TrendLane;
   focus: WriterFocus;
   mode: string;
@@ -52,6 +53,20 @@ function classifyOpenerFamily(text: string, lane: TrendLane, focus: WriterFocus)
   return `${lane}:${focus}:${normalized.slice(0, 36)}`;
 }
 
+function openerFamilyQuotaLimit(family: string): number {
+  if (/ritual-(reject|return|bite)$/.test(family)) return 1;
+  if (
+    family === "ecosystem:retention:retention-opener" ||
+    family === "regulation:court:court-opener" ||
+    family === "protocol:launch:launch-opener" ||
+    family === "protocol:durability:durability-opener" ||
+    family === "market-structure:settlement:settlement-opener"
+  ) {
+    return 1;
+  }
+  return 2;
+}
+
 export function buildWriterOpenerQuotaContext(
   recentRenderedPosts: string[],
   lane: TrendLane,
@@ -60,15 +75,20 @@ export function buildWriterOpenerQuotaContext(
 ): WriterOpenerQuotaContext {
   const recentFirstSentenceCounts = new Map<string, number>();
   const recentFamilyCounts = new Map<string, number>();
+  const recentSecondSentenceCounts = new Map<string, number>();
   for (const text of recentRenderedPosts || []) {
-    const first = splitSentences(text)[0] || "";
+    const [first = "", second = ""] = splitSentences(text);
     const normalized = normalizeSentence(first);
     if (!normalized) continue;
     recentFirstSentenceCounts.set(normalized, (recentFirstSentenceCounts.get(normalized) || 0) + 1);
     const family = classifyOpenerFamily(normalized, lane, focus);
     recentFamilyCounts.set(family, (recentFamilyCounts.get(family) || 0) + 1);
+    const normalizedSecond = normalizeSentence(second);
+    if (normalizedSecond) {
+      recentSecondSentenceCounts.set(normalizedSecond, (recentSecondSentenceCounts.get(normalizedSecond) || 0) + 1);
+    }
   }
-  return { recentFirstSentenceCounts, recentFamilyCounts, lane, focus, mode };
+  return { recentFirstSentenceCounts, recentFamilyCounts, recentSecondSentenceCounts, lane, focus, mode };
 }
 
 function openerSegmentPenalty(segment: WriterSegment, context: WriterOpenerQuotaContext): number {
@@ -98,13 +118,17 @@ export function prioritizeLayoutsForOpenerQuota(
 }
 
 export function candidateWithinOpenerQuota(candidate: string, context: WriterOpenerQuotaContext): boolean {
-  const first = normalizeSentence(splitSentences(candidate)[0] || "");
+  const [firstRaw = "", secondRaw = ""] = splitSentences(candidate);
+  const first = normalizeSentence(firstRaw);
   if (!first) return true;
   const exactCount = context.recentFirstSentenceCounts.get(first) || 0;
   if (exactCount >= 2) return false;
 
   const family = classifyOpenerFamily(first, context.lane, context.focus);
   const familyCount = context.recentFamilyCounts.get(family) || 0;
-  if (/ritual-(reject|return|bite)$/.test(family)) return familyCount < 2;
-  return familyCount < 3;
+  if (familyCount > openerFamilyQuotaLimit(family)) return false;
+
+  const second = normalizeSentence(secondRaw);
+  if (!second) return true;
+  return (context.recentSecondSentenceCounts.get(second) || 0) < 2;
 }

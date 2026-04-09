@@ -1,5 +1,9 @@
 import { TrendLane } from "../../../../types/agent.js";
-import { estimateSceneFamilyBaseQuotaPenalty } from "../quota.js";
+import {
+  countRecentSceneFamilyBase,
+  estimateSceneFamilyBaseQuotaPenalty,
+  sceneFamilyBaseQuotaLimited,
+} from "../quota.js";
 import type { PlannerFocus } from "../spec.js";
 import type { RecentNarrativeThread } from "../spec.js";
 
@@ -24,17 +28,20 @@ export function pickSceneFamilyBase(
   const pool = [...new Set(candidates.filter(Boolean))];
   if (!pool.length) return fallback;
   const seed = stableSeed(`${lane}|${focus}|${merged}|${facets.join("+")}|${pool.join("|")}`);
-  const scored = pool
+  const unrestrictedPool = pool.filter((base) => !sceneFamilyBaseQuotaLimited(lane, focus, base, recentThreads));
+  const activePool = unrestrictedPool.length > 0 ? unrestrictedPool : pool;
+  const scored = activePool
     .map((base, index) => {
       const orderBoost = Math.max(0, pool.length - index) * 0.06;
       const facetBoost = facets.some((facet) => base.includes(facet)) ? 0.08 : 0;
       const quotaPenalty = estimateSceneFamilyBaseQuotaPenalty(lane, focus, base, recentThreads);
+      const countPenalty = countRecentSceneFamilyBase(lane, focus, base, recentThreads) * 0.08;
       const tieBreak = ((stableSeed(`${seed}|${base}`) % 1000) / 1000) * 0.01;
       return {
         base,
-        score: orderBoost + facetBoost - quotaPenalty + tieBreak,
+        score: orderBoost + facetBoost - quotaPenalty - countPenalty + tieBreak,
       };
     })
     .sort((a, b) => b.score - a.score);
-  return scored[0]?.base || pool[Math.abs(seed) % pool.length] || fallback;
+  return scored[0]?.base || activePool[Math.abs(seed) % activePool.length] || fallback;
 }

@@ -495,8 +495,8 @@ function generateSamples(variantCount: number): PlannerSample[] {
         const plan = planEventEvidenceAct({
           events: [...rotatedStructuralEvents, ...rotatedEvents],
           evidence: item.evidence,
-          recentPosts: syntheticRecentPosts.slice(-8),
-          recentNarrativeThreads: syntheticThreads.slice(-8),
+          recentPosts: syntheticRecentPosts.slice(-12),
+          recentNarrativeThreads: syntheticThreads.slice(-16),
           identityPressure: identityPressureForLane(item.lane),
         });
 

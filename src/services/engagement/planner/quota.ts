@@ -1,5 +1,6 @@
 import { TrendLane } from "../../../types/agent.js";
 import { sceneFamilyBase } from "./scene-family.js";
+import { getPlannerBaseQuotaPolicy, plannerBaseIsHot, plannerBaseQuotaThreshold } from "./base-quotas.js";
 import type { PlannerFocus, RecentNarrativeThread } from "./spec.js";
 
 function normalizeBaseKey(lane: TrendLane, focus: PlannerFocus, base: string): string {
@@ -15,8 +16,9 @@ export function countRecentSceneFamilyBase(
   recentThreads: RecentNarrativeThread[]
 ): number {
   const normalized = normalizeBaseKey(lane, focus, base);
+  const policy = getPlannerBaseQuotaPolicy(lane, focus);
   return (recentThreads || [])
-    .slice(-8)
+    .slice(-policy.recentWindow)
     .filter(
       (item) =>
         item.lane === lane &&
@@ -27,13 +29,7 @@ export function countRecentSceneFamilyBase(
 
 export function isHotSceneFamilyBase(lane: TrendLane, focus: PlannerFocus, base: string): boolean {
   const normalized = normalizeBaseKey(lane, focus, base);
-  if (lane === "ecosystem" && focus === "builder") return /builder\+return|builder\+usage|builder\+treasury/.test(normalized);
-  if (lane === "regulation" && focus === "court") return /court\+execution|briefing\+execution|verdict\+execution/.test(normalized);
-  if (lane === "protocol" && focus === "durability") return /recovery\+validator|repair\+validator|recovery\+rollout|repair\+ops/.test(normalized);
-  if (lane === "protocol" && focus === "launch") return /return\+showcase|return\+launch|return\+announcement|launch\+showcase/.test(normalized);
-  if (lane === "ecosystem" && focus === "retention") return /retention\+cohort|retention\+usage|wallet\+retention|return\+habit/.test(normalized);
-  if (lane === "market-structure" && focus === "settlement") return /fill\+book|execution\+settlement|depth\+settlement|volume\+settlement/.test(normalized);
-  return false;
+  return plannerBaseIsHot(lane, focus, normalized);
 }
 
 export function sceneFamilyBaseQuotaThreshold(
@@ -41,7 +37,7 @@ export function sceneFamilyBaseQuotaThreshold(
   focus: PlannerFocus,
   base: string
 ): number {
-  return isHotSceneFamilyBase(lane, focus, base) ? 1 : 2;
+  return plannerBaseQuotaThreshold(lane, focus, normalizeBaseKey(lane, focus, base));
 }
 
 export function sceneFamilyBaseQuotaLimited(

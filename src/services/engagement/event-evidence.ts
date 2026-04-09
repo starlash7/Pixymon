@@ -981,7 +981,7 @@ export function buildEventEvidenceFallbackPost(
     .map((item) => (typeof item === "string" ? item : item?.content || ""))
     .map((item) => sanitizeTweetText(item))
     .filter(Boolean)
-    .slice(-8);
+    .slice(-12);
   const stripKoHeadlinePrefix = (text: string): string => {
     let output = String(text || "").trim();
     for (let i = 0; i < 2; i += 1) {

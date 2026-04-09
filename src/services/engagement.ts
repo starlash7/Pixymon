@@ -730,7 +730,7 @@ export async function postTrendUpdate(
     let soulIntent = memory.getSoulIntentPlan(runtimeSettings.postLanguage);
     const recentReflectionText = cycleReflectionHint || memory.getLatestDigestReflectionMemo()?.text;
     const laneUsageWindow = resolveRecentLaneUsageWindow(recentBriefingPosts);
-    const recentNarrativeThreads = memory.getRecentNarrativeThreads(6);
+    const recentNarrativeThreads = memory.getRecentNarrativeThreads(16);
     const eventEvidence = buildOnchainEvidence([...feedNutrients, ...trend.nutrients], 16);
     let candidateEvents = trend.events;
     let eventPlan = planEventEvidenceAct({
@@ -4845,7 +4845,7 @@ function buildClicheBlocklist(recentPosts: string[], language: "ko" | "en"): str
     "keep conviction open",
   ];
   const recentOpenersRaw = (recentPosts || [])
-    .slice(-8)
+    .slice(-12)
     .map((row) => sanitizeTweetText(row).slice(0, 18).trim())
     .filter((row) => row.length >= 8);
   const openerCount = new Map<string, number>();
@@ -5062,7 +5062,7 @@ function buildPreviewFallbackCandidates(input: BuildPreviewFallbackCandidatesInp
   };
   const recentEndings = new Set(
     input.recentPosts
-      .slice(-8)
+      .slice(-12)
       .map((post) => extractEndingKey(post.content))
       .filter((item) => item.length >= 14)
   );

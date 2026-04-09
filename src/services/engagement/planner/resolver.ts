@@ -6,6 +6,7 @@ import { resolveLaunchSceneBase } from "./scene-bases/launch.js";
 import { resolveDurabilitySceneBase } from "./scene-bases/durability.js";
 import { resolveCourtSceneBase } from "./scene-bases/court.js";
 import { resolveRetentionSceneBase } from "./scene-bases/retention.js";
+import { resolveBuilderSceneBase } from "./scene-bases/builder.js";
 import { rewriteSceneFamilyBase, sceneFamilyBase, sceneFamilyMatches } from "./scene-family.js";
 
 type NarrativeBucket =
@@ -608,19 +609,7 @@ export function resolvePlannerSceneFamily(
   const merged = sanitizeTweetText(pair.map((item) => `${item.label} ${item.value} ${item.summary}`).join(" | ")).toLowerCase();
   let facetKey = facets.length > 0 ? facets.join("+") : "generic";
 
-  if (lane === "ecosystem" && focus === "builder") {
-    if (facets.includes("builder") && facets.includes("inside")) {
-      facetKey = "builder+inside";
-    } else if (facets.includes("builder") && facets.includes("return")) {
-      facetKey = "builder+return";
-    } else if (facets.includes("builder") && facets.includes("usage")) {
-      facetKey = "builder+usage";
-    } else if (facets.includes("builder") && facets.includes("capital")) {
-      facetKey = /(예치 자금|tvl|자금)/.test(merged) ? "builder+capital" : "builder";
-    } else if (facets.includes("builder")) {
-      facetKey = "builder";
-    }
-  }
+  if (lane === "ecosystem" && focus === "builder") facetKey = resolveBuilderSceneBase(merged, facets, recentNarrativeThreads);
 
   if (lane === "ecosystem" && focus === "retention") facetKey = resolveRetentionSceneBase(merged, facets, recentNarrativeThreads);
   if (lane === "protocol" && focus === "launch") facetKey = resolveLaunchSceneBase(merged, facets, recentNarrativeThreads);
