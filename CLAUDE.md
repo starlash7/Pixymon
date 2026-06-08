@@ -1,8 +1,9 @@
 # Pixymon 개발 규칙
 
 ## 문서 범위
-- 루트 규칙 문서는 `CLAUDE.md` 하나만 유지한다.
-- 이 파일을 레포지토리 작업 규칙의 단일 기준으로 사용한다.
+- 워크스페이스/브랜치 운영 규칙의 최상위 기준은 `AGENTS.md`다.
+- 이 파일은 Pixymon 코드 작성 규칙과 프로젝트 특화 컨벤션을 담는다.
+- 실행/환경/구조의 최신 사용자 문서는 `README.md`를 기준으로 하며, 작업 중 README를 임의로 덮어쓰지 않는다.
 
 ## 프로젝트 정체성
 - Pixymon은 온체인 데이터를 먹고 성장하는 크립토 AI 트위터 봇이다.
@@ -37,10 +38,11 @@
 - 과도한 확신 표현 금지 (예: "100% 오른다")
 
 ## 핵심 기능
-1. 마켓 브리핑 자동 포스팅: 09:00, 21:00
-2. `@Pixy_mon` 멘션 자동 응답
-3. 인플루언서 대상 하루 10-12개 댓글 활동
+1. 온체인/뉴스/소셜 신호 수집 및 narrative digest
+2. `@Pixy_mon` 멘션 응답
+3. 트렌드 글, 인용, 댓글 후보 생성 및 품질 게이트
 4. 트윗/코인/팔로워 상호작용 메모리 누적
+5. 비용/쿼터/락/2단계 발행 가드 기반 자율 루프
 
 ## TypeScript/안정성 규칙
 - 외부 API 호출은 항상 `try/catch`로 감싼다.
@@ -66,15 +68,28 @@
 ## 실행 플래그
 - `SCHEDULER_MODE=true`: 스케줄러 루프 실행
 - `TEST_MODE=true`: 실제 트윗 발행 비활성화
+- `TEST_NO_EXTERNAL_CALLS=true`: 테스트 모드에서 외부 API 호출 차단
+- `ACTION_MODE=observe|paper|live`: 관찰/모의/실발행 경로 선택
+- `ALLOW_FALLBACK_AUTO_PUBLISH=false`: fallback 글 자동 발행 차단 기본값
+
+## 폴더 구조
+- `src/index.ts`: 부트스트랩, 안전 훅, 런타임 락, 모드 선택
+- `src/config/`: 환경 변수 파싱과 런타임 기본값
+- `src/services/`: X/Twitter, LLM, 메모리, 관측성, 예산, narrative 루프
+- `src/services/engagement/`: 인게이지먼트 품질, 근거, 텍스트 마무리 보조 모듈
+- `src/types/`: 공유 타입
+- `src/utils/`: 범용 유틸리티
+- `scripts/`: 샘플 생성, 감사 리포트, preflight 점검
+- `test/`: Node test runner 기반 단위/회귀 테스트
 
 ## 표준 워크플로우
-### 브리핑 생성
+### 글 생성/발행
 1. 마켓 데이터 수집
-2. Fear & Greed Index 조회
-3. Claude로 브리핑 생성 (`character.ts` prompt 사용)
-4. 메모리 히스토리 기준 중복 검사
-5. 트윗 발행
-6. 메모리 업데이트
+2. 이벤트/근거 플랜 생성
+3. Claude로 Pixymon 톤의 후보 생성 (`character.ts` prompt 사용)
+4. 품질/중복/fallback 발행 게이트 검사
+5. `ACTION_MODE`와 X API budget에 따라 발행 또는 관찰 기록
+6. 메모리와 관측 이벤트 업데이트
 
 ### 멘션 응답
 1. 멘션 수집
