@@ -11,6 +11,7 @@ import {
   requestBudgetedClaudeMessage,
 } from "./llm.js";
 import {
+  dispatchXWrite,
   getTrendSearchCooldownRemainingMs,
   getMentions,
   postTweet,
@@ -615,8 +616,55 @@ ${toneGuide}
         continue;
       }
 
-      if (TEST_MODE) {
-        console.log(`  🧪 [테스트] 댓글: ${replyText}`);
+      let budgetBlocked = false;
+      let dispatch;
+      try {
+        dispatch = await dispatchXWrite("reply:engagement", async () => {
+          if (TEST_MODE) {
+            console.log(`  🧪 [테스트] 댓글: ${replyText}`);
+            return `test_${Date.now()}`;
+          }
+
+          const createGuard = xApiBudget.checkCreateAllowance({
+            enabled: xApiCostSettings.enabled,
+            timezone,
+            dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+            estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+            dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
+            kind: "reply:engagement",
+            minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
+          });
+          if (!createGuard.allowed) {
+            budgetBlocked = true;
+            console.log(`  [BUDGET] 댓글 스킵: ${formatReadBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
+            return null;
+          }
+          if (xApiCostSettings.enabled) {
+            const createUsage = xApiBudget.recordCreate({
+              timezone,
+              estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+              kind: "reply:engagement",
+            });
+            console.log(
+              `  [BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)}`
+            );
+          }
+
+          const reply = await twitter.v2.reply(replyText, tweet.id);
+          console.log(`  ✅ 댓글 완료: ${replyText.substring(0, 45)}...`);
+          return reply.data.id;
+        });
+      } catch (replyError: any) {
+        console.log(`  [ERROR] 댓글 실패: ${replyError.message}`);
+        continue;
+      }
+
+      if (!dispatch.id) {
+        if (budgetBlocked) break;
+        continue;
+      }
+
+      if (TEST_MODE && dispatch.mode === "live") {
         recordNarrativeObservation({
           surface: "reply",
           text: replyText,
@@ -626,36 +674,21 @@ ${toneGuide}
           fallbackKind: "reply:engagement-test",
         });
       } else {
-        const createGuard = xApiBudget.checkCreateAllowance({
-          enabled: xApiCostSettings.enabled,
-          timezone,
-          dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
-          estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-          dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
-          kind: "reply:engagement",
-          minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
-        });
-        if (!createGuard.allowed) {
-          console.log(`  [BUDGET] 댓글 스킵: ${formatReadBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
-          break;
-        }
-        if (xApiCostSettings.enabled) {
-          const createUsage = xApiBudget.recordCreate({
-            timezone,
-            estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-            kind: "reply:engagement",
-          });
-          console.log(
-            `  [BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)}`
-          );
-        }
         try {
-          const reply = await twitter.v2.reply(replyText, tweet.id);
-          console.log(`  ✅ 댓글 완료: ${replyText.substring(0, 45)}...`);
           memory.saveRepliedTweet(tweet.id);
-          memory.saveTweet(reply.data.id, replyText, "reply");
+          memory.saveTweet(dispatch.id, replyText, "reply");
+          if (dispatch.mode === "paper") {
+            recordNarrativeObservation({
+              surface: "reply",
+              text: replyText,
+              language: lang,
+              lane: inferTrendLaneFromText(text),
+              narrativeMode: "engagement-reply",
+              fallbackKind: "reply:engagement-paper",
+            });
+          }
         } catch (replyError: any) {
-          console.log(`  [ERROR] 댓글 실패: ${replyError.message}`);
+          console.log(`  [ERROR] 댓글 상태 저장 실패: ${replyError.message}`);
           continue;
         }
       }
@@ -3096,6 +3129,7 @@ export async function runDailyQuotaCycle(
   const runtimeSettings = resolveEngagementSettings(options.engagement);
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCost);
   const observabilitySettings = resolveObservabilitySettings(options.observability);
+  const socialSurfacesEnabled = options.socialSurfacesEnabled !== false;
   const cycleCache: EngagementCycleCache = {
     cacheMetrics: createEmptyCacheMetrics(),
   };
@@ -3186,15 +3220,22 @@ export async function runDailyQuotaCycle(
   let executed = 0;
   let postsCreatedThisCycle = 0;
   let quotesCreatedThisCycle = 0;
-  const mentionBudget = Math.min(remaining, Math.max(1, Math.floor(maxActions / 2)));
-  const mentionProcessed = await checkAndReplyMentions(
-    twitter,
-    claude,
-    mentionBudget,
-    timezone,
-    xApiCostSettings,
-    cycleReflectionHint
-  );
+  const mentionBudget = socialSurfacesEnabled
+    ? Math.min(remaining, Math.max(1, Math.floor(maxActions / 2)))
+    : 0;
+  const mentionProcessed = socialSurfacesEnabled
+    ? await checkAndReplyMentions(
+        twitter,
+        claude,
+        mentionBudget,
+        timezone,
+        xApiCostSettings,
+        cycleReflectionHint
+      )
+    : 0;
+  if (!socialSurfacesEnabled) {
+    console.log("[SOCIAL] mention/reply/quote surfaces disabled by runtime policy");
+  }
   executed += mentionProcessed;
 
   remaining = target - memory.getTodayActivityCount(timezone);
@@ -3203,7 +3244,8 @@ export async function runDailyQuotaCycle(
   }
 
   const postGoal = Math.max(2, Math.floor(target * 0.25));
-  const proactiveReplyAvailable = TEST_NO_EXTERNAL_CALLS || getTrendSearchCooldownRemainingMs() <= 0;
+  const proactiveReplyAvailable =
+    socialSurfacesEnabled && (TEST_NO_EXTERNAL_CALLS || getTrendSearchCooldownRemainingMs() <= 0);
   const replyGoal = proactiveReplyAvailable ? Math.max(1, Math.min(3, Math.floor(target * 0.3))) : 0;
   if (!proactiveReplyAvailable) {
     console.log("[SOCIAL] proactive reply 경로 비활성: search entitlement cooldown, 이번 사이클은 quote/post 우선");
@@ -3219,7 +3261,7 @@ export async function runDailyQuotaCycle(
     const todayPosts = memory.getTodayPostCount(timezone);
     const todayReplies = memory.getTodayReplyCount(timezone);
     const reserveReplyWindow = proactiveReplyAvailable && todayReplies === 0;
-    const canQuoteInCycle = quotesCreatedThisCycle < 1 && !reserveReplyWindow;
+    const canQuoteInCycle = socialSurfacesEnabled && quotesCreatedThisCycle < 1 && !reserveReplyWindow;
     const canPostInCycle = postsCreatedThisCycle < runtimeSettings.maxPostsPerCycle;
     const needReplies = proactiveReplyAvailable && todayReplies < replyGoal;
     const shouldLeadWithPost = canPostInCycle && todayPosts < postGoal && postsCreatedThisCycle === 0;

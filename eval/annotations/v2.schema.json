@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pixymon V2 blind annotation",
+  "type": "object",
+  "required": [
+    "pairId",
+    "reviewerId",
+    "blindSide",
+    "scores",
+    "preference",
+    "publishUnchanged",
+    "pixymonIdentified",
+    "hardVetoes",
+    "reasonTags",
+    "reviewedAt"
+  ],
+  "properties": {
+    "pairId": { "type": "string", "minLength": 1 },
+    "reviewerId": { "type": "string", "minLength": 1 },
+    "blindSide": { "enum": ["A", "B"] },
+    "scores": {
+      "type": "object",
+      "required": ["grounding", "clarity", "insight", "character", "memorability", "followWorthiness", "overall"],
+      "additionalProperties": false,
+      "properties": {
+        "grounding": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "clarity": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "insight": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "character": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "memorability": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "followWorthiness": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "overall": { "type": "integer", "minimum": 1, "maximum": 5 }
+      }
+    },
+    "preference": { "enum": ["A", "B", "tie"] },
+    "publishUnchanged": { "type": "boolean" },
+    "pixymonIdentified": { "type": "boolean" },
+    "hardVetoes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "reasonTags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "editedText": { "type": "string" },
+    "reviewedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

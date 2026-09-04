@@ -43,7 +43,7 @@ function classifyNarrativeBucket(item: OnchainEvidence): NarrativeBucket {
   if (/(법원|소송|당국|정책|규제|etf|sec|cftc|심사|승인|집행|court|lawsuit|policy|regulation|compliance)/.test(normalized)) {
     return "legal";
   }
-  if (/(복귀 자금|예치 자금 복귀|스테이블|대기 자금|거래소 유입|거래소 이탈|netflow|exchange flow|자금 흐름|capital)/.test(normalized)) {
+  if (/(복귀 자금|예치 자금 복귀|스테이블|대기 자금|관망 자금|거래소 유입|거래소 이탈|netflow|exchange flow|자금 흐름|capital)/.test(normalized)) {
     return "capital";
   }
   if (/(개발자 잔류|빌더|builder|developer retention|developer activity)/.test(normalized)) {
@@ -237,6 +237,7 @@ function augmentSceneFamilyBaseWithHeadline(
   }
   if (lane === "protocol" && focus === "durability" && base === "protocol:durability:rollout+validator") {
     if (/(복구|장애)/.test(normalized)) return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:recovery+validator");
+    if (/(검증자|validator|합의)/.test(normalized)) return sceneFamily;
     if (/(운영|로그)/.test(normalized)) return rewriteSceneFamilyBase(sceneFamily, "protocol:durability:recovery+rollout");
   }
   if (lane === "protocol" && focus === "durability" && base === "protocol:durability:recovery+rollout") {
@@ -376,6 +377,14 @@ export function diversifyDerivedSceneFamilyForVariant(
   const index = Math.abs(variant) % 8;
   const base = sceneFamilyBase(sceneFamily);
   if (!base) return sceneFamily;
+  if (
+    variant === 0 &&
+    lane === "protocol" &&
+    focus === "durability" &&
+    base === "protocol:durability:rollout+validator"
+  ) {
+    return sceneFamily;
+  }
 
   if (lane === "ecosystem" && focus === "builder" && base === "ecosystem:builder:builder+return") {
     return rewriteSceneFamilyBase(sceneFamily, [

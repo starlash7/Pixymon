@@ -5,8 +5,19 @@ import os from "os";
 import path from "path";
 import { buildDigestReflectionJob } from "../src/services/llm-batch.ts";
 import { LlmBatchQueueService } from "../src/services/llm-batch-queue.ts";
-import { submitPendingLlmBatch, syncLlmBatchRuns } from "../src/services/llm-batch-runner.ts";
 import { LlmBatchRunsService } from "../src/services/llm-batch-runs.ts";
+
+// The offline suite disables real providers at import time. This file injects
+// a complete fake Claude client, so load the runner with that provider guard
+// disabled only for this isolated test process, then restore the environment.
+const previousNoExternalCalls = process.env.TEST_NO_EXTERNAL_CALLS;
+process.env.TEST_NO_EXTERNAL_CALLS = "false";
+const { submitPendingLlmBatch, syncLlmBatchRuns } = await import("../src/services/llm-batch-runner.ts");
+if (previousNoExternalCalls === undefined) {
+  delete process.env.TEST_NO_EXTERNAL_CALLS;
+} else {
+  process.env.TEST_NO_EXTERNAL_CALLS = previousNoExternalCalls;
+}
 
 function withTempBatchState(
   run: (queue: LlmBatchQueueService, runs: LlmBatchRunsService, jobCustomId: string) => Promise<void> | void

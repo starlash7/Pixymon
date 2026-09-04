@@ -47,7 +47,11 @@ import { quarantineCorruptFile } from "./quarantine.js";
 
 // 데이터 디렉토리
 const DATA_DIR = resolveDataDir();
-const DEFAULT_MEMORY_DATA_PATH = process.env.MEMORY_DATA_PATH || path.join(DATA_DIR, "memory.json");
+const PAPER_DATA_DIR = String(process.env.PIXYMON_PAPER_DATA_DIR || "").trim();
+const DEFAULT_MEMORY_DATA_PATH =
+  String(process.env.ACTION_MODE || "").trim().toLowerCase() === "paper" && PAPER_DATA_DIR
+    ? path.join(DATA_DIR, "memory.json")
+    : process.env.MEMORY_DATA_PATH || path.join(DATA_DIR, "memory.json");
 const MEMORY_SAVE_DEBOUNCE_MS = 250;
 const MAX_REPLIED_TWEETS = 500;
 const MAX_SOUL_QUESTS = 120;
@@ -566,23 +570,31 @@ export class MemoryService {
   private dataPath: string;
   private saveTimer: NodeJS.Timeout | null = null;
   private repliedTweetSet = new Set<string>();
+  private readonlyMode: boolean;
+  private readonlyBaseline: MemoryData | null = null;
 
-  constructor(options?: { dataPath?: string }) {
+  constructor(options?: { dataPath?: string; readonly?: boolean }) {
     this.dataPath = options?.dataPath || DEFAULT_MEMORY_DATA_PATH;
+    this.readonlyMode = options?.readonly === true;
     this.data = this.load();
     this.sanitizeSoulArtifacts();
     this.repliedTweetSet = new Set(this.data.repliedTweets || []);
-    process.once("exit", () => {
-      this.flushSave();
-    });
+    if (this.readonlyMode) {
+      this.readonlyBaseline = structuredClone(this.data);
+    } else {
+      process.once("exit", () => {
+        this.flushSave();
+      });
+    }
   }
 
   // 데이터 로드
   private load(): MemoryData {
     try {
       const dataDir = path.dirname(this.dataPath);
-      // 디렉토리 없으면 생성
+      // Observe memory is a read-only snapshot. Missing files stay missing.
       if (!fs.existsSync(dataDir)) {
+        if (this.readonlyMode) return createEmptyMemoryData();
         fs.mkdirSync(dataDir, { recursive: true });
         console.log("[MEMORY] 데이터 디렉토리 생성됨");
       }
@@ -590,6 +602,7 @@ export class MemoryService {
       // 파일 없으면 초기화
       if (!fs.existsSync(this.dataPath)) {
         const empty = createEmptyMemoryData();
+        if (this.readonlyMode) return empty;
         this.save(empty, true);
         console.log("[MEMORY] 새 메모리 파일 생성됨");
         return empty;
@@ -621,6 +634,13 @@ export class MemoryService {
 
   // 데이터 저장
   private save(data?: MemoryData, immediate: boolean = false): void {
+    if (this.readonlyMode) {
+      if (this.readonlyBaseline) {
+        this.data = structuredClone(this.readonlyBaseline);
+        this.repliedTweetSet = new Set(this.data.repliedTweets || []);
+      }
+      return;
+    }
     if (data) {
       this.data = data;
       this.repliedTweetSet = new Set(this.data.repliedTweets || []);
@@ -639,6 +659,7 @@ export class MemoryService {
   }
 
   private flushSave(): void {
+    if (this.readonlyMode) return;
     try {
       if (this.saveTimer) {
         clearTimeout(this.saveTimer);
@@ -3762,4 +3783,7 @@ export class MemoryService {
 }
 
 // 싱글톤 인스턴스
-export const memory = new MemoryService({ dataPath: DEFAULT_MEMORY_DATA_PATH });
+export const memory = new MemoryService({
+  dataPath: DEFAULT_MEMORY_DATA_PATH,
+  readonly: String(process.env.ACTION_MODE || "observe").trim().toLowerCase() === "observe",
+});

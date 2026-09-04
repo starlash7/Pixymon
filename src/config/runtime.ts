@@ -6,11 +6,14 @@ import {
   LlmBatchRuntimeSettings,
   ObservabilityRuntimeSettings,
   OperationalRuntimeSettings,
+  PostPipelineVersion,
   ReplyLanguageMode,
   SoulRuntimeSettings,
   TotalCostRuntimeSettings,
   XApiCostRuntimeSettings,
 } from "../types/runtime.js";
+import path from "node:path";
+import { resolveDataDir } from "../services/data-dir.js";
 
 export interface RuntimeConfig {
   schedulerMode: boolean;
@@ -107,6 +110,8 @@ export const DEFAULT_SOUL_SETTINGS: SoulRuntimeSettings = {
 
 export const DEFAULT_OPERATIONAL_SETTINGS: OperationalRuntimeSettings = {
   actionMode: "observe",
+  postPipelineVersion: "v1",
+  socialSurfacesEnabled: false,
   stateReconcileOnBoot: true,
   actionTwoPhaseCommit: true,
   crashFlushOnException: true,
@@ -228,8 +233,21 @@ function parseActionMode(raw: string | undefined, fallback: ActionMode): ActionM
   return fallback;
 }
 
+function parsePostPipelineVersion(
+  raw: string | undefined,
+  fallback: PostPipelineVersion
+): PostPipelineVersion {
+  if (typeof raw !== "string") return fallback;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "v1" || normalized === "v2" ? normalized : fallback;
+}
+
 export function loadRuntimeConfig(): RuntimeConfig {
   const schedulerMode = process.env.SCHEDULER_MODE === "true";
+  const actionMode = parseActionMode(
+    process.env.ACTION_MODE,
+    DEFAULT_OPERATIONAL_SETTINGS.actionMode
+  );
   const dailyActivityTarget = parseIntInRange(
     process.env.DAILY_ACTIVITY_TARGET,
     DEFAULT_DAILY_ACTIVITY_TARGET,
@@ -575,11 +593,14 @@ export function loadRuntimeConfig(): RuntimeConfig {
       process.env.OBSERVABILITY_STDOUT_JSON,
       DEFAULT_OBSERVABILITY_SETTINGS.stdoutJson
     ),
-    eventLogPath: parseNonEmptyString(
-      process.env.OBSERVABILITY_EVENT_LOG_PATH,
-      DEFAULT_OBSERVABILITY_SETTINGS.eventLogPath,
-      400
-    ),
+    eventLogPath:
+      actionMode === "paper"
+        ? path.join(resolveDataDir(), "metrics-events.ndjson")
+        : parseNonEmptyString(
+            process.env.OBSERVABILITY_EVENT_LOG_PATH,
+            DEFAULT_OBSERVABILITY_SETTINGS.eventLogPath,
+            400
+          ),
   };
   const soul: SoulRuntimeSettings = {
     soulMode: parseBoolean(process.env.SOUL_MODE, DEFAULT_SOUL_SETTINGS.soulMode),
@@ -587,7 +608,15 @@ export function loadRuntimeConfig(): RuntimeConfig {
     questMode: parseBoolean(process.env.QUEST_MODE, DEFAULT_SOUL_SETTINGS.questMode),
   };
   const operational: OperationalRuntimeSettings = {
-    actionMode: parseActionMode(process.env.ACTION_MODE, DEFAULT_OPERATIONAL_SETTINGS.actionMode),
+    actionMode,
+    postPipelineVersion: parsePostPipelineVersion(
+      process.env.POST_PIPELINE_VERSION,
+      DEFAULT_OPERATIONAL_SETTINGS.postPipelineVersion
+    ),
+    socialSurfacesEnabled: parseBoolean(
+      process.env.SOCIAL_SURFACES_ENABLED,
+      DEFAULT_OPERATIONAL_SETTINGS.socialSurfacesEnabled
+    ),
     stateReconcileOnBoot: parseBoolean(
       process.env.STATE_RECONCILE_ON_BOOT,
       DEFAULT_OPERATIONAL_SETTINGS.stateReconcileOnBoot

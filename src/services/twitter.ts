@@ -17,7 +17,7 @@ import { TrendTweetSearchRules } from "./engagement/types.js";
 import { sanitizeTweetText } from "./engagement/quality.js";
 import { finalizeNarrativeSurface } from "./engagement/text-finalize.js";
 import { buildReplyRewriteJob } from "./llm-batch.js";
-import { XApiCostRuntimeSettings } from "../types/runtime.js";
+import { ActionMode, XApiCostRuntimeSettings } from "../types/runtime.js";
 import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 import { recordNarrativeObservation } from "./narrative-observer.js";
@@ -55,12 +55,16 @@ interface MentionReplyOptions {
   recentReflectionHint?: string;
 }
 
-interface PostTweetOptions {
+export interface PostTweetOptions {
   timezone?: string;
   xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
   createKind?: string;
   quoteTweetId?: string;
   metadata?: PostTweetMetadata;
+  /** V2 approved publishing uses one attempt so ambiguous X responses cannot duplicate a post. */
+  maxAttempts?: number;
+  /** Synchronous durable intent hook, called once immediately before the first X request. */
+  beforeSend?: () => void;
 }
 
 interface PostTweetMetadata {
@@ -72,6 +76,37 @@ interface PostTweetMetadata {
   evidenceIds?: string[];
   narrativeMode?: string;
   quoteTweetId?: string;
+}
+
+export interface XWriteDispatchResult {
+  mode: ActionMode;
+  id: string | null;
+  simulated: boolean;
+}
+
+export function resolveXWriteActionMode(raw: string | undefined = process.env.ACTION_MODE): ActionMode {
+  const normalized = String(raw || "observe").trim().toLowerCase();
+  return normalized === "paper" || normalized === "live" ? normalized : "observe";
+}
+
+export async function dispatchXWrite(
+  kind: string,
+  liveCreate: () => Promise<string | null>
+): Promise<XWriteDispatchResult> {
+  const mode = resolveXWriteActionMode();
+
+  if (mode === "observe") {
+    console.log(`[ACTION] observe-only kind=${kind} (X create skipped)`);
+    return { mode, id: null, simulated: false };
+  }
+
+  if (mode === "paper") {
+    const id = `paper_${Date.now()}`;
+    console.log(`[ACTION] paper-only kind=${kind} id=${id} (X create simulated)`);
+    return { mode, id, simulated: true };
+  }
+
+  return { mode, id: await liveCreate(), simulated: false };
 }
 
 interface PostDispatchState {
@@ -87,20 +122,27 @@ interface PostDispatchLock {
 const DISPATCH_LOCK_STALE_MS = 5 * 60 * 1000;
 const DISPATCH_MIN_GAP_MS = 8 * 60 * 1000;
 const DISPATCH_DUPLICATE_WINDOW_MS = 2 * 60 * 60 * 1000;
+const PAPER_ACTION_MODE = String(process.env.ACTION_MODE || "observe").trim().toLowerCase() === "paper";
+const RUNTIME_DATA_DIR = resolveDataDir();
 const DISPATCH_LOCK_PATH =
-  process.env.POST_DISPATCH_LOCK_PATH || path.join(process.cwd(), "data", "pixymon-post-dispatch.lock");
+  PAPER_ACTION_MODE
+    ? path.join(RUNTIME_DATA_DIR, "pixymon-post-dispatch.lock")
+    : process.env.POST_DISPATCH_LOCK_PATH || path.join(RUNTIME_DATA_DIR, "pixymon-post-dispatch.lock");
 const DISPATCH_STATE_PATH =
-  process.env.POST_DISPATCH_STATE_PATH || path.join(process.cwd(), "data", "pixymon-post-dispatch.json");
+  PAPER_ACTION_MODE
+    ? path.join(RUNTIME_DATA_DIR, "pixymon-post-dispatch.json")
+    : process.env.POST_DISPATCH_STATE_PATH || path.join(RUNTIME_DATA_DIR, "pixymon-post-dispatch.json");
 
 // 환경 변수 검증
-export function validateEnvironment() {
+export function validateEnvironment(options: { requireTwitter?: boolean } = {}) {
   const required: string[] = [];
+  const requireTwitter = options.requireTwitter !== false;
 
   if (!TEST_NO_EXTERNAL_CALLS) {
     required.push("ANTHROPIC_API_KEY");
   }
 
-  if (!TEST_MODE && !TEST_NO_EXTERNAL_CALLS) {
+  if (requireTwitter && !TEST_MODE && !TEST_NO_EXTERNAL_CALLS) {
     required.push(
       "TWITTER_API_KEY",
       "TWITTER_API_SECRET",
@@ -558,12 +600,18 @@ export async function replyToMention(
         160,
         "reply"
       ).slice(0, 160);
-      console.log(`🧪 [테스트-로컬] 멘션 답글 시뮬레이션: ${localReply}`);
+      const dispatch = await dispatchXWrite("reply:mention", async () => {
+        console.log(`🧪 [테스트-로컬] 멘션 답글 시뮬레이션: ${localReply}`);
+        return `test_${Date.now()}`;
+      });
+      if (!dispatch.id) {
+        return false;
+      }
       recordNarrativeObservation({
         surface: "reply",
         text: localReply,
         language: lang,
-        fallbackKind: "mention:test-local",
+        fallbackKind: dispatch.mode === "paper" ? "mention:paper" : "mention:test-local",
       });
       return true;
     }
@@ -654,8 +702,46 @@ ${mention.text}`,
     }
     replyText = finalizeNarrativeSurface(replyText, lang, maxChars, "reply").slice(0, maxChars);
 
-    if (TEST_MODE) {
-      console.log(`🧪 [테스트] 멘션 답글 시뮬레이션: ${replyText}`);
+    const dispatch = await dispatchXWrite("reply:mention", async () => {
+      if (TEST_MODE) {
+        console.log(`🧪 [테스트] 멘션 답글 시뮬레이션: ${replyText}`);
+        return `test_${Date.now()}`;
+      }
+
+      const createGuard = xApiBudget.checkCreateAllowance({
+        enabled: xApiCostSettings.enabled,
+        timezone,
+        dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+        estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+        dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
+        kind: "reply:mention",
+        minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
+      });
+      if (!createGuard.allowed) {
+        console.log(`[BUDGET] 멘션 답글 스킵: ${formatCreateBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
+        return null;
+      }
+
+      if (xApiCostSettings.enabled) {
+        const createUsage = xApiBudget.recordCreate({
+          timezone,
+          estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+          kind: "reply:mention",
+        });
+        console.log(
+          `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mention-reply)`
+        );
+      }
+
+      const reply = await twitter.v2.reply(replyText, mention.id);
+      console.log(`[OK] 멘션 답글: ${reply.data.id}`);
+      return reply.data.id;
+    });
+    if (!dispatch.id) {
+      return false;
+    }
+
+    if (TEST_MODE && dispatch.mode === "live") {
       recordNarrativeObservation({
         surface: "reply",
         text: replyText,
@@ -665,41 +751,13 @@ ${mention.text}`,
       return true;
     }
 
-    const createGuard = xApiBudget.checkCreateAllowance({
-      enabled: xApiCostSettings.enabled,
-      timezone,
-      dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
-      estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-      dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
-      kind: "reply:mention",
-      minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
-    });
-    if (!createGuard.allowed) {
-      console.log(`[BUDGET] 멘션 답글 스킵: ${formatCreateBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
-      return false;
-    }
-
-    if (xApiCostSettings.enabled) {
-      const createUsage = xApiBudget.recordCreate({
-        timezone,
-        estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-        kind: "reply:mention",
-      });
-      console.log(
-        `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (mention-reply)`
-      );
-    }
-
-    const reply = await twitter.v2.reply(replyText, mention.id);
-    console.log(`[OK] 멘션 답글: ${reply.data.id}`);
-
     // 답글도 메모리에 저장
-    memory.saveTweet(reply.data.id, replyText, "reply");
+    memory.saveTweet(dispatch.id, replyText, "reply");
     recordNarrativeObservation({
       surface: "reply",
       text: replyText,
       language: lang,
-      fallbackKind: "mention:live",
+      fallbackKind: `mention:${dispatch.mode}`,
     });
     memory.recordCognitiveActivity("social", 2);
     return true;
@@ -1123,6 +1181,30 @@ export const __postDispatchTest = {
   buildPostFingerprint,
 };
 
+/** Records a post only after X success (or explicit operator reconciliation). */
+export function recordConfirmedXPost(
+  id: string,
+  content: string,
+  type: "briefing" | "reply" | "quote" = "briefing",
+  options: PostTweetOptions = {}
+): void {
+  if (!memory.getRecentTweets(100).some((tweet) => tweet.id === id)) {
+    memory.saveTweet(id, content, type, {
+      ...(options.metadata || {}),
+      ...(options.quoteTweetId ? { quoteTweetId: options.quoteTweetId } : {}),
+    });
+  }
+  recordNarrativeObservation({
+    surface: type === "quote" ? "quote" : "post",
+    text: content,
+    language: detectLanguage(content),
+    lane: options.metadata?.lane,
+    narrativeMode: options.metadata?.narrativeMode,
+    fallbackKind: options.createKind || `post:${type}`,
+  });
+  if (type === "briefing") persistPostDispatchState(content);
+}
+
 export const __trendTargetTest = {
   isPreferredTrendReplyTarget,
   buildTrendSearchTerms,
@@ -1138,7 +1220,11 @@ export async function postTweet(
   type: "briefing" | "reply" | "quote" = "briefing",
   options: PostTweetOptions = {}
 ): Promise<string | null> {
-  if (TEST_MODE || !twitter) {
+  const actionMode = resolveXWriteActionMode();
+  const createKind = options.createKind || `post:${type}`;
+  const runtimeTestMode = process.env.TEST_MODE === "true";
+
+  if (actionMode === "live" && runtimeTestMode) {
     console.log("🧪 [테스트 모드] 트윗 발행 시뮬레이션:");
     console.log("─".repeat(40));
     console.log(content);
@@ -1152,18 +1238,24 @@ export async function postTweet(
       language: detectLanguage(content),
       lane: options.metadata?.lane,
       narrativeMode: options.metadata?.narrativeMode,
-      fallbackKind: TEST_MODE ? "post:test" : "post:no-twitter",
+      fallbackKind: "post:test",
     });
     return testId;
   }
 
+  if (actionMode === "live" && !twitter) {
+    console.error("[POST-GUARD] live Twitter client 누락: 성공을 시뮬레이션하지 않습니다.");
+    return null;
+  }
+
   let lastError: unknown;
-  const maxAttempts = 3;
+  let sendPrepared = false;
+  const maxAttempts = Number.isFinite(options.maxAttempts)
+    ? Math.max(1, Math.min(3, Math.trunc(options.maxAttempts as number)))
+    : 3;
   const timezone = normalizeTimezone(options.timezone);
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCostSettings);
-  const actionMode = String(process.env.ACTION_MODE || "observe").trim().toLowerCase();
   const commitId = `tw_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-  const createKind = options.createKind || `post:${type}`;
   const quoteTweetId = type === "quote" ? normalizeQuoteTweetId(options.quoteTweetId) : undefined;
   const dispatchLock = type === "briefing" ? acquirePostDispatchLock() : { acquired: true, release: () => {} };
   if (!dispatchLock.acquired) {
@@ -1189,14 +1281,92 @@ export async function postTweet(
       console.log(`[2PC] prepare id=${commitId} mode=${actionMode} kind=${createKind}`);
     }
 
-    if (actionMode === "observe") {
-      console.log(`[2PC] observe-only id=${commitId} kind=${createKind} (live create skipped)`);
+    const dispatch = await dispatchXWrite(createKind, async () => {
+      const createGuard = xApiBudget.checkCreateAllowance({
+        enabled: xApiCostSettings.enabled,
+        timezone,
+        dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
+        estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+        dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
+        kind: createKind,
+        minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
+      });
+      if (!createGuard.allowed) {
+        console.log(`[BUDGET] 글 발행 스킵: ${formatCreateBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
+        return null;
+      }
+
+      if (xApiCostSettings.enabled) {
+        const createUsage = xApiBudget.recordCreate({
+          timezone,
+          estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
+          kind: createKind,
+        });
+        console.log(
+          `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (${createKind})`
+        );
+      }
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          if (!sendPrepared) {
+            options.beforeSend?.();
+            sendPrepared = true;
+          }
+          console.log(`[2PC] send id=${commitId} attempt=${attempt} kind=${createKind}`);
+          const tweet = quoteTweetId
+            ? await twitter!.v2.tweet({ text: content, quote_tweet_id: quoteTweetId })
+            : await twitter!.v2.tweet(content);
+          console.log(`[2PC] response id=${commitId} attempt=${attempt}`);
+          if (ACTION_TWO_PHASE_COMMIT) {
+            if (!tweet?.data?.id || String(tweet.data.id).trim().length === 0) {
+              throw new Error("two-phase post-check failed: invalid tweet id");
+            }
+          }
+          console.log("✅ 트윗 발행 완료! (v2)");
+          console.log(`   ID: ${tweet.data.id}`);
+          console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.data.id}`);
+
+          recordConfirmedXPost(tweet.data.id, content, type, {
+            ...options,
+            quoteTweetId,
+            createKind,
+          });
+          if (ACTION_TWO_PHASE_COMMIT) {
+            console.log(`[2PC] commit id=${commitId} tweet=${tweet.data.id}`);
+          }
+          return tweet.data.id;
+        } catch (error) {
+          lastError = error;
+          const rateLimited = isRateLimitError(error);
+          const delayMs = rateLimited ? 60000 * attempt : 2000 * attempt;
+
+          if (attempt === maxAttempts) {
+            break;
+          }
+
+          console.error(
+            `⚠️ 트윗 발행 실패 (시도 ${attempt}/${maxAttempts})${rateLimited ? " [rate limit]" : ""}`
+          );
+          if (ACTION_TWO_PHASE_COMMIT) {
+            console.error(`[2PC] retry id=${commitId} attempt=${attempt}`);
+          }
+          await sleep(delayMs);
+        }
+      }
+
+      if (ACTION_TWO_PHASE_COMMIT) {
+        console.error(`[2PC] abort id=${commitId}`);
+      }
+      console.error("❌ 트윗 발행 실패:", lastError);
+      throw lastError;
+    });
+
+    if (!dispatch.id) {
       return null;
     }
 
-    if (actionMode === "paper") {
-      console.log(`[2PC] paper-only id=${commitId} kind=${createKind} (simulated create)`);
-      const paperId = `paper_${Date.now()}`;
+    if (dispatch.mode === "paper") {
       recordNarrativeObservation({
         surface: type === "quote" ? "quote" : "post",
         text: content,
@@ -1205,93 +1375,9 @@ export async function postTweet(
         narrativeMode: options.metadata?.narrativeMode,
         fallbackKind: `${createKind}:paper`,
       });
-      return paperId;
     }
 
-    const createGuard = xApiBudget.checkCreateAllowance({
-      enabled: xApiCostSettings.enabled,
-      timezone,
-      dailyMaxUsd: xApiCostSettings.dailyMaxUsd,
-      estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-      dailyCreateRequestLimit: xApiCostSettings.dailyCreateRequestLimit,
-      kind: createKind,
-      minIntervalMinutes: xApiCostSettings.createMinIntervalMinutes,
-    });
-    if (!createGuard.allowed) {
-      console.log(`[BUDGET] 글 발행 스킵: ${formatCreateBlockReason(createGuard.reason, createGuard.waitSeconds)}`);
-      return null;
-    }
-
-    if (xApiCostSettings.enabled) {
-      const createUsage = xApiBudget.recordCreate({
-        timezone,
-        estimatedCreateCostUsd: xApiCostSettings.estimatedCreateCostUsd,
-        kind: createKind,
-      });
-      console.log(
-        `[BUDGET] create=${createUsage.createRequests}/${xApiCostSettings.dailyCreateRequestLimit} total_est=$${createUsage.estimatedTotalCostUsd.toFixed(3)}/$${xApiCostSettings.dailyMaxUsd.toFixed(2)} (${createKind})`
-      );
-    }
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        console.log(`[2PC] send id=${commitId} attempt=${attempt} kind=${createKind}`);
-        const tweet = quoteTweetId
-          ? await twitter.v2.tweet({ text: content, quote_tweet_id: quoteTweetId })
-          : await twitter.v2.tweet(content);
-        console.log(`[2PC] response id=${commitId} attempt=${attempt}`);
-        if (ACTION_TWO_PHASE_COMMIT) {
-          if (!tweet?.data?.id || String(tweet.data.id).trim().length === 0) {
-            throw new Error("two-phase post-check failed: invalid tweet id");
-          }
-        }
-        console.log("✅ 트윗 발행 완료! (v2)");
-        console.log(`   ID: ${tweet.data.id}`);
-        console.log(`   URL: https://twitter.com/Pixy_mon/status/${tweet.data.id}`);
-
-        memory.saveTweet(tweet.data.id, content, type, {
-          ...(options.metadata || {}),
-          ...(quoteTweetId ? { quoteTweetId } : {}),
-        });
-        recordNarrativeObservation({
-          surface: type === "quote" ? "quote" : "post",
-          text: content,
-          language: detectLanguage(content),
-          lane: options.metadata?.lane,
-          narrativeMode: options.metadata?.narrativeMode,
-          fallbackKind: createKind,
-        });
-        if (type === "briefing") {
-          persistPostDispatchState(content);
-        }
-        if (ACTION_TWO_PHASE_COMMIT) {
-          console.log(`[2PC] commit id=${commitId} tweet=${tweet.data.id}`);
-        }
-        return tweet.data.id;
-      } catch (error) {
-        lastError = error;
-        const rateLimited = isRateLimitError(error);
-        const delayMs = rateLimited ? 60000 * attempt : 2000 * attempt;
-
-        if (attempt === maxAttempts) {
-          break;
-        }
-
-        console.error(
-          `⚠️ 트윗 발행 실패 (시도 ${attempt}/${maxAttempts})${rateLimited ? " [rate limit]" : ""}`
-        );
-        if (ACTION_TWO_PHASE_COMMIT) {
-          console.error(`[2PC] retry id=${commitId} attempt=${attempt}`);
-        }
-        await sleep(delayMs);
-      }
-    }
-
-    if (ACTION_TWO_PHASE_COMMIT) {
-      console.error(`[2PC] abort id=${commitId}`);
-    }
-    console.error("❌ 트윗 발행 실패:", lastError);
-    throw lastError;
+    return dispatch.id;
   } finally {
     dispatchLock.release();
   }

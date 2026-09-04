@@ -8,6 +8,7 @@ export interface NewsItem {
   category: string;
   importance: "high" | "medium" | "low";
   url?: string;
+  publishedAt?: string;
 }
 
 /**
@@ -41,6 +42,7 @@ interface CryptoCompareArticle {
   body?: string;
   source_info?: { name?: string };
   url?: string;
+  published_on?: number;
 }
 
 interface CryptoCompareNewsResponse {
@@ -134,6 +136,10 @@ function parseRssItems(xml: string, source: string, limit: number): NewsItem[] {
       const title = extractXmlTag(block, "title");
       const summary = extractXmlTag(block, "description");
       const url = extractXmlTag(block, "link");
+      const publishedRaw = extractXmlTag(block, "pubDate");
+      const publishedAt = Number.isFinite(Date.parse(publishedRaw))
+        ? new Date(publishedRaw).toISOString()
+        : undefined;
       if (!title || title.length < 12) return null;
       return {
         title,
@@ -142,6 +148,7 @@ function parseRssItems(xml: string, source: string, limit: number): NewsItem[] {
         category: "news",
         importance: index < 3 ? "high" : "medium",
         url: url || undefined,
+        publishedAt,
       } satisfies NewsItem;
     });
 
@@ -192,6 +199,10 @@ export class BlockchainNewsService {
         category: "news",
         importance: index < 3 ? "high" : "medium",
         url: article.url,
+        publishedAt:
+          typeof article.published_on === "number" && Number.isFinite(article.published_on)
+            ? new Date(article.published_on * 1000).toISOString()
+            : undefined,
       }));
     } catch (error) {
       console.error(`[WARN] 크립토 뉴스 API 실패: ${(error as Error).message}`);

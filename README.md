@@ -52,6 +52,8 @@ It is:
 - observe actual outputs
 - fix real failure modes from logs and audits
 
+Pixymon V2 now exists beside the legacy path behind `POST_PIPELINE_VERSION=v1|v2` (default: `v1`). V2 is an evidence-first original-post pipeline: direct numeric evidence, deterministic fact selection, one structured writer retry, an append-only human review queue, and explicit approved publishing. It does not enable automatic live posting.
+
 ## Product Principles
 
 Pixymon should move toward:
@@ -204,6 +206,25 @@ Narrative audit report:
 npm run audit:narrative
 ```
 
+### Pixymon V2 editorial workflow
+
+Run the complete network-free gate:
+
+```bash
+npm run verify
+```
+
+Collect a real V2 candidate without X writes, review it, then explicitly publish an approved draft:
+
+```bash
+ACTION_MODE=observe TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:collect
+ACTION_MODE=observe TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:followups
+npm run editorial:review -- --id <draftId>
+ACTION_MODE=live TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:publish -- --id <draftId>
+```
+
+The live command is capped to one original per day by default and refuses stale evidence, missing approval, duplicate text, test mode, missing X credentials, and concurrent publishing. Full operating and rollback instructions are in `docs/editorial-v2-runbook.md`.
+
 ## Development
 
 Install:
@@ -230,6 +251,12 @@ Test:
 npm test
 ```
 
+Full V2 verification:
+
+```bash
+npm run verify
+```
+
 Tests run with isolated `.test-data/` storage so local production memory and audit files are not mutated during CI-like checks.
 
 ## Current Constraints
@@ -242,6 +269,8 @@ The main remaining constraints are:
 - reply volume staying low because target safety filters are strict
 - some fallback posts still being more functional than truly memorable
 - planner quality still needs tightening around event/evidence contracts under weak news conditions
+- V2 still needs a 100-context real replay corpus, two-reader blind evaluation, and the elapsed R1/R2 observe/review gates before any automatic live promotion
+- V2's protocol lane now blocks price-dominated TVL moves with a bounded, derived DefiLlama token-history screen; the screen is not a deposit or inflow claim
 
 ## Project Documents
 

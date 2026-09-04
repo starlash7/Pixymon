@@ -3,6 +3,9 @@ import { pickSceneFamilyBase } from "./shared.js";
 
 export function resolveDurabilitySceneBase(merged: string, facets: string[], recentThreads: RecentNarrativeThread[] = []): string {
   const candidates: string[] = [];
+  if (/(배포|롤아웃|rollout)/.test(merged) && (/(검증자|validator|합의)/.test(merged) || facets.includes("validator"))) {
+    candidates.push("rollout+validator");
+  }
   if (/(로그|기록|운영 로그)/.test(merged)) {
     candidates.push("ops+log", "repair+log", "validator+log");
   }

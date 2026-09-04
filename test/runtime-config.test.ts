@@ -87,6 +87,10 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       SOFT_GATE_MODE: "true",
       QUEST_MODE: "false",
       ACTION_MODE: "paper",
+      PIXYMON_DATA_DIR: "/tmp/pixymon-config-live",
+      PIXYMON_PAPER_DATA_DIR: "/tmp/pixymon-config-paper",
+      POST_PIPELINE_VERSION: "v2",
+      SOCIAL_SURFACES_ENABLED: "true",
       STATE_RECONCILE_ON_BOOT: "false",
       ACTION_TWO_PHASE_COMMIT: "false",
       CRASH_FLUSH_ON_EXCEPTION: "false",
@@ -143,11 +147,13 @@ test("loadRuntimeConfig parses engagement and observability settings", () => {
       assert.equal(config.batch.minSyncMinutes, 15);
       assert.equal(config.observability.enabled, true);
       assert.equal(config.observability.stdoutJson, false);
-      assert.equal(config.observability.eventLogPath, "data/custom-observability.ndjson");
+      assert.equal(config.observability.eventLogPath, "/tmp/pixymon-config-paper/metrics-events.ndjson");
       assert.equal(config.soul.soulMode, false);
       assert.equal(config.soul.softGateMode, true);
       assert.equal(config.soul.questMode, false);
       assert.equal(config.operational.actionMode, "paper");
+      assert.equal(config.operational.postPipelineVersion, "v2");
+      assert.equal(config.operational.socialSurfacesEnabled, true);
       assert.equal(config.operational.stateReconcileOnBoot, false);
       assert.equal(config.operational.actionTwoPhaseCommit, false);
       assert.equal(config.operational.crashFlushOnException, false);
@@ -199,6 +205,8 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       SOFT_GATE_MODE: "invalid",
       QUEST_MODE: "invalid",
       ACTION_MODE: "invalid",
+      POST_PIPELINE_VERSION: "invalid",
+      SOCIAL_SURFACES_ENABLED: "invalid",
       STATE_RECONCILE_ON_BOOT: "invalid",
       ACTION_TWO_PHASE_COMMIT: "invalid",
       CRASH_FLUSH_ON_EXCEPTION: "invalid",
@@ -252,6 +260,8 @@ test("loadRuntimeConfig falls back on invalid observability values", () => {
       assert.equal(config.soul.softGateMode, false);
       assert.equal(config.soul.questMode, true);
       assert.equal(config.operational.actionMode, "observe");
+      assert.equal(config.operational.postPipelineVersion, "v1");
+      assert.equal(config.operational.socialSurfacesEnabled, false);
       assert.equal(config.operational.stateReconcileOnBoot, true);
       assert.equal(config.operational.actionTwoPhaseCommit, true);
       assert.equal(config.operational.crashFlushOnException, true);

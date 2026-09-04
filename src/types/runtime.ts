@@ -1,6 +1,7 @@
 export type ContentLanguage = "ko" | "en";
 export type ReplyLanguageMode = "match" | ContentLanguage;
 export type ActionMode = "observe" | "paper" | "live";
+export type PostPipelineVersion = "v1" | "v2";
 
 export interface EngagementRuntimeSettings {
   postGenerationMaxAttempts: number;
@@ -85,6 +86,8 @@ export interface SoulRuntimeSettings {
 
 export interface OperationalRuntimeSettings {
   actionMode: ActionMode;
+  postPipelineVersion: PostPipelineVersion;
+  socialSurfacesEnabled: boolean;
   stateReconcileOnBoot: boolean;
   actionTwoPhaseCommit: boolean;
   crashFlushOnException: boolean;

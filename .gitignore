@@ -39,5 +39,6 @@ coverage/
 
 # Memory data (personal/local)
 data/
+.paper-data/
 .test-data/
 pixymon.pid

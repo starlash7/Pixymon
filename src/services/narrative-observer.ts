@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { sanitizeTweetText } from "./engagement/quality.js";
 import { detectNarrativeFlagHits } from "./narrative-lexicon.js";
+import { resolveDataDir } from "./data-dir.js";
 
 export type NarrativeSurfaceKind = "post" | "quote" | "reply";
 
@@ -143,15 +144,21 @@ function readSummary(filePath: string): NarrativeObservationSummary {
 function resolvePath(rawPath: string): string {
   const normalized = String(rawPath || "").trim();
   if (!normalized) {
-    return path.join(process.cwd(), "data", "narrative-observation.ndjson");
+    return path.join(resolveDataDir(), "narrative-observation.ndjson");
   }
   return path.isAbsolute(normalized) ? normalized : path.join(process.cwd(), normalized);
 }
 
 function resolveNarrativeAuditSettings(): { enabled: boolean; logPath: string; summaryPath: string } {
+  const paperMode = String(process.env.ACTION_MODE || "observe").trim().toLowerCase() === "paper";
+  const dataDir = resolveDataDir();
   return {
     enabled: String(process.env.NARRATIVE_AUDIT_ENABLED ?? "true").trim().toLowerCase() !== "false",
-    logPath: process.env.NARRATIVE_AUDIT_LOG_PATH || "data/narrative-observation.ndjson",
-    summaryPath: process.env.NARRATIVE_AUDIT_SUMMARY_PATH || "data/narrative-phrase-audit.json",
+    logPath: paperMode
+      ? path.join(dataDir, "narrative-observation.ndjson")
+      : process.env.NARRATIVE_AUDIT_LOG_PATH || path.join(dataDir, "narrative-observation.ndjson"),
+    summaryPath: paperMode
+      ? path.join(dataDir, "narrative-phrase-audit.json")
+      : process.env.NARRATIVE_AUDIT_SUMMARY_PATH || path.join(dataDir, "narrative-phrase-audit.json"),
   };
 }

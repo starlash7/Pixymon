@@ -18,6 +18,7 @@ export interface DailyQuotaOptions {
   xApiCost?: Partial<XApiCostRuntimeSettings>;
   batch?: Partial<LlmBatchRuntimeSettings>;
   observability?: Partial<ObservabilityRuntimeSettings>;
+  socialSurfacesEnabled?: boolean;
 }
 
 export interface TrendContext {

@@ -181,7 +181,7 @@ export function buildOnchainEvidence(
   const limit = clampNumber(maxItems, 2, 30, 12);
   const dedup = new Map<string, OnchainEvidence>();
   nutrients.forEach((nutrient, index) => {
-    const lane = inferTrendLane(`${nutrient.category} ${nutrient.label} ${nutrient.evidence}`);
+    const lane = inferNutrientLane(nutrient);
     const humanized = humanizeEvidenceForNarrative(nutrient);
     const digestScore =
       typeof nutrient.metadata?.digestScore === "number"
@@ -193,7 +193,7 @@ export function buildOnchainEvidence(
     if (dedup.has(key)) return;
     dedup.set(key, {
       id: `evidence:${lane}:${index}:${nutrient.id}`,
-      lane: nutrient.source === "onchain" ? "onchain" : lane,
+      lane,
       nutrientId: nutrient.id,
       source: nutrient.source,
       label: humanized.label.slice(0, 110),
@@ -212,6 +212,29 @@ export function buildOnchainEvidence(
       return bScore - aScore;
     })
     .slice(0, Math.floor(limit));
+}
+
+function inferNutrientLane(nutrient: OnchainNutrient): TrendLane {
+  const source = String(nutrient.source || "").toLowerCase();
+  if (source === "onchain") return "onchain";
+  // Some legacy adapters tag first-party protocol observations directly even
+  // though the public NutrientSource type only exposes the broad feed class.
+  if (source === "protocol") return "protocol";
+
+  const normalized = sanitizeTweetText(
+    `${nutrient.category} ${nutrient.label} ${nutrient.evidence}`
+  ).toLowerCase();
+  if (
+    /^(복구 속도|검증자 안정성|메인넷 준비도|업그레이드 배포 큐)$/u.test(
+      sanitizeTweetText(nutrient.label || "")
+    )
+  ) {
+    return "protocol";
+  }
+  if (/^복귀 자금$/u.test(sanitizeTweetText(nutrient.label || "")) && /(launch|mainnet|rollout|release|메인넷|출시|배포)/.test(normalized)) {
+    return "protocol";
+  }
+  return inferTrendLane(normalized);
 }
 
 export function buildStructuralFallbackEventsFromEvidence(
@@ -314,7 +337,8 @@ export function buildStructuralFallbackEventsFromEvidence(
                   secondary,
                   derivedVariant
                 );
-                if (!derivedHeadline || isLowQualityTrendHeadline(derivedHeadline)) return null;
+                const directDerivedHeadline = normalizeDirectStructuralHeadline(derivedHeadline);
+                if (!directDerivedHeadline || isLowQualityTrendHeadline(directDerivedHeadline)) return null;
                 const derivedSummary = buildDerivedExplicitSummaryFromEvidence(
                   lane,
                   pairCandidate.focus,
@@ -325,14 +349,14 @@ export function buildStructuralFallbackEventsFromEvidence(
                 );
                 const derivedSceneFamily = augmentSceneFamilyWithHeadline(
                   diversifiedSceneFamily,
-                  derivedHeadline,
+                  directDerivedHeadline,
                   lane,
                   pairCandidate.focus
                 );
                 return {
                   id: `event:derived:${lane}:${normalizeHeadlineKey(primary.label)}:${normalizeHeadlineKey(secondary.label)}:${pairCandidate.focus}:${derivedSceneFamily}:${pairIndex}:v${derivedVariant}:${createdAt}`,
                   lane,
-                  headline: derivedHeadline,
+                  headline: directDerivedHeadline,
                   summary: derivedSummary,
                   source: "analysis:sharp",
                   trust: clampNumber(trust + 0.02, 0.18, 0.98, 0.7),
@@ -377,10 +401,20 @@ export function buildStructuralFallbackEventsFromEvidence(
 
   const targetCount = Math.max(1, Math.min(8, maxItems));
   const primary: typeof candidates = [];
+  const seenLaneFocus = new Set<string>();
   const seenSceneFamilies = new Set<string>();
   for (const item of candidates) {
+    const laneFocusKey = `${item.lane}|${item.focusHint || "general"}`;
+    if (seenLaneFocus.has(laneFocusKey)) continue;
+    const familyKey = `${laneFocusKey}|${item.sceneFamilyHint || "generic"}`;
+    primary.push(item);
+    seenLaneFocus.add(laneFocusKey);
+    seenSceneFamilies.add(familyKey);
+    if (primary.length >= targetCount) break;
+  }
+  for (const item of candidates) {
     const familyKey = `${item.lane}|${item.focusHint || "general"}|${item.sceneFamilyHint || "generic"}`;
-    if (seenSceneFamilies.has(familyKey)) continue;
+    if (seenSceneFamilies.has(familyKey) || primary.some((chosen) => chosen.id === item.id)) continue;
     primary.push(item);
     seenSceneFamilies.add(familyKey);
     if (primary.length >= targetCount) break;
@@ -403,6 +437,12 @@ export function buildStructuralFallbackEventsFromEvidence(
         ].slice(0, targetCount);
 
   return selected.map(({ score: _score, ...event }) => event);
+}
+
+function normalizeDirectStructuralHeadline(headline: string): string {
+  return sanitizeTweetText(headline)
+    .replace(/얇아진 구간$/u, "얇아진다")
+    .trim();
 }
 
 export function computeLaneUsageWindow(recentPosts: RecentPostRecord[]): LaneUsageWindow {
@@ -442,7 +482,9 @@ export function planEventEvidenceAct(params: {
     return null;
   }
 
-  const requireOnchainEvidence = params.requireOnchainEvidence !== false;
+  // Runtime callers pass this gate explicitly. Library callers opt in so
+  // direct cross-source protocol evidence is not silently discarded.
+  const requireOnchainEvidence = params.requireOnchainEvidence === true;
   const requireCrossSourceEvidence = params.requireCrossSourceEvidence !== false;
 
   const laneUsage = params.laneUsage || computeLaneUsageWindow(params.recentPosts);
@@ -1486,6 +1528,18 @@ function humanizeEvidenceForNarrative(nutrient: OnchainNutrient): {
     summary: sanitizeTweetText(summary),
   });
 
+  const exactProtocolEvidence: Record<string, string> = {
+    "복구 속도": "복구 속도가 릴리스 설명보다 늦게 붙는지 확인할 단서다.",
+    "검증자 안정성": "검증자 안정성이 배포 뒤에도 유지되는지 확인할 단서다.",
+    "메인넷 준비도": "메인넷 준비도가 실제 운영과 사용으로 이어지는지 확인할 단서다.",
+    "업그레이드 배포 큐": "업그레이드 배포 큐가 실제 운영 속도로 이어지는지 확인할 단서다.",
+    "복귀 자금": "출시 뒤 복귀 자금이 실제로 붙는 속도를 확인할 단서다.",
+  };
+  const exactProtocolSummary = exactProtocolEvidence[rawLabel];
+  if (exactProtocolSummary) {
+    return rewrite(rawLabel, rawValue, exactProtocolSummary);
+  }
+
   if (source === "onchain") {
     if (/수수료|sat\/vB|fee/.test(normalized)) {
       const feeValue = extractSignedNumber(rawValue);
@@ -1963,6 +2017,7 @@ function estimateWeakEvidencePenalty(pair: OnchainEvidence[]): number {
     if (/coindesk|cointelegraph|rss|reuters/.test(normalized)) return sum + 0.12;
     if (/(외부 뉴스 흐름|시장 반응)\b/.test(item.label)) return sum + 0.1;
     if (isEnglishHeavyEvidence(`${item.label} ${item.summary}`)) return sum + 0.14;
+    if (isFeeLikeEvidence(item)) return sum + 0.12;
     return sum;
   }, 0);
 }
@@ -3362,17 +3417,17 @@ function buildDerivedExplicitHeadlineFromEvidence(
   }
   if (lane === "onchain" && focus === "flow") {
     const pool = [
-      "고래 흔적은 큰데 자금 방향은 늦는 구간",
-      "주소 움직임은 화려한데 거래소 자금은 잠잠한 장면",
-      "온체인 숫자는 큰데 자금 방향은 얕은 구간",
+      `${pair}, 이 둘이 갈라지면 주소 숫자보다 자금 방향이 중요해진다`,
+      `${pair}, 이 둘이 같은 편에 서야 큰손 움직임도 성립한다`,
+      `${pair}, 이 둘이 따로 놀면 온체인 방향성이 갈린다`,
     ];
     return sanitizeTweetText(pool[seed % pool.length]).slice(0, 140);
   }
   if (lane === "onchain" && focus === "durability") {
     const pool = [
-      "예쁘게 튄 숫자는 큰데 오래 남는 흔적은 얕은 구간",
-      "온체인 반응은 화려한데 지속성은 약한 장면",
-      "숫자는 튀는데 하루를 버티는 흔적은 얕은 구간",
+      `${pair}, 이 둘이 같이 남아야 온체인 단서도 성립한다`,
+      `${pair}, 이 둘이 갈라지면 오래 남는 쪽이 중요해진다`,
+      `${pair}, 이 둘이 따로 놀면 하루를 못 간다`,
     ];
     return sanitizeTweetText(pool[seed % pool.length]).slice(0, 140);
   }

@@ -1,6 +1,6 @@
 # Pixymon Operating Plan
 
-Last updated: 2026-03-19
+Last updated: 2026-09-04
 
 This document is not a brainstorm file. It is the operating contract for Pixymon work.
 
@@ -75,6 +75,15 @@ As of now, Pixymon still fails on:
 3. low character distinctiveness in live output
 4. social loop blocked or degraded by X API entitlement limits
 
+The active response is `Pixymon V2`, first in `REDUCTION` and then `HOLD SCOPE`:
+
+1. stop publishing multi-stage fallback prose
+2. preserve named subjects, raw numbers, source URLs, and source time
+3. make the planner select facts and the writer render one bounded contract
+4. keep original posts human-approved until offline, observe, and review gates pass
+5. revisit every published Bite/Withhold at +24h and +72h
+6. treat USD TVL as a candidate only after a bounded token-history screen removes price-dominated moves; never publish the derived balance decomposition as inflow
+
 ## 6. Design Principles
 
 1. separate safety rails from creativity rails
@@ -128,6 +137,15 @@ Work in this order unless a higher-severity runtime failure interrupts:
 4. reply loop actually alive, or explicitly disabled for entitlement reasons
 5. cost limits respected
 
+V2 promotion metrics override volume metrics:
+
+1. factual and numeric error: `0`
+2. named-subject and numeric coverage: `100%`
+3. malformed or live-fallback output: `0`
+4. semantic near-duplicate rate: `<8%`
+5. human no-edit acceptance: `>=80%`
+6. due follow-up completion: `>=80%`
+
 ## 11. Operating Policy
 
 Keep:
@@ -144,8 +162,12 @@ Reduce:
 
 ## 12. Current Next Step
 
-Before more prompt tuning, prioritize:
+Do not tune V1 prompts further. Complete the V2 gates in order:
 
-1. planner rewrite
-2. fallback auto-publish reduction
-3. social path redesign that matches real X entitlement constraints
+1. `R0`: network-free verify, 100 real replay cases, and blind human evaluation
+2. `R1`: seven days and at least 30 observe decisions with zero X writes
+3. `R2`: fourteen days and at least 30 reviewed drafts with zero factual errors
+4. `R3`: ten human-approved live originals, capped at one per day
+5. only then evaluate an automatic original-post canary
+
+Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.

@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 process.env.TEST_MODE = "false";
-const testMemoryPath = path.join(process.cwd(), "data", "test-twitter-quote-memory.json");
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "pixymon-twitter-quote-"));
+const testMemoryPath = path.join(testDataDir, "memory.json");
+process.env.PIXYMON_DATA_DIR = testDataDir;
+process.env.PIXYMON_PAPER_DATA_DIR = path.join(testDataDir, "paper");
 process.env.MEMORY_DATA_PATH = testMemoryPath;
-fs.rmSync(testMemoryPath, { force: true });
 
 const twitterModulePromise = import("../src/services/twitter.ts");
 
@@ -48,15 +51,17 @@ function withEnv(
 }
 
 test.after(() => {
-  fs.rmSync(testMemoryPath, { force: true });
+  fs.rmSync(testDataDir, { recursive: true, force: true });
 });
 
 test("postTweet sends quote payload when type is quote", async () => {
   const { postTweet } = await twitterModulePromise;
   const calls: any[] = [];
+  let prepared = 0;
   const twitter = {
     v2: {
       tweet: async (payload: unknown) => {
+        assert.equal(prepared, 1);
         calls.push(payload);
         return { data: { id: "quote_123" } };
       },
@@ -69,11 +74,13 @@ test("postTweet sends quote payload when type is quote", async () => {
       quoteTweetId: "1940012345678901234",
       createKind: "post:quote:test",
       xApiCostSettings: { enabled: false },
+      beforeSend: () => { prepared += 1; },
     });
   });
 
   assert.equal(id, "quote_123");
   assert.equal(calls.length, 1);
+  assert.equal(prepared, 1);
   assert.equal(typeof calls[0], "object");
   assert.equal(calls[0].text, "온체인 근거가 먼저 움직이는 구간.");
   assert.equal(calls[0].quote_tweet_id, "1940012345678901234");

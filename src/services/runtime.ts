@@ -25,7 +25,7 @@ export function printStartupBanner(config: RuntimeConfig): void {
     `  [SOUL] soul=${config.soul.soulMode ? "on" : "off"} | quest=${config.soul.questMode ? "on" : "off"} | softGate=${config.soul.softGateMode ? "on" : "off"}`
   );
   console.log(
-    `  [SAFE] action=${config.operational.actionMode} | reconcile=${config.operational.stateReconcileOnBoot ? "on" : "off"} | 2pc=${config.operational.actionTwoPhaseCommit ? "on" : "off"}`
+    `  [SAFE] action=${config.operational.actionMode} | pipeline=${config.operational.postPipelineVersion} | social=${config.operational.socialSurfacesEnabled ? "configured-on" : "off"} | reconcile=${config.operational.stateReconcileOnBoot ? "on" : "off"} | 2pc=${config.operational.actionTwoPhaseCommit ? "on" : "off"}`
   );
   console.log(
     `  [BUDGET] X=$${config.xApiCost.dailyMaxUsd.toFixed(2)}/day | LLM=$${config.anthropicCost.dailyMaxUsd.toFixed(2)}/day | TOTAL=$${config.totalCost.dailyMaxUsd.toFixed(2)}/day | cache=${config.anthropicCost.promptCachingEnabled ? "on" : "off"} | usage-api=${config.anthropicCost.usageApiEnabled ? "on" : "off"}`
@@ -40,6 +40,7 @@ export async function initializeMentionCursor(
   twitter: TwitterApi | null,
   config: RuntimeConfig
 ): Promise<void> {
+  if (!config.operational.socialSurfacesEnabled) return;
   if (!twitter || TEST_MODE) return;
 
   const savedMentionId = memory.getLastProcessedMentionId();
@@ -108,6 +109,7 @@ export async function runSchedulerMode(
     xApiCost: config.xApiCost,
     batch: config.batch,
     observability: config.observability,
+    socialSurfacesEnabled: config.operational.socialSurfacesEnabled,
   });
 }
 
@@ -141,6 +143,7 @@ export async function runOneShotMode(
       xApiCost: config.xApiCost,
       batch: config.batch,
       observability: config.observability,
+      socialSurfacesEnabled: config.operational.socialSurfacesEnabled,
     });
 
     const submit = await submitPendingLlmBatch(claude, config.batch);
