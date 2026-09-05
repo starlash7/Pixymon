@@ -1,4 +1,7 @@
 import "dotenv/config";
+import path from "node:path";
+import { assertApprovedLiveAuthorizationV2 } from "../src/services/editorial-v2/publication-policy.js";
+import { editorialVerificationRepositoryStateV2 } from "./editorial-repository-state.js";
 import { loadRuntimeConfig } from "../src/config/runtime.js";
 import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.js";
 import { resolveEditorialRuntimePathsV2 } from "../src/services/editorial-v2/paths.js";
@@ -63,13 +66,23 @@ async function main(): Promise<void> {
     const twitter = initTwitterClient();
     if (!twitter) throw new Error("Twitter credentials are required; live publish cannot simulate success");
     const state = store.getDraftState(draftIdArg());
+    const authorize = () => {
+      const repository = editorialVerificationRepositoryStateV2();
+      assertApprovedLiveAuthorizationV2({
+        authorizationPath: arg("authorization") || "",
+        stopPath: path.join(paths.dataDir, "editorial-v2", "STOP"),
+        commit: repository.currentCommit,
+        workingTreeClean: repository.workingTreeClean,
+      });
+    };
     const result = await publishEditorialDraftV2({
       store,
       draftId: draftIdArg(),
       mode: "live",
+      authorize,
       metricLogPath: paths.metricLogPath,
       timezone: config.dailyTimezone,
-      dailyLimit: Number.parseInt(String(process.env.EDITORIAL_DAILY_POST_LIMIT || "1"), 10),
+      dailyLimit: 1, // R3 approved-live scope; ramp is not authorized by this policy.
       revalidateEvidence: async (facts) => {
         const revalidationTargets: EditorialFollowUpTargetV2[] = facts.map((fact) => ({
           provider: fact.source.provider as EditorialFollowUpTargetV2["provider"],

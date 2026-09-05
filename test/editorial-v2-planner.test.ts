@@ -96,7 +96,7 @@ test("absolute TVL moved outranks a noisier percentage on a tiny base", () => {
   if (result.status === "planned") assert.equal(result.evidence.id, "broad-move");
 });
 
-test("Bite and Withhold reflect evidence materiality instead of bullish direction", () => {
+test("a large directional observation without a testable level stays Withhold", () => {
   const moderatePositive = planEditorialV2({ evidence: [card()], now: NOW });
   assert.equal(moderatePositive.status, "planned");
   if (moderatePositive.status === "planned") {
@@ -110,8 +110,10 @@ test("Bite and Withhold reflect evidence materiality instead of bullish directio
   });
   assert.equal(materialNegative.status, "planned");
   if (materialNegative.status === "planned") {
-    assert.equal(materialNegative.plan.format, "bite");
-    assert.equal(materialNegative.plan.verdict, "reject");
+    assert.equal(materialNegative.plan.format, "withhold");
+    assert.equal(materialNegative.plan.verdict, "digesting");
+    assert.equal(materialNegative.plan.voiceState, "patient");
+    assert.equal(materialNegative.plan.editorialCase?.hypothesis, null);
   }
 });
 
@@ -132,7 +134,10 @@ test("planner falsifies a rolling TVL event against its absolute TVL baseline", 
     assert.equal(result.plan.falsifier.threshold, 100_000_000);
     assert.equal(result.plan.followUpAt.due72h, "2026-08-31T10:00:00.000Z");
     assert.doesNotMatch(result.plan.thesis, /72시간|다음|재검증|확인한다/);
-    assert.match(result.plan.thesis, /더 큰 서사는 승인하지 않는다/);
+    assert.equal(result.plan.format, "bite");
+    assert.equal(result.plan.verdict, "digesting");
+    assert.match(result.plan.editorialCase!.hypothesis!, /100000000 USD 이상/);
+    assert.match(result.plan.editorialCase!.limitation, /가격 중립 잔류/);
   }
 });
 

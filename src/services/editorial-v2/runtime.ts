@@ -16,6 +16,7 @@ async function collectOnce(claude: Anthropic, config: RuntimeConfig): Promise<vo
     writerModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone),
     metricLogPath: paths.metricLogPath,
     mode: config.operational.actionMode,
+    trackingMode: paths.trackingMode,
   });
   if (result.status === "drafted") {
     console.log(`[V2] 검토 후보 생성: ${result.draftId}`);

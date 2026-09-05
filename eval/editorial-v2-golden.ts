@@ -377,30 +377,30 @@ function plannerCases(): GoldenCase[] {
         assert.equal(result.status, "planned");
         if (result.status === "planned") {
           assert.equal(result.plan.format, "withhold");
-          assert.equal(result.plan.voiceState, "skeptical");
+          assert.equal(result.plan.voiceState, "patient");
         }
       },
     },
     {
-      name: "large fact uses energized voice",
+      name: "large observation without a hypothesis uses patient voice",
       run: () => {
         const result = planEditorialV2({
           evidence: [card({ metric: { ...card().metric, value: 12.5, raw: "+12.5%" } })],
           now: NOW,
         });
         assert.equal(result.status, "planned");
-        if (result.status === "planned") assert.equal(result.plan.voiceState, "energized");
+        if (result.status === "planned") assert.equal(result.plan.voiceState, "patient");
       },
     },
     {
-      name: "small positive fact uses curious voice",
+      name: "small positive observation is not automatically an optimistic verdict",
       run: () => {
         const result = planEditorialV2({
           evidence: [card({ metric: { ...card().metric, value: 1.5, raw: "+1.5%" } })],
           now: NOW,
         });
         assert.equal(result.status, "planned");
-        if (result.status === "planned") assert.equal(result.plan.voiceState, "curious");
+        if (result.status === "planned") assert.equal(result.plan.voiceState, "patient");
       },
     },
     {

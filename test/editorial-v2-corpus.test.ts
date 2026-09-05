@@ -81,7 +81,7 @@ test("real replay keeps the machine falsifier metadata but rejects public follow
   const rows = await realReplayRows();
   const first = rows[0];
   assert.ok(["gt", "gte", "lt", "lte", "eq"].includes(first.falsifier.comparator));
-  first.draft = `${first.draft} 72시간 뒤 같은 지표가 기준 미만이면 이 판정을 철회한다.`;
+  first.draft = `${first.draft} 다음 관측에서 같은 지표를 다시 확인하겠다.`;
 
   const report = withReplayFile(rows, evaluateRealReplayCorpusV2);
   assert.equal(report.determinism.passed, true);

@@ -654,20 +654,9 @@ export function buildBlindEvaluationPackV2(
   }).sort((left, right) => left.order.localeCompare(right.order) || left.id.localeCompare(right.id));
   const revisitCount = normalized.filter((comparison) => comparison.format === "revisit").length;
   if (revisitCount !== 12) throw new Error(`blind pack requires exactly 12 revisit pairs`);
-  for (const requiredLane of ['onchain', 'protocol', 'ecosystem'] as const) {
-    for (const originalFormat of ["bite", "withhold"] as const) {
-      const formatCount = normalized.filter(
-        (comparison) =>
-          comparison.lane === requiredLane &&
-          comparison.format === originalFormat
-      ).length;
-      if (formatCount !== 4) {
-        throw new Error(
-          `blind pack requires 4 ${originalFormat} ${requiredLane} pairs; received ${formatCount}`
-        );
-      }
-    }
-  }
+  if (normalized.some((comparison) => comparison.lane !== "protocol")) throw new Error("blind milestone is protocol-only");
+  const originalCount = normalized.filter((row) => ["bite", "withhold"].includes(row.format)).length;
+  if (originalCount !== 24) throw new Error(`blind pack requires 24 protocol originals; received ${originalCount}`);
   const aSideIds = new Set(
     [...normalized]
       .sort((left, right) => left.sideOrder.localeCompare(right.sideOrder) || left.id.localeCompare(right.id))
@@ -893,20 +882,9 @@ export function aggregateBlindEvaluationV2(input: {
   }
   const mappedRevisits = mapping.pairs.filter((pair) => pair.format === "revisit").length;
   if (mappedRevisits !== 12) incompleteReasons.push(`revisit-pairs:${mappedRevisits}/12`);
-  for (const requiredLane of ['onchain', 'protocol', 'ecosystem'] as const) {
-    for (const originalFormat of ["bite", "withhold"] as const) {
-      const formatCount = mapping.pairs.filter(
-        (pair) =>
-          pair.lane === requiredLane &&
-          pair.format === originalFormat
-      ).length;
-      if (formatCount !== 4) {
-        incompleteReasons.push(
-          `original-format:${requiredLane}:${originalFormat}:${formatCount}/4`
-        );
-      }
-    }
-  }
+  if (mapping.pairs.some((pair) => pair.lane !== "protocol")) incompleteReasons.push("protocol-only-milestone");
+  const originalCount = mapping.pairs.filter((pair) => ["bite", "withhold"].includes(pair.format)).length;
+  if (originalCount !== 24) incompleteReasons.push(`protocol-originals:${originalCount}/24`);
   if (reviewers.size !== BLIND_EVALUATION_READER_COUNT_V2) {
     incompleteReasons.push(
       `reviewer-count:${reviewers.size}/${BLIND_EVALUATION_READER_COUNT_V2}`

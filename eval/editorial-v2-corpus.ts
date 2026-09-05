@@ -458,7 +458,7 @@ function evaluateRows(
         candidate.displayValue,
         candidate.metricValue
       ),
-      forbidPublicFollowUp: candidate.format !== "revisit",
+      forbidPublicFollowUp: false,
       forbidFutureRecheck: true,
     })
   );

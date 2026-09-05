@@ -4,6 +4,7 @@ import {
   EditorialEventStoreV2,
 } from "./event-store.js";
 import type { EditorialFactSnapshotV2 } from "./contracts.js";
+import { EDITORIAL_COLLECTION_EPOCH_V2 } from "./contracts.js";
 import { appendEditorialMetricV2, buildEditorialMetricV2 } from "./telemetry.js";
 import {
   formatEvidenceSourceTimeV2,
@@ -33,6 +34,8 @@ export async function publishEditorialDraftV2(input: {
   timezone: string;
   dailyLimit?: number;
   now?: Date;
+  /** Rechecked immediately before dispatch; missing authority always blocks. */
+  authorize?: () => void;
 }): Promise<EditorialPublishResultV2> {
   const now = input.now ?? new Date();
   const state = input.store.getDraftState(input.draftId);
@@ -61,6 +64,15 @@ export async function publishEditorialDraftV2(input: {
   }
   if (input.mode !== "live") return blocked("live-mode-required");
   if (!state.draft.generatedPayload) return blocked("writer-lineage-missing");
+  if (state.draft.collectionEpoch !== EDITORIAL_COLLECTION_EPOCH_V2) return blocked("writer-epoch-not-current");
+  if (state.draft.trackingMode === "shadow") return blocked("shadow-draft-cannot-publish");
+  if (state.draft.lane !== "protocol") return blocked("protocol-only-milestone");
+  try {
+    if (!input.authorize) throw new Error("approved-live-authorization-required");
+    input.authorize();
+  } catch (error) {
+    return blocked(error instanceof Error ? error.message : "publication-not-authorized", "authorization");
+  }
 
   let preparation: ReturnType<EditorialEventStoreV2["preparePublication"]>;
   try {
@@ -93,7 +105,7 @@ export async function publishEditorialDraftV2(input: {
       fact.metric.raw,
       fact.metric.value
     ),
-    forbidPublicFollowUp: state.draft.format !== "revisit",
+    forbidPublicFollowUp: false,
     forbidFutureRecheck: true,
   });
   if (!validation.ok) return blocked(`publish-contract:${validation.reasons.join(",")}`);
@@ -116,6 +128,7 @@ export async function publishEditorialDraftV2(input: {
 
   let attempted = false;
   const beforeSend = () => {
+    input.authorize!();
     input.store.markDispatching(input.draftId, {
       preparedAt: preparation.freshnessCheckedAt,
       expectedPublishText: preparation.publishText,

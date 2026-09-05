@@ -18,6 +18,7 @@ async function main(): Promise<void> {
     writerModel: createAnthropicEditorialWriterV2(initClaudeClient(), config.dailyTimezone),
     metricLogPath: paths.metricLogPath,
     mode: config.operational.actionMode,
+    trackingMode: paths.trackingMode,
   });
   if (result.status === "drafted") {
     console.log(`[EDITORIAL] draft=${result.draftId}`);

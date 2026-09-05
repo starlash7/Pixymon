@@ -25,6 +25,11 @@ export function formatEditorialReviewCardV2(state: EditorialDraftStateV2): strin
     `[${state.draft.id}] ${state.reviewStatus.toUpperCase()} · ${state.draft.format} · ${state.draft.voiceState}`,
     `planner: ${state.draft.thesis}`,
     `verdict: ${state.draft.verdict}`,
+    `tracking: ${state.draft.trackingMode ?? "live"}`,
+    `question: ${state.draft.editorialCase?.question ?? "legacy — no question contract"}`,
+    `hypothesis: ${state.draft.editorialCase?.hypothesis ?? "none — observation only"}`,
+    `limit: ${state.draft.editorialCase?.limitation ?? "legacy"}`,
+    `previous: ${state.draft.memoryContext?.previous ? JSON.stringify(state.draft.memoryContext.previous) : "none"}`,
     `writer lineage: ${state.draft.generatedPayload ? "captured" : "missing (legacy; publish blocked)"}`,
     `falsifier: ${state.draft.falsifier.metric} ${state.draft.falsifier.comparator} ${state.draft.falsifier.threshold} ${state.draft.falsifier.unit || ""} @ ${state.draft.falsifier.deadline}`,
     facts,
@@ -68,7 +73,7 @@ export function recordEditorialReviewV2(input: {
         fact.metric.raw,
         fact.metric.value
       ),
-      forbidPublicFollowUp: state.draft.format !== "revisit",
+      forbidPublicFollowUp: false,
       forbidFutureRecheck: true,
     });
     if (!validation.ok) throw new Error(`edited draft failed contract: ${validation.reasons.join(",")}`);

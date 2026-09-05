@@ -33,8 +33,8 @@ function requiredOption(name: string): string {
 }
 
 async function main(): Promise<void> {
-  const replayPath = requiredOption("--replay");
-  const eventLogPath = requiredOption("--event-log");
+  const replayPath = option("--replay");
+  const eventLogPath = replayPath ? requiredOption("--event-log") : undefined;
   const outputPath = requiredOption("--output");
   const startingState = editorialVerificationRepositoryStateV2();
   const startingCommit = startingState.currentCommit;
@@ -58,12 +58,28 @@ async function main(): Promise<void> {
     throw new Error("source/eval/test tree changed while verification was running");
   }
 
+  if (!replayPath) {
+    const synthetic = await evaluateSyntheticCorpusV2("pixymon-v2-r0");
+    assertEditorialCorpusGatesV2(synthetic);
+    writeNewRolloutMachineEvidenceV2(outputPath, {
+      schemaVersion: 2, kind: "pixymon-v2-rollout-evidence",
+      offlineVerify: {
+        passed: true, offlineContractMode: true, completedAt: new Date().toISOString(),
+        commit: startingCommit, pipelineDeterminismScope: "synthetic-contract",
+        pipelineDeterminismPassed: synthetic.determinism.passed,
+        pipelineDeterminismRuns: synthetic.determinism.runs,
+      },
+    });
+    console.log("[EDITORIAL] R0 contract evidence recorded; real replay and blind evaluation remain R2 requirements");
+    return;
+  }
+
   const replayArtifactSha256 = sha256FileV2(replayPath);
   const replayExport = readStrictEditorialReplayExportV2(replayPath);
   if (sha256FileV2(replayPath) !== replayArtifactSha256) {
     throw new Error("replay artifact changed while it was being read");
   }
-  verifyEditorialReplayLineageV2(replayExport, eventLogPath);
+  verifyEditorialReplayLineageV2(replayExport, eventLogPath!);
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "pixymon-r0-replay-"));
   const evaluatorInputPath = path.join(temporaryDirectory, "rows.json");
   fs.writeFileSync(evaluatorInputPath, `${JSON.stringify(replayExport.rows)}\n`, "utf8");

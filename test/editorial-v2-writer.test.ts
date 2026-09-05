@@ -79,7 +79,7 @@ test("writer retries once and accepts grounded present-tense public copy", async
   assert.equal(result.attempts, 2);
   assert.equal(result.payload.draft, validDraft);
   assert.match(prompts[0], /publicSourceTime: 8월 28일 09:30 UTC/);
-  assert.match(prompts[0], /미래 약속이나 조건 없이/);
+  assert.match(prompts[0], /조건문은 허용/);
   assert.doesNotMatch(prompts[0], /falsifier:|72시간 뒤|2026-08-31/);
   assert.deepEqual(editorialPlan.falsifier, machineFalsifier);
 });
@@ -148,20 +148,19 @@ for (const ending of [
   "현재 수준이 유지될 시 이 판정을 승인한다.",
   "현재 수준이 무너지지 않는 한 이 판정을 승인한다.",
 ]) {
-  test(`writer rejects public conditions and recheck promises: ${ending}`, async () => {
+  test(`writer permits conditionals but still rejects new recheck promises: ${ending}`, async () => {
     const draft = `Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 수치는 원시 관측으로 기록한다. ${ending}`;
     const result = await writeEditorialDraftV2({
       model: { async generate() { return JSON.stringify({ draft, usedFactIds: [EVIDENCE.id], claims: claimsFor(draft) }); } },
       plan: plan(),
       evidence: EVIDENCE,
     });
-    assert.equal(result.status, "blocked");
-    if (result.status === "generated") assert.fail("public follow-up passed");
-    assert.ok(result.validationReasons.some((reason) => [
-      "public-conditional-language",
-      "public-recheck-language",
-      "public-falsifier-action",
-    ].includes(reason)));
+    if (ending.includes("확인하겠다")) {
+      assert.equal(result.status, "blocked");
+      if (result.status === "blocked") assert.ok(result.validationReasons.includes("future-recheck-promise"));
+    } else {
+      assert.equal(result.status, "generated");
+    }
   });
 }
 

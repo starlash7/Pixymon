@@ -361,6 +361,9 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
   }
   requireText(draft.id, "draft.id");
   requireText(draft.runId, "draft.runId");
+  if (draft.trackingMode !== undefined && !["live", "shadow"].includes(draft.trackingMode)) {
+    throw new Error("unsupported editorial tracking mode");
+  }
   const hasLane = typeof draft.lane !== "undefined";
   const hasCollectionEpoch = typeof draft.collectionEpoch !== "undefined";
   if (hasLane !== hasCollectionEpoch) {
@@ -373,6 +376,27 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
   requireText(draft.subject, "draft.subject");
   requireText(draft.thesis, "draft.thesis");
   requireText(draft.verdict, "draft.verdict");
+  if (draft.editorialCase) {
+    requireText(draft.editorialCase.question, "case.question");
+    requireText(draft.editorialCase.limitation, "case.limitation");
+    if (!["usd-tvl-level", "observation-only"].includes(draft.editorialCase.scope) ||
+        !Array.isArray(draft.editorialCase.factIds) || draft.editorialCase.factIds.length === 0 ||
+        (draft.editorialCase.scope === "observation-only" ? draft.editorialCase.hypothesis !== null :
+          typeof draft.editorialCase.hypothesis !== "string" || !draft.editorialCase.hypothesis.trim())) {
+      throw new Error("invalid editorial question/hypothesis contract");
+    }
+    if (draft.format !== "revisit" && !hasExactStringSequence(draft.editorialCase.factIds, draft.factIds)) {
+      throw new Error("case facts must match the original evidence");
+    }
+    if (draft.format !== "revisit" && draft.editorialCase.scope === "usd-tvl-level") {
+      const measurement = draft.facts[0]?.followUp;
+      if (!measurement || measurement.metric.name !== draft.falsifier.metric ||
+          measurement.metric.unit !== draft.falsifier.unit ||
+          measurement.threshold !== draft.falsifier.threshold || measurement.comparator !== draft.falsifier.comparator) {
+        throw new Error("hypothesis falsifier must match its tracked measurement");
+      }
+    }
+  }
   requireText(draft.draft, "draft.draft");
   if (!["bite", "withhold", "revisit", "evolution"].includes(draft.format)) {
     throw new Error(`unsupported editorial format: ${String(draft.format)}`);
@@ -558,6 +582,8 @@ function copyState(state: EditorialDraftStateV2): EditorialDraftStateV2 {
       facts: state.draft.facts.map(copyFact),
       falsifier: { ...state.draft.falsifier },
       followUpSchedule: { ...state.draft.followUpSchedule },
+      editorialCase: state.draft.editorialCase ? structuredClone(state.draft.editorialCase) : undefined,
+      memoryContext: state.draft.memoryContext ? structuredClone(state.draft.memoryContext) : undefined,
       generatedPayload: state.draft.generatedPayload
         ? copyGeneratedPayload(state.draft.generatedPayload)
         : undefined,
@@ -641,6 +667,7 @@ export function foldEditorialEventsV2(events: readonly EditorialEventV2[]): Edit
     }
 
     if (event.type === "dispatch-prepared") {
+      if (current.draft.trackingMode === "shadow") throw new Error("shadow-draft-cannot-publish");
       if (current.publication) throw new Error(`published draft cannot dispatch again: ${draftId}`);
       if (current.dispatchIntent) throw new Error(`draft already has a dispatch intent: ${draftId}`);
       if (current.reviewStatus !== "approved") {
@@ -654,6 +681,7 @@ export function foldEditorialEventsV2(events: readonly EditorialEventV2[]): Edit
     }
 
     if (event.type === "draft-published") {
+      if (current.draft.trackingMode === "shadow") throw new Error("shadow-draft-cannot-publish");
       if (current.publication) {
         if (
           current.publication.externalPostId === event.publication.externalPostId &&
@@ -759,6 +787,8 @@ export class EditorialEventStoreV2 {
       continuityThread: input.continuityThread?.trim() || undefined,
       draft: requireText(input.draft, "draft.draft"),
       generatedPayload: input.generatedPayload,
+      editorialCase: input.editorialCase ? structuredClone(input.editorialCase) : undefined,
+      memoryContext: input.memoryContext ? structuredClone(input.memoryContext) : undefined,
     };
     assertDraft(draft);
     if (draft.generatedPayload) {
@@ -804,6 +834,7 @@ export class EditorialEventStoreV2 {
 
   preparePublication(draftId: string): PrepareEditorialPublicationResultV2 {
     const state = this.requireDraftState(draftId);
+    if (state.draft.trackingMode === "shadow") throw new Error("shadow-draft-cannot-publish");
     if (state.publication) {
       return {
         status: "already-published",

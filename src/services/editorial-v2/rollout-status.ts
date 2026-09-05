@@ -648,7 +648,7 @@ export function buildEditorialRolloutStatusV2(
       requireJudgment: true,
       metricName: fact.metric.name,
       metricDirection: inferMetricDirectionV2(fact.metric.name, fact.metric.raw, fact.metric.value),
-      forbidPublicFollowUp: state.draft.format !== "revisit",
+      forbidPublicFollowUp: false,
       forbidFutureRecheck: true,
     }).ok;
   }).length;
@@ -811,6 +811,11 @@ export function buildEditorialRolloutStatusV2(
         ? pass("pipeline-determinism", verify.pipelineDeterminismRuns, ">=100 identical pipeline runs")
         : fail("pipeline-determinism", verify.pipelineDeterminismRuns, ">=100 identical pipeline runs")
       : unknown("pipeline-determinism", ">=100 identical pipeline runs", "pipeline evidence not supplied"),
+  ]);
+
+  // Quality evidence is collected during shadow observation/review, not required
+  // before observation can start. It remains mandatory before approved live.
+  const qualityChecks = [
     replay
       ? replay.passed && replay.candidateCount === 100 && replay.collectionEpoch === EDITORIAL_COLLECTION_EPOCH_V2
         ? pass("real-replay", replay.candidateCount, "100 exported runtime replay rows, corpus gates passed")
@@ -883,7 +888,7 @@ export function buildEditorialRolloutStatusV2(
           "36 V2 sides bound to the current replay artifact and verified commit",
           "bound human evaluation, replay artifact, or current verification evidence is missing"
         ),
-  ]);
+  ];
 
   const writeAudit = input.machineEvidence?.nonLiveWriteAudit;
   const auditCoversWindow = Boolean(
@@ -955,6 +960,7 @@ export function buildEditorialRolloutStatusV2(
   const allFinalTextsLanguageChecked =
     reviewedStates.length > 0 && languageCheckedStates.length === reviewedStates.length;
   const r2 = gate([
+    ...qualityChecks,
     r1.earned
       ? pass("r1-prerequisite", true, "R1 earned before review evidence window")
       : unknown(

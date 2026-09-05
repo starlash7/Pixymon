@@ -4,11 +4,11 @@
 
 > Pixymon does not summarize headlines. It verifies a named event with a number, leaves a judgment, and checks it again after 24 and 72 hours.
 
-V2 is original-post only. Quote posts, replies, macro, regulation, market structure, images, and unattended live posting remain disabled during the first milestone.
+V2 is protocol-original-post only. Other lanes, quote posts, replies, images, and unattended live posting remain disabled during the first milestone.
 
 ## Current rollout status
 
-- Implemented: V2 contracts, free-provider sensing, Tier A gate, deterministic planner, durable 24/72h checks, one-retry writer, review ledger, manual publisher, linked telemetry, and offline evaluation commands.
+- Implemented: V2 contracts, free-provider sensing, Tier A gate, question/hypothesis planner, read-only judgment recall, isolated shadow 24/72h checks, one-retry writer, review ledger, stage-bound manual publisher, decision-input replay, linked telemetry, and offline evaluation commands.
 - Not yet earned: the 100-case real replay gate, two-reader blind evaluation, R1/R2 elapsed-time gates, or any automatic live promotion.
 - Current publishable supply is deliberately narrow: significant DefiLlama protocol TVL moves only. CoinGecko and mempool.space snapshots, RSS, and CryptoCompare remain discovery-only.
 - Default runtime stays `POST_PIPELINE_VERSION=v1` until the operator explicitly selects V2.
@@ -17,7 +17,7 @@ V2 is original-post only. Quote posts, replies, macro, regulation, market struct
 
 - `observe`: reads public data and may call Claude, but never initializes an X client in the V2 runtime. It does not update character memory.
 - `paper`: same outbound-write guarantee, with every shared state file routed under `PIXYMON_PAPER_DATA_DIR`.
-- `live`: the scheduler still refuses automatic V2 posting. Only `editorial:publish` can send an approved original.
+- `live`: the scheduler still refuses automatic V2 posting. `editorial:publish` requires both human approval and an R3 operator authorization bound to earned R0/R1/R2 evidence. Shadow drafts can never publish, including after approval.
 - Invalid action modes fail closed as `observe`.
 - V2 has no deterministic, hard, rescue, or emergency publishing fallback. A second contract failure becomes `no-post`.
 
@@ -31,13 +31,15 @@ npm run verify
 
 It runs the TypeScript build, CLI typecheck, unit/regression tests, 64-case offline golden evaluation, and the 100-candidate synthetic contract diversity gate. The synthetic corpus proves the harness and hard contracts; it is not a substitute for the required 100 real-context replay corpus. `TEST_NO_EXTERNAL_CALLS=true` is a test contract, not evidence that the OS denied network access.
 
-`eval:corpus --input` remains a generic local evaluator for JSON arrays. Its input is not accepted as R0 runtime-replay evidence by itself:
+R0 no longer depends on real drafts or Revisit cases. After committing the verification inputs, record the offline gate with `npm run editorial:r0-record -- --output <new-evidence.json>`. The external network-isolation proof is still required separately. Real replay and blind quality gates belong to R2, before any R3 authorization.
+
+`eval:corpus --input` remains a generic local evaluator for JSON arrays. Its input is not accepted as R2 runtime-replay evidence by itself:
 
 ```bash
 npm run eval:corpus -- --input path/to/generic-corpus-array.json
 ```
 
-Export the first 100 raw generated drafts in the current `grounded-writer-v1` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs:
+Export the first 100 raw generated drafts in the current `hypothesis-writer-v2` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs. Rows retain `trackingMode` so real shadow observations cannot masquerade as live experience:
 
 ```bash
 npm run editorial:replay-export -- --limit 100 --output data/editorial-v2/replay-001.json
@@ -56,7 +58,7 @@ npm run editorial:r0-record -- \
 
 This command runs `npm run verify`, re-derives every replay row from the recorded ledger prefix, and records the exact replay-file SHA-256 before recording `passed`. It labels synthetic 100-run pipeline determinism separately from the runtime corpus file's 100 reloads; the latter is not represented as a pipeline rerun. It records only `offlineContractMode`, never a claim of OS-level network isolation, and never invents a zero-X audit. Audit metadata conforming to `eval/rollout-evidence.schema.json` may be retained for investigation, but cannot earn a gate until a trusted CI/runner artifact verifier exists.
 
-Build the human pack from 36 cases: four Bite and four Withhold originals in each of the three lanes, plus 12 Revisit cases. The earlier undefined strong/weak labels have been removed; they had no reproducible measurement contract. Evolution cannot substitute for an original-post cell. Each comparison input contains only `id`, `replayRowId`, and `baselineText`. V2 text, evidence, lane, and format come directly from the strict replay row. The public pack strips provider, URL, system/version labels, and the A/B mapping:
+Build the human pack from 36 protocol cases: 24 originals (Bite or Withhold, with the actual mix recorded rather than forced), plus 12 Revisit cases. Real shadow follow-ups are eligible evaluation inputs, never live publication evidence. Evolution cannot substitute for an original-post cell. Each comparison input contains only `id`, `replayRowId`, and `baselineText`. V2 text, evidence, lane, and format come directly from the strict replay row. Baseline generation must use the same captured context; hand-authored baselines do not prove a model or planner improvement. The public pack strips provider, URL, system/version labels, and the A/B mapping:
 
 ```bash
 npm run editorial:blind-pack -- \
@@ -140,7 +142,7 @@ Publishing is intentionally explicit:
 ACTION_MODE=live \
 TEST_MODE=false \
 TEST_NO_EXTERNAL_CALLS=false \
-npm run editorial:publish -- --id <draftId>
+npm run editorial:publish -- --id <draftId> --authorization <authorization.json>
 ```
 
 Before X is called, the command rechecks approval, durable writer lineage, 2h/6h freshness, current provider GREEN health and fact availability, exact duplicate history, Korean/factual contract, the editorial daily cap, X budget, and a single-process lock. Legacy drafts without captured `draft`/`usedFactIds`/sentence claims cannot publish. Duplicate-text and daily-cap reservations are made atomically under the ledger lock, and the approved text is compared again at the true X boundary. The same-subject rolling 24-hour novelty rule is also rechecked against both publications and unresolved dispatch intents. It writes a durable dispatch intent before the one allowed X attempt, rejects missing credentials rather than simulating success, and records publication/character memory only after X returns an ID.
@@ -156,7 +158,28 @@ If X did not create the post, keep the draft blocked and create a new reviewed d
 
 Lock files fail closed after an abnormal process exit; they are never auto-deleted because stale-lock recovery can race with a new owner. If a command reports a stale or unverifiable lock, first confirm that no Pixymon/editorial process is alive and inspect X plus the dispatch intent. Only then remove the exact reported lock path manually and retry the non-destructive operation. Never broadly delete the data directory or ledger.
 
-The initial default is one approved original per day. `EDITORIAL_DAILY_POST_LIMIT` is clamped to `1..2`.
+R3 is fixed to one approved original per day. `EDITORIAL_DAILY_POST_LIMIT` does not enable ramping through this command.
+
+Before publishing, create a new 24-hour authorization with `npm run editorial:authorize-live -- --status <fresh-status.json> --output <new-authorization.json> --operator <operatorId>`. The source status must be less than 15 minutes old, belong to the clean current commit, and have every R0/R1/R2 check passing. The publisher verifies its digest, expiry and commit again at the actual dispatch boundary. A file named `<active data directory>/editorial-v2/STOP` suspends sending even with an otherwise valid authorization. The authorization records local operator authority, not independent external proof. Never hand-edit a status or authorization to bypass a gate. The missing trusted zero-X verifier still prevents earning R1 and issuing operational R3 authorization.
+
+## Shadow rehearsal and same-context comparison
+
+Use `npm run editorial:shadow` for real reads and budgeted generation without publishing. It writes to `editorial-v2-shadow/`, not the live-candidate queue. Run the worker hourly:
+
+```bash
+ACTION_MODE=observe EDITORIAL_TRACKING_MODE=shadow npm run editorial:followups
+ACTION_MODE=observe EDITORIAL_TRACKING_MODE=shadow npm run editorial:review -- --id <shadowDraftId>
+```
+
+Shadow tracking starts at draft creation, uses the same checkpoint windows, and records no publication or character-memory mutation. An unchanged 24h observation stays silent. Revisit generation receives the original recorded question and judgment, explicitly labelled shadow. Use the shadow ledger consistently for R1/R2 status, replay and review evidence; do not splice it into the live ledger. After earning R3, collect and approve a fresh normal candidate in `editorial-v2/` for actual publishing. Actual publications keep their own publication-anchored follow-ups.
+
+Every collection captures a private create-only `decision-contexts/<action hash>.json` before generation: candidate evidence, history, clock, selection seed, relevant memory, configured model, code revision and selected plan. No-post inputs are captured too. These input snapshots are different from the anonymized output-revalidation corpus and must remain in gitignored runtime data.
+
+```bash
+npm run editorial:compare -- --context <decision-context.json> --output <new-comparison.json>
+```
+
+This performs two budgeted writer runs with the same stored evidence/time/seed/memory and configured model, comparing the captured plan with the current planner. It does not call providers or X and does not modify either ledger. It is a planner comparison under the current writer, not a recreation of an old writer/model or proof of LLM determinism. Start with 12 actual collected contexts. Human scores, no-edit acceptance and reader preference remain pending until independent evaluation; the comparison command does not earn R2 by itself.
 
 ## Runtime files and telemetry
 
@@ -202,9 +225,9 @@ The create-only artifact binds the exact source status bytes, commit, observe wi
 ## Known editorial limits
 
 - The Linux CI workflow denies network access for the verify process, and changes to `.github/workflows/verify.yml` are part of the R0 clean-tree check. Rollout status can bind the exact successful push/main run to a clean current HEAD only when `--github-ci-repo` is supplied; otherwise network isolation remains `unknown`. The repository does not yet enforce this workflow through a `main` branch-protection rule or ruleset, so the successful run is evidence for that commit but not proof that every future integration must pass the check. The zero-X audit still has no trusted external verifier and remains `unknown`.
-- Generated claims must copy every draft sentence in order and label it as observation or judgment. The machine falsifier remains in the plan, review card, and 24/72-hour worker instead of becoming repeated public boilerplate. Non-Revisit public copy must end in a present-tense judgment; future/conditional recheck prose is rejected in generation, human edits, and publish-time validation.
+- Generated claims must copy every draft sentence in order and label it as observation or judgment. The machine falsifier stays in the plan, review card, and 24/72-hour worker. Ordinary conditionals are allowed; numeric/entity grounding, explicit future-recheck-promise checks, sentence claims and human approval remain enforced.
 - The TVL semantic guard blocks fixture-backed unsupported leaps such as users, new capital, adoption, revenue, volume, structural growth, protocol stability, competitiveness, collateral health, or liquidation risk. It is a bounded guard, not proof that arbitrary Korean causal prose is grounded; every initial draft still requires human review, and automatic live remains locked until an independent semantic critic is implemented and calibrated.
-- Bite versus Withhold is now based on event materiality, not positive versus negative direction. Evolution remains telemetry-only until real reviewed examples define it.
+- Bite means a bounded measurement hypothesis can be stated and tested; Withhold means only an observation is available. Neither a positive nor negative number determines approval or emotion. USD TVL hypotheses concern the displayed level only, never price-neutral retention or inflows. Observation-only checks close unresolved rather than becoming supported merely because an arbitrary threshold was not crossed. Evolution remains telemetry-only.
 - The price-neutral screen removes obvious asset-price beta, but it does not prove deposits, causality, historical anomaly, or audience relevance. Those claims require separate evidence; token-symbol and adapter-method changes remain a monitored failure mode.
 - A rejected or freshness-expired Revisit is not regenerated automatically. Its terminal public disposition is not yet represented as a dedicated ledger event, so R2 reporting must derive and audit this state before promotion.
 - Synthetic corpus success proves the contracts and harness, not tweet quality. Do not promote on it without the real replay and blind human gates.
@@ -213,10 +236,10 @@ The create-only artifact binds the exact source status bytes, commit, observe wi
 
 Promotion is manual. Do not infer readiness from a green build.
 
-1. R0: verify plus 100 real replay cases and two-reader blind evaluation.
-2. R1: observe for 7 days and at least 30 decisions; X writes must remain zero.
-3. R2: review for 14 days and at least 30 drafts; no-edit acceptance must be at least 80%, factual errors zero.
-4. R3: publish 10 approved originals, maximum one per day.
+1. R0: offline contract verify and network isolation proof.
+2. R1: observe/shadow for 7 days and at least 30 decisions; X writes must remain zero.
+3. R2: 100 real replay cases, two-reader blind evaluation, and review for 14 days and at least 30 drafts; no-edit acceptance must be at least 80%, factual errors zero.
+4. R3: explicit operator authorization plus human approval; publish 10 originals, maximum one per day.
 5. R4/R5: automatic canary and ramp require the critic/calibration gates in code plus the elapsed operational evidence.
 
 Immediately set `ACTION_MODE=observe` after any factual error, malformed post, duplicate post, observe/paper X write, or provider-RED post. Also stop automation if rolling 20 no-edit acceptance falls below 80% or near-duplicate rate reaches 8%.

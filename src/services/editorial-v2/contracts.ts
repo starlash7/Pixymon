@@ -1,5 +1,26 @@
 export const EDITORIAL_V2_SCHEMA_VERSION = 2 as const;
-export const EDITORIAL_COLLECTION_EPOCH_V2 = "grounded-writer-v1" as const;
+export const EDITORIAL_COLLECTION_EPOCH_V2 = "hypothesis-writer-v2" as const;
+
+/** A test of a measured level, never a test of adoption, flows, or causality. */
+export interface EditorialCaseV2 {
+  question: string;
+  hypothesis: string | null;
+  scope: "usd-tvl-level" | "observation-only";
+  factIds: readonly string[];
+  limitation: string;
+}
+
+export interface EditorialMemoryContextV2 {
+  beliefs: readonly string[];
+  previous?: {
+    draftId: string;
+    provenance: "live" | "shadow";
+    text: string;
+    thesis: string;
+    verdict: string;
+    recordedAt: string;
+  };
+}
 
 export type EditorialFormatV2 = "bite" | "withhold" | "revisit" | "evolution";
 export type EditorialLaneV2 = "onchain" | "protocol" | "ecosystem";
@@ -94,6 +115,10 @@ export interface EditorialDraftRecordV2 {
   id: string;
   runId: string;
   createdAt: string;
+  /** Shadow records are never publications and can never be dispatched. */
+  trackingMode?: "live" | "shadow";
+  editorialCase?: EditorialCaseV2;
+  memoryContext?: EditorialMemoryContextV2;
   /** Absent only on legacy events created before evaluation lineage capture. */
   lane?: EditorialLaneV2;
   /** Absent only on legacy events created before evaluation lineage capture. */
@@ -227,8 +252,8 @@ export type FollowUp72DecisionV2 =
     }
   | {
       checkpoint: "72h";
-      resolution: "supported" | "invalidated";
-      reason: "falsifier-clear" | "falsifier-matched";
+      resolution: "supported" | "invalidated" | "unresolved";
+      reason: "falsifier-clear" | "falsifier-matched" | "observation-only-not-a-hypothesis";
       falsifierMatched: boolean;
       observedValue: number;
       observedAt: string;

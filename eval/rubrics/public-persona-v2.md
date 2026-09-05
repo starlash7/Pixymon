@@ -2,7 +2,7 @@
 
 ## Sample
 
-- Compare 36 baseline/V2 pairs: exactly four Bite and four Withhold cases per lane (three lanes = 24), plus 12 Revisit/accountability cases. Lane and format must come from the bound replay row. Undefined strong/weak labels are not used. Evolution cannot fill an original-post cell.
+- Compare 36 baseline/V2 pairs in the protocol-only milestone: 24 originals (Bite or Withhold) and 12 Revisit/accountability cases. Record the observed Bite/Withhold mix, but never manufacture weak candidates to fill a format quota. Lane and format come from the bound replay row. Evolution cannot fill an original-post cell. Revisit cases may come from real, timestamped shadow tracking; shadow provenance must remain in the private source artifacts and must never count as a live publication.
 - Hide system name, version, provider, and ordering. Randomize A/B independently per pair.
 - Use two Korean crypto-native readers. A score difference of two or more points between readers requires adjudication.
 - Reader 2 independently reviews a stratified 20% sample and every edit/reject/hard-veto case during the operating period.

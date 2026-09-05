@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.ts";
 import { checkEditorialFollowUpsV2, collectEditorialDraftV2 } from "../src/services/editorial-v2/workflow.ts";
-import { splitEditorialSentencesV2 } from "../src/services/editorial-v2/validator.ts";
+import { splitEditorialSentencesV2, formatEvidenceSourceTimeV2 } from "../src/services/editorial-v2/validator.ts";
 import type { EditorialClaimKindV2 } from "../src/services/editorial-v2/writer.ts";
 import type { EvidenceCardV2 } from "../src/services/editorial-v2/evidence.ts";
 import type { EditorialSensingResultV2 } from "../src/services/editorial-v2/provider-adapters.ts";
@@ -13,6 +13,63 @@ import { createFollowUpScheduleV2, createMachineFalsifierV2 } from "../src/servi
 import { EDITORIAL_COLLECTION_EPOCH_V2 } from "../src/services/editorial-v2/contracts.ts";
 
 const NOW = new Date("2026-08-28T10:00:00.000Z");
+
+test("shadow tracks unchanged 24h and invalidated 72h without publication, and recalls its actual judgment", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pixymon-shadow-loop-"));
+  let current = new Date(NOW);
+  const store = new EditorialEventStoreV2({ eventLogPath: path.join(dir, "events.ndjson"), now: () => current });
+  const metrics = path.join(dir, "metrics.ndjson");
+  try {
+    const original = evidence();
+    original.followUp = {
+      metric: { name: "tvl-usd", value: 108_000_000, raw: "$108.00M", unit: "USD", period: "snapshot" },
+      comparator: "lt", threshold: 100_000_000,
+    };
+    const draft = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 변화는 검증할 대상으로 남기되, 원인과 지속성에 대한 확대 해석은 아직 보류한다.";
+    const initial = await collectEditorialDraftV2({
+      store, metricLogPath: metrics, mode: "observe", trackingMode: "shadow", now: current,
+      actionId: "shadow-original", sensing: sensing([original]),
+      writerModel: { async generate() { return JSON.stringify({ draft, usedFactIds: [original.id], claims: claimsFor(draft, original.id) }); } },
+    });
+    assert.equal(initial.status, "drafted", JSON.stringify(initial));
+    assert.equal(store.getDraftState("shadow-original")?.draft.editorialCase?.scope, "usd-tvl-level");
+    store.approve("shadow-original", { reviewerId: "operator" });
+    assert.throws(() => store.preparePublication("shadow-original"), /shadow-draft-cannot-publish/);
+
+    const level = (value: number): EvidenceCardV2 => ({
+      ...evidence(), id: `level:${current.toISOString()}`, metric: {
+        name: "tvl-usd", value, raw: `$${(value / 1e6).toFixed(2)}M`, unit: "USD", period: "snapshot",
+      }, source: { ...evidence().source, observedAt: current.toISOString() },
+      providerHealth: { ...evidence().providerHealth, checkedAt: current.toISOString() },
+    });
+    current = new Date(NOW.getTime() + 24 * 3_600_000);
+    await checkEditorialFollowUpsV2({ store, metricLogPath: metrics, mode: "observe", now: current, sensing: sensing([], [level(108_000_000)]) });
+    assert.equal(store.getDraftState("shadow-original")?.followUps[0].resolution, "silent");
+
+    current = new Date(NOW.getTime() + 72 * 3_600_000);
+    const observed = level(99_000_000);
+    const revisit = `Aave의 TVL은 ${formatEvidenceSourceTimeV2(current.toISOString())} 기준 ${observed.metric.raw} 수준이다. 이번 USD TVL 수준 가설은 철회하며, 원인과 잔류에 대한 해석은 계속 미결로 남긴다.`;
+    const result = await collectEditorialDraftV2({
+      store, metricLogPath: metrics, mode: "observe", trackingMode: "shadow", now: current,
+      actionId: "shadow-revisit", sensing: sensing([], [observed]),
+      writerModel: { async generate({ prompt }) {
+        assert.ok(prompt.includes(draft));
+        assert.match(prompt, /"provenance":"shadow"/);
+        return JSON.stringify({ draft: revisit, usedFactIds: [observed.id], claims: claimsFor(revisit, observed.id) });
+      } },
+    });
+    assert.equal(result.status, "drafted", JSON.stringify(result));
+    assert.equal(store.getDraftState("shadow-original")?.followUps[1].resolution, "invalidated");
+    assert.equal(store.getDraftState("shadow-revisit")?.draft.memoryContext?.previous?.draftId, "shadow-original");
+    assert.equal(store.readEvents().some((event) => event.type === "draft-published" || event.type === "dispatch-prepared"), false);
+    assert.equal(fs.existsSync(path.join(dir, "memory.json")), false);
+    assert.equal(fs.readdirSync(path.join(dir, "decision-contexts")).length, 2);
+    await assert.rejects(collectEditorialDraftV2({
+      store, metricLogPath: metrics, mode: "observe", now: current,
+      sensing: sensing([]), writerModel: { async generate() { throw new Error("not called"); } },
+    }), /ledgers must be separate/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 
 function evidence(): EvidenceCardV2 {
   return {

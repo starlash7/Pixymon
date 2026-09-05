@@ -20,7 +20,7 @@ function sourceFixture() {
     const sentences = [subject + "의 TVL은 " + raw + "다.", "한 번의 변화를 추세로 부르지 않는다는 판단이다."];
     rows.push({
       schemaVersion: 2, id: "replay-" + String(index + 1).padStart(6, "0"),
-      lane: (["onchain", "protocol", "ecosystem"] as const)[index < 24 ? Math.floor(index / 8) : index % 3],
+      lane: "protocol",
       format: index >= 24 ? "revisit" : index % 2 === 0 ? "bite" : "withhold",
       subject, factIds: ["fact-1"], usedFactIds: ["fact-1"],
       claims: sentences.map((text, sentenceIndex) => ({
@@ -115,11 +115,11 @@ test("blind pack rejects duplicate or unknown replay rows and unstratified sourc
   duplicated[1].replayRowId = "missing";
   assert.throws(() => buildBlindEvaluationPackV2(duplicated, "seed", binding), /unknown replay row/);
   const oneLane = structuredClone(binding);
-  oneLane.replay.rows.forEach((row) => { row.lane = "protocol"; });
-  assert.throws(() => buildBlindEvaluationPackV2(comparisons, "seed", oneLane), /requires 4 bite onchain/);
+  oneLane.replay.rows[0].lane = "onchain";
+  assert.throws(() => buildBlindEvaluationPackV2(comparisons, "seed", oneLane), /protocol-only/);
   const evolution = structuredClone(binding);
   evolution.replay.rows.forEach((row) => { if (row.format !== "revisit") row.format = "evolution"; });
-  assert.throws(() => buildBlindEvaluationPackV2(comparisons, "seed", evolution), /requires 4 bite/);
+  assert.throws(() => buildBlindEvaluationPackV2(comparisons, "seed", evolution), /requires 24 protocol originals/);
 });
 
 test("comparison input cannot override the V2 side or replay classifications", () => {

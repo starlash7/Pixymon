@@ -141,6 +141,7 @@ export function resolve24HourFollowUpV2(input: {
   baselineValue: number;
   observation?: NumericFollowUpObservationV2;
   changeThreshold?: MeaningfulChangeThresholdV2;
+  observationOnly?: boolean;
 }): FollowUp24DecisionV2 {
   assertScheduleMatchesFalsifier(input.schedule, input.falsifier);
   const nowMs = parseInstant(input.now, "now");
@@ -171,8 +172,8 @@ export function resolve24HourFollowUpV2(input: {
     checkpoint: "24h",
     resolution: "candidate",
     reason: "meaningful-change",
-    provisionalVerdict: falsifierMatched ? "invalidated" : "unresolved",
-    falsifierMatched,
+    provisionalVerdict: falsifierMatched && !input.observationOnly ? "invalidated" : "unresolved",
+    falsifierMatched: falsifierMatched && !input.observationOnly,
     baselineValue: input.baselineValue,
     observedValue: observation.value,
     observedAt: observation.observedAt,
@@ -184,6 +185,7 @@ export function resolve72HourFollowUpV2(input: {
   schedule: FollowUpScheduleV2;
   falsifier: MachineFalsifierV2;
   observation?: NumericFollowUpObservationV2;
+  observationOnly?: boolean;
 }): FollowUp72DecisionV2 {
   assertScheduleMatchesFalsifier(input.schedule, input.falsifier);
   const nowMs = parseInstant(input.now, "now");
@@ -209,9 +211,9 @@ export function resolve72HourFollowUpV2(input: {
   const falsifierMatched = matchesFalsifierV2(input.falsifier, observation.value);
   return {
     checkpoint: "72h",
-    resolution: falsifierMatched ? "invalidated" : "supported",
-    reason: falsifierMatched ? "falsifier-matched" : "falsifier-clear",
-    falsifierMatched,
+    resolution: input.observationOnly ? "unresolved" : falsifierMatched ? "invalidated" : "supported",
+    reason: input.observationOnly ? "observation-only-not-a-hypothesis" : falsifierMatched ? "falsifier-matched" : "falsifier-clear",
+    falsifierMatched: falsifierMatched && !input.observationOnly,
     observedValue: observation.value,
     observedAt: observation.observedAt,
   };

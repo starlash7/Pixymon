@@ -10,6 +10,18 @@ import {
 
 const ANCHOR = "2026-08-01T00:00:00.000Z";
 
+test("an observation-only follow-up never becomes hypothesis support or invalidation", () => {
+  const { schedule, falsifier } = contract();
+  for (const value of [1000, 800]) {
+    const decision = resolve72HourFollowUpV2({
+      now: schedule.due72h, schedule, falsifier, observationOnly: true,
+      observation: { metric: falsifier.metric, value, observedAt: schedule.due72h },
+    });
+    assert.equal(decision.resolution, "unresolved");
+    assert.equal(decision.reason, "observation-only-not-a-hypothesis");
+  }
+});
+
 function contract() {
   const schedule = createFollowUpScheduleV2(ANCHOR);
   const falsifier = createMachineFalsifierV2(

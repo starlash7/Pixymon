@@ -28,6 +28,7 @@ export interface EditorialWriterPayloadV2 {
 }
 
 export interface EditorialWriterModelV2 {
+  modelId?: string;
   generate(input: { system: string; prompt: string; attempt: 1 | 2 }): Promise<string | null>;
 }
 
@@ -108,7 +109,7 @@ function validatePayload(
       evidence.metric.raw,
       evidence.metric.value
     ),
-    forbidPublicFollowUp: plan.format !== "revisit",
+    forbidPublicFollowUp: false,
     forbidFutureRecheck: true,
   });
   const reasons = [...validation.reasons];
@@ -149,7 +150,7 @@ function validatePayload(
   return [...new Set(reasons)];
 }
 
-function buildPrompt(
+export function buildEditorialPromptV2(
   plan: EditorialPlanV2,
   evidence: EvidenceCardV2,
   retryReasons: readonly string[]
@@ -176,7 +177,7 @@ function buildPrompt(
   };
   const endingRule = plan.format === "revisit"
     ? "마지막 문장은 이전 판정을 지지·철회·미결 중 하나로 닫고, 새 24·72시간 재검증을 약속하지 않는다"
-    : `마지막 문장은 미래 약속이나 조건 없이 지금 관측에 대한 ${verdictGuide[plan.verdict]} 판단으로 닫는다`;
+    : `마지막 문장은 지금 관측에 대한 ${verdictGuide[plan.verdict]} 판단으로 닫는다. 조건문은 허용하되 새 관측 일정은 약속하지 않는다`;
   return `다음 편집 계약을 사실 왜곡 없이 한국어 원문 트윗 하나로 렌더링하라.
 
 편집 계약:
@@ -187,6 +188,10 @@ function buildPrompt(
 - voiceState: ${plan.voiceState}
 - voiceGuide: ${voiceGuide[plan.voiceState]}
 - formatGuide: ${formatGuide[plan.format]}
+- 검증 계약: ${JSON.stringify(plan.editorialCase ?? null)}
+- 읽기 전용 기억: ${JSON.stringify(plan.memoryContext ?? null)}
+- 기억은 과거 판단을 연결하는 자료이지 현재 사실의 추가 근거가 아니다. 기억의 숫자를 본문에 재사용하지 않는다. shadow 기억을 실제 공개 게시라고 표현하지 않는다.
+- Revisit은 기억의 실제 질문·판정 중 무엇이 바뀌었는지 밝힌다. USD TVL 수준의 가설 지지를 가격 중립 잔류나 원인 입증으로 확대하지 않는다.
 
 사용 가능한 유일한 사실:
 - factId: ${evidence.id}
@@ -212,9 +217,7 @@ function buildPrompt(
 - JSON 외 텍스트 금지
 - claims는 draft의 각 문장을 순서대로 빠짐없이 복사한다. kind는 관측 사실=observation, 현재 판단=judgment 둘 중 하나다
 - 첫 claim만 observation이고 나머지 claim은 judgment다
-- Revisit이 아니면 반증 조건은 별도의 기계 계약에 저장되므로 본문에 쓰지 않는다
-- Revisit이 아니면 72시간·사흘 후·다음 관측·추후·나중·재검증·다시 확인·지켜보겠다 등 미래 확인 표현을 쓰지 않는다
-- Revisit이 아니면 ~면·~라면·경우·~해도·더라도 등 조건문을 쓰지 않는다
+- 반증 수치와 일정은 검토함에 보존한다. 본문에서 새로운 숫자·일정·재검증 약속은 만들지 않는다
 ${retryReasons.length > 0 ? `- 이전 실패 원인: ${retryReasons.join(", ")}\n` : ""}
 출력 JSON:
 {"draft":"첫 문장. 둘째 문장.","usedFactIds":["${evidence.id}"],"claims":[{"kind":"observation","text":"첫 문장.","factIds":["${evidence.id}"]},{"kind":"judgment","text":"둘째 문장.","factIds":["${evidence.id}"]}]}`;
@@ -231,7 +234,7 @@ export async function writeEditorialDraftV2(input: {
     try {
       response = await input.model.generate({
         system: "너는 숫자를 먹고 판정을 기억하는 Pixymon V2다. 헤드라인을 요약하지 않고, 확인한 사실과 잠정 판단을 분리하며, 다시 돌아와 틀리면 먼저 고친다. JSON 계약만 반환한다.",
-        prompt: buildPrompt(input.plan, input.evidence, retryReasons),
+        prompt: buildEditorialPromptV2(input.plan, input.evidence, retryReasons),
         attempt,
       });
     } catch {
@@ -266,6 +269,7 @@ export function createAnthropicEditorialWriterV2(
   timezone?: string
 ): EditorialWriterModelV2 {
   return {
+    modelId: CLAUDE_MODEL,
     async generate({ system, prompt }) {
       const response = await requestBudgetedClaudeMessage(
         claude,

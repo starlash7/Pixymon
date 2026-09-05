@@ -222,10 +222,12 @@ Collect a real V2 candidate without X writes, review it, then explicitly publish
 ACTION_MODE=observe TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:collect
 ACTION_MODE=observe TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:followups
 npm run editorial:review -- --id <draftId>
-ACTION_MODE=live TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:publish -- --id <draftId>
+ACTION_MODE=live TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:publish -- --id <draftId> --authorization <authorization.json>
 ```
 
 The live command is capped to one original per day by default and refuses stale evidence, missing approval, duplicate text, test mode, missing X credentials, and concurrent publishing. Full operating and rollback instructions are in `docs/editorial-v2-runbook.md`.
+
+The current milestone is protocol-only. `npm run editorial:shadow` collects into a separate, permanently non-publishable ledger; `EDITORIAL_TRACKING_MODE=shadow ACTION_MODE=observe npm run editorial:followups` reobserves those hypotheses without X writes or live character-memory changes. R0 is now the offline contract gate; real replay and blind quality evaluation are R2 requirements. R3 publishing requires a fresh operator authorization created by `editorial:authorize-live` from an earned R0/R1/R2 status. The missing trusted zero-X verifier still blocks R1, so this change does not enable production publishing.
 
 ## Development
 

@@ -152,6 +152,7 @@
           }
         },
         "textProvenance": { "const": "generated" },
+        "trackingMode": { "enum": ["live", "shadow"] },
         "reviewDisposition": {
           "enum": ["pending", "approved-unchanged", "approved-edited", "rejected"]
         },

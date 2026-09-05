@@ -1,6 +1,6 @@
 # Pixymon Operating Plan
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 This document is not a brainstorm file. It is the operating contract for Pixymon work.
 
@@ -79,9 +79,9 @@ The active response is `Pixymon V2`, first in `REDUCTION` and then `HOLD SCOPE`:
 
 1. stop publishing multi-stage fallback prose
 2. preserve named subjects, raw numbers, source URLs, and source time
-3. make the planner select facts and the writer render one bounded contract
+3. connect selected facts to an explicit question, a bounded measurement hypothesis, and its falsifier
 4. keep original posts human-approved until offline, observe, and review gates pass
-5. revisit every published Bite/Withhold at +24h and +72h
+5. revisit published Bite/Withhold at +24h and +72h; rehearse the same lifecycle in a separate, non-publishable shadow ledger
 6. treat USD TVL as a candidate only after a bounded token-history screen removes price-dominated moves; never publish the derived balance decomposition as inflow
 
 ## 6. Design Principles
@@ -164,10 +164,19 @@ Reduce:
 
 Do not tune V1 prompts further. Complete the V2 gates in order:
 
-1. `R0`: network-free verify, 100 real replay cases, and blind human evaluation
-2. `R1`: seven days and at least 30 observe decisions with zero X writes
-3. `R2`: fourteen days and at least 30 reviewed drafts with zero factual errors
-4. `R3`: ten human-approved live originals, capped at one per day
+1. `R0`: network-free contract verify and deterministic offline tests, without needing live or shadow posts first
+2. `R1`: seven days and at least 30 observe decisions with zero X writes; collect actual protocol shadow follow-ups
+3. `R2`: fourteen days and at least 30 reviewed drafts with zero factual errors, plus 100 real replay cases and two-reader blind evaluation
+4. `R3`: ten human-approved live originals, capped at one per day; requires fresh, commit-bound operator authorization derived from earned R0/R1/R2
 5. only then evaluate an automatic original-post canary
 
 Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
+
+## 13. Current Implementation Boundary — REDUCTION / HOLD SCOPE
+
+- The initial evidence and human-evaluation scope is protocol only. Other lanes remain discovery-only.
+- A USD TVL level hypothesis checks whether that level has fully reverted; it does not test price-neutral retention, deposits, users, or causality. Observations without a testable hypothesis remain unresolved, never supported by default.
+- The writer reads stable beliefs and one relevant recorded judgment. Live candidates never learn from shadow experience, unposted drafts, or human edits presented as actual publications.
+- Runtime decision contexts preserve candidate facts, clock, selection seed, historical inputs, memory, model identity and code revision before generation, including no-post decisions. The same-context comparison command has no publishing capability.
+- Development acceptance starts with 12 real cases before collecting the full corpus. No claim of improved reader preference or no-edit acceptance is allowed before actual human evaluation.
+- The trusted external zero-X verifier remains unimplemented. R1 and therefore R3 authorization remain blocked until it is supplied; a local authorization file is not a substitute for that proof.

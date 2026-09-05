@@ -463,7 +463,7 @@ test("R0 rejects future or stale-tree verification evidence and labels corpus re
   assert.equal(status.gates.r0.checks.find((check) => check.id === "verified-current-tree")?.state, "fail");
   assert.equal(status.gates.r0.checks.find((check) => check.id === "evidence-not-from-future")?.state, "fail");
   assert.equal(status.gates.r0.checks.find((check) => check.id === "pipeline-determinism")?.state, "pass");
-  assert.equal(status.gates.r0.checks.find((check) => check.id === "corpus-reload-determinism")?.state, "pass");
+  assert.equal(status.gates.r2.checks.find((check) => check.id === "corpus-reload-determinism")?.state, "pass");
   assert.equal(status.gates.r0.earned, false);
 });
 
@@ -522,10 +522,10 @@ test("R0 verifies replay digests but never promotes free-form audit metadata", (
       verified: true,
     },
   });
-  assert.equal(status.gates.r0.checks.find((check) => check.id === "replay-lineage")?.state, "pass");
+  assert.equal(status.gates.r2.checks.find((check) => check.id === "replay-lineage")?.state, "pass");
   assert.equal(status.gates.r0.checks.find((check) => check.id === "network-isolation")?.state, "unknown");
   assert.equal(
-    status.gates.r0.checks.find((check) => check.id === "human-evaluation-lineage")?.state,
+    status.gates.r2.checks.find((check) => check.id === "human-evaluation-lineage")?.state,
     "unknown"
   );
   assert.equal(status.gates.r0.earned, false);
@@ -613,10 +613,10 @@ test("human promotion lineage must match the replay, epoch, verification commit,
     now: new Date(BASE_MS + DAY_MS), currentCommit, workingTreeClean: true, machineEvidence, humanEvaluation,
     replayArtifactVerification: { artifactSha256, sourceLedgerSha256, collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2, verified: true },
   };
-  assert.equal(buildEditorialRolloutStatusV2(input).gates.r0.checks.find((check) => check.id === "human-evaluation-lineage")?.state, "pass");
+  assert.equal(buildEditorialRolloutStatusV2(input).gates.r2.checks.find((check) => check.id === "human-evaluation-lineage")?.state, "pass");
   for (const changes of [{ workingTreeClean: false }, { currentCommit: "d".repeat(40) }, {
     humanEvaluation: { ...humanEvaluation, lineage: { ...humanEvaluation.lineage, collectionEpoch: "wrong-epoch" } },
   }]) {
-    assert.equal(buildEditorialRolloutStatusV2({ ...input, ...changes }).gates.r0.checks.find((check) => check.id === "human-evaluation-lineage")?.state, "fail");
+    assert.equal(buildEditorialRolloutStatusV2({ ...input, ...changes }).gates.r2.checks.find((check) => check.id === "human-evaluation-lineage")?.state, "fail");
   }
 });

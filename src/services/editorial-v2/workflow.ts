@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { editorialCodeRevisionV2, writeEditorialDecisionContextV2 } from "./decision-replay.js";
 import type { ActionMode } from "../../types/runtime.js";
 import type {
+  EditorialMemoryContextV2,
   EditorialFactSnapshotV2,
   FollowUpCheckpointV2,
   FollowUpResolutionRecordV2,
@@ -40,6 +43,7 @@ export interface CollectEditorialDraftInputV2 {
   writerModel: EditorialWriterModelV2;
   metricLogPath: string;
   mode: ActionMode;
+  trackingMode?: "live" | "shadow";
   now?: Date;
   runId?: string;
   actionId?: string;
@@ -145,9 +149,41 @@ function firstFact(state: EditorialDraftStateV2): EditorialFactSnapshotV2 | null
   return state.draft.facts[0] ?? null;
 }
 
+function trackingAnchor(state: EditorialDraftStateV2) {
+  if (state.publication) return {
+    startedAt: state.publication.publishedAt,
+    followUpSchedule: state.publication.followUpSchedule,
+    falsifier: state.publication.falsifier,
+  };
+  if (state.draft.trackingMode === "shadow") return {
+    startedAt: state.draft.createdAt,
+    followUpSchedule: state.draft.followUpSchedule,
+    falsifier: state.draft.falsifier,
+  };
+  return undefined;
+}
+
+function memoryFromStore(
+  states: readonly EditorialDraftStateV2[], subject: string, parentId?: string
+): EditorialMemoryContextV2 {
+  const previous = states.filter((state) => trackingAnchor(state) &&
+    (parentId ? state.draft.id === parentId : state.draft.subject === subject)
+  ).sort((a, b) => Date.parse(trackingAnchor(b)!.startedAt) - Date.parse(trackingAnchor(a)!.startedAt))[0];
+  return {
+    beliefs: ["열기보다 남아 있는 근거를 믿는다.", "관측과 설명을 구분한다.", "틀렸다면 먼저 고친다."],
+    previous: previous ? {
+      draftId: previous.draft.id, provenance: previous.publication ? "live" : "shadow",
+      text: previous.publication?.publishedText ?? previous.draft.draft,
+      thesis: previous.draft.thesis, verdict: previous.draft.verdict,
+      recordedAt: trackingAnchor(previous)!.startedAt,
+    } : undefined,
+  };
+}
+
 function historyFromStore(states: readonly EditorialDraftStateV2[]): EditorialHistoryEntryV2[] {
   return states.flatMap((state) => {
-    if (!state.publication) return [];
+    const anchor = trackingAnchor(state);
+    if (!anchor) return [];
     const fact = firstFact(state);
     if (!fact) return [];
     return [{
@@ -157,7 +193,7 @@ function historyFromStore(states: readonly EditorialDraftStateV2[]): EditorialHi
       metricName: fact.metric.name,
       metricValue: fact.metric.value,
       factId: fact.factId,
-      publishedAt: state.publication.publishedAt,
+      publishedAt: anchor.startedAt,
     }];
   });
 }
@@ -184,12 +220,13 @@ function dueFollowUpTargets(
   const nowMs = Date.parse(now);
   const targets = new Map<string, EditorialFollowUpTargetV2>();
   for (const state of states) {
-    if (!state.publication || !["bite", "withhold"].includes(state.draft.format)) continue;
+    const anchor = trackingAnchor(state);
+    if (!anchor || !["bite", "withhold"].includes(state.draft.format)) continue;
     const fact = firstFact(state);
     if (!fact) continue;
     const has24 = state.followUps.some((row) => row.checkpoint === "24h");
     const has72 = state.followUps.some((row) => row.checkpoint === "72h");
-    const schedule = state.publication.followUpSchedule;
+    const schedule = anchor.followUpSchedule;
     const needs24 = !has24 && nowMs >= Date.parse(schedule.due24h) && nowMs < Date.parse(schedule.due72h);
     const needs72 = !has72 && nowMs >= Date.parse(schedule.due72h);
     const pendingPublicResolution = state.followUps.some(
@@ -334,15 +371,16 @@ function resolveDueFollowUps(input: {
   const revisitEvidence: EvidenceCardV2[] = [];
   let retryableCount = 0;
   for (const state of input.states) {
-    if (!state.publication || !["bite", "withhold"].includes(state.draft.format)) continue;
+    const anchor = trackingAnchor(state);
+    if (!anchor || !["bite", "withhold"].includes(state.draft.format)) continue;
     const fact = firstFact(state);
     if (!fact) continue;
     const followUpMetric = fact.followUp?.metric ?? fact.metric;
     const observation = matchingObservation(state, input.evidence, input.now);
     const has24 = state.followUps.some((row) => row.checkpoint === "24h");
     const has72 = state.followUps.some((row) => row.checkpoint === "72h");
-    const followUpSchedule = state.publication.followUpSchedule;
-    const effectiveFalsifier = state.publication.falsifier;
+    const followUpSchedule = anchor.followUpSchedule;
+    const effectiveFalsifier = anchor.falsifier;
     const due72 = Date.parse(followUpSchedule.due72h);
     const due24 = Date.parse(followUpSchedule.due24h);
 
@@ -402,6 +440,7 @@ function resolveDueFollowUps(input: {
 
     if (!has72 && nowMs >= due72) {
       const decision = resolve72HourFollowUpV2({
+        observationOnly: state.draft.editorialCase?.scope === "observation-only",
         now: input.now,
         schedule: followUpSchedule,
         falsifier: effectiveFalsifier,
@@ -470,6 +509,7 @@ function resolveDueFollowUps(input: {
 
     if (!has24 && nowMs >= due24 && nowMs < due72) {
       const decision = resolve24HourFollowUpV2({
+        observationOnly: state.draft.editorialCase?.scope === "observation-only",
         now: input.now,
         schedule: followUpSchedule,
         falsifier: effectiveFalsifier,
@@ -537,13 +577,17 @@ function resolveDueFollowUps(input: {
       }
     }
   }
-  return { dueRevisits: due, revisitEvidence, retryableCount };
+  return { dueRevisits: due.map((revisit) => ({
+    ...revisit,
+    editorialCase: input.states.find((state) => state.draft.id === revisit.draftId)?.draft.editorialCase,
+  })), revisitEvidence, retryableCount };
 }
 
 /** Provider-only checkpoint worker. It records observations without requiring an LLM or X. */
 export async function checkEditorialFollowUpsV2(
   input: CheckEditorialFollowUpsInputV2
 ): Promise<CheckEditorialFollowUpsResultV2> {
+  if (input.mode === "live") throw new Error("follow-up collection cannot run in live mode");
   const now = input.now ?? new Date();
   const nowIso = now.toISOString();
   const runId = input.runId || `run_${randomUUID()}`;
@@ -592,7 +636,12 @@ export async function collectEditorialDraftV2(
   const runId = input.runId || `run_${randomUUID()}`;
   const actionId = input.actionId || `action_${randomUUID()}`;
   const metricContext = { runId, actionId, mode: input.mode, now };
+  if (input.mode === "live") throw new Error("collection cannot run in live mode");
+  const trackingMode = input.trackingMode ?? "live";
   const statesBefore = input.store.listDraftStates();
+  if (statesBefore.some((state) => (state.draft.trackingMode ?? "live") !== trackingMode)) {
+    throw new Error("shadow and live-candidate ledgers must be separate");
+  }
   const followUpTargets = dueFollowUpTargets(statesBefore, nowIso);
   const sensing = input.sensing ?? await (input.sense
     ? input.sense(followUpTargets)
@@ -625,14 +674,36 @@ export async function collectEditorialDraftV2(
       details: { retryableCount: followUps.retryableCount },
     }));
   }
-  const planning = planEditorialV2({
-    evidence: sensing.evidence,
-    followUpEvidence: followUps.revisitEvidence,
+  const planningInput = {
+    evidence: sensing.evidence.filter((card) => card.lane === "protocol"),
+    followUpEvidence: followUps.revisitEvidence.filter((card) => card.lane === "protocol"),
     history: historyFromStore(statesBefore),
     dueRevisits: followUps.dueRevisits,
     now: nowIso,
     selectionSeed: input.selectionSeed || actionId,
-  });
+  };
+  const planning = planEditorialV2(planningInput);
+  const memories = Object.fromEntries([...planningInput.evidence, ...planningInput.followUpEvidence].map((card) => [
+    card.subject, memoryFromStore(statesBefore, card.subject),
+  ]));
+  if (planning.status === "planned") {
+    const parentId = planning.plan.continuityThread?.replace(/:(24h|72h)$/, "");
+    planning.plan.memoryContext = memoryFromStore(statesBefore, planning.plan.subject, parentId);
+    memories[planning.plan.subject] = planning.plan.memoryContext;
+  }
+  // Capture every planning decision, including no-posts, before requesting prose.
+  try {
+    writeEditorialDecisionContextV2(path.join(path.dirname(input.metricLogPath), "decision-contexts"), {
+      kind: "pixymon-decision-context", version: 1, actionId, trackingMode,
+      revision: editorialCodeRevisionV2(), modelId: input.writerModel.modelId ?? "unidentified-model",
+      writerVersion: "hypothesis-writer-v2", planningInput, memories, capturedPlanning: planning,
+    });
+  } catch {
+    appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
+      type: "planning_decision", stage: "capture", outcome: "no-post", reason: "decision-context-write-failed",
+    }));
+    return { status: "no-post", stage: "capture", reason: "decision-context-write-failed", runId, actionId };
+  }
   if (planning.status === "blocked") {
     appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
       type: "planning_decision",
@@ -690,6 +761,9 @@ export async function collectEditorialDraftV2(
       id: actionId,
       runId,
       createdAt: nowIso,
+      trackingMode,
+      editorialCase: planning.plan.editorialCase,
+      memoryContext: planning.plan.memoryContext,
       lane: planning.plan.lane,
       collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
       format: planning.plan.format,

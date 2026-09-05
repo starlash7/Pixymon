@@ -5,12 +5,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.ts";
 import { createFollowUpScheduleV2, createMachineFalsifierV2 } from "../src/services/editorial-v2/follow-ups.ts";
-import { publishEditorialDraftV2 } from "../src/services/editorial-v2/publisher.ts";
+import { publishEditorialDraftV2 as publishWithPolicy } from "../src/services/editorial-v2/publisher.ts";
 import { recordEditorialReviewV2 } from "../src/services/editorial-v2/review.ts";
 import { splitEditorialSentencesV2 } from "../src/services/editorial-v2/validator.ts";
 import { EDITORIAL_COLLECTION_EPOCH_V2 } from "../src/services/editorial-v2/contracts.ts";
 
 const NOW = new Date("2026-08-28T10:00:00.000Z");
+// Individual dispatch tests inject earned operator authority. Missing/revoked
+// authority is exercised independently below and by publication-policy tests.
+function publishEditorialDraftV2(input: Parameters<typeof publishWithPolicy>[0]) {
+  return publishWithPolicy({ authorize: () => {}, ...input });
+}
 const TEXT = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 수치는 분명하지만, 더 큰 회복 서사까지 승인한다는 잠정 판단만 남긴다.";
 
 function fixture(
@@ -180,62 +185,41 @@ test("edited copy must retain the evidence contract", () => {
   assert.throws(() => recordEditorialReviewV2({ store: f.store, draftId: f.draft.id, action: "edit", reviewerId: "operator", reasonTags: ["clarity"], editedDraft: "Aave 좋아 보인다.", metricLogPath: f.metrics, mode: "observe", now: NOW }), /failed contract/);
 });
 
-for (const publicFalsifier of [
-  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 72시간 뒤 같은 지표가 기준 미만이면 이 판정을 철회한다.",
-  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 다음 관측값이 기준선을 웃돌 때 이 판정을 폐기한다.",
-  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 현재 수준이 유지될 시 회복 판정을 승인한다.",
-  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 현재 수준이 무너지지 않는 한 회복 판정을 승인한다.",
-]) {
-  test("human edits cannot reintroduce the internal machine falsifier", () => {
-    const f = fixture();
-    assert.throws(
-      () => recordEditorialReviewV2({
-        store: f.store,
-        draftId: f.draft.id,
-        action: "edit",
-        reviewerId: "operator",
-        reasonTags: ["clarity"],
-        editedDraft: publicFalsifier,
-        metricLogPath: f.metrics,
-        mode: "observe",
-        now: NOW,
-      }),
-      /public-(?:conditional-language|recheck-language|falsifier-action)/
-    );
-  });
-}
-
-test("publish-time validation blocks a hidden public falsifier", async () => {
-  const hidden = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 현재 수준이 무너지지 않는 한 회복 판정을 승인한다.";
-  const f = fixture(hidden);
+test("human edits and publishing allow a grounded conditional judgment", async () => {
+  const text = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 수치만으로 회복을 주장한다면 근거가 부족하므로, 현재 판단은 관측된 변화에만 한정한다.";
+  const f = fixture();
   recordEditorialReviewV2({
-    store: f.store,
-    draftId: f.draft.id,
-    action: "approve",
-    reviewerId: "operator",
-    metricLogPath: f.metrics,
-    mode: "live",
-    now: NOW,
+    store: f.store, draftId: f.draft.id, action: "edit", reviewerId: "operator",
+    reasonTags: ["clarity"], editedDraft: text, metricLogPath: f.metrics, mode: "observe", now: NOW,
   });
   let calls = 0;
   const result = await publishEditorialDraftV2({
-    store: f.store,
-    draftId: f.draft.id,
-    mode: "live",
-    dispatch: async (_text, beforeSend) => {
-      beforeSend();
-      calls += 1;
-      return "x-should-not-run";
-    },
-    revalidateEvidence: async () => ({ ok: true }),
-    metricLogPath: f.metrics,
-    timezone: "Asia/Seoul",
-    now: NOW,
+    store: f.store, draftId: f.draft.id, mode: "live",
+    dispatch: async (_text, beforeSend) => { beforeSend(); calls += 1; return "x-conditional"; },
+    revalidateEvidence: async () => ({ ok: true }), metricLogPath: f.metrics, timezone: "Asia/Seoul", now: NOW,
   });
-  assert.equal(result.status, "blocked");
-  if (result.status !== "blocked") assert.fail("hidden falsifier reached dispatch");
-  assert.match(result.reason, /publish-contract:.*public-conditional-language/);
-  assert.equal(calls, 0);
+  assert.equal(result.status, "published");
+  assert.equal(calls, 1);
+});
+
+test("approval cannot bypass missing or revoked rollout authority", async () => {
+  const f = fixture();
+  f.store.approve(f.draft.id, { reviewerId: "operator" });
+  let writes = 0;
+  let checks = 0;
+  const common = {
+    store: f.store, draftId: f.draft.id, mode: "live" as const,
+    dispatch: async (_text: string, beforeSend: () => void) => { beforeSend(); writes += 1; return "x"; },
+    revalidateEvidence: async () => ({ ok: true }), metricLogPath: f.metrics, timezone: "Asia/Seoul", now: NOW,
+  };
+  assert.deepEqual(await publishWithPolicy(common), { status: "blocked", reason: "approved-live-authorization-required" });
+  const revoked = await publishWithPolicy({ ...common, authorize: () => {
+    checks += 1;
+    if (checks > 1) throw new Error("editorial-live-suspended");
+  } });
+  assert.equal(revoked.status, "blocked");
+  assert.equal(writes, 0);
+  assert.equal(f.store.getDraftState(f.draft.id)?.dispatchIntent, undefined);
 });
 
 test("review and publish reject a Revisit that promises another check", async () => {

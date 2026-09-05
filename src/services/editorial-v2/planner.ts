@@ -9,6 +9,8 @@ import type {
   EditorialVoiceStateV2,
   FollowUpScheduleV2,
   MachineFalsifierV2,
+  EditorialCaseV2,
+  EditorialMemoryContextV2,
 } from "./contracts.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -28,6 +30,8 @@ export interface EditorialPlanV2 {
   continuityThread?: string;
   voiceState: EditorialVoiceStateV2;
   blockReasons: readonly string[];
+  editorialCase?: EditorialCaseV2;
+  memoryContext?: EditorialMemoryContextV2;
 }
 
 export interface EditorialHistoryEntryV2 {
@@ -53,6 +57,7 @@ export interface DueRevisitV2 {
   checkpoint: "24h" | "72h";
   resolution?: "supported" | "invalidated" | "unresolved";
   previousVerdict?: string;
+  editorialCase?: EditorialCaseV2;
 }
 
 export type EditorialPlanningResultV2 =
@@ -138,19 +143,26 @@ function absoluteEventSize(card: EvidenceCardV2): number | null {
   return Number.isFinite(size) ? size : null;
 }
 
-function planFormat(card: EvidenceCardV2): EditorialFormatV2 {
-  const isMaterialDirectionalMove =
-    card.metric.unit === "%" &&
-    /change|delta|증감|변화/i.test(card.metric.name) &&
-    Math.abs(card.metric.value) >= 10;
-  return isMaterialDirectionalMove ? "bite" : "withhold";
-}
-
-function voiceState(card: EvidenceCardV2): EditorialVoiceStateV2 {
-  if (card.metric.value === 0) return "patient";
-  if (card.metric.value < 0) return "skeptical";
-  if (Math.abs(card.metric.value) >= 10) return "energized";
-  return "curious";
+export function editorialCaseForV2(card: EvidenceCardV2): EditorialCaseV2 {
+  const followUp = card.followUp;
+  const hasLevelTest = card.metric.name === "tvl-change-24h" && card.metric.unit === "%" &&
+    followUp?.metric.name === "tvl-usd" && followUp.metric.unit === "USD" &&
+    followUp.metric.value > 0 && followUp.threshold > 0 &&
+    ((card.metric.value > 0 && ["lt", "lte"].includes(followUp.comparator) && followUp.threshold < followUp.metric.value) ||
+      (card.metric.value < 0 && ["gt", "gte"].includes(followUp.comparator) && followUp.threshold > followUp.metric.value));
+  return {
+    question: hasLevelTest
+      ? `${card.subject}의 USD TVL 변화는 변동 전 수준으로 완전히 되돌려지는가?`
+      : `${card.subject}의 ${card.metric.name} 관측으로 어디까지 판단할 수 있는가?`,
+    hypothesis: hasLevelTest
+      ? `72시간 시점의 USD TVL이 ${followUp.threshold} USD ${{ lt: "이상", lte: "초과", gt: "이하", gte: "미만", eq: "이외" }[followUp.comparator]}에 남는다는 가설을 검증한다.`
+      : null,
+    scope: hasLevelTest ? "usd-tvl-level" : "observation-only",
+    factIds: [card.id],
+    limitation: hasLevelTest
+      ? "USD 표시 TVL 수준만 검증한다. 가격 중립 잔류, 순유입, 사용자, 원인이나 프로토콜의 좋고 나쁨을 입증하지 않는다."
+      : "비교 가능한 기준점이 없어 지속성은 판정하지 않는다. 반증 조건은 재관측 알림이며 가설 지지로 계산하지 않는다.",
+  };
 }
 
 function falsifierFor(card: EvidenceCardV2, schedule: FollowUpScheduleV2): MachineFalsifierV2 {
@@ -183,19 +195,20 @@ function buildPlan(
   revisit?: DueRevisitV2
 ): EditorialPlanV2 {
   const schedule = createFollowUpScheduleV2(now);
-  const format: EditorialFormatV2 = revisit ? "revisit" : planFormat(card);
+  const editorialCase = revisit?.editorialCase ?? editorialCaseForV2(card);
+  const format: EditorialFormatV2 = revisit ? "revisit" : editorialCase.hypothesis ? "bite" : "withhold";
   const verdict: EditorialVerdictV2 = revisit
     ? revisit.resolution === "invalidated"
       ? "corrected"
       : revisit.resolution === "supported"
         ? "approve"
         : "digesting"
-    : format === "withhold" ? "digesting" : card.metric.value < 0 ? "reject" : "approve";
+    : "digesting";
   const thesis = revisit
-    ? `${card.subject}의 현재 ${card.metric.name}은 ${card.metric.raw}다. ${revisit.checkpoint} 재검증 결과 이전 판정을 ${revisit.resolution || "unresolved"}로 닫는다.`
+    ? `${card.subject}의 현재 ${card.metric.name}은 ${card.metric.raw}다. ${revisit.checkpoint} 측정 결과는 ${revisit.resolution || "unresolved"}다. 기존 질문: ${editorialCase.question} ${editorialCase.limitation}`
     : format === "withhold"
       ? `${card.subject}의 ${card.metric.name} ${card.metric.raw}를 기록하되, 이 한 번의 수치만으로 더 큰 서사는 승인하지 않는다.`
-      : `${card.subject}의 ${card.metric.name} ${card.metric.raw}를 현재 관측 범위에서 중요한 변화로 잠정 판정한다.`;
+      : `${card.subject}의 ${card.metric.name} ${card.metric.raw}는 검증할 변화다. USD TVL 수준의 지속성은 아직 미결이며 원인이나 사용자 잔류로 확대하지 않는다.`;
   return {
     schemaVersion: 2,
     format,
@@ -209,8 +222,9 @@ function buildPlan(
     continuityThread: revisit ? `${revisit.draftId}:${revisit.checkpoint}` : undefined,
     voiceState: revisit
       ? revisit.resolution === "invalidated" ? "humbled" : revisit.resolution === "supported" ? "curious" : "patient"
-      : voiceState(card),
+      : editorialCase.hypothesis ? "curious" : "patient",
     blockReasons: [],
+    editorialCase,
   };
 }
 

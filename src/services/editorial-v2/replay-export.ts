@@ -43,6 +43,7 @@ export interface EditorialReplayFixtureV2 {
     unit?: string;
   };
   textProvenance: "generated";
+  trackingMode?: "live" | "shadow";
   reviewDisposition: "pending" | "approved-unchanged" | "approved-edited" | "rejected";
   wasEverEdited: boolean;
   draft: string;
@@ -174,12 +175,15 @@ function parseReplayFixture(value: unknown, index: number): EditorialReplayFixtu
   const input = record(value, field);
   onlyKeys(input, [
     "schemaVersion", "id", "lane", "format", "subject", "factIds", "usedFactIds", "claims", "facts",
-    "falsifier", "textProvenance", "reviewDisposition", "wasEverEdited", "draft",
+    "falsifier", "textProvenance", "trackingMode", "reviewDisposition", "wasEverEdited", "draft",
   ], field);
   if (input.schemaVersion !== 2 || input.textProvenance !== "generated") {
     throw new Error(`${field} has unsupported schema or text provenance`);
   }
   const expectedId = `replay-${String(index + 1).padStart(6, "0")}`;
+  if (input.trackingMode !== undefined && input.trackingMode !== "live" && input.trackingMode !== "shadow") {
+    throw new Error(`${field}.trackingMode is invalid`);
+  }
   const id = requiredText(input.id, `${field}.id`);
   if (id !== expectedId) throw new Error(`${field}.id must be ${expectedId}`);
   const factIds = stringArray(input.factIds, `${field}.factIds`);
@@ -247,6 +251,7 @@ function parseReplayFixture(value: unknown, index: number): EditorialReplayFixtu
   return {
     schemaVersion: 2,
     id,
+    ...(input.trackingMode ? { trackingMode: input.trackingMode as "live" | "shadow" } : {}),
     lane: replayLane(input.lane, `${field}.lane`),
     format: replayFormat(input.format, `${field}.format`),
     subject,
@@ -332,6 +337,7 @@ export function buildEditorialReplayFixturesV2(
     return {
       schemaVersion: 2,
       id: `replay-${String(draftIndex + 1).padStart(6, "0")}`,
+      trackingMode: event.draft.trackingMode ?? "live",
       lane,
       format: event.draft.format,
       subject: event.draft.subject,
