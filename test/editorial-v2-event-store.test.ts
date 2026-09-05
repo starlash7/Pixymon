@@ -12,6 +12,11 @@ import {
   createFollowUpScheduleV2,
   createMachineFalsifierV2,
 } from "../src/services/editorial-v2/follow-ups.ts";
+import {
+  EDITORIAL_COLLECTION_EPOCH_V2,
+  type EditorialGeneratedPayloadV2,
+} from "../src/services/editorial-v2/contracts.ts";
+import { splitEditorialSentencesV2 } from "../src/services/editorial-v2/validator.ts";
 import { acquireRuntimeLock } from "../src/services/process-lock.ts";
 
 const CREATED_AT = "2026-08-01T00:00:00.000Z";
@@ -32,10 +37,12 @@ function idFactory(): (kind: "draft" | "review" | "dispatch" | "follow-up" | "ev
 
 function draftInput(overrides: Partial<CreateEditorialDraftInputV2> = {}): CreateEditorialDraftInputV2 {
   const followUpSchedule = createFollowUpScheduleV2(CREATED_AT);
-  return {
+  const input: CreateEditorialDraftInputV2 = {
     id: "draft_001",
     runId: "run_001",
     createdAt: CREATED_AT,
+    lane: "protocol",
+    collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
     format: "bite",
     subject: "Aave",
     thesis: "대출 수요가 인센티브 이후에도 남는다.",
@@ -69,6 +76,25 @@ function draftInput(overrides: Partial<CreateEditorialDraftInputV2> = {}): Creat
     draft: "Aave 대출액이 1억 달러를 지켰다. 72시간 안에 9천만 달러 아래로 밀리면 수요가 남았다는 내 판정은 틀린다.",
     ...overrides,
   };
+  if (!Object.hasOwn(overrides, "generatedPayload")) {
+    input.generatedPayload = generatedPayload(input.draft, input.factIds);
+  }
+  return input;
+}
+
+function generatedPayload(
+  draft = draftInput().draft,
+  factIds: readonly string[] = ["fact_aave_borrow"]
+): EditorialGeneratedPayloadV2 {
+  return {
+    draft,
+    usedFactIds: [...factIds],
+    claims: splitEditorialSentencesV2(draft).map((text, index) => ({
+      kind: index === 0 ? "observation" : "judgment",
+      text,
+      factIds: [...factIds],
+    })),
+  };
 }
 
 test("editorial event store appends immutable events and publishes an approved draft once", () => {
@@ -90,7 +116,12 @@ test("editorial event store appends immutable events and publishes an approved d
     const immutablePrefix = fs.readFileSync(eventLogPath, "utf-8");
 
     if (preparation.status !== "ready") assert.fail("expected ready publication");
-    store.markDispatching("draft_001", { preparedAt: preparation.freshnessCheckedAt, expectedPublishText: preparation.publishText });
+    store.markDispatching("draft_001", {
+      preparedAt: preparation.freshnessCheckedAt,
+      expectedPublishText: preparation.publishText,
+      timezone: "UTC",
+      dailyLimit: 1,
+    });
 
     const first = store.markPublished("draft_001", {
       externalPostId: "x_post_001",
@@ -116,6 +147,7 @@ test("editorial event store appends immutable events and publishes an approved d
     assert.equal(state?.publication?.followUpSchedule.due72h, "2026-08-04T02:00:00.000Z");
     assert.equal(state?.publication?.falsifier.deadline, "2026-08-04T02:00:00.000Z");
     assert.equal(state?.publication?.falsifier.metric, "borrow_usd");
+    assert.deepEqual(state?.draft.generatedPayload, draftInput().generatedPayload);
     assert.equal(reloaded.preparePublication("draft_001").status, "already-published");
     assert.throws(
       () => reloaded.reject("draft_001", { reviewerId: "operator", reasonTags: ["late-change"] }),
@@ -167,6 +199,73 @@ test("draft facts map exactly to factIds and expose immutable review evidence", 
   });
 });
 
+test("generated writer payload is copied into immutable draft lineage", () => {
+  withTempLog((eventLogPath) => {
+    const store = new EditorialEventStoreV2({ eventLogPath, idFactory: idFactory() });
+    const payload = generatedPayload();
+    store.createDraft(draftInput({ generatedPayload: payload }));
+
+    (payload.usedFactIds as string[])[0] = "mutated-fact";
+    (payload.claims[0].factIds as string[])[0] = "mutated-claim-fact";
+    const state = store.getDraftState("draft_001");
+    assert.equal(state?.draft.generatedPayload?.usedFactIds[0], "fact_aave_borrow");
+    assert.equal(state?.draft.generatedPayload?.claims[0]?.factIds[0], "fact_aave_borrow");
+    assert.deepEqual(
+      state?.draft.generatedPayload?.claims.map((claim) => claim.kind),
+      ["observation", "judgment"]
+    );
+  });
+});
+
+test("generated writer payload enforces text, ids, sentence order, kinds, and coverage", () => {
+  withTempLog((eventLogPath) => {
+    const store = new EditorialEventStoreV2({ eventLogPath, idFactory: idFactory() });
+    const base = generatedPayload();
+    const invalid: Array<{ payload: EditorialGeneratedPayloadV2; pattern: RegExp }> = [
+      {
+        payload: { ...base, draft: `${base.draft} 다르다.` },
+        pattern: /must match draft\.draft exactly/,
+      },
+      {
+        payload: { ...base, usedFactIds: ["unknown-fact"] },
+        pattern: /usedFactIds must map exactly/,
+      },
+      {
+        payload: {
+          ...base,
+          claims: [
+            { ...base.claims[0], text: base.claims[1].text },
+            { ...base.claims[1], text: base.claims[0].text },
+          ],
+        },
+        pattern: /preserve sentence order exactly/,
+      },
+      {
+        payload: {
+          ...base,
+          claims: [base.claims[0], { ...base.claims[1], kind: "observation" }],
+        },
+        pattern: /claim 2 must be judgment/,
+      },
+      {
+        payload: {
+          ...base,
+          claims: [base.claims[0], { ...base.claims[1], factIds: [] }],
+        },
+        pattern: /claim factIds must cover draft\.factIds exactly/,
+      },
+    ];
+
+    for (const row of invalid) {
+      assert.throws(
+        () => store.createDraft(draftInput({ generatedPayload: row.payload })),
+        row.pattern
+      );
+    }
+    assert.equal(store.readEvents().length, 0);
+  });
+});
+
 test("publish rechecks fact freshness using the store clock", () => {
   withTempLog((eventLogPath) => {
     const store = new EditorialEventStoreV2({
@@ -178,7 +277,12 @@ test("publish rechecks fact freshness using the store clock", () => {
     store.approve("draft_001", { reviewerId: "operator" });
 
     assert.throws(() => store.preparePublication("draft_001"), /evidence is stale/);
-    assert.throws(() => store.markDispatching("draft_001", { preparedAt: "2026-08-01T03:00:00.001Z", expectedPublishText: draftInput().draft }), /evidence is stale/);
+    assert.throws(() => store.markDispatching("draft_001", {
+      preparedAt: "2026-08-01T03:00:00.001Z",
+      expectedPublishText: draftInput().draft,
+      timezone: "UTC",
+      dailyLimit: 1,
+    }), /evidence is stale/);
     assert.equal(store.getDraftState("draft_001")?.publication, undefined);
     assert.equal(store.readEvents().length, 2);
   });
@@ -196,7 +300,12 @@ test("durable dispatch intent blocks automatic resend and supports explicit reco
     store.approve("draft_001", { reviewerId: "operator" });
     const preparation = store.preparePublication("draft_001");
     if (preparation.status !== "ready") assert.fail("expected ready publication");
-    store.markDispatching("draft_001", { preparedAt: preparation.freshnessCheckedAt, expectedPublishText: preparation.publishText });
+    store.markDispatching("draft_001", {
+      preparedAt: preparation.freshnessCheckedAt,
+      expectedPublishText: preparation.publishText,
+      timezone: "UTC",
+      dailyLimit: 1,
+    });
 
     assert.throws(() => store.preparePublication("draft_001"), /unresolved dispatch intent/);
     assert.equal(store.getDraftState("draft_001")?.dispatchIntent?.publishText, draftInput().draft);

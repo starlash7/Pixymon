@@ -20,8 +20,18 @@ import {
 export const PROVIDER_TIMEOUT_MS_V2 = 8_000;
 export const SENSING_DEADLINE_MS_V2 = 15_000;
 export const DEFILLAMA_DETAIL_CANDIDATE_LIMIT_V2 = 6;
+export const DEFILLAMA_DETAIL_CONCURRENCY_V2 = 3;
+export const DEFILLAMA_DETAIL_ROTATION_BUCKET_MS_V2 = SIGNAL_FRESHNESS_MS;
 export const DEFILLAMA_DETAIL_RESPONSE_LIMIT_BYTES_V2 = 32 * 1024 * 1024;
 export const DEFILLAMA_DETAIL_RUN_LIMIT_BYTES_V2 = 64 * 1024 * 1024;
+
+const PROVIDER_RESPONSE_LIMIT_BYTES_V2 = {
+  defillamaSummary: 16 * 1024 * 1024,
+  mempool: 64 * 1024,
+  coingecko: 1024 * 1024,
+  rss: 4 * 1024 * 1024,
+  cryptocompare: 4 * 1024 * 1024,
+} as const;
 
 const ENDPOINTS = {
   defillama: "https://api.llama.fi/protocols",
@@ -29,7 +39,7 @@ const ENDPOINTS = {
     `https://api.llama.fi/protocol/${encodeURIComponent(subjectKey)}`,
   mempool: "https://mempool.space/api/v1/fees/recommended",
   coingecko: "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1&sparkline=false&price_change_percentage=24h",
-  rss: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+  rss: "https://www.coindesk.com/arc/outboundfeeds/rss",
   cryptocompare: "https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=popular",
 } as const;
 
@@ -48,6 +58,21 @@ export interface ProviderAdapterResultV2 {
   observations: EvidenceCardV2[];
   discoveries: EditorialDiscoveryV2[];
   selectionGaps?: ProviderSelectionGapV2[];
+  /** Anonymous class-level diagnostics used to decide whether pinned anchors waste supply. */
+  selectionClassSummary?: ProviderSelectionClassSummaryV2[];
+}
+
+export type DefiLlamaSelectionClassV2 =
+  | "anchor-absolute"
+  | "anchor-relative"
+  | "anchor-residual"
+  | "rotation";
+
+export interface ProviderSelectionClassSummaryV2 {
+  selectionClass: DefiLlamaSelectionClassV2;
+  attempted: number;
+  qualified: number;
+  gapSummary: readonly string[];
 }
 
 export interface ProviderSelectionGapV2 {
@@ -83,6 +108,8 @@ export interface EditorialProviderContextV2 {
   followUpTargets?: readonly EditorialFollowUpTargetV2[];
   /** Follow-up/revalidation workers disable this to avoid unrelated detail fetches. */
   includeGenericCandidates?: boolean;
+  /** Stable test/audit seed; production rotation otherwise uses a fixed namespace. */
+  selectionSeed?: string;
 }
 
 type FetchResultV2 =
@@ -100,7 +127,9 @@ function defiLlamaDetailRequestLimitsV2(input: {
   perProviderTimeoutMs: number;
   sensingDeadlineMs: number;
   cumulativePayloadBytes: number;
+  payloadBudgetBytes?: number;
 }): { timeoutMs: number; maxResponseBytes: number } {
+  const payloadBudgetBytes = input.payloadBudgetBytes ?? DEFILLAMA_DETAIL_RUN_LIMIT_BYTES_V2;
   return {
     timeoutMs: Math.max(0, Math.min(
       input.perProviderTimeoutMs - input.elapsedMs,
@@ -108,9 +137,25 @@ function defiLlamaDetailRequestLimitsV2(input: {
     )),
     maxResponseBytes: Math.max(0, Math.min(
       DEFILLAMA_DETAIL_RESPONSE_LIMIT_BYTES_V2,
-      DEFILLAMA_DETAIL_RUN_LIMIT_BYTES_V2 - input.cumulativePayloadBytes
+      payloadBudgetBytes - input.cumulativePayloadBytes
     )),
   };
+}
+
+function defiLlamaDetailLaneQuotasV2(
+  laneCount = DEFILLAMA_DETAIL_CONCURRENCY_V2
+): number[] {
+  if (!Number.isInteger(laneCount) || laneCount < 1 || laneCount > DEFILLAMA_DETAIL_CONCURRENCY_V2) {
+    throw new Error("DefiLlama detail lane count is invalid");
+  }
+  const base = Math.floor(
+    DEFILLAMA_DETAIL_RUN_LIMIT_BYTES_V2 / laneCount
+  );
+  const remainder = DEFILLAMA_DETAIL_RUN_LIMIT_BYTES_V2 % laneCount;
+  return Array.from(
+    { length: laneCount },
+    (_, index) => base + (index < remainder ? 1 : 0)
+  );
 }
 
 function validInstant(value: string): boolean {
@@ -149,14 +194,30 @@ interface DefiLlamaSummaryRowV2 {
   change_1d: number;
 }
 
+interface DefiLlamaShortlistCandidateV2 {
+  row: DefiLlamaSummaryRowV2;
+  selectionClasses: DefiLlamaSelectionClassV2[];
+}
+
 function defiRowKey(row: DefiLlamaSummaryRowV2): string {
   return row.slug?.trim() || slug(row.name);
 }
 
-function shortlistDefiLlamaRowsV2(
+function stableHashV2(value: string): number {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
+}
+
+function shortlistDefiLlamaCandidatesV2(
   rows: readonly DefiLlamaSummaryRowV2[],
-  benchmarkChangePercent: number
-): DefiLlamaSummaryRowV2[] {
+  benchmarkChangePercent: number,
+  now: string,
+  selectionSeed: string
+): DefiLlamaShortlistCandidateV2[] {
   const byAbsoluteMove = [...rows].sort((left, right) =>
     defiAbsoluteTvlMove(right.tvl, right.change_1d) -
       defiAbsoluteTvlMove(left.tvl, left.change_1d) ||
@@ -171,17 +232,59 @@ function shortlistDefiLlamaRowsV2(
       Math.abs(left.change_1d - benchmarkChangePercent) ||
     defiRowKey(left).localeCompare(defiRowKey(right))
   );
-  const selected = new Map<string, DefiLlamaSummaryRowV2>();
-  for (const row of [
-    ...byAbsoluteMove.slice(0, 2),
-    ...byRelativeMove.slice(0, 2),
-    ...byResidual.slice(0, 2),
-    ...byAbsoluteMove,
-  ]) {
-    if (selected.size >= DEFILLAMA_DETAIL_CANDIDATE_LIMIT_V2) break;
-    selected.set(defiRowKey(row), row);
+  // Protect the strongest signal on each axis; rotate only the remaining request budget.
+  const selected = new Map<string, DefiLlamaShortlistCandidateV2>();
+  const anchors: Array<{
+    row: DefiLlamaSummaryRowV2 | undefined;
+    selectionClass: DefiLlamaSelectionClassV2;
+  }> = [
+    { row: byAbsoluteMove[0], selectionClass: "anchor-absolute" },
+    { row: byRelativeMove[0], selectionClass: "anchor-relative" },
+    { row: byResidual[0], selectionClass: "anchor-residual" },
+  ];
+  for (const { row, selectionClass } of anchors) {
+    if (!row) continue;
+    const key = defiRowKey(row);
+    const existing = selected.get(key);
+    if (existing) {
+      existing.selectionClasses.push(selectionClass);
+    } else {
+      selected.set(key, { row, selectionClasses: [selectionClass] });
+    }
+  }
+
+  const remainingByKey = new Map<string, DefiLlamaSummaryRowV2>();
+  for (const row of rows) {
+    const key = defiRowKey(row);
+    if (!selected.has(key) && !remainingByKey.has(key)) remainingByKey.set(key, row);
+  }
+  const remaining = [...remainingByKey.values()]
+    .sort((left, right) => defiRowKey(left).localeCompare(defiRowKey(right)));
+  const rotationSlots = DEFILLAMA_DETAIL_CANDIDATE_LIMIT_V2 - selected.size;
+  if (rotationSlots > 0 && remaining.length > 0) {
+    const bucket = Math.floor(Date.parse(now) / DEFILLAMA_DETAIL_ROTATION_BUCKET_MS_V2);
+    const rawOffset = (stableHashV2(selectionSeed) + bucket * rotationSlots) % remaining.length;
+    const offset = (rawOffset + remaining.length) % remaining.length;
+    for (let index = 0; index < Math.min(rotationSlots, remaining.length); index += 1) {
+      const row = remaining[(offset + index) % remaining.length];
+      selected.set(defiRowKey(row), { row, selectionClasses: ["rotation"] });
+    }
   }
   return [...selected.values()];
+}
+
+function shortlistDefiLlamaRowsV2(
+  rows: readonly DefiLlamaSummaryRowV2[],
+  benchmarkChangePercent: number,
+  now: string,
+  selectionSeed: string
+): DefiLlamaSummaryRowV2[] {
+  return shortlistDefiLlamaCandidatesV2(
+    rows,
+    benchmarkChangePercent,
+    now,
+    selectionSeed
+  ).map((candidate) => candidate.row);
 }
 
 function failureResult(
@@ -210,21 +313,42 @@ async function fetchPayloadV2(input: {
 }): Promise<FetchResultV2> {
   const startedAt = Date.now();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(1, input.timeoutMs));
+  let timeout: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(Object.assign(new Error("provider deadline exceeded"), { name: "AbortError" }));
+    }, Math.max(1, input.timeoutMs));
+  });
   let payloadBytes = 0;
+  let response: Response | undefined;
+  let activeReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
-    const response = await input.fetchImpl(input.url, {
-      signal: controller.signal,
-      headers: input.accept ? { accept: input.accept } : undefined,
-    });
+    response = await Promise.race([
+      input.fetchImpl(input.url, {
+        signal: controller.signal,
+        headers: input.accept ? { accept: input.accept } : undefined,
+      }),
+      deadline,
+    ]);
     const latencyMs = Date.now() - startedAt;
+    const contentLength = response.headers.get("content-length")?.trim() ?? "";
+    const parsedContentLength = /^\d+$/.test(contentLength) ? Number(contentLength) : null;
+    const declaredBytes = parsedContentLength === null
+      ? null
+      : Number.isSafeInteger(parsedContentLength)
+        ? parsedContentLength
+        : Number.MAX_SAFE_INTEGER;
     if (!response.ok) {
+      // Error bodies are never useful evidence. Cancel the stream immediately,
+      // but conservatively charge a declared body to the shared run budget.
+      void response.body?.cancel().catch(() => undefined);
       return {
         ok: false,
         failure: providerFailureCodeFromHttpStatusV2(response.status),
         statusCode: response.status,
         latencyMs,
-        payloadBytes,
+        payloadBytes: declaredBytes ?? payloadBytes,
       };
     }
     const cacheStatus = String(response.headers.get("cf-cache-status") || "").trim().toUpperCase();
@@ -243,34 +367,39 @@ async function fetchPayloadV2(input: {
       );
     if (explicitlyStale) {
       void response.body?.cancel().catch(() => undefined);
-      return { ok: false, failure: "stale-cache", latencyMs, payloadBytes };
+      return {
+        ok: false,
+        failure: "stale-cache",
+        latencyMs,
+        payloadBytes: declaredBytes ?? payloadBytes,
+      };
     }
-    const declaredBytes = Number(response.headers.get("content-length"));
     if (
       input.maxResponseBytes !== undefined &&
-      Number.isFinite(declaredBytes) &&
+      declaredBytes !== null &&
       declaredBytes > input.maxResponseBytes
     ) {
       void response.body?.cancel().catch(() => undefined);
-      return { ok: false, failure: "payload-too-large", latencyMs, payloadBytes };
+      return { ok: false, failure: "payload-too-large", latencyMs, payloadBytes: declaredBytes };
     }
     let raw = "";
     if (input.maxResponseBytes !== undefined && response.body) {
       const reader = response.body.getReader();
+      activeReader = reader;
       const decoder = new TextDecoder();
       while (true) {
-        const chunk = await reader.read();
+        const chunk = await Promise.race([reader.read(), deadline]);
         if (chunk.done) break;
         payloadBytes += chunk.value.byteLength;
         if (payloadBytes > input.maxResponseBytes) {
-          await reader.cancel();
+          void reader.cancel().catch(() => undefined);
           return { ok: false, failure: "payload-too-large", latencyMs: Date.now() - startedAt, payloadBytes };
         }
         raw += decoder.decode(chunk.value, { stream: true });
       }
       raw += decoder.decode();
     } else {
-      raw = await response.text();
+      raw = await Promise.race([response.text(), deadline]);
       payloadBytes = new TextEncoder().encode(raw).byteLength;
       if (input.maxResponseBytes !== undefined && payloadBytes > input.maxResponseBytes) {
         return { ok: false, failure: "payload-too-large", latencyMs: Date.now() - startedAt, payloadBytes };
@@ -287,11 +416,13 @@ async function fetchPayloadV2(input: {
       return { ok: false, failure: "parse-error", latencyMs: completedLatencyMs, payloadBytes };
     }
   } catch (error) {
+    void activeReader?.cancel().catch(() => undefined);
+    if (!activeReader) void response?.body?.cancel().catch(() => undefined);
     const latencyMs = Date.now() - startedAt;
     const name = error && typeof error === "object" ? String((error as { name?: string }).name || "") : "";
     return { ok: false, failure: name === "AbortError" ? "timeout" : "network-error", latencyMs, payloadBytes };
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timeout!);
   }
 }
 
@@ -346,7 +477,7 @@ function directCard(input: {
 }
 
 async function collectDefiLlamaV2(
-  context: Required<Pick<EditorialProviderContextV2, "now" | "fetchImpl" | "perProviderTimeoutMs" | "sensingDeadlineMs" | "followUpTargets" | "includeGenericCandidates">>
+  context: Required<Pick<EditorialProviderContextV2, "now" | "fetchImpl" | "perProviderTimeoutMs" | "sensingDeadlineMs" | "followUpTargets" | "includeGenericCandidates" | "selectionSeed">>
 ): Promise<ProviderAdapterResultV2> {
   const startedAt = Date.now();
   const fetched = await fetchPayloadV2({
@@ -354,6 +485,7 @@ async function collectDefiLlamaV2(
     url: ENDPOINTS.defillama,
     fetchImpl: context.fetchImpl,
     timeoutMs: Math.min(context.perProviderTimeoutMs, context.sensingDeadlineMs),
+    maxResponseBytes: PROVIDER_RESPONSE_LIMIT_BYTES_V2.defillamaSummary,
     maxCacheAgeMs: SIGNAL_FRESHNESS_MS,
   });
   if (fetched.ok === false) return failureResult("defillama", context.now, fetched.failure, fetched.latencyMs, fetched.statusCode);
@@ -476,96 +608,145 @@ async function collectDefiLlamaV2(
     row: DefiLlamaSummaryRowV2;
     metrics: DefiLlamaPriceNeutralMetricsV2;
   }> = [];
+  const selectionAttemptCounts = new Map<DefiLlamaSelectionClassV2, number>();
+  const selectionQualifiedCounts = new Map<DefiLlamaSelectionClassV2, number>();
+  const selectionGapCounts = new Map<DefiLlamaSelectionClassV2, Map<string, number>>();
+  const recordSelectionOutcome = (
+    selectionClasses: readonly DefiLlamaSelectionClassV2[],
+    reasons: readonly string[],
+    qualified: boolean
+  ): void => {
+    for (const selectionClass of selectionClasses) {
+      selectionAttemptCounts.set(
+        selectionClass,
+        (selectionAttemptCounts.get(selectionClass) ?? 0) + 1
+      );
+      if (qualified) {
+        selectionQualifiedCounts.set(
+          selectionClass,
+          (selectionQualifiedCounts.get(selectionClass) ?? 0) + 1
+        );
+      }
+      const gapCounts = selectionGapCounts.get(selectionClass) ?? new Map<string, number>();
+      for (const reason of reasons) {
+        gapCounts.set(reason, (gapCounts.get(reason) ?? 0) + 1);
+      }
+      selectionGapCounts.set(selectionClass, gapCounts);
+    }
+  };
   if (context.includeGenericCandidates) {
-    const shortlist = shortlistDefiLlamaRowsV2(coarseRows, benchmarkChangePercent);
+    const shortlistCandidates = shortlistDefiLlamaCandidatesV2(
+      coarseRows,
+      benchmarkChangePercent,
+      context.now,
+      context.selectionSeed
+    );
+    const shortlist = shortlistCandidates.map((candidate) => candidate.row);
     const shortlistedKeys = new Set(shortlist.map(rowKey));
     selectionGaps.push(...coarseRows
       .filter((row) => !shortlistedKeys.has(rowKey(row)))
       .map((row) => ({
         subject: row.name,
         subjectKey: rowKey(row),
-        reasons: ["detail-budget-exhausted"],
+        reasons: ["detail-rotation-deferred"],
       })));
-    let cumulativePayloadBytes = 0;
+    type DetailAttempt =
+      | { kind: "gap"; reason: "detail-deadline-exhausted" | "detail-run-payload-budget-exhausted" }
+      | { kind: "fetched"; detail: FetchResultV2; maxResponseBytes: number };
+    const attempts: Array<DetailAttempt | undefined> = Array(shortlist.length);
+    const activeLaneCount = Math.min(
+      DEFILLAMA_DETAIL_CONCURRENCY_V2,
+      shortlist.length
+    );
+    const laneQuotas = activeLaneCount > 0
+      ? defiLlamaDetailLaneQuotasV2(activeLaneCount)
+      : [];
+
+    // Three fixed lanes keep request order and byte allocation deterministic.
+    // Each lane processes at most two details sequentially, so one hung request
+    // cannot consume the whole provider deadline or starve every later candidate.
+    await Promise.all(laneQuotas.map(async (laneQuota, laneIndex) => {
+      let lanePayloadBytes = 0;
+      for (
+        let index = laneIndex;
+        index < shortlist.length;
+        index += activeLaneCount
+      ) {
+        const requestLimits = defiLlamaDetailRequestLimitsV2({
+          elapsedMs: Date.now() - startedAt,
+          perProviderTimeoutMs: context.perProviderTimeoutMs,
+          sensingDeadlineMs: context.sensingDeadlineMs,
+          cumulativePayloadBytes: lanePayloadBytes,
+          payloadBudgetBytes: laneQuota,
+        });
+        if (requestLimits.timeoutMs <= 0) {
+          attempts[index] = { kind: "gap", reason: "detail-deadline-exhausted" };
+          continue;
+        }
+        if (requestLimits.maxResponseBytes <= 0) {
+          attempts[index] = { kind: "gap", reason: "detail-run-payload-budget-exhausted" };
+          continue;
+        }
+        const row = shortlist[index];
+        const detail = await fetchPayloadV2({
+          provider: "defillama",
+          url: ENDPOINTS.defillamaProtocol(rowKey(row)),
+          fetchImpl: context.fetchImpl,
+          timeoutMs: requestLimits.timeoutMs,
+          maxResponseBytes: requestLimits.maxResponseBytes,
+          maxCacheAgeMs: SIGNAL_FRESHNESS_MS,
+        });
+        // A declared or final stream chunk can be larger than the remaining
+        // quota. Keep the diagnostic byte count, but never let accounting cross
+        // the fixed lane reservation that makes the 64 MiB run cap deterministic.
+        lanePayloadBytes += Math.min(
+          detail.payloadBytes,
+          Math.max(0, laneQuota - lanePayloadBytes)
+        );
+        attempts[index] = {
+          kind: "fetched",
+          detail,
+          maxResponseBytes: requestLimits.maxResponseBytes,
+        };
+      }
+    }));
+
     for (let index = 0; index < shortlist.length; index += 1) {
       const row = shortlist[index];
-      const requestLimits = defiLlamaDetailRequestLimitsV2({
-        elapsedMs: Date.now() - startedAt,
-        perProviderTimeoutMs: context.perProviderTimeoutMs,
-        sensingDeadlineMs: context.sensingDeadlineMs,
-        cumulativePayloadBytes,
-      });
-      if (requestLimits.timeoutMs <= 0) {
-        selectionGaps.push(...shortlist.slice(index).map((pending) => ({
-          subject: pending.name,
-          subjectKey: rowKey(pending),
-          reasons: ["detail-deadline-exhausted"],
-        })));
-        break;
-      }
-      if (requestLimits.maxResponseBytes <= 0) {
-        selectionGaps.push(...shortlist.slice(index).map((pending) => ({
-          subject: pending.name,
-          subjectKey: rowKey(pending),
-          reasons: ["detail-run-payload-budget-exhausted"],
-        })));
-        break;
-      }
-      const detail = await fetchPayloadV2({
-        provider: "defillama",
-        url: ENDPOINTS.defillamaProtocol(rowKey(row)),
-        fetchImpl: context.fetchImpl,
-        timeoutMs: requestLimits.timeoutMs,
-        maxResponseBytes: requestLimits.maxResponseBytes,
-        maxCacheAgeMs: SIGNAL_FRESHNESS_MS,
-      });
-      if (!detail.ok) {
-        cumulativePayloadBytes += detail.payloadBytes;
-        if (
-          detail.failure === "payload-too-large" &&
-          requestLimits.maxResponseBytes < DEFILLAMA_DETAIL_RESPONSE_LIMIT_BYTES_V2
-        ) {
-          selectionGaps.push(...shortlist.slice(index).map((pending) => ({
-            subject: pending.name,
-            subjectKey: rowKey(pending),
-            reasons: ["detail-run-payload-budget-exhausted"],
-            ...(pending === row ? { latencyMs: detail.latencyMs, payloadBytes: detail.payloadBytes } : {}),
-          })));
-          break;
-        }
+      const selectionClasses = shortlistCandidates[index].selectionClasses;
+      const attempt = attempts[index];
+      if (!attempt) throw new Error(`missing DefiLlama detail attempt at ${index}`);
+      if (attempt.kind === "gap") {
+        recordSelectionOutcome(selectionClasses, [attempt.reason], false);
         selectionGaps.push({
           subject: row.name,
           subjectKey: rowKey(row),
-          reasons: [`detail-${detail.failure}`],
-          latencyMs: detail.latencyMs,
-          payloadBytes: detail.payloadBytes,
+          reasons: [attempt.reason],
         });
-        if (cumulativePayloadBytes >= DEFILLAMA_DETAIL_RUN_LIMIT_BYTES_V2) {
-          selectionGaps.push(...shortlist.slice(index + 1).map((pending) => ({
-            subject: pending.name,
-            subjectKey: rowKey(pending),
-            reasons: ["detail-run-payload-budget-exhausted"],
-          })));
-          break;
-        }
         continue;
       }
-      if (cumulativePayloadBytes + detail.payloadBytes > DEFILLAMA_DETAIL_RUN_LIMIT_BYTES_V2) {
+      const { detail, maxResponseBytes } = attempt;
+      if (!detail.ok) {
+        const exceedsHardResponseLimit =
+          detail.failure === "payload-too-large" &&
+          detail.payloadBytes > DEFILLAMA_DETAIL_RESPONSE_LIMIT_BYTES_V2;
+        const budgetLimited =
+          detail.failure === "payload-too-large" &&
+          !exceedsHardResponseLimit &&
+          maxResponseBytes < DEFILLAMA_DETAIL_RESPONSE_LIMIT_BYTES_V2;
+        const reasons = [budgetLimited
+          ? "detail-run-payload-budget-exhausted"
+          : `detail-${detail.failure}`];
+        recordSelectionOutcome(selectionClasses, reasons, false);
         selectionGaps.push({
           subject: row.name,
           subjectKey: rowKey(row),
-          reasons: ["detail-run-payload-budget-exhausted"],
+          reasons,
           latencyMs: detail.latencyMs,
           payloadBytes: detail.payloadBytes,
         });
-        selectionGaps.push(...shortlist.slice(index + 1).map((pending) => ({
-          subject: pending.name,
-          subjectKey: rowKey(pending),
-          reasons: ["detail-run-payload-budget-exhausted"],
-        })));
-        break;
+        continue;
       }
-      cumulativePayloadBytes += detail.payloadBytes;
       const decision = evaluateDefiLlamaPriceNeutralV2({
         payload: detail.value,
         summaryTvlUsd: row.tvl,
@@ -573,15 +754,18 @@ async function collectDefiLlamaV2(
         now: context.now,
       });
       if (!decision.eligible || !decision.metrics) {
+        const reasons = decision.reasons.map((reason) => `price-neutral-${reason}`);
+        recordSelectionOutcome(selectionClasses, reasons, false);
         selectionGaps.push({
           subject: row.name,
           subjectKey: rowKey(row),
-          reasons: decision.reasons.map((reason) => `price-neutral-${reason}`),
+          reasons,
           latencyMs: detail.latencyMs,
           payloadBytes: detail.payloadBytes,
         });
         continue;
       }
+      recordSelectionOutcome(selectionClasses, [], true);
       qualifiedRows.push({ row, metrics: decision.metrics });
     }
   }
@@ -622,11 +806,21 @@ async function collectDefiLlamaV2(
     observations: [...new Map(observations.map((card) => [card.id, card])).values()],
     discoveries: [],
     selectionGaps,
+    selectionClassSummary: [...selectionAttemptCounts.keys()]
+      .sort((left, right) => left.localeCompare(right))
+      .map((selectionClass) => ({
+        selectionClass,
+        attempted: selectionAttemptCounts.get(selectionClass) ?? 0,
+        qualified: selectionQualifiedCounts.get(selectionClass) ?? 0,
+        gapSummary: [...(selectionGapCounts.get(selectionClass) ?? new Map())]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([reason, count]) => `${reason}=${count}`),
+      })),
   };
 }
 
 async function collectMempoolV2(context: Required<Pick<EditorialProviderContextV2, "now" | "fetchImpl" | "perProviderTimeoutMs">>): Promise<ProviderAdapterResultV2> {
-  const fetched = await fetchPayloadV2({ provider: "mempool.space", url: ENDPOINTS.mempool, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, maxCacheAgeMs: SIGNAL_FRESHNESS_MS });
+  const fetched = await fetchPayloadV2({ provider: "mempool.space", url: ENDPOINTS.mempool, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, maxResponseBytes: PROVIDER_RESPONSE_LIMIT_BYTES_V2.mempool, maxCacheAgeMs: SIGNAL_FRESHNESS_MS });
   if (fetched.ok === false) return failureResult("mempool.space", context.now, fetched.failure, fetched.latencyMs, fetched.statusCode);
   const row = fetched.value as { fastestFee?: unknown };
   if (typeof row?.fastestFee !== "number" || !Number.isFinite(row.fastestFee)) return failureResult("mempool.space", context.now, "parse-error", fetched.latencyMs);
@@ -641,7 +835,7 @@ async function collectMempoolV2(context: Required<Pick<EditorialProviderContextV
 }
 
 async function collectCoinGeckoV2(context: Required<Pick<EditorialProviderContextV2, "now" | "fetchImpl" | "perProviderTimeoutMs">>): Promise<ProviderAdapterResultV2> {
-  const fetched = await fetchPayloadV2({ provider: "coingecko", url: ENDPOINTS.coingecko, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, maxCacheAgeMs: SIGNAL_FRESHNESS_MS });
+  const fetched = await fetchPayloadV2({ provider: "coingecko", url: ENDPOINTS.coingecko, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, maxResponseBytes: PROVIDER_RESPONSE_LIMIT_BYTES_V2.coingecko, maxCacheAgeMs: SIGNAL_FRESHNESS_MS });
   if (fetched.ok === false) return failureResult("coingecko", context.now, fetched.failure, fetched.latencyMs, fetched.statusCode);
   if (!Array.isArray(fetched.value)) return failureResult("coingecko", context.now, "parse-error", fetched.latencyMs);
   const rows = fetched.value.flatMap((value): Array<{ id: string; name: string; current_price: number }> => {
@@ -674,19 +868,45 @@ async function collectCoinGeckoV2(context: Required<Pick<EditorialProviderContex
   };
 }
 
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&#(x[0-9a-f]+|\d+);/gi, (entity, code: string) => {
+      const radix = code.toLowerCase().startsWith("x") ? 16 : 10;
+      const value = Number.parseInt(radix === 16 ? code.slice(1) : code, radix);
+      return Number.isFinite(value) && value >= 0 && value <= 0x10ffff
+        ? String.fromCodePoint(value)
+        : entity;
+    })
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function rssDiscoveries(xml: string): EditorialDiscoveryV2[] {
   return [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)].slice(0, 10).flatMap((match) => {
     const block = match[0];
-    const title = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/<[^>]+>/g, " ").trim() || "";
-    const url = block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() || "";
-    const published = block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim() || "";
+    const title = decodeXmlText(
+      block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || ""
+    );
+    const url = decodeXmlText(
+      block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1] || ""
+    );
+    const published = decodeXmlText(
+      block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1] || ""
+    );
     if (!title || !/^https?:\/\//i.test(url)) return [];
     return [{ provider: "rss" as const, title, url, publishedAt: validInstant(published) ? new Date(published).toISOString() : null, blockReason: "discovery-only" as const }];
   });
 }
 
 async function collectRssV2(context: Required<Pick<EditorialProviderContextV2, "now" | "fetchImpl" | "perProviderTimeoutMs">>): Promise<ProviderAdapterResultV2> {
-  const fetched = await fetchPayloadV2({ provider: "rss", url: ENDPOINTS.rss, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, accept: "application/rss+xml, application/xml", maxCacheAgeMs: NEWS_FRESHNESS_MS });
+  const fetched = await fetchPayloadV2({ provider: "rss", url: ENDPOINTS.rss, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, accept: "application/rss+xml, application/xml", maxResponseBytes: PROVIDER_RESPONSE_LIMIT_BYTES_V2.rss, maxCacheAgeMs: NEWS_FRESHNESS_MS });
   if (fetched.ok === false) return failureResult("rss", context.now, fetched.failure, fetched.latencyMs, fetched.statusCode);
   const discoveries = rssDiscoveries(String(fetched.value));
   if (discoveries.length === 0) return failureResult("rss", context.now, "empty", fetched.latencyMs);
@@ -696,7 +916,7 @@ async function collectRssV2(context: Required<Pick<EditorialProviderContextV2, "
 async function collectCryptoCompareV2(context: Required<Pick<EditorialProviderContextV2, "now" | "fetchImpl" | "perProviderTimeoutMs">> & { apiKey: string }): Promise<ProviderAdapterResultV2> {
   if (!context.apiKey) return failureResult("cryptocompare", context.now, "not-configured");
   const url = `${ENDPOINTS.cryptocompare}&api_key=${encodeURIComponent(context.apiKey)}`;
-  const fetched = await fetchPayloadV2({ provider: "cryptocompare", url, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, maxCacheAgeMs: NEWS_FRESHNESS_MS });
+  const fetched = await fetchPayloadV2({ provider: "cryptocompare", url, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, maxResponseBytes: PROVIDER_RESPONSE_LIMIT_BYTES_V2.cryptocompare, maxCacheAgeMs: NEWS_FRESHNESS_MS });
   if (fetched.ok === false) return failureResult("cryptocompare", context.now, fetched.failure, fetched.latencyMs, fetched.statusCode);
   if (!isRecord(fetched.value)) return failureResult("cryptocompare", context.now, "parse-error", fetched.latencyMs);
   const payload = fetched.value;
@@ -732,14 +952,24 @@ export async function collectEditorialEvidenceV2(context: EditorialProviderConte
     sensingDeadlineMs,
     followUpTargets: context.followUpTargets ?? [],
     includeGenericCandidates: context.includeGenericCandidates ?? true,
+    selectionSeed: context.selectionSeed ?? "defillama-detail-v2",
   };
-  const providers = await Promise.all([
-    collectDefiLlamaV2(shared),
-    collectMempoolV2(shared),
-    collectCoinGeckoV2(shared),
-    collectRssV2(shared),
-    collectCryptoCompareV2({ ...shared, apiKey: context.cryptoCompareApiKey ?? String(process.env.CRYPTOCOMPARE_API_KEY || "").trim() }),
-  ]);
+  const targetedProviders = new Set(shared.followUpTargets.map((target) => target.provider));
+  const collectAllProviders = shared.includeGenericCandidates || targetedProviders.size === 0;
+  const shouldCollect = (provider: EvidenceProviderV2): boolean =>
+    collectAllProviders || targetedProviders.has(provider);
+  const collectors: Array<Promise<ProviderAdapterResultV2>> = [];
+  if (shouldCollect("defillama")) collectors.push(collectDefiLlamaV2(shared));
+  if (shouldCollect("mempool.space")) collectors.push(collectMempoolV2(shared));
+  if (shouldCollect("coingecko")) collectors.push(collectCoinGeckoV2(shared));
+  if (shouldCollect("rss")) collectors.push(collectRssV2(shared));
+  if (shouldCollect("cryptocompare")) {
+    collectors.push(collectCryptoCompareV2({
+      ...shared,
+      apiKey: context.cryptoCompareApiKey ?? String(process.env.CRYPTOCOMPARE_API_KEY || "").trim(),
+    }));
+  }
+  const providers = await Promise.all(collectors);
   return {
     evidence: providers.flatMap((provider) => provider.evidence),
     observations: providers.flatMap((provider) => provider.observations),
@@ -750,6 +980,9 @@ export async function collectEditorialEvidenceV2(context: EditorialProviderConte
 
 export const __providerAdapterTestV2 = {
   ENDPOINTS,
+  PROVIDER_RESPONSE_LIMIT_BYTES_V2,
   defiLlamaDetailRequestLimitsV2,
+  defiLlamaDetailLaneQuotasV2,
+  shortlistDefiLlamaRowsV2,
   fetchPayloadV2,
 };

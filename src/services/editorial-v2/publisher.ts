@@ -1,5 +1,8 @@
 import type { ActionMode } from "../../types/runtime.js";
-import { EditorialEventStoreV2 } from "./event-store.js";
+import {
+  EditorialDispatchReservationConflictV2,
+  EditorialEventStoreV2,
+} from "./event-store.js";
 import type { EditorialFactSnapshotV2 } from "./contracts.js";
 import { appendEditorialMetricV2, buildEditorialMetricV2 } from "./telemetry.js";
 import {
@@ -16,25 +19,6 @@ export type EditorialPublishResultV2 =
 export interface EditorialEvidenceRevalidationV2 {
   ok: boolean;
   reason?: string;
-}
-
-function calendarDate(value: string, timezone: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
-}
-
-function exactDuplicate(store: EditorialEventStoreV2, draftId: string, text: string): boolean {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  return store.listDraftStates().some(
-    (state) =>
-      state.draft.id !== draftId &&
-      (state.publication?.publishedText.replace(/\s+/g, " ").trim() === normalized ||
-        state.dispatchIntent?.publishText.replace(/\s+/g, " ").trim() === normalized)
-  );
 }
 
 export async function publishEditorialDraftV2(input: {
@@ -76,6 +60,7 @@ export async function publishEditorialDraftV2(input: {
     return { status: "already-published", externalPostId: state.publication.externalPostId };
   }
   if (input.mode !== "live") return blocked("live-mode-required");
+  if (!state.draft.generatedPayload) return blocked("writer-lineage-missing");
 
   let preparation: ReturnType<EditorialEventStoreV2["preparePublication"]>;
   try {
@@ -86,7 +71,6 @@ export async function publishEditorialDraftV2(input: {
   if (preparation.status === "already-published") {
     return { status: "already-published", externalPostId: preparation.publication.externalPostId };
   }
-  if (exactDuplicate(input.store, input.draftId, preparation.publishText)) return blocked("duplicate-published-text");
 
   const fact = preparation.facts[0];
   if (!fact) return blocked("evidence-fact-missing");
@@ -95,7 +79,7 @@ export async function publishEditorialDraftV2(input: {
     subject: state.draft.subject,
     displayValue: fact.metric.raw,
     factIds: state.draft.factIds,
-    usedFactIds: state.draft.factIds,
+    usedFactIds: state.draft.generatedPayload.usedFactIds,
     allowedNumericValues: [fact.metric.period, "24시간", "72시간"],
     allowedNamedTokens: [
       ...fact.metric.name.split(/[^a-zA-Z0-9]+/).filter(Boolean).map((token) => token.toUpperCase()),
@@ -109,8 +93,8 @@ export async function publishEditorialDraftV2(input: {
       fact.metric.raw,
       fact.metric.value
     ),
-    falsifierComparator: state.draft.falsifier.comparator,
-    requireCanonicalFalsifier: state.draft.format !== "revisit",
+    forbidPublicFollowUp: state.draft.format !== "revisit",
+    forbidFutureRecheck: true,
   });
   if (!validation.ok) return blocked(`publish-contract:${validation.reasons.join(",")}`);
 
@@ -125,22 +109,18 @@ export async function publishEditorialDraftV2(input: {
     return blocked(`provider-not-green:${evidenceHealth.reason || "unknown"}`);
   }
 
-  const today = calendarDate(now.toISOString(), input.timezone);
   const requestedDailyLimit = input.dailyLimit ?? 1;
   const dailyLimit = Number.isFinite(requestedDailyLimit)
     ? Math.max(1, Math.min(2, Math.trunc(requestedDailyLimit)))
     : 1;
-  const dispatchedToday = input.store.listDraftStates().filter((row) => {
-    const dispatchedAt = row.publication?.publishedAt || row.dispatchIntent?.recordedAt;
-    return dispatchedAt && calendarDate(dispatchedAt, input.timezone) === today;
-  }).length;
-  if (dispatchedToday >= dailyLimit) return blocked("editorial-daily-limit");
 
   let attempted = false;
   const beforeSend = () => {
     input.store.markDispatching(input.draftId, {
       preparedAt: preparation.freshnessCheckedAt,
       expectedPublishText: preparation.publishText,
+      timezone: input.timezone,
+      dailyLimit,
     });
     attempted = true;
   };
@@ -148,6 +128,9 @@ export async function publishEditorialDraftV2(input: {
   try {
     externalPostId = await input.dispatch(preparation.publishText, beforeSend);
   } catch (error) {
+    if (error instanceof EditorialDispatchReservationConflictV2) {
+      return blocked(error.reason);
+    }
     const reason = error instanceof Error ? error.message : "unknown";
     return attempted
       ? blocked(`x-dispatch-outcome-unresolved:${reason}`, "dispatch")

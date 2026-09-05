@@ -23,21 +23,60 @@ V2 is original-post only. Quote posts, replies, macro, regulation, market struct
 
 ## R0 verification
 
-The verification command is network-free:
+The verification command runs with the repository's external-call test guards:
 
 ```bash
 npm run verify
 ```
 
-It runs the TypeScript build, CLI typecheck, unit/regression tests, 64-case offline golden evaluation, and the 100-candidate synthetic contract diversity gate. The synthetic corpus proves the harness and hard contracts; it is not a substitute for the required 100 real-context replay corpus.
+It runs the TypeScript build, CLI typecheck, unit/regression tests, 64-case offline golden evaluation, and the 100-candidate synthetic contract diversity gate. The synthetic corpus proves the harness and hard contracts; it is not a substitute for the required 100 real-context replay corpus. `TEST_NO_EXTERNAL_CALLS=true` is a test contract, not evidence that the OS denied network access.
 
-Run the same gates against an anonymized 100-row real replay array:
+`eval:corpus --input` remains a generic local evaluator for JSON arrays. Its input is not accepted as R0 runtime-replay evidence by itself:
 
 ```bash
-npm run eval:corpus -- --input path/to/editorial-v2-replay.json
+npm run eval:corpus -- --input path/to/generic-corpus-array.json
 ```
 
-Each row must preserve the draft's `format`, machine falsifier comparator, fact IDs, subject, raw metric value/name/unit/period, source observation time, and final text. The loader accepts those fields either from a stored draft-shaped `facts`/`falsifier` record or as explicit top-level evaluation fields; missing contract metadata fails closed.
+Export the first 100 raw generated drafts in the current `grounded-writer-v1` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs:
+
+```bash
+npm run editorial:replay-export -- --limit 100 --output data/editorial-v2/replay-001.json
+```
+
+The output is a strict runtime-replay manifest. Its shape is `eval/editorial-v2-replay.schema.json`; runtime validation additionally checks counts, ordered fact-ID mappings, and ledger reconstruction. It binds rows to the exact event-ledger byte prefix with SHA-256 and the `first-created-in-epoch` selection policy. New drafts must preserve `lane`, `collectionEpoch`, and the structured generated payload together. Legacy drafts without an epoch remain readable and are explicitly counted as excluded; a missing field inside the selected epoch is a hard error. Rows preserve lane, format, machine falsifier, anonymized fact IDs, writer `usedFactIds` and sentence claims, subject, raw metric, source observation time, and generated text. Review/edit history remains separate, so an edit cannot masquerade as writer output. Output files are create-only.
+
+After committing a clean verification tree, run the guarded verification and strict runtime replay gates and create an immutable machine-evidence file:
+
+```bash
+npm run editorial:r0-record -- \
+  --event-log data/editorial-v2/events.ndjson \
+  --replay data/editorial-v2/replay-001.json \
+  --output data/editorial-v2/r0-evidence-001.json
+```
+
+This command runs `npm run verify`, re-derives every replay row from the recorded ledger prefix, and records the exact replay-file SHA-256 before recording `passed`. It labels synthetic 100-run pipeline determinism separately from the runtime corpus file's 100 reloads; the latter is not represented as a pipeline rerun. It records only `offlineContractMode`, never a claim of OS-level network isolation, and never invents a zero-X audit. Audit metadata conforming to `eval/rollout-evidence.schema.json` may be retained for investigation, but cannot earn a gate until a trusted CI/runner artifact verifier exists.
+
+Build the human pack from 36 cases: four Bite and four Withhold originals in each of the three lanes, plus 12 Revisit cases. The earlier undefined strong/weak labels have been removed; they had no reproducible measurement contract. Evolution cannot substitute for an original-post cell. Each comparison input contains only `id`, `replayRowId`, and `baselineText`. V2 text, evidence, lane, and format come directly from the strict replay row. The public pack strips provider, URL, system/version labels, and the A/B mapping:
+
+```bash
+npm run editorial:blind-pack -- \
+  --input path/to/36-comparisons.json \
+  --replay data/editorial-v2/replay-001.json \
+  --event-log data/editorial-v2/events.ndjson \
+  --machine-evidence data/editorial-v2/r0-evidence-001.json \
+  --pack-output path/to/reader-pack.json \
+  --mapping-output path/to/private-mapping.json
+
+npm run editorial:blind-report -- \
+  --replay data/editorial-v2/replay-001.json \
+  --pack path/to/reader-pack.json \
+  --mapping path/to/private-mapping.json \
+  --annotations path/to/annotations.json \
+  --adjudications path/to/adjudications.json \
+  --output path/to/blind-report.json
+```
+
+Keep the mapping away from both readers until annotation finishes. Without `--seed`, the CLI uses a cryptographic random seed; explicit seeds are for reproducibility tests. The mapping is created with mode `0600` and commits to the replay artifact digest, ledger digest, epoch, verified commit, and each selected row digest. Aggregation rejects a changed A/B side, text, evidence, order, row, or commit. Status additionally verifies the source ledger and machine evidence. Use only `reader-1`, `reader-2`, and `adjudicator-1` in tracked annotations. Schemas live in `eval/annotations/`. A missing second reader, required side field, ≥2-point disagreement adjudication, or stratum leaves the evaluation incomplete. Current protocol-only supply cannot fill the three-lane pack; collect valid evidence for the missing lanes before running a promotion evaluation.
 
 ## Collect a real candidate without publishing
 
@@ -52,7 +91,7 @@ This reads DefiLlama, mempool.space, CoinGecko, RSS, and configured CryptoCompar
 
 DefiLlama first applies a coarse gate of at least $100M TVL, a 2% 24-hour move, a 2 percentage-point deviation from the large-protocol median, and at least $10M estimated raw USD movement. A cross-sectional median alone does not remove underlying-asset repricing, so no coarse result is publishable yet.
 
-For at most six deterministic shortlist entries, V2 then reads the free `/protocol/{slug}` token history, joins `tokens`, `tokensInUsd`, and `tvl` by exact timestamp, and linearly interpolates only a bracketed 24-hour point. The candidate passes only when common-token coverage is at least 95%, both TVL reconciliations are within 2%, the list/detail direction agrees and their 24-hour gross changes differ by no more than two percentage points, the price-neutral quantity change is at least 2% and $10M, and quantity explains at least half of the log move. Detail responses are capped at 32 MiB each and 64 MiB per run, including bytes consumed by failed or unparsable responses; the whole provider shares one eight-second budget. A detail failure blocks only that candidate and is recorded in `selectionGaps`. Follow-up and publish revalidation use the lightweight `/protocols` absolute TVL path and never spend this detail budget.
+For at most six deterministic shortlist entries, V2 then reads the free `/protocol/{slug}` token history, joins `tokens`, `tokensInUsd`, and `tvl` by exact timestamp, and linearly interpolates only a bracketed 24-hour point. The candidate passes only when common-token coverage is at least 95%, both TVL reconciliations are within 2%, the list/detail direction agrees and their 24-hour gross changes differ by no more than two percentage points, the price-neutral quantity change is at least 2% and $10M, and quantity explains at least half of the log move. Detail responses are capped at 32 MiB each and 64 MiB per run, including bytes consumed by failed or unparsable responses; three fixed lanes share one eight-second provider budget. Top-level responses are also bounded: DefiLlama 16 MiB, mempool.space 64 KiB, CoinGecko 1 MiB, RSS and CryptoCompare 4 MiB each. A detail failure blocks only that candidate and is recorded in `selectionGaps`. Follow-up and publish revalidation use the lightweight `/protocols` absolute TVL path, never spend the detail budget, and query only providers named by their targets instead of waiting for the whole provider fan-out.
 
 The interpolation and token-balance decomposition are review-only derived screening context. They are not evidence of deposits or net inflow: rebases, rewards, wrappers, and adapter changes can also alter balances. The public fact remains DefiLlama's raw 24-hour TVL change. Its 24/72h falsifier is anchored to the same protocol's absolute TVL and pre-move level, not a later rolling `change_1d` window.
 
@@ -91,7 +130,7 @@ Review one draft:
 npm run editorial:review -- --id <draftId>
 ```
 
-The terminal card shows the planner thesis, verdict, machine falsifier, raw metric, provider, observation time, source URL, and public draft. Public copy must retain the exact UTC observation time. Decisions are append-only `approve`, `edit`, or `reject` events. Edited copy must pass the same subject, number, time, judgment, length, and Korean contract before it can become approved.
+The terminal card shows the planner thesis, verdict, machine falsifier, raw metric, provider, observation time, source URL, and public draft. Public copy must retain the exact UTC observation time. Decisions are append-only `approve`, `edit`, or `reject` events. Edited copy must pass the same subject, number, time, judgment, length, and Korean contract before it can become approved. Add `fact-checked` and `language-checked` to the final review's reason tags after those checks; rollout status treats absent positive tags as unknown, never as proof of zero errors.
 
 ## Publish one approved original
 
@@ -104,7 +143,7 @@ TEST_NO_EXTERNAL_CALLS=false \
 npm run editorial:publish -- --id <draftId>
 ```
 
-Before X is called, the command rechecks approval, 2h/6h freshness, current provider GREEN health and fact availability, exact duplicate history, Korean/factual contract, the editorial daily cap, X budget, and a single-process lock. Review and dispatch mutations share the same ledger lock, and the approved text is compared again at the true X boundary. The same-subject rolling 24-hour novelty rule is also rechecked against both publications and unresolved dispatch intents. It writes a durable dispatch intent before the one allowed X attempt, rejects missing credentials rather than simulating success, and records publication/character memory only after X returns an ID.
+Before X is called, the command rechecks approval, durable writer lineage, 2h/6h freshness, current provider GREEN health and fact availability, exact duplicate history, Korean/factual contract, the editorial daily cap, X budget, and a single-process lock. Legacy drafts without captured `draft`/`usedFactIds`/sentence claims cannot publish. Duplicate-text and daily-cap reservations are made atomically under the ledger lock, and the approved text is compared again at the true X boundary. The same-subject rolling 24-hour novelty rule is also rechecked against both publications and unresolved dispatch intents. It writes a durable dispatch intent before the one allowed X attempt, rejects missing credentials rather than simulating success, and records publication/character memory only after X returns an ID.
 
 If the process loses the X response or cannot commit the returned ID, the unresolved intent blocks every automatic retry. First verify the post on X; only when it exists, reconcile the ledger without sending again:
 
@@ -114,6 +153,8 @@ npm run editorial:publish -- --id <draftId> --reconcile-x-id <xPostId> --publish
 ```
 
 If X did not create the post, keep the draft blocked and create a new reviewed draft. Never remove or rewrite the append-only intent.
+
+Lock files fail closed after an abnormal process exit; they are never auto-deleted because stale-lock recovery can race with a new owner. If a command reports a stale or unverifiable lock, first confirm that no Pixymon/editorial process is alive and inspect X plus the dispatch intent. Only then remove the exact reported lock path manually and retry the non-destructive operation. Never broadly delete the data directory or ledger.
 
 The initial default is one approved original per day. `EDITORIAL_DAILY_POST_LIMIT` is clamped to `1..2`.
 
@@ -127,9 +168,41 @@ Defaults under the active data directory:
 
 Every chain carries a `runId` and draft/action ID. Every `no-post` records its stage and reason. Provider failures preserve `not-configured`, `unauthorized`, `rate-limited`, `timeout`, `parse-error`, `stale-cache`, `payload-too-large`, `empty`, `http-error`, or `network-error` instead of becoming a healthy fallback. Explicit stale cache signals and cache ages beyond two hours for signal providers or six hours for news providers fail closed. Candidate-level DefiLlama detail gaps are separately recorded without falsely turning a healthy `/protocols` fetch RED.
 
+Inspect R0/R1/R2 evidence without calling providers, X, Claude, or character memory:
+
+```bash
+npm run editorial:status -- \
+  --machine-evidence data/editorial-v2/r0-evidence-001.json \
+  --replay data/editorial-v2/replay-001.json
+```
+
+That default command performs no network request. To verify the OS-isolated CI run directly from GitHub instead of trusting a hand-written audit field, run it on a clean checkout of the exact commit pushed to `main`:
+
+```bash
+npm run editorial:status -- \
+  --machine-evidence data/editorial-v2/r0-evidence-001.json \
+  --replay data/editorial-v2/replay-001.json \
+  --github-ci-repo starlash7/Pixymon
+```
+
+The optional flag makes read-only GitHub Actions API requests. `GITHUB_TOKEN` is optional for a public repository and is never persisted. The verifier requires one completed successful `push` run for the exact clean local HEAD on branch `main`, workflow `.github/workflows/verify.yml`, job `verify`, and successful step `Verify with outbound network disabled`. API/auth/rate-limit errors, no matching run, or ambiguous runs remain `unknown`; any returned SHA/branch/event/workflow/job/step mismatch fails. Free-form `networkIsolationAudit` JSON remains informational and can never earn this check.
+
+Add `--pack`, `--mapping`, `--annotations`, and optional `--adjudications` together to include the blind result. Status rechecks the replay SHA-256, ledger prefix, epoch, all 36 V2 rows, and the clean verified commit. It counts R1 evidence at or after the recorded R0 verification time and requires 30 unique observe actions over seven distinct dates and seven full 24-hour periods. Status uses append-only event time, requires explicit `fallbackUsed`, and revalidates approved final copy. Missing/corrupt logs, absent positive fact/language checks, unlinked telemetry, old verification commits, dirty trees, or unverified external audit metadata fail closed or remain `unknown`.
+
+Once a saved status reports every R1 check as passed, record the operator's manual promotion on a clean repository:
+
+```bash
+npm run editorial:r1-promote -- \
+  --status data/editorial-v2/r1-status.json \
+  --output data/editorial-v2/r1-promotion.json
+```
+
+The create-only artifact binds the exact source status bytes, commit, observe window, and promotion time. Pass `--r1-promotion data/editorial-v2/r1-promotion.json --r1-status data/editorial-v2/r1-status.json` to subsequent status commands. R2 credits only drafts and review decisions recorded after that boundary and still requires 30 drafts over 14 dates and 14 full days. The artifact records a manual decision; it does not attest to zero X writes. The trusted zero-X verifier remains unimplemented, so current data cannot earn R1 or create a valid operational promotion.
+
 ## Known editorial limits
 
-- Generated claims must copy every draft sentence in order and label it as observation, judgment, or falsifier. A non-Revisit has exactly one falsifier claim and it is last; any earlier conditional clause is rejected. Every non-Revisit ends in one exact comparator-specific machine sentence, and the 72-hour deadline and competing follow-up language are forbidden outside it. The same text contract applies to human edits and publish-time validation. This narrows the executable grammar instead of pretending that a regex can understand arbitrary negated Korean logic.
+- The Linux CI workflow denies network access for the verify process, and changes to `.github/workflows/verify.yml` are part of the R0 clean-tree check. Rollout status can bind the exact successful push/main run to a clean current HEAD only when `--github-ci-repo` is supplied; otherwise network isolation remains `unknown`. The repository does not yet enforce this workflow through a `main` branch-protection rule or ruleset, so the successful run is evidence for that commit but not proof that every future integration must pass the check. The zero-X audit still has no trusted external verifier and remains `unknown`.
+- Generated claims must copy every draft sentence in order and label it as observation or judgment. The machine falsifier remains in the plan, review card, and 24/72-hour worker instead of becoming repeated public boilerplate. Non-Revisit public copy must end in a present-tense judgment; future/conditional recheck prose is rejected in generation, human edits, and publish-time validation.
 - The TVL semantic guard blocks fixture-backed unsupported leaps such as users, new capital, adoption, revenue, volume, structural growth, protocol stability, competitiveness, collateral health, or liquidation risk. It is a bounded guard, not proof that arbitrary Korean causal prose is grounded; every initial draft still requires human review, and automatic live remains locked until an independent semantic critic is implemented and calibrated.
 - Bite versus Withhold is now based on event materiality, not positive versus negative direction. Evolution remains telemetry-only until real reviewed examples define it.
 - The price-neutral screen removes obvious asset-price beta, but it does not prove deposits, causality, historical anomaly, or audience relevance. Those claims require separate evidence; token-symbol and adapter-method changes remain a monitored failure mode.

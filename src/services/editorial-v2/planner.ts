@@ -184,11 +184,18 @@ function buildPlan(
 ): EditorialPlanV2 {
   const schedule = createFollowUpScheduleV2(now);
   const format: EditorialFormatV2 = revisit ? "revisit" : planFormat(card);
+  const verdict: EditorialVerdictV2 = revisit
+    ? revisit.resolution === "invalidated"
+      ? "corrected"
+      : revisit.resolution === "supported"
+        ? "approve"
+        : "digesting"
+    : format === "withhold" ? "digesting" : card.metric.value < 0 ? "reject" : "approve";
   const thesis = revisit
     ? `${card.subject}의 현재 ${card.metric.name}은 ${card.metric.raw}다. ${revisit.checkpoint} 재검증 결과 이전 판정을 ${revisit.resolution || "unresolved"}로 닫는다.`
-    : card.followUp
-      ? `${card.subject}의 ${card.metric.name} ${card.metric.raw}를 기록하고, 72시간 뒤 절대 ${card.followUp.metric.name}이 변동 전 기준을 지키는지 확인한다.`
-      : `${card.subject}의 ${card.metric.name} ${card.metric.raw}가 72시간 뒤에도 유지되는지 확인한다.`;
+    : format === "withhold"
+      ? `${card.subject}의 ${card.metric.name} ${card.metric.raw}를 기록하되, 이 한 번의 수치만으로 더 큰 서사는 승인하지 않는다.`
+      : `${card.subject}의 ${card.metric.name} ${card.metric.raw}를 현재 관측 범위에서 중요한 변화로 잠정 판정한다.`;
   return {
     schemaVersion: 2,
     format,
@@ -196,13 +203,7 @@ function buildPlan(
     subject: card.subject,
     thesis,
     factIds: [card.id],
-    verdict: revisit
-      ? revisit.resolution === "invalidated"
-        ? "corrected"
-        : revisit.resolution === "supported"
-          ? "approve"
-          : "digesting"
-      : format === "withhold" ? "digesting" : card.metric.value < 0 ? "reject" : "approve",
+    verdict,
     falsifier: falsifierFor(card, schedule),
     followUpAt: schedule,
     continuityThread: revisit ? `${revisit.draftId}:${revisit.checkpoint}` : undefined,

@@ -1,44 +1,100 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Pixymon V2 blind annotation",
-  "type": "object",
-  "required": [
-    "pairId",
-    "reviewerId",
-    "blindSide",
-    "scores",
-    "preference",
-    "publishUnchanged",
-    "pixymonIdentified",
-    "hardVetoes",
-    "reasonTags",
-    "reviewedAt"
-  ],
-  "properties": {
-    "pairId": { "type": "string", "minLength": 1 },
-    "reviewerId": { "type": "string", "minLength": 1 },
-    "blindSide": { "enum": ["A", "B"] },
-    "scores": {
+  "title": "Pixymon V2 blind pair annotations",
+  "type": "array",
+  "items": { "$ref": "#/$defs/annotation" },
+  "$defs": {
+    "annotation": {
       "type": "object",
-      "required": ["grounding", "clarity", "insight", "character", "memorability", "followWorthiness", "overall"],
+      "required": [
+        "packId",
+        "pairId",
+        "reviewerId",
+        "scores",
+        "preference",
+        "publishUnchanged",
+        "pixymonIdentified",
+        "hardVetoes",
+        "reasonTags",
+        "reviewedAt"
+      ],
       "additionalProperties": false,
       "properties": {
-        "grounding": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "clarity": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "insight": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "character": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "memorability": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "followWorthiness": { "type": "integer", "minimum": 1, "maximum": 5 },
-        "overall": { "type": "integer", "minimum": 1, "maximum": 5 }
+        "packId": { "type": "string", "minLength": 1 },
+        "pairId": { "type": "string", "minLength": 1 },
+        "reviewerId": { "enum": ["reader-1", "reader-2"] },
+        "scores": { "$ref": "#/$defs/sideScores" },
+        "preference": { "enum": ["A", "B", "tie"] },
+        "publishUnchanged": { "$ref": "#/$defs/sideBooleans" },
+        "pixymonIdentified": { "$ref": "#/$defs/sideBooleans" },
+        "hardVetoes": { "$ref": "#/$defs/sideTags" },
+        "reasonTags": { "$ref": "#/$defs/sideTags" },
+        "editedText": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "A": { "type": "string", "minLength": 1 },
+            "B": { "type": "string", "minLength": 1 }
+          }
+        },
+        "reviewedAt": { "type": "string", "format": "date-time" }
       }
     },
-    "preference": { "enum": ["A", "B", "tie"] },
-    "publishUnchanged": { "type": "boolean" },
-    "pixymonIdentified": { "type": "boolean" },
-    "hardVetoes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-    "reasonTags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-    "editedText": { "type": "string" },
-    "reviewedAt": { "type": "string", "format": "date-time" }
-  },
-  "additionalProperties": false
+    "score": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "scores": {
+      "type": "object",
+      "required": [
+        "grounding",
+        "clarity",
+        "insight",
+        "character",
+        "memorability",
+        "followWorthiness",
+        "overall"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "grounding": { "$ref": "#/$defs/score" },
+        "clarity": { "$ref": "#/$defs/score" },
+        "insight": { "$ref": "#/$defs/score" },
+        "character": { "$ref": "#/$defs/score" },
+        "memorability": { "$ref": "#/$defs/score" },
+        "followWorthiness": { "$ref": "#/$defs/score" },
+        "overall": { "$ref": "#/$defs/score" }
+      }
+    },
+    "sideScores": {
+      "type": "object",
+      "required": ["A", "B"],
+      "additionalProperties": false,
+      "properties": {
+        "A": { "$ref": "#/$defs/scores" },
+        "B": { "$ref": "#/$defs/scores" }
+      }
+    },
+    "sideBooleans": {
+      "type": "object",
+      "required": ["A", "B"],
+      "additionalProperties": false,
+      "properties": {
+        "A": { "type": "boolean" },
+        "B": { "type": "boolean" }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "sideTags": {
+      "type": "object",
+      "required": ["A", "B"],
+      "additionalProperties": false,
+      "properties": {
+        "A": { "$ref": "#/$defs/tags" },
+        "B": { "$ref": "#/$defs/tags" }
+      }
+    }
+  }
 }

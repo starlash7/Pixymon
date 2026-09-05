@@ -7,15 +7,13 @@ import {
 import type { EvidenceCardV2 } from "./evidence.js";
 import type { EditorialPlanV2 } from "./planner.js";
 import {
-  canonicalFalsifierSentenceV2,
   formatEvidenceSourceTimeV2,
-  hasKoreanConditionalCueV2,
   inferMetricDirectionV2,
   splitEditorialSentencesV2,
   validateEditorialDraftV2,
 } from "./validator.js";
 
-export type EditorialClaimKindV2 = "observation" | "judgment" | "falsifier";
+export type EditorialClaimKindV2 = "observation" | "judgment";
 
 export interface EditorialClaimV2 {
   kind: EditorialClaimKindV2;
@@ -64,7 +62,7 @@ function parsePayload(text: string): EditorialWriterPayloadV2 | null {
       if (!claim || typeof claim !== "object") return null;
       const row = claim as Partial<EditorialClaimV2>;
       if (
-        !["observation", "judgment", "falsifier"].includes(String(row.kind || "")) ||
+        !["observation", "judgment"].includes(String(row.kind || "")) ||
         typeof row.text !== "string" ||
         !Array.isArray(row.factIds)
       ) return null;
@@ -110,9 +108,8 @@ function validatePayload(
       evidence.metric.raw,
       evidence.metric.value
     ),
-    falsifierComparator: plan.falsifier.comparator,
-    requireCanonicalFalsifier:
-      plan.format !== "revisit" || payload.claims.at(-1)?.kind === "falsifier",
+    forbidPublicFollowUp: plan.format !== "revisit",
+    forbidFutureRecheck: true,
   });
   const reasons = [...validation.reasons];
   const allowed = new Set(plan.factIds);
@@ -131,26 +128,8 @@ function validatePayload(
     reasons.push("observation-claim-count");
   }
   const finalClaim = payload.claims.at(-1);
-  if (!finalClaim || !["judgment", "falsifier"].includes(finalClaim.kind)) {
+  if (!finalClaim || finalClaim.kind !== "judgment") {
     reasons.push("final-claim-kind");
-  }
-  if (plan.format !== "revisit" && finalClaim?.kind !== "falsifier") {
-    reasons.push("non-revisit-final-claim-must-be-falsifier");
-  }
-  if (
-    plan.format !== "revisit" &&
-    payload.claims.slice(0, -1).some((claim) => claim.kind === "falsifier")
-  ) {
-    reasons.push("falsifier-claim-outside-final");
-  }
-  if (plan.format === "revisit" && finalClaim?.kind !== "judgment") {
-    reasons.push("revisit-final-claim-kind");
-  }
-  if (plan.format === "revisit" && payload.claims.some((claim) => claim.kind === "falsifier")) {
-    reasons.push("revisit-falsifier-claim");
-  }
-  if (finalClaim?.kind === "judgment" && hasKoreanConditionalCueV2(finalClaim.text)) {
-    reasons.push("conditional-claim-must-be-falsifier");
   }
   if (plan.format === "revisit" && finalClaim) {
     const verdictLanguage: Record<EditorialPlanV2["verdict"], RegExp> = {
@@ -177,21 +156,27 @@ function buildPrompt(
 ): string {
   const sourceTimeToken = formatEvidenceSourceTimeV2(evidence.source.observedAt);
   const voiceGuide: Record<EditorialPlanV2["voiceState"], string> = {
-    curious: "숫자의 의미를 열어 두되 확인할 조건은 선명하게 둔다",
+    curious: "숫자의 의미를 열어 두되 현재 근거의 경계는 선명하게 둔다",
     energized: "큰 변화를 짧고 생기 있게 받아들이되 확신을 부풀리지 않는다",
-    skeptical: "나쁜 방향도 공포로 팔지 않고 무엇이 반전시킬지 적는다",
+    skeptical: "나쁜 방향도 공포로 팔지 않고 현재 근거가 허락하는 판단만 적는다",
     patient: "사실은 인정하고 넓은 해석은 서두르지 않는다",
     humbled: "이전 판단이 틀렸다면 변명 없이 먼저 고친다",
   };
   const formatGuide: Record<EditorialPlanV2["format"], string> = {
-    bite: "중요한 움직임을 물되 반증 가능한 판정을 남긴다",
+    bite: "중요한 움직임을 물고 현재 숫자의 범위 안에서 잠정 판정을 남긴다",
     withhold: "수치는 확인하지만 그보다 넓은 서사는 승인하지 않는다",
     revisit: "예전 판정으로 돌아와 지지·철회·미결 중 하나로 책임 있게 닫는다",
     evolution: "여러 번 검증된 패턴이 기존 믿음을 어떻게 바꿨는지 말한다",
   };
+  const verdictGuide: Record<EditorialPlanV2["verdict"], string> = {
+    approve: "잠정 지지",
+    corrected: "기존 해석의 수정",
+    digesting: "해석 보류",
+    reject: "기각",
+  };
   const endingRule = plan.format === "revisit"
     ? "마지막 문장은 이전 판정을 지지·철회·미결 중 하나로 닫고, 새 24·72시간 재검증을 약속하지 않는다"
-    : `마지막 문장은 반드시 정확히 다음 문장으로 쓴다: ${canonicalFalsifierSentenceV2(plan.falsifier.comparator)}`;
+    : `마지막 문장은 미래 약속이나 조건 없이 지금 관측에 대한 ${verdictGuide[plan.verdict]} 판단으로 닫는다`;
   return `다음 편집 계약을 사실 왜곡 없이 한국어 원문 트윗 하나로 렌더링하라.
 
 편집 계약:
@@ -202,7 +187,6 @@ function buildPrompt(
 - voiceState: ${plan.voiceState}
 - voiceGuide: ${voiceGuide[plan.voiceState]}
 - formatGuide: ${formatGuide[plan.format]}
-- falsifier: ${plan.falsifier.metric} ${plan.falsifier.comparator} ${plan.falsifier.threshold} ${plan.falsifier.unit || ""} by ${plan.falsifier.deadline}
 
 사용 가능한 유일한 사실:
 - factId: ${evidence.id}
@@ -226,12 +210,11 @@ function buildPrompt(
 - 캐릭터 비유는 최대 한 번이며 억지로 넣지 않는다
 - 사실을 새로 만들거나 생성 후 문장을 덧붙이지 않는다
 - JSON 외 텍스트 금지
-- claims는 draft의 각 문장을 순서대로 빠짐없이 복사한다. kind는 관측 사실=observation, 현재 판단=judgment, 반증 조건=falsifier다
-- 조건문을 썼다면 해당 claim kind는 falsifier여야 하며, Revisit의 마지막 claim은 judgment여야 한다
-- Revisit이 아니면 falsifier claim은 정확히 하나이며 반드시 마지막이어야 한다
-- 반증 조건은 의미를 바꾸거나 수식하지 말고 위에 제시한 정확한 통제 문장을 쓴다
-- Revisit이 아니면 72시간과 반증·철회 표현은 마지막 통제 문장에서만 한 번 쓴다
-- Revisit이 아니면 마지막 문장 전에는 다음·추후·재검증·관측값·기준선 등 별도 후속 조건을 쓰지 않는다
+- claims는 draft의 각 문장을 순서대로 빠짐없이 복사한다. kind는 관측 사실=observation, 현재 판단=judgment 둘 중 하나다
+- 첫 claim만 observation이고 나머지 claim은 judgment다
+- Revisit이 아니면 반증 조건은 별도의 기계 계약에 저장되므로 본문에 쓰지 않는다
+- Revisit이 아니면 72시간·사흘 후·다음 관측·추후·나중·재검증·다시 확인·지켜보겠다 등 미래 확인 표현을 쓰지 않는다
+- Revisit이 아니면 ~면·~라면·경우·~해도·더라도 등 조건문을 쓰지 않는다
 ${retryReasons.length > 0 ? `- 이전 실패 원인: ${retryReasons.join(", ")}\n` : ""}
 출력 JSON:
 {"draft":"첫 문장. 둘째 문장.","usedFactIds":["${evidence.id}"],"claims":[{"kind":"observation","text":"첫 문장.","factIds":["${evidence.id}"]},{"kind":"judgment","text":"둘째 문장.","factIds":["${evidence.id}"]}]}`;

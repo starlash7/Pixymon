@@ -29,19 +29,38 @@ function plan() {
   return result.plan;
 }
 
+function revisitPlan() {
+  const result = planEditorialV2({
+    evidence: [],
+    followUpEvidence: [EVIDENCE],
+    dueRevisits: [{
+      draftId: "original",
+      subject: "Aave",
+      metricName: "tvl-change-24h",
+      baselineValue: 7,
+      dueAt: "2026-08-28T09:00:00.000Z",
+      checkpoint: "24h",
+      resolution: "unresolved",
+    }],
+    now: NOW,
+  });
+  if (result.status === "blocked") throw new Error(result.reason);
+  return result.plan;
+}
+
 function claimsFor(draft: string, factId = EVIDENCE.id) {
   return splitEditorialSentencesV2(draft).map((text, index) => ({
-    kind: (index === 0
-      ? "observation"
-      : /(?:으)?면|경우/u.test(text) ? "falsifier" : "judgment") as EditorialClaimKindV2,
+    kind: (index === 0 ? "observation" : "judgment") as EditorialClaimKindV2,
     text,
     factIds: [factId],
   }));
 }
 
-test("writer retries once and accepts only a grounded structured draft", async () => {
-  const validDraft = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었지만, 바로 승인하진 않겠다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.";
+test("writer retries once and accepts grounded present-tense public copy", async () => {
+  const validDraft = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 수치는 기록하되, 더 큰 회복 서사까지 승인하진 않는다는 판단이다.";
   const prompts: string[] = [];
+  const editorialPlan = plan();
+  const machineFalsifier = { ...editorialPlan.falsifier };
   const model: EditorialWriterModelV2 = {
     async generate({ attempt, system, prompt }) {
       assert.match(system, /판정을 기억/);
@@ -54,27 +73,21 @@ test("writer retries once and accepts only a grounded structured draft", async (
       });
     },
   };
-  const result = await writeEditorialDraftV2({ model, plan: plan(), evidence: EVIDENCE });
+  const result = await writeEditorialDraftV2({ model, plan: editorialPlan, evidence: EVIDENCE });
   assert.equal(result.status, "generated");
   if (result.status === "blocked") assert.fail(result.reason);
   assert.equal(result.attempts, 2);
   assert.equal(result.payload.draft, validDraft);
-  assert.match(prompts[0], /publicSourceTime: 2026-08-28 09:30 UTC/);
-  assert.match(prompts[0], /formatGuide:/);
+  assert.match(prompts[0], /publicSourceTime: 8월 28일 09:30 UTC/);
+  assert.match(prompts[0], /미래 약속이나 조건 없이/);
+  assert.doesNotMatch(prompts[0], /falsifier:|72시간 뒤|2026-08-31/);
+  assert.deepEqual(editorialPlan.falsifier, machineFalsifier);
 });
 
 test("writer rejects fabricated Korean entities and reversed metric direction", async () => {
-  const fabricated = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 줄었고 이더리움 회복도 확인됐다. 72시간 뒤에도 같으면 판정을 승인하겠다.";
+  const fabricated = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 줄었고 이더리움 회복도 확인됐다. 이 한 번의 수치만으로 시장 회복을 승인하진 않는다는 판단이다.";
   const result = await writeEditorialDraftV2({
-    model: {
-      async generate() {
-        return JSON.stringify({
-          draft: fabricated,
-          usedFactIds: [EVIDENCE.id],
-          claims: claimsFor(fabricated),
-        });
-      },
-    },
+    model: { async generate() { return JSON.stringify({ draft: fabricated, usedFactIds: [EVIDENCE.id], claims: claimsFor(fabricated) }); } },
     plan: plan(),
     evidence: EVIDENCE,
   });
@@ -84,76 +97,29 @@ test("writer rejects fabricated Korean entities and reversed metric direction", 
   assert.ok(result.validationReasons.includes("metric-direction-conflict"));
 });
 
-test("writer blocks causal claims that a TVL change cannot support", async () => {
-  const unsupported = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 사용자 대거 복귀와 신규 자금 유입이 만든 구조적 성장으로 판정한다.";
-  const result = await writeEditorialDraftV2({
-    model: {
-      async generate() {
-        return JSON.stringify({
-          draft: unsupported,
-          usedFactIds: [EVIDENCE.id],
-          claims: claimsFor(unsupported),
-        });
-      },
-    },
-    plan: plan(),
-    evidence: EVIDENCE,
+for (const unsupported of [
+  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 사용자 대거 복귀와 신규 자금 유입이 만든 구조적 성장으로 판정한다.",
+  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 프로토콜 안정성과 경쟁력이 완전히 회복됐다는 확정적 신호로 판정한다.",
+  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 담보 건전성이 좋아지고 청산 위험이 사라졌다는 신호로 판정한다.",
+]) {
+  test("writer blocks conclusions that a TVL move cannot support", async () => {
+    const result = await writeEditorialDraftV2({
+      model: { async generate() { return JSON.stringify({ draft: unsupported, usedFactIds: [EVIDENCE.id], claims: claimsFor(unsupported) }); } },
+      plan: plan(),
+      evidence: EVIDENCE,
+    });
+    assert.equal(result.status, "blocked");
+    if (result.status === "generated") assert.fail("unsupported conclusion passed");
+    assert.ok(result.validationReasons.includes("metric-semantic-scope"));
   });
-  assert.equal(result.status, "blocked");
-  if (result.status === "generated") assert.fail("unsupported causal draft passed");
-  assert.ok(result.validationReasons.includes("metric-semantic-scope"));
-});
-
-test("writer blocks unsupported protocol-quality conclusions from a TVL move", async () => {
-  const unsupported = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 프로토콜의 안정성과 경쟁력이 완전히 회복됐다는 확정적 신호로 판정한다.";
-  const result = await writeEditorialDraftV2({
-    model: {
-      async generate() {
-        return JSON.stringify({
-          draft: unsupported,
-          usedFactIds: [EVIDENCE.id],
-          claims: claimsFor(unsupported),
-        });
-      },
-    },
-    plan: plan(),
-    evidence: EVIDENCE,
-  });
-  assert.equal(result.status, "blocked");
-  if (result.status === "generated") assert.fail("unsupported quality conclusion passed");
-  assert.ok(result.validationReasons.includes("metric-semantic-scope"));
-});
-
-test("writer blocks unsupported collateral-health conclusions from a TVL move", async () => {
-  const unsupported = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 담보 건전성이 좋아지고 청산 위험이 사라졌다는 신호로 판정한다.";
-  const result = await writeEditorialDraftV2({
-    model: {
-      async generate() {
-        return JSON.stringify({
-          draft: unsupported,
-          usedFactIds: [EVIDENCE.id],
-          claims: claimsFor(unsupported),
-        });
-      },
-    },
-    plan: plan(),
-    evidence: EVIDENCE,
-  });
-  assert.equal(result.status, "blocked");
-  if (result.status === "generated") assert.fail("unsupported collateral conclusion passed");
-  assert.ok(result.validationReasons.includes("metric-semantic-scope"));
-});
+}
 
 test("writer requires claims to copy every draft sentence in order", async () => {
-  const draft = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 관측만으로 더 큰 서사를 승인하진 않는다.";
+  const draft = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 관측만으로 더 큰 회복 서사까지 승인하진 않는다는 판단이다.";
   const mismatchedClaims = claimsFor(draft);
   mismatchedClaims[1] = { ...mismatchedClaims[1], text: "본문에 없는 판단이다." };
   const result = await writeEditorialDraftV2({
-    model: {
-      async generate() {
-        return JSON.stringify({ draft, usedFactIds: [EVIDENCE.id], claims: mismatchedClaims });
-      },
-    },
+    model: { async generate() { return JSON.stringify({ draft, usedFactIds: [EVIDENCE.id], claims: mismatchedClaims }); } },
     plan: plan(),
     evidence: EVIDENCE,
   });
@@ -162,69 +128,62 @@ test("writer requires claims to copy every draft sentence in order", async () =>
   assert.ok(result.validationReasons.includes("claim-sentence-mismatch"));
 });
 
-test("writer rejects a falsifier whose explicit direction contradicts the comparator", async () => {
-  const draft = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 72시간 뒤 기준 이상으로 늘어나면 이 판정을 철회한다.";
+test("writer rejects the removed public falsifier claim kind", async () => {
+  const draft = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 관측만으로 더 큰 회복 서사까지 승인하진 않는다는 판단이다.";
+  const claims = claimsFor(draft) as Array<{ kind: string; text: string; factIds: string[] }>;
+  claims[1].kind = "falsifier";
   const result = await writeEditorialDraftV2({
-    model: {
-      async generate() {
-        return JSON.stringify({ draft, usedFactIds: [EVIDENCE.id], claims: claimsFor(draft) });
-      },
-    },
+    model: { async generate() { return JSON.stringify({ draft, usedFactIds: [EVIDENCE.id], claims }); } },
     plan: plan(),
     evidence: EVIDENCE,
   });
   assert.equal(result.status, "blocked");
-  if (result.status === "generated") assert.fail("reversed falsifier passed");
-  assert.ok(result.validationReasons.includes("falsifier-direction-mismatch"));
+  if (result.status === "generated") assert.fail("public falsifier claim passed");
+  assert.ok(result.validationReasons.includes("invalid-json-contract"));
 });
 
-for (const clause of [
-  "기준 미만이 아니어도",
-  "기준 미만을 제외한 값일 경우",
-  "기준 미만 범위를 벗어날 때",
-  "기준 미만의 반대편에 설 경우",
-  "기준 미만일 때를 빼고",
+for (const ending of [
+  "72시간 뒤 기준 미만이면 이 판정을 철회한다.",
+  "24시간 뒤 같은 수치를 다시 확인하겠다는 판단이다.",
+  "현재 수준이 유지될 시 이 판정을 승인한다.",
+  "현재 수준이 무너지지 않는 한 이 판정을 승인한다.",
 ]) {
-  test(`writer rejects non-canonical falsifier logic: ${clause}`, async () => {
-    const draft = `Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 관측만으로 더 큰 서사를 승인하진 않는다. 72시간 뒤 TVL이 ${clause} 이 판정을 철회한다.`;
+  test(`writer rejects public conditions and recheck promises: ${ending}`, async () => {
+    const draft = `Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 수치는 원시 관측으로 기록한다. ${ending}`;
     const result = await writeEditorialDraftV2({
-      model: {
-        async generate() {
-          return JSON.stringify({ draft, usedFactIds: [EVIDENCE.id], claims: claimsFor(draft) });
-        },
-      },
+      model: { async generate() { return JSON.stringify({ draft, usedFactIds: [EVIDENCE.id], claims: claimsFor(draft) }); } },
       plan: plan(),
       evidence: EVIDENCE,
     });
     assert.equal(result.status, "blocked");
-    if (result.status === "generated") assert.fail("non-canonical falsifier passed");
-    assert.ok(result.validationReasons.includes("falsifier-language-not-canonical"));
+    if (result.status === "generated") assert.fail("public follow-up passed");
+    assert.ok(result.validationReasons.some((reason) => [
+      "public-conditional-language",
+      "public-recheck-language",
+      "public-falsifier-action",
+    ].includes(reason)));
   });
 }
 
-for (const draft of [
-  "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 관측만으로 더 큰 서사를 승인하진 않는다. 72시간 뒤 TVL 관측값이 기준선을 웃도는 때 이 판정을 철회한다.",
-  "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 72시간 뒤 기준 이상으로 늘어나면 이 판정을 철회한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.",
-  "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 다음 관측값이 기준선을 웃돌 때 이 판정을 폐기한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.",
-  "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 사흘 후 수치가 경계보다 높아지면 이 판정을 취소한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.",
-]) {
-  test("writer cannot hide an opposite falsifier around the canonical sentence", async () => {
-    const result = await writeEditorialDraftV2({
-      model: {
-        async generate() {
-          return JSON.stringify({ draft, usedFactIds: [EVIDENCE.id], claims: claimsFor(draft) });
-        },
-      },
-      plan: plan(),
-      evidence: EVIDENCE,
-    });
-    assert.equal(result.status, "blocked");
-    if (result.status === "generated") assert.fail("wrapped falsifier passed");
-    assert.ok(result.validationReasons.some((reason) =>
-      ["falsifier-language-not-canonical", "falsifier-deadline-not-isolated", "falsifier-condition-outside-final", "falsifier-claim-outside-final", "falsifier-action-outside-final", "falsifier-language-outside-final"].includes(reason)
-    ));
+test("writer allows a resolved Revisit but rejects a new future promise", async () => {
+  const resolved = "Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. 24시간 재검증에서 변화가 남았지만, 원인과 지속성에 대한 기존 결론은 아직 미결로 남긴다.";
+  const accepted = await writeEditorialDraftV2({
+    model: { async generate() { return JSON.stringify({ draft: resolved, usedFactIds: [EVIDENCE.id], claims: claimsFor(resolved) }); } },
+    plan: revisitPlan(),
+    evidence: EVIDENCE,
   });
-}
+  assert.equal(accepted.status, "generated");
+
+  const promised = "Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. 이번 판정은 아직 미결로 남기고, 다음 관측에서 같은 지표를 다시 확인하겠다.";
+  const rejected = await writeEditorialDraftV2({
+    model: { async generate() { return JSON.stringify({ draft: promised, usedFactIds: [EVIDENCE.id], claims: claimsFor(promised) }); } },
+    plan: revisitPlan(),
+    evidence: EVIDENCE,
+  });
+  assert.equal(rejected.status, "blocked");
+  if (rejected.status === "generated") assert.fail("future Revisit promise passed");
+  assert.ok(rejected.validationReasons.includes("future-recheck-promise"));
+});
 
 test("writer no-posts after one failed regeneration and never falls back", async () => {
   let calls = 0;

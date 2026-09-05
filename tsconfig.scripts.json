@@ -5,11 +5,7 @@
     "rootDir": "."
   },
   "include": [
-    "scripts/editorial-collect.ts",
-    "scripts/editorial-corpus-eval.ts",
-    "scripts/editorial-offline-eval.ts",
-    "scripts/editorial-review.ts",
-    "scripts/editorial-publish.ts",
+    "scripts/editorial-*.ts",
     "eval/**/*.ts"
   ]
 }

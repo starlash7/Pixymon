@@ -1,6 +1,8 @@
 export const EDITORIAL_V2_SCHEMA_VERSION = 2 as const;
+export const EDITORIAL_COLLECTION_EPOCH_V2 = "grounded-writer-v1" as const;
 
 export type EditorialFormatV2 = "bite" | "withhold" | "revisit" | "evolution";
+export type EditorialLaneV2 = "onchain" | "protocol" | "ecosystem";
 
 export type EditorialVoiceStateV2 =
   | "curious"
@@ -72,11 +74,30 @@ export interface EditorialFactSnapshotV2 {
   };
 }
 
+export type EditorialGeneratedClaimKindV2 = "observation" | "judgment";
+
+export interface EditorialGeneratedClaimV2 {
+  readonly kind: EditorialGeneratedClaimKindV2;
+  readonly text: string;
+  readonly factIds: readonly string[];
+}
+
+/** Immutable structured writer output captured before any human edit. */
+export interface EditorialGeneratedPayloadV2 {
+  readonly draft: string;
+  readonly usedFactIds: readonly string[];
+  readonly claims: readonly EditorialGeneratedClaimV2[];
+}
+
 export interface EditorialDraftRecordV2 {
   schemaVersion: typeof EDITORIAL_V2_SCHEMA_VERSION;
   id: string;
   runId: string;
   createdAt: string;
+  /** Absent only on legacy events created before evaluation lineage capture. */
+  lane?: EditorialLaneV2;
+  /** Absent only on legacy events created before evaluation lineage capture. */
+  collectionEpoch?: string;
   format: EditorialFormatV2;
   subject: string;
   thesis: string;
@@ -88,6 +109,8 @@ export interface EditorialDraftRecordV2 {
   continuityThread?: string;
   voiceState: EditorialVoiceStateV2;
   draft: string;
+  /** Optional only so schema-v2 events written before lineage capture remain readable. */
+  generatedPayload?: EditorialGeneratedPayloadV2;
 }
 
 export type EditorialReviewActionV2 = "approve" | "edit" | "reject";

@@ -38,3 +38,17 @@ test("editorial V2 auto publish fails closed before human calibration", () => {
   assert.equal(result.eligible, false);
   assert.ok(result.reasons.includes("calibration-under-30"));
 });
+
+test("non-finite or impossible calibration values cannot enable automatic publishing", () => {
+  const input = { tierA: true, providerGreen: true, usedFallback: false, hardGateReasons: [], critic: passingCritic,
+    calibration: { reviewedCount: 30, noEditPrecision: 0.9, hardVetoCount: 0 } };
+  for (const calibration of [
+    { ...input.calibration, reviewedCount: Number.NaN },
+    { ...input.calibration, reviewedCount: Infinity },
+    { ...input.calibration, noEditPrecision: Number.NaN },
+    { ...input.calibration, noEditPrecision: 1.1 },
+    { ...input.calibration, hardVetoCount: Number.NaN },
+    { ...input.calibration, hardVetoCount: -1 },
+  ]) assert.equal(evaluateAutoPublishEligibilityV2({ ...input, calibration }).eligible, false);
+  assert.equal(evaluateAutoPublishEligibilityV2({ ...input, critic: { ...passingCritic, hardVetoes: null as never } }).eligible, false);
+});

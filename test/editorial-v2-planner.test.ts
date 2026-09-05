@@ -130,6 +130,9 @@ test("planner falsifies a rolling TVL event against its absolute TVL baseline", 
   if (result.status === "planned") {
     assert.equal(result.plan.falsifier.metric, "tvl-usd");
     assert.equal(result.plan.falsifier.threshold, 100_000_000);
+    assert.equal(result.plan.followUpAt.due72h, "2026-08-31T10:00:00.000Z");
+    assert.doesNotMatch(result.plan.thesis, /72시간|다음|재검증|확인한다/);
+    assert.match(result.plan.thesis, /더 큰 서사는 승인하지 않는다/);
   }
 });
 

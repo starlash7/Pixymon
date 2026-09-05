@@ -41,9 +41,14 @@ async function main(): Promise<void> {
         externalPostId: reconcileXId,
         publishedAt,
       });
+      if (result.publication.externalPostId !== reconcileXId) {
+        throw new Error(
+          `reconcile X id conflicts with existing publication: ${result.publication.externalPostId}`
+        );
+      }
       const reconciledState = store.getDraftState(draftIdArg());
       if (!reconciledState) throw new Error("reconciled draft disappeared");
-      recordConfirmedXPost(reconcileXId, reconciledState.publishText, "briefing", {
+      recordConfirmedXPost(result.publication.externalPostId, reconciledState.publishText, "briefing", {
         createKind: "editorial-v2:reconciled-original",
         metadata: {
           eventId: reconciledState.draft.id,

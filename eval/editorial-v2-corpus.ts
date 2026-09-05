@@ -9,7 +9,6 @@ import type { EvidenceCardV2 } from "../src/services/editorial-v2/evidence.js";
 import { assessTierAEligibilityV2 } from "../src/services/editorial-v2/evidence.js";
 import { planEditorialV2 } from "../src/services/editorial-v2/planner.js";
 import {
-  canonicalFalsifierSentenceV2,
   formatEvidenceSourceTimeV2,
   inferMetricDirectionV2,
   splitEditorialSentencesV2,
@@ -139,16 +138,16 @@ const FIRST_SENTENCES: readonly SentenceTemplate[] = [
 ] as const;
 
 const SECOND_SENTENCES: readonly SentenceTemplate[] = [
-  ({ subject }) => `${subject}의 변화 가능성만 열어 둔다.`,
-  ({ subject }) => `${subject}에 대한 큰 결론은 아직 보류한다.`,
-  ({ subject }) => `${subject}의 한 번의 움직임을 추세로 승인하진 않는다.`,
-  ({ subject }) => `${subject}의 변화폭은 보되 확정 신호로 해석하지 않는다.`,
-  ({ subject }) => `${subject}의 방향성에는 잠정 판정만 남긴다.`,
-  ({ subject }) => `${subject}의 수치는 받되 더 넓은 서사는 유예한다.`,
-  ({ subject }) => `${subject}의 측정값만 승인하고 원인은 열어 둔다.`,
-  ({ subject }) => `${subject}의 한 번의 관측을 확대 해석하지 않는다.`,
-  ({ subject }) => `나는 ${subject}의 숫자를 기억하되 확신은 유예한다.`,
-  ({ subject }) => `${subject}의 판정은 숫자가 보여 준 범위까지만 유효하다.`,
+  ({ subject }) => `${subject}의 변화 가능성만 열어 두고, 원인과 지속성에 대한 결론은 아직 보류한다.`,
+  ({ subject }) => `${subject}에 대한 큰 결론은 아직 보류하며, 지금은 확인된 변화폭만 판단에 남긴다.`,
+  ({ subject }) => `${subject}의 한 번의 움직임을 추세로 승인하진 않고, 관측 범위 안의 판단만 남긴다.`,
+  ({ subject }) => `${subject}의 변화폭은 인정하되 원인까지 확인된 확정 신호로 해석하지 않는다.`,
+  ({ subject }) => `${subject}의 방향성에는 잠정 판정만 남기고, 더 넓은 서사는 아직 승인하지 않는다.`,
+  ({ subject }) => `${subject}의 수치는 받아들이되 원인과 지속성에 대한 더 넓은 서사는 유예한다.`,
+  ({ subject }) => `${subject}의 측정값만 판단에 반영하고, 관측되지 않은 원인에 대한 결론은 보류한다.`,
+  ({ subject }) => `${subject}의 한 번의 관측을 확대 해석하지 않고, 확인된 변화의 범위만 승인한다.`,
+  ({ subject }) => `나는 ${subject}의 숫자를 기억하되, 아직 확인되지 않은 원인에 대한 확신은 유예한다.`,
+  ({ subject }) => `${subject}의 판정은 숫자가 보여 준 범위까지만 유효하고, 그 밖의 서사는 보류한다.`,
 ] as const;
 
 function stableHash(value: string): number {
@@ -213,8 +212,7 @@ function syntheticEvidence(index: number, seed: string): EvidenceCardV2 {
 function renderSyntheticText(
   index: number,
   seed: string,
-  evidence: EvidenceCardV2,
-  comparator: MachineComparatorV2
+  evidence: EvidenceCardV2
 ): string {
   const offsetA = stableHash(`${seed}:first`) % FIRST_SENTENCES.length;
   const offsetB = stableHash(`${seed}:second`) % SECOND_SENTENCES.length;
@@ -226,14 +224,12 @@ function renderSyntheticText(
     displayValue: evidence.metric.raw,
     sourceTime: formatEvidenceSourceTimeV2(evidence.source.observedAt),
   };
-  return `${FIRST_SENTENCES[firstIndex](input)} ${SECOND_SENTENCES[secondIndex](input)} ${canonicalFalsifierSentenceV2(comparator)}`;
+  return `${FIRST_SENTENCES[firstIndex](input)} ${SECOND_SENTENCES[secondIndex](input)}`;
 }
 
 function claimsForSyntheticText(text: string, factId: string) {
   return splitEditorialSentencesV2(text).map((sentence, index) => ({
-    kind: (index === 0
-      ? "observation"
-      : /(?:으)?면|경우/u.test(sentence) ? "falsifier" : "judgment") as EditorialClaimKindV2,
+    kind: (index === 0 ? "observation" : "judgment") as EditorialClaimKindV2,
     text: sentence,
     factIds: [factId],
   }));
@@ -257,7 +253,7 @@ export async function generateSyntheticCorpusV2(
     if (planning.status !== "planned") {
       throw new Error(`synthetic plan ${evidence.id} blocked at ${planning.stage}:${planning.reason}`);
     }
-    const text = renderSyntheticText(index, seed, evidence, planning.plan.falsifier.comparator);
+    const text = renderSyntheticText(index, seed, evidence);
     const writing = await writeEditorialDraftV2({
       plan: planning.plan,
       evidence,
@@ -462,8 +458,8 @@ function evaluateRows(
         candidate.displayValue,
         candidate.metricValue
       ),
-      falsifierComparator: candidate.falsifierComparator,
-      requireCanonicalFalsifier: candidate.format !== "revisit",
+      forbidPublicFollowUp: candidate.format !== "revisit",
+      forbidFutureRecheck: true,
     })
   );
   const namedCount = candidates.filter((candidate, index) => {

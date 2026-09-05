@@ -7,7 +7,6 @@ import {
   evaluateRealReplayCorpusV2,
   generateSyntheticCorpusV2,
 } from "../eval/editorial-v2-corpus.ts";
-import { canonicalFalsifierSentenceV2 } from "../src/services/editorial-v2/validator.ts";
 
 const NOW = "2026-08-28T10:00:00.000Z";
 
@@ -51,9 +50,8 @@ async function realReplayRows() {
   tvl.facts[0].metric.unit = "%";
   tvl.falsifier.metric = "tvl-change-24h";
   tvl.draft = [
-    `${tvl.subject}의 TVL은 2026-08-28 10:00 UTC 기준 ${tvl.facts[0].metric.raw}다; 원시 수치만 고정했다.`,
-    `${tvl.subject}에 대한 큰 결론은 아직 보류한다.`,
-    canonicalFalsifierSentenceV2(tvl.falsifier.comparator),
+    `${tvl.subject}의 TVL은 8월 28일 10:00 UTC 기준 ${tvl.facts[0].metric.raw}다; 원시 수치와 측정 구간만 고정했다.`,
+    `${tvl.subject}에 대한 원인과 지속성의 큰 결론은 아직 보류한다.`,
   ].join(" ");
   return rows;
 }
@@ -79,13 +77,11 @@ test("real replay accepts a deterministic 100-row corpus and allows grounded TVL
   assert.equal(report.passed, true, report.failures.join(","));
 });
 
-test("real replay rejects a non-canonical falsifier using the recorded comparator", async () => {
+test("real replay keeps the machine falsifier metadata but rejects public follow-up copy", async () => {
   const rows = await realReplayRows();
   const first = rows[0];
-  first.draft = first.draft.replace(
-    canonicalFalsifierSentenceV2(first.falsifier.comparator),
-    "72시간 뒤 같은 지표의 관측값이 기준 이상이라면 이 판정을 철회한다."
-  );
+  assert.ok(["gt", "gte", "lt", "lte", "eq"].includes(first.falsifier.comparator));
+  first.draft = `${first.draft} 72시간 뒤 같은 지표가 기준 미만이면 이 판정을 철회한다.`;
 
   const report = withReplayFile(rows, evaluateRealReplayCorpusV2);
   assert.equal(report.determinism.passed, true);

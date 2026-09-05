@@ -22,6 +22,7 @@ import { DEFAULT_X_API_COST_SETTINGS } from "../config/runtime.js";
 import { XCreateGuardBlockReason, xApiBudget } from "./x-api-budget.js";
 import { recordNarrativeObservation } from "./narrative-observer.js";
 import { resolveDataDir } from "./data-dir.js";
+import { acquireRuntimeLock } from "./process-lock.js";
 
 export const TEST_MODE = process.env.TEST_MODE === "true";
 export const TEST_NO_EXTERNAL_CALLS =
@@ -119,7 +120,6 @@ interface PostDispatchLock {
   release: () => void;
 }
 
-const DISPATCH_LOCK_STALE_MS = 5 * 60 * 1000;
 const DISPATCH_MIN_GAP_MS = 8 * 60 * 1000;
 const DISPATCH_DUPLICATE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const PAPER_ACTION_MODE = String(process.env.ACTION_MODE || "observe").trim().toLowerCase() === "paper";
@@ -1034,80 +1034,8 @@ function formatCreateBlockReason(reason: XCreateGuardBlockReason | undefined, wa
 }
 
 function acquirePostDispatchLock(): PostDispatchLock {
-  try {
-    fs.mkdirSync(path.dirname(DISPATCH_LOCK_PATH), { recursive: true });
-  } catch {
-    return { acquired: false, release: () => {} };
-  }
-
-  let fd: number | null = null;
-  try {
-    fd = fs.openSync(DISPATCH_LOCK_PATH, "wx");
-    return {
-      acquired: true,
-      release: () => {
-        try {
-          if (fd !== null) {
-            fs.closeSync(fd);
-            fd = null;
-          }
-        } catch {
-          // no-op
-        }
-        try {
-          fs.unlinkSync(DISPATCH_LOCK_PATH);
-        } catch {
-          // no-op
-        }
-      },
-    };
-  } catch (error: any) {
-    if (fd !== null) {
-      try {
-        fs.closeSync(fd);
-      } catch {
-        // no-op
-      }
-    }
-    if (error?.code === "EEXIST") {
-      tryClearStaleDispatchLock();
-      try {
-        fd = fs.openSync(DISPATCH_LOCK_PATH, "wx");
-        return {
-          acquired: true,
-          release: () => {
-            try {
-              if (fd !== null) {
-                fs.closeSync(fd);
-                fd = null;
-              }
-            } catch {
-              // no-op
-            }
-            try {
-              fs.unlinkSync(DISPATCH_LOCK_PATH);
-            } catch {
-              // no-op
-            }
-          },
-        };
-      } catch {
-        return { acquired: false, release: () => {} };
-      }
-    }
-    return { acquired: false, release: () => {} };
-  }
-}
-
-function tryClearStaleDispatchLock(): void {
-  try {
-    const stat = fs.statSync(DISPATCH_LOCK_PATH);
-    if (Date.now() - stat.mtimeMs > DISPATCH_LOCK_STALE_MS) {
-      fs.unlinkSync(DISPATCH_LOCK_PATH);
-    }
-  } catch {
-    // no-op
-  }
+  const lock = acquireRuntimeLock(DISPATCH_LOCK_PATH);
+  return { acquired: lock.acquired, release: lock.release };
 }
 
 function getPostDispatchBlockReason(content: string): string | null {

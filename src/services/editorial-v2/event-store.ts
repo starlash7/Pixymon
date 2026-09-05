@@ -6,12 +6,15 @@ import {
   EditorialDraftRecordV2,
   EditorialDispatchIntentRecordV2,
   EditorialFactSnapshotV2,
+  EditorialGeneratedPayloadV2,
+  EditorialLaneV2,
   EditorialPublicationRecordV2,
   EditorialReviewActionV2,
   EditorialReviewRecordV2,
   FollowUpResolutionRecordV2,
 } from "./contracts.js";
 import { createFollowUpScheduleV2 } from "./follow-ups.js";
+import { splitEditorialSentencesV2 } from "./validator.js";
 import { acquireRuntimeLock } from "../process-lock.js";
 
 const SIGNAL_FRESHNESS_MS = 2 * 60 * 60 * 1000;
@@ -89,12 +92,42 @@ export interface EditorialEventStoreOptionsV2 {
   idFactory?: (kind: EditorialIdKindV2) => string;
 }
 
+export class EditorialContinuityThreadConflictV2 extends Error {
+  readonly code = "editorial-continuity-thread-conflict";
+
+  constructor(
+    readonly continuityThread: string,
+    readonly existingDraftId: string
+  ) {
+    super(`editorial continuity thread already exists: ${continuityThread}`);
+    this.name = "EditorialContinuityThreadConflictV2";
+  }
+}
+
+export type EditorialDispatchReservationBlockReasonV2 =
+  | "duplicate-published-text"
+  | "editorial-daily-limit";
+
+export class EditorialDispatchReservationConflictV2 extends Error {
+  readonly code = "editorial-dispatch-reservation-conflict";
+
+  constructor(
+    readonly reason: EditorialDispatchReservationBlockReasonV2,
+    readonly conflictingDraftId?: string
+  ) {
+    super(reason);
+    this.name = "EditorialDispatchReservationConflictV2";
+  }
+}
+
 export type CreateEditorialDraftInputV2 = Omit<
   EditorialDraftRecordV2,
-  "schemaVersion" | "id" | "createdAt"
+  "schemaVersion" | "id" | "createdAt" | "lane" | "collectionEpoch"
 > & {
   id?: string;
   createdAt?: string;
+  lane: EditorialLaneV2;
+  collectionEpoch: string;
 };
 
 export interface RecordEditorialReviewInputV2 {
@@ -122,6 +155,13 @@ export interface MarkEditorialPublishedResultV2 {
 export interface MarkEditorialDispatchingResultV2 {
   status: "dispatching";
   intent: EditorialDispatchIntentRecordV2;
+}
+
+export interface MarkEditorialDispatchingInputV2 {
+  preparedAt: string;
+  expectedPublishText: string;
+  timezone: string;
+  dailyLimit: number;
 }
 
 export type PrepareEditorialPublicationResultV2 =
@@ -167,6 +207,29 @@ function requireText(value: string, field: string): string {
 
 function normalizeTags(tags: readonly string[] | undefined): string[] {
   return [...new Set((tags ?? []).map((tag) => String(tag || "").trim()).filter(Boolean))];
+}
+
+function normalizedPublishText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function normalizedDailyLimit(value: number): number {
+  return Number.isFinite(value) ? Math.max(1, Math.min(2, Math.trunc(value))) : 1;
+}
+
+function calendarDate(value: string, timezone: string): string {
+  const instant = parseInstant(value, "dispatch.recordedAt");
+  const normalizedTimezone = requireText(timezone, "dispatch.timezone");
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: normalizedTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(instant));
+  } catch {
+    throw new Error("dispatch.timezone must be a valid IANA timezone");
+  }
 }
 
 function assertFiniteOptional(value: number | undefined, field: string): void {
@@ -236,12 +299,77 @@ function copyFact(fact: EditorialFactSnapshotV2): EditorialFactSnapshotV2 {
   };
 }
 
+function copyGeneratedPayload(
+  payload: EditorialGeneratedPayloadV2
+): EditorialGeneratedPayloadV2 {
+  return {
+    draft: payload.draft,
+    usedFactIds: [...payload.usedFactIds],
+    claims: payload.claims.map((claim) => ({
+      kind: claim.kind,
+      text: claim.text,
+      factIds: [...claim.factIds],
+    })),
+  };
+}
+
+function hasExactStringSequence(value: unknown, expected: readonly string[]): boolean {
+  return Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((item, index) => typeof item === "string" && item === expected[index]);
+}
+
+function assertGeneratedPayload(draft: EditorialDraftRecordV2): void {
+  const payload = draft.generatedPayload;
+  if (typeof payload === "undefined") return;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("draft.generatedPayload must be an object");
+  }
+  if (typeof payload.draft !== "string" || payload.draft !== draft.draft) {
+    throw new Error("draft.generatedPayload.draft must match draft.draft exactly");
+  }
+  if (!hasExactStringSequence(payload.usedFactIds, draft.factIds)) {
+    throw new Error("draft.generatedPayload.usedFactIds must map exactly to draft.factIds");
+  }
+  if (!Array.isArray(payload.claims)) {
+    throw new Error("draft.generatedPayload.claims must be an array");
+  }
+  const sentences = splitEditorialSentencesV2(draft.draft);
+  if (payload.claims.length !== sentences.length) {
+    throw new Error("draft.generatedPayload claims must map exactly to draft sentences");
+  }
+  payload.claims.forEach((claim, index) => {
+    if (!claim || typeof claim !== "object" || Array.isArray(claim)) {
+      throw new Error("draft.generatedPayload claim must be an object");
+    }
+    const expectedKind = index === 0 ? "observation" : "judgment";
+    if (claim.kind !== expectedKind) {
+      throw new Error(`draft.generatedPayload claim ${index + 1} must be ${expectedKind}`);
+    }
+    if (typeof claim.text !== "string" || claim.text !== sentences[index]) {
+      throw new Error("draft.generatedPayload claims must preserve sentence order exactly");
+    }
+    if (!hasExactStringSequence(claim.factIds, draft.factIds)) {
+      throw new Error("draft.generatedPayload claim factIds must cover draft.factIds exactly");
+    }
+  });
+}
+
 function assertDraft(draft: EditorialDraftRecordV2): void {
   if (draft.schemaVersion !== EDITORIAL_V2_SCHEMA_VERSION) {
     throw new Error("unsupported editorial draft schema");
   }
   requireText(draft.id, "draft.id");
   requireText(draft.runId, "draft.runId");
+  const hasLane = typeof draft.lane !== "undefined";
+  const hasCollectionEpoch = typeof draft.collectionEpoch !== "undefined";
+  if (hasLane !== hasCollectionEpoch) {
+    throw new Error("draft lane and collectionEpoch must be present together");
+  }
+  if (hasLane && !["onchain", "protocol", "ecosystem"].includes(String(draft.lane))) {
+    throw new Error(`unsupported editorial lane: ${String(draft.lane)}`);
+  }
+  if (hasCollectionEpoch) requireText(draft.collectionEpoch || "", "draft.collectionEpoch");
   requireText(draft.subject, "draft.subject");
   requireText(draft.thesis, "draft.thesis");
   requireText(draft.verdict, "draft.verdict");
@@ -267,6 +395,10 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
     }
     factIds.add(fact.factId);
   });
+  assertGeneratedPayload(draft);
+  if (hasCollectionEpoch && !draft.generatedPayload) {
+    throw new Error("epoch draft requires durable generated payload");
+  }
 
   const expectedSchedule = createFollowUpScheduleV2(new Date(createdAt));
   if (
@@ -426,6 +558,9 @@ function copyState(state: EditorialDraftStateV2): EditorialDraftStateV2 {
       facts: state.draft.facts.map(copyFact),
       falsifier: { ...state.draft.falsifier },
       followUpSchedule: { ...state.draft.followUpSchedule },
+      generatedPayload: state.draft.generatedPayload
+        ? copyGeneratedPayload(state.draft.generatedPayload)
+        : undefined,
     },
     reviews: state.reviews.map((review) => ({ ...review, reasonTags: [...review.reasonTags] })),
     dispatchIntent: state.dispatchIntent ? { ...state.dispatchIntent } : undefined,
@@ -437,6 +572,7 @@ function copyState(state: EditorialDraftStateV2): EditorialDraftStateV2 {
 export function foldEditorialEventsV2(events: readonly EditorialEventV2[]): EditorialLedgerV2 {
   const drafts = new Map<string, EditorialDraftStateV2>();
   const eventIds = new Set<string>();
+  const continuityThreads = new Map<string, string>();
 
   for (const event of events) {
     assertEvent(event);
@@ -449,11 +585,22 @@ export function foldEditorialEventsV2(events: readonly EditorialEventV2[]): Edit
       if (drafts.has(event.draft.id)) {
         throw new Error(`duplicate editorial draft id: ${event.draft.id}`);
       }
+      const continuityThread = event.draft.continuityThread?.trim();
+      if (continuityThread) {
+        const existingDraftId = continuityThreads.get(continuityThread);
+        if (existingDraftId) {
+          throw new EditorialContinuityThreadConflictV2(continuityThread, existingDraftId);
+        }
+        continuityThreads.set(continuityThread, event.draft.id);
+      }
       drafts.set(event.draft.id, {
         draft: {
           ...event.draft,
           factIds: [...event.draft.factIds],
           facts: event.draft.facts.map(copyFact),
+          generatedPayload: event.draft.generatedPayload
+            ? copyGeneratedPayload(event.draft.generatedPayload)
+            : undefined,
         },
         reviews: [],
         reviewStatus: "pending",
@@ -588,6 +735,9 @@ export class EditorialEventStoreV2 {
 
   createDraft(input: CreateEditorialDraftInputV2): EditorialDraftRecordV2 {
     return this.withMutationLock("create-draft", () => {
+    if (!input.lane || !input.collectionEpoch) {
+      throw new Error("new drafts require lane and collectionEpoch");
+    }
     const createdAt = this.normalizeInstant(input.createdAt ?? this.nowIso(), "draft.createdAt");
     const draft: EditorialDraftRecordV2 = {
       ...input,
@@ -595,6 +745,10 @@ export class EditorialEventStoreV2 {
       id: requireText(input.id ?? this.newId("draft"), "draft.id"),
       runId: requireText(input.runId, "draft.runId"),
       createdAt,
+      lane: input.lane,
+      collectionEpoch: typeof input.collectionEpoch === "undefined"
+        ? undefined
+        : requireText(input.collectionEpoch, "draft.collectionEpoch"),
       subject: requireText(input.subject, "draft.subject"),
       thesis: requireText(input.thesis, "draft.thesis"),
       factIds: [...new Set(input.factIds.map((factId) => String(factId || "").trim()).filter(Boolean))],
@@ -604,10 +758,26 @@ export class EditorialEventStoreV2 {
       followUpSchedule: { ...input.followUpSchedule },
       continuityThread: input.continuityThread?.trim() || undefined,
       draft: requireText(input.draft, "draft.draft"),
+      generatedPayload: input.generatedPayload,
     };
     assertDraft(draft);
-    if (this.ledger().drafts.has(draft.id)) {
+    if (draft.generatedPayload) {
+      draft.generatedPayload = copyGeneratedPayload(draft.generatedPayload);
+    }
+    const ledger = this.ledger();
+    if (ledger.drafts.has(draft.id)) {
       throw new Error(`duplicate editorial draft id: ${draft.id}`);
+    }
+    if (draft.continuityThread) {
+      const existing = [...ledger.drafts.values()].find(
+        (state) => state.draft.continuityThread?.trim() === draft.continuityThread
+      );
+      if (existing) {
+        throw new EditorialContinuityThreadConflictV2(
+          draft.continuityThread,
+          existing.draft.id
+        );
+      }
     }
     this.append({
       schemaVersion: EDITORIAL_V2_SCHEMA_VERSION,
@@ -659,7 +829,7 @@ export class EditorialEventStoreV2 {
 
   markDispatching(
     draftId: string,
-    input: { preparedAt: string; expectedPublishText: string }
+    input: MarkEditorialDispatchingInputV2
   ): MarkEditorialDispatchingResultV2 {
     return this.withMutationLock("mark-dispatching", () => {
     const preparation = this.preparePublicationAt(draftId, input.preparedAt, false);
@@ -669,8 +839,31 @@ export class EditorialEventStoreV2 {
     if (preparation.publishText !== input.expectedPublishText) {
       throw new Error(`approved draft changed after publication preparation: ${draftId}`);
     }
-    this.assertSubjectNoveltyForDispatch(preparation.draftId, preparation.freshnessCheckedAt);
     const recordedAt = this.nowIso();
+    const ledger = this.ledger();
+    const normalizedText = normalizedPublishText(preparation.publishText);
+    const duplicate = [...ledger.drafts.values()].find(
+      (state) =>
+        state.draft.id !== preparation.draftId &&
+        (normalizedPublishText(state.publication?.publishedText || "") === normalizedText ||
+          normalizedPublishText(state.dispatchIntent?.publishText || "") === normalizedText)
+    );
+    if (duplicate) {
+      throw new EditorialDispatchReservationConflictV2(
+        "duplicate-published-text",
+        duplicate.draft.id
+      );
+    }
+    const today = calendarDate(recordedAt, input.timezone);
+    const dailyLimit = normalizedDailyLimit(input.dailyLimit);
+    const dispatchedToday = [...ledger.drafts.values()].filter((state) => {
+      const dispatchedAt = state.publication?.publishedAt || state.dispatchIntent?.recordedAt;
+      return dispatchedAt && calendarDate(dispatchedAt, input.timezone) === today;
+    }).length;
+    if (dispatchedToday >= dailyLimit) {
+      throw new EditorialDispatchReservationConflictV2("editorial-daily-limit");
+    }
+    this.assertSubjectNoveltyForDispatch(preparation.draftId, preparation.freshnessCheckedAt);
     const intent: EditorialDispatchIntentRecordV2 = {
       schemaVersion: EDITORIAL_V2_SCHEMA_VERSION,
       id: this.newId("dispatch"),

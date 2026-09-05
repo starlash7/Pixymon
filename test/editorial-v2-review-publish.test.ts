@@ -7,21 +7,125 @@ import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.
 import { createFollowUpScheduleV2, createMachineFalsifierV2 } from "../src/services/editorial-v2/follow-ups.ts";
 import { publishEditorialDraftV2 } from "../src/services/editorial-v2/publisher.ts";
 import { recordEditorialReviewV2 } from "../src/services/editorial-v2/review.ts";
+import { splitEditorialSentencesV2 } from "../src/services/editorial-v2/validator.ts";
+import { EDITORIAL_COLLECTION_EPOCH_V2 } from "../src/services/editorial-v2/contracts.ts";
 
 const NOW = new Date("2026-08-28T10:00:00.000Z");
-const TEXT = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었지만, 바로 승인하진 않겠다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.";
+const TEXT = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 수치는 분명하지만, 더 큰 회복 서사까지 승인한다는 잠정 판단만 남긴다.";
 
-function fixture(draftText = TEXT) {
+function fixture(
+  draftText = TEXT,
+  format: "bite" | "revisit" = "bite",
+  includeGeneratedPayload = true
+) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pixymon-v2-publish-"));
   let id = 0;
   const store = new EditorialEventStoreV2({ eventLogPath: path.join(dir, "events.ndjson"), now: () => NOW, idFactory: (kind) => `${kind}-${++id}` });
   const schedule = createFollowUpScheduleV2(NOW);
   const draft = store.createDraft({
-    runId: "run-1", createdAt: NOW.toISOString(), format: "bite", subject: "Aave", thesis: "Aave TVL을 확인한다.", factIds: ["fact-1"],
+    runId: "run-1", createdAt: NOW.toISOString(),
+    lane: "protocol", collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
+    format, subject: "Aave", thesis: "Aave TVL을 확인한다.", factIds: ["fact-1"],
     facts: [{ factId: "fact-1", subject: "Aave", metric: { name: "tvl-change-24h", value: 8.4, raw: "+8.4%", unit: "%", period: "24h" }, source: { provider: "defillama", url: "https://api.llama.fi/v2/chains", publishedAt: null, observedAt: "2026-08-28T09:30:00.000Z" } }],
-    verdict: "approve", falsifier: createMachineFalsifierV2({ metric: "tvl-change-24h", comparator: "lt", threshold: 8.4, unit: "%" }, schedule), followUpSchedule: schedule, voiceState: "curious", draft: draftText,
-  });
+    verdict: format === "revisit" ? "digesting" : "approve", falsifier: createMachineFalsifierV2({ metric: "tvl-change-24h", comparator: "lt", threshold: 8.4, unit: "%" }, schedule), followUpSchedule: schedule, voiceState: "curious", draft: draftText,
+    ...{
+      generatedPayload: {
+        draft: draftText,
+        usedFactIds: ["fact-1"],
+        claims: splitEditorialSentencesV2(draftText).map((text, index) => ({
+          kind: index === 0 ? "observation" as const : "judgment" as const,
+          text,
+          factIds: ["fact-1"],
+        })),
+      },
+    },
+  } as Parameters<EditorialEventStoreV2["createDraft"]>[0]);
+  if (!includeGeneratedPayload) {
+    // Historical schema-v2 rows remain readable; new writes cannot omit lineage.
+    const events = store.readEvents();
+    for (const event of events) {
+      if (event.type !== "draft-created") continue;
+      delete event.draft.lane;
+      delete event.draft.collectionEpoch;
+      delete event.draft.generatedPayload;
+    }
+    fs.writeFileSync(path.join(dir, "events.ndjson"), events.map((event) => JSON.stringify(event)).join("\n") + "\n");
+  }
   return { store, draft, metrics: path.join(dir, "metrics.ndjson") };
+}
+
+function addDraft(
+  target: ReturnType<typeof fixture>,
+  input: {
+    id: string;
+    subject: string;
+    text: string;
+    value: number;
+    raw: string;
+    format?: "bite" | "revisit";
+  }
+) {
+  const schedule = createFollowUpScheduleV2(NOW);
+  return target.store.createDraft({
+    id: input.id,
+    runId: `run-${input.id}`,
+    createdAt: NOW.toISOString(),
+    lane: "protocol",
+    collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
+    format: input.format ?? "bite",
+    subject: input.subject,
+    thesis: `${input.subject} TVL을 확인한다.`,
+    factIds: [`fact-${input.id}`],
+    facts: [{
+      factId: `fact-${input.id}`,
+      subject: input.subject,
+      metric: {
+        name: "tvl-change-24h",
+        value: input.value,
+        raw: input.raw,
+        unit: "%",
+        period: "24h",
+      },
+      source: {
+        provider: "defillama",
+        url: "https://api.llama.fi/v2/chains",
+        publishedAt: null,
+        observedAt: "2026-08-28T09:30:00.000Z",
+      },
+    }],
+    verdict: input.format === "revisit" ? "digesting" : "approve",
+    falsifier: createMachineFalsifierV2({
+      metric: "tvl-change-24h",
+      comparator: "lt",
+      threshold: input.value,
+      unit: "%",
+    }, schedule),
+    followUpSchedule: schedule,
+    voiceState: "curious",
+    draft: input.text,
+    generatedPayload: {
+      draft: input.text,
+      usedFactIds: [`fact-${input.id}`],
+      claims: splitEditorialSentencesV2(input.text).map((text, index) => ({
+        kind: index === 0 ? "observation" : "judgment",
+        text,
+        factIds: [`fact-${input.id}`],
+      })),
+    },
+  });
+}
+
+function twoPartyBarrier(): () => Promise<void> {
+  let arrivals = 0;
+  let release: (() => void) | undefined;
+  const bothArrived = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return async () => {
+    arrivals += 1;
+    if (arrivals === 2) release?.();
+    await bothArrived;
+  };
 }
 
 test("review is append-only and non-live publication never dispatches", async () => {
@@ -43,75 +147,46 @@ test("approved fresh draft publishes once and is idempotent", async () => {
   assert.equal(calls, 1);
 });
 
+test("legacy drafts without durable writer lineage cannot publish", async () => {
+  const f = fixture(TEXT, "bite", false);
+  recordEditorialReviewV2({
+    store: f.store,
+    draftId: f.draft.id,
+    action: "approve",
+    reviewerId: "operator",
+    metricLogPath: f.metrics,
+    mode: "live",
+    now: NOW,
+  });
+  let healthChecks = 0;
+  let dispatches = 0;
+  const result = await publishEditorialDraftV2({
+    store: f.store,
+    draftId: f.draft.id,
+    mode: "live",
+    dispatch: async () => { dispatches += 1; return "x-legacy"; },
+    revalidateEvidence: async () => { healthChecks += 1; return { ok: true }; },
+    metricLogPath: f.metrics,
+    timezone: "Asia/Seoul",
+    now: NOW,
+  });
+  assert.deepEqual(result, { status: "blocked", reason: "writer-lineage-missing" });
+  assert.equal(healthChecks, 0);
+  assert.equal(dispatches, 0);
+});
+
 test("edited copy must retain the evidence contract", () => {
   const f = fixture();
   assert.throws(() => recordEditorialReviewV2({ store: f.store, draftId: f.draft.id, action: "edit", reviewerId: "operator", reasonTags: ["clarity"], editedDraft: "Aave 좋아 보인다.", metricLogPath: f.metrics, mode: "observe", now: NOW }), /failed contract/);
 });
 
-test("human edits cannot invert the machine falsifier direction", () => {
-  const f = fixture();
-  const inverted = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 72시간 뒤 +8.4% 이상으로 늘어나면 이 판정을 철회한다.";
-  assert.throws(
-    () => recordEditorialReviewV2({
-      store: f.store,
-      draftId: f.draft.id,
-      action: "edit",
-      reviewerId: "operator",
-      reasonTags: ["clarity"],
-      editedDraft: inverted,
-      metricLogPath: f.metrics,
-      mode: "observe",
-      now: NOW,
-    }),
-    /falsifier-direction-mismatch/
-  );
-});
-
-test("human edits cannot negate a matching comparator token", () => {
-  const f = fixture();
-  const inverted = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 관측만으로 더 큰 서사를 승인하진 않는다. 72시간 뒤 TVL이 기준 미만이 아니어도 이 판정을 철회한다.";
-  assert.throws(
-    () => recordEditorialReviewV2({
-      store: f.store,
-      draftId: f.draft.id,
-      action: "edit",
-      reviewerId: "operator",
-      reasonTags: ["clarity"],
-      editedDraft: inverted,
-      metricLogPath: f.metrics,
-      mode: "observe",
-      now: NOW,
-    }),
-    /falsifier-language-not-canonical/
-  );
-});
-
-test("human edits cannot wrap a matching comparator in opposite logic", () => {
-  const f = fixture();
-  const inverted = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 관측만으로 더 큰 서사를 승인하진 않는다. 72시간 뒤 TVL이 기준 미만을 제외한 값일 경우 이 판정을 철회한다.";
-  assert.throws(
-    () => recordEditorialReviewV2({
-      store: f.store,
-      draftId: f.draft.id,
-      action: "edit",
-      reviewerId: "operator",
-      reasonTags: ["clarity"],
-      editedDraft: inverted,
-      metricLogPath: f.metrics,
-      mode: "observe",
-      now: NOW,
-    }),
-    /falsifier-language-not-canonical/
-  );
-});
-
-for (const inverted of [
-  "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 관측만으로 더 큰 서사를 승인하진 않는다. 72시간 뒤 TVL 관측값이 기준선을 웃도는 때 이 판정을 철회한다.",
-  "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 72시간 뒤 기준 이상으로 늘어나면 이 판정을 철회한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.",
-  "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 다음 관측값이 기준선을 웃돌 때 이 판정을 폐기한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.",
-  "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 사흘 후 수치가 경계보다 높아지면 이 판정을 취소한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.",
+for (const publicFalsifier of [
+  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 72시간 뒤 같은 지표가 기준 미만이면 이 판정을 철회한다.",
+  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 다음 관측값이 기준선을 웃돌 때 이 판정을 폐기한다.",
+  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 현재 수준이 유지될 시 회복 판정을 승인한다.",
+  "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 현재 수준이 무너지지 않는 한 회복 판정을 승인한다.",
 ]) {
-  test("human edits cannot hide or duplicate the machine falsifier", () => {
+  test("human edits cannot reintroduce the internal machine falsifier", () => {
     const f = fixture();
     assert.throws(
       () => recordEditorialReviewV2({
@@ -120,18 +195,18 @@ for (const inverted of [
         action: "edit",
         reviewerId: "operator",
         reasonTags: ["clarity"],
-        editedDraft: inverted,
+        editedDraft: publicFalsifier,
         metricLogPath: f.metrics,
         mode: "observe",
         now: NOW,
       }),
-      /falsifier-(?:language-not-canonical|deadline-not-isolated|condition-outside-final|action-outside-final|language-outside-final)/
+      /public-(?:conditional-language|recheck-language|falsifier-action)/
     );
   });
 }
 
-test("publish-time validation blocks a hidden competing falsifier", async () => {
-  const hidden = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 사흘 후 수치가 경계보다 높아지면 이 판정을 취소한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.";
+test("publish-time validation blocks a hidden public falsifier", async () => {
+  const hidden = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 현재 수준이 무너지지 않는 한 회복 판정을 승인한다.";
   const f = fixture(hidden);
   recordEditorialReviewV2({
     store: f.store,
@@ -159,13 +234,50 @@ test("publish-time validation blocks a hidden competing falsifier", async () => 
   });
   assert.equal(result.status, "blocked");
   if (result.status !== "blocked") assert.fail("hidden falsifier reached dispatch");
-  assert.match(result.reason, /publish-contract:.*falsifier-condition-outside-final/);
+  assert.match(result.reason, /publish-contract:.*public-conditional-language/);
+  assert.equal(calls, 0);
+});
+
+test("review and publish reject a Revisit that promises another check", async () => {
+  const resolved = "Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. 24시간 재검증 결과는 아직 미결이라는 판단으로 남긴다.";
+  const promised = "Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. 이번 판정은 미결로 남기고 다음 관측에서 다시 확인하겠다.";
+  const reviewed = fixture(resolved, "revisit");
+  assert.throws(
+    () => recordEditorialReviewV2({
+      store: reviewed.store,
+      draftId: reviewed.draft.id,
+      action: "edit",
+      reviewerId: "operator",
+      editedDraft: promised,
+      metricLogPath: reviewed.metrics,
+      mode: "observe",
+      now: NOW,
+    }),
+    /future-recheck-promise/
+  );
+
+  const published = fixture(promised, "revisit");
+  recordEditorialReviewV2({ store: published.store, draftId: published.draft.id, action: "approve", reviewerId: "operator", metricLogPath: published.metrics, mode: "live", now: NOW });
+  let calls = 0;
+  const result = await publishEditorialDraftV2({
+    store: published.store,
+    draftId: published.draft.id,
+    mode: "live",
+    dispatch: async (_text, beforeSend) => { beforeSend(); calls += 1; return "x-should-not-run"; },
+    revalidateEvidence: async () => ({ ok: true }),
+    metricLogPath: published.metrics,
+    timezone: "Asia/Seoul",
+    now: NOW,
+  });
+  assert.equal(result.status, "blocked");
+  if (result.status !== "blocked") assert.fail("future Revisit promise reached dispatch");
+  assert.match(result.reason, /publish-contract:.*future-recheck-promise/);
   assert.equal(calls, 0);
 });
 
 test("a later approval preserves the last contract-valid human edit", () => {
   const f = fixture();
-  const edited = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 아직 한 번의 관측이라 확대 해석은 보류한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.";
+  const edited = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 수치는 기록하되, 원인과 지속성에 대한 확대 해석은 보류한다.";
   recordEditorialReviewV2({
     store: f.store,
     draftId: f.draft.id,
@@ -190,6 +302,8 @@ test("a later approval preserves the last contract-valid human edit", () => {
   const state = f.store.getDraftState(f.draft.id);
   assert.equal(state?.reviewStatus, "approved");
   assert.equal(state?.publishText, edited);
+  assert.equal(state?.draft.generatedPayload?.draft, TEXT);
+  assert.notEqual(state?.draft.generatedPayload?.draft, state?.publishText);
 });
 
 test("provider health is revalidated immediately before dispatch", async () => {
@@ -261,7 +375,7 @@ test("a pre-X dispatch block leaves no intent and can be safely retried", async 
 test("a review edit between preparation and send blocks the stale prepared text", async () => {
   const f = fixture();
   recordEditorialReviewV2({ store: f.store, draftId: f.draft.id, action: "approve", reviewerId: "operator", metricLogPath: f.metrics, mode: "live", now: NOW });
-  const edited = "Aave의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 한 번의 관측이라 확대 해석은 보류한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.";
+  const edited = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 수치는 기록하되, 원인과 지속성에 대한 확대 해석은 보류한다.";
   let xCalls = 0;
   const result = await publishEditorialDraftV2({
     store: f.store,
@@ -303,10 +417,11 @@ test("publish-time gate blocks the same subject inside rolling 24h without a mea
   });
 
   const schedule = createFollowUpScheduleV2(NOW);
-  const secondText = "Aave의 TVL은 2026-08-28 09:40 UTC 기준 24시간 동안 +8.4% 늘었다. 아직 한 번의 관측이라 해석은 보류한다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.";
+  const secondText = "Aave의 TVL은 8월 28일 09:40 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 수치는 기록하되, 원인과 지속성에 대한 확대 해석은 보류한다.";
   const second = f.store.createDraft({
     id: "same-subject-second",
     runId: "run-second",
+    lane: "protocol", collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
     createdAt: NOW.toISOString(),
     format: "withhold",
     subject: "Aave",
@@ -318,6 +433,15 @@ test("publish-time gate blocks the same subject inside rolling 24h without a mea
     followUpSchedule: schedule,
     voiceState: "patient",
     draft: secondText,
+    generatedPayload: {
+      draft: secondText,
+      usedFactIds: ["fact-second"],
+      claims: splitEditorialSentencesV2(secondText).map((text, index) => ({
+        kind: index === 0 ? "observation" as const : "judgment" as const,
+        text,
+        factIds: ["fact-second"],
+      })),
+    },
   });
   recordEditorialReviewV2({ store: f.store, draftId: second.id, action: "approve", reviewerId: "operator", metricLogPath: f.metrics, mode: "live", now: NOW });
   let secondXCalls = 0;
@@ -338,6 +462,109 @@ test("publish-time gate blocks the same subject inside rolling 24h without a mea
   assert.equal(secondXCalls, 0);
 });
 
+test("concurrent exact-duplicate drafts reserve at most one X send", async () => {
+  const f = fixture();
+  const second = addDraft(f, {
+    id: "duplicate-second",
+    subject: "Aave",
+    text: TEXT,
+    value: 8.4,
+    raw: "+8.4%",
+  });
+  for (const draftId of [f.draft.id, second.id]) {
+    recordEditorialReviewV2({
+      store: f.store,
+      draftId,
+      action: "approve",
+      reviewerId: "operator",
+      metricLogPath: f.metrics,
+      mode: "live",
+      now: NOW,
+    });
+  }
+
+  const waitForBoth = twoPartyBarrier();
+  let xCalls = 0;
+  const publish = (draftId: string) => publishEditorialDraftV2({
+    store: f.store,
+    draftId,
+    mode: "live",
+    dispatch: async (_text, beforeSend) => {
+      await waitForBoth();
+      beforeSend();
+      xCalls += 1;
+      return `x-${draftId}`;
+    },
+    revalidateEvidence: async () => ({ ok: true }),
+    metricLogPath: f.metrics,
+    timezone: "Asia/Seoul",
+    dailyLimit: 2,
+    now: NOW,
+  });
+
+  const results = await Promise.all([publish(f.draft.id), publish(second.id)]);
+  assert.equal(results.filter((result) => result.status === "published").length, 1);
+  assert.deepEqual(
+    results.filter((result) => result.status === "blocked"),
+    [{ status: "blocked", reason: "duplicate-published-text" }]
+  );
+  assert.equal(xCalls, 1);
+  assert.equal(f.store.listDraftStates().filter((state) => state.dispatchIntent).length, 1);
+  assert.equal(f.store.listDraftStates().filter((state) => state.publication).length, 1);
+});
+
+test("concurrent distinct drafts atomically reserve the daily X budget", async () => {
+  const f = fixture();
+  const secondText = "Compound의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +4.2% 늘었다. 이 한 번의 수치는 분명하지만, 더 큰 회복 서사까지 승인한다는 잠정 판단만 남긴다.";
+  const second = addDraft(f, {
+    id: "daily-limit-second",
+    subject: "Compound",
+    text: secondText,
+    value: 4.2,
+    raw: "+4.2%",
+  });
+  for (const draftId of [f.draft.id, second.id]) {
+    recordEditorialReviewV2({
+      store: f.store,
+      draftId,
+      action: "approve",
+      reviewerId: "operator",
+      metricLogPath: f.metrics,
+      mode: "live",
+      now: NOW,
+    });
+  }
+
+  const waitForBoth = twoPartyBarrier();
+  let xCalls = 0;
+  const publish = (draftId: string) => publishEditorialDraftV2({
+    store: f.store,
+    draftId,
+    mode: "live",
+    dispatch: async (_text, beforeSend) => {
+      await waitForBoth();
+      beforeSend();
+      xCalls += 1;
+      return `x-${draftId}`;
+    },
+    revalidateEvidence: async () => ({ ok: true }),
+    metricLogPath: f.metrics,
+    timezone: "Asia/Seoul",
+    dailyLimit: 1,
+    now: NOW,
+  });
+
+  const results = await Promise.all([publish(f.draft.id), publish(second.id)]);
+  assert.equal(results.filter((result) => result.status === "published").length, 1);
+  assert.deepEqual(
+    results.filter((result) => result.status === "blocked"),
+    [{ status: "blocked", reason: "editorial-daily-limit" }]
+  );
+  assert.equal(xCalls, 1);
+  assert.equal(f.store.listDraftStates().filter((state) => state.dispatchIntent).length, 1);
+  assert.equal(f.store.listDraftStates().filter((state) => state.publication).length, 1);
+});
+
 test("invalid daily limit fails closed to one post per day", async () => {
   const f = fixture();
   recordEditorialReviewV2({ store: f.store, draftId: f.draft.id, action: "approve", reviewerId: "operator", metricLogPath: f.metrics, mode: "live", now: NOW });
@@ -351,10 +578,11 @@ test("invalid daily limit fails closed to one post per day", async () => {
   await publishEditorialDraftV2({ ...common, store: f.store, draftId: f.draft.id, dailyLimit: 1, dispatch: async (_text, beforeSend) => { beforeSend(); return "x-first"; } });
 
   const schedule = createFollowUpScheduleV2(NOW);
-  const secondText = "Compound의 TVL은 2026-08-28 09:30 UTC 기준 24시간 동안 +4.2% 늘었지만, 바로 승인하진 않겠다. 72시간 뒤 같은 지표의 관측값이 기준 미만이면 이 판정을 철회한다.";
+  const secondText = "Compound의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +4.2% 늘었다. 이 한 번의 수치는 분명하지만, 더 큰 회복 서사까지 승인한다는 잠정 판단만 남긴다.";
   const second = f.store.createDraft({
     id: "draft-second",
     runId: "run-2",
+    lane: "protocol", collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
     createdAt: NOW.toISOString(),
     format: "bite",
     subject: "Compound",
@@ -366,6 +594,15 @@ test("invalid daily limit fails closed to one post per day", async () => {
     followUpSchedule: schedule,
     voiceState: "curious",
     draft: secondText,
+    generatedPayload: {
+      draft: secondText,
+      usedFactIds: ["fact-2"],
+      claims: splitEditorialSentencesV2(secondText).map((text, index) => ({
+        kind: index === 0 ? "observation" as const : "judgment" as const,
+        text,
+        factIds: ["fact-2"],
+      })),
+    },
   });
   recordEditorialReviewV2({ store: f.store, draftId: second.id, action: "approve", reviewerId: "operator", metricLogPath: f.metrics, mode: "live", now: NOW });
   let secondCalls = 0;

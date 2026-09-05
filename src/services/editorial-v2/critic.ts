@@ -45,7 +45,9 @@ export function validateCriticScoresV2(scores: EditorialCriticScoresV2): string[
       reasons.push(`critic-${key}-out-of-range`);
     }
   }
-  if (!Array.isArray(scores.hardVetoes)) reasons.push("critic-hard-vetoes-invalid");
+  if (!Array.isArray(scores.hardVetoes) || scores.hardVetoes.some((reason) => typeof reason !== "string" || !reason.trim())) {
+    reasons.push("critic-hard-vetoes-invalid");
+  }
   return reasons;
 }
 
@@ -57,11 +59,22 @@ export function evaluateAutoPublishEligibilityV2(
   if (!input.providerGreen) reasons.push("provider-not-green");
   if (input.usedFallback) reasons.push("fallback-used");
   reasons.push(...input.hardGateReasons.map((reason) => `hard-gate:${reason}`));
-  reasons.push(...input.critic.hardVetoes.map((reason) => `critic-veto:${reason}`));
+  if (Array.isArray(input.critic.hardVetoes)) {
+    reasons.push(...input.critic.hardVetoes.map((reason) => `critic-veto:${reason}`));
+  }
   for (const key of CRITIC_DIMENSIONS) {
     if (input.critic[key] < 4) reasons.push(`critic-${key}-below-4`);
   }
   if (input.critic.overall < 4.2) reasons.push("critic-overall-below-4.2");
+  if (!Number.isSafeInteger(input.calibration.reviewedCount) || input.calibration.reviewedCount < 0) {
+    reasons.push("calibration-reviewed-count-invalid");
+  }
+  if (!Number.isFinite(input.calibration.noEditPrecision) || input.calibration.noEditPrecision < 0 || input.calibration.noEditPrecision > 1) {
+    reasons.push("calibration-precision-invalid");
+  }
+  if (!Number.isSafeInteger(input.calibration.hardVetoCount) || input.calibration.hardVetoCount < 0 || input.calibration.hardVetoCount > input.calibration.reviewedCount) {
+    reasons.push("calibration-veto-count-invalid");
+  }
   if (input.calibration.reviewedCount < 30) reasons.push("calibration-under-30");
   if (input.calibration.noEditPrecision < 0.9) reasons.push("calibration-precision-below-0.9");
   if (input.calibration.hardVetoCount > 0) reasons.push("calibration-hard-veto");

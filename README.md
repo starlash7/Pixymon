@@ -208,11 +208,13 @@ npm run audit:narrative
 
 ### Pixymon V2 editorial workflow
 
-Run the complete network-free gate:
+Run the complete local contract gate:
 
 ```bash
 npm run verify
 ```
+
+The command enables external-call guards in tests. The GitHub `verify` workflow additionally runs it inside an OS network namespace with outbound access removed; see the runbook for the distinction and evidence checks.
 
 Collect a real V2 candidate without X writes, review it, then explicitly publish an approved draft:
 
@@ -257,7 +259,7 @@ Full V2 verification:
 npm run verify
 ```
 
-Tests run with isolated `.test-data/` storage so local production memory and audit files are not mutated during CI-like checks.
+Tests use repository-scoped `.test-data/` storage, while stateful editorial regressions use per-test temporary directories. This keeps local production memory and audit files untouched; the suite-wide `.test-data/` directory is not itself a per-test isolation boundary.
 
 ## Current Constraints
 

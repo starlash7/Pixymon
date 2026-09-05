@@ -33,3 +33,42 @@ test("post dispatch blocks immediate duplicate briefing post", async () => {
   assert.equal(typeof secondBlock, "string");
   assert.ok(String(secondBlock).length > 0);
 });
+
+test("post dispatch lock release cannot remove a replacement owner", async () => {
+  const { __postDispatchTest } = await twitterModulePromise;
+  const lockPath = process.env.POST_DISPATCH_LOCK_PATH as string;
+  const first = __postDispatchTest.acquirePostDispatchLock();
+  assert.equal(first.acquired, true);
+
+  fs.unlinkSync(lockPath);
+  fs.writeFileSync(lockPath, JSON.stringify({
+    pid: process.pid,
+    createdAt: new Date().toISOString(),
+    host: os.hostname(),
+    token: "replacement-owner-token",
+  }));
+
+  first.release();
+  assert.equal(fs.existsSync(lockPath), true);
+  fs.unlinkSync(lockPath);
+});
+
+test("post dispatch lock fails closed for a dead owner until manual cleanup", async () => {
+  const { __postDispatchTest } = await twitterModulePromise;
+  const lockPath = process.env.POST_DISPATCH_LOCK_PATH as string;
+  fs.writeFileSync(lockPath, JSON.stringify({
+    pid: 2_147_483_647,
+    createdAt: "2000-01-01T00:00:00.000Z",
+    host: os.hostname(),
+    token: "dead-owner-token",
+  }));
+
+  const blocked = __postDispatchTest.acquirePostDispatchLock();
+  assert.equal(blocked.acquired, false);
+  assert.equal(fs.existsSync(lockPath), true);
+
+  fs.unlinkSync(lockPath);
+  const afterManualCleanup = __postDispatchTest.acquirePostDispatchLock();
+  assert.equal(afterManualCleanup.acquired, true);
+  afterManualCleanup.release();
+});

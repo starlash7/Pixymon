@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pixymon V2 runtime replay export",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "lineage", "rows"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "kind": { "const": "pixymon-v2-runtime-replay-export" },
+    "lineage": {
+      "type": "object",
+      "required": [
+        "source",
+        "sourceLedgerSha256",
+        "sourceLedgerBytes",
+        "sourceEventCount",
+        "sourceDraftCount",
+        "collectionEpoch",
+        "epochDraftCount",
+        "excludedDraftCount",
+        "selectionPolicy",
+        "requestedLimit",
+        "exportedDraftCount"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "const": "editorial-event-ledger" },
+        "sourceLedgerSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sourceLedgerBytes": { "type": "integer", "minimum": 0 },
+        "sourceEventCount": { "type": "integer", "minimum": 0 },
+        "sourceDraftCount": { "type": "integer", "minimum": 0 },
+        "collectionEpoch": { "type": "string", "minLength": 1 },
+        "epochDraftCount": { "type": "integer", "minimum": 0 },
+        "excludedDraftCount": { "type": "integer", "minimum": 0 },
+        "selectionPolicy": { "const": "first-created-in-epoch" },
+        "requestedLimit": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 1 }
+          ]
+        },
+        "exportedDraftCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/replayRow" }
+    }
+  },
+  "$defs": {
+    "metric": {
+      "type": "object",
+      "required": ["name", "value", "raw", "unit", "period"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": "number" },
+        "raw": { "type": "string", "pattern": "[0-9]" },
+        "unit": { "type": "string", "minLength": 1 },
+        "period": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "required": ["factId", "subject", "metric", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "factId": { "type": "string", "pattern": "^fact-[1-9][0-9]*$" },
+        "subject": { "type": "string", "minLength": 1 },
+        "metric": { "$ref": "#/$defs/metric" },
+        "source": {
+          "type": "object",
+          "required": ["observedAt"],
+          "additionalProperties": false,
+          "properties": {
+            "observedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    },
+    "replayRow": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "id",
+        "lane",
+        "format",
+        "subject",
+        "factIds",
+        "usedFactIds",
+        "claims",
+        "facts",
+        "falsifier",
+        "textProvenance",
+        "reviewDisposition",
+        "wasEverEdited",
+        "draft"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "const": 2 },
+        "id": { "type": "string", "pattern": "^replay-[0-9]{6}$" },
+        "lane": { "enum": ["onchain", "protocol", "ecosystem"] },
+        "format": { "enum": ["bite", "withhold", "revisit", "evolution"] },
+        "subject": { "type": "string", "minLength": 1 },
+        "factIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^fact-[1-9][0-9]*$" }
+        },
+        "usedFactIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^fact-[1-9][0-9]*$" }
+        },
+        "claims": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["kind", "text", "factIds"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["observation", "judgment"] },
+              "text": { "type": "string", "minLength": 1 },
+              "factIds": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string", "pattern": "^fact-[1-9][0-9]*$" }
+              }
+            }
+          }
+        },
+        "facts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fact" }
+        },
+        "falsifier": {
+          "type": "object",
+          "required": ["metric", "comparator", "threshold", "deadline"],
+          "additionalProperties": false,
+          "properties": {
+            "metric": { "type": "string", "minLength": 1 },
+            "comparator": { "enum": ["gt", "gte", "lt", "lte", "eq"] },
+            "threshold": { "type": "number" },
+            "deadline": { "type": "string", "format": "date-time" },
+            "unit": { "type": "string", "minLength": 1 }
+          }
+        },
+        "textProvenance": { "const": "generated" },
+        "reviewDisposition": {
+          "enum": ["pending", "approved-unchanged", "approved-edited", "rejected"]
+        },
+        "wasEverEdited": { "type": "boolean" },
+        "draft": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "reviewDisposition": { "const": "approved-edited" } } },
+          "then": { "properties": { "wasEverEdited": { "const": true } } }
+        },
+        {
+          "if": { "properties": { "reviewDisposition": { "const": "approved-unchanged" } } },
+          "then": { "properties": { "wasEverEdited": { "const": false } } }
+        }
+      ]
+    }
+  }
+}

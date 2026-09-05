@@ -13,10 +13,89 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npm run verify
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Assert verification inputs match checked-out HEAD
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          verification_paths=(
+            .github/workflows/verify.yml
+            package.json
+            package-lock.json
+            tsconfig.json
+            tsconfig.scripts.json
+            src
+            scripts
+            eval
+            test
+          )
+          git diff --exit-code HEAD -- "${verification_paths[@]}"
+          untracked="$(git ls-files --others --exclude-standard -- "${verification_paths[@]}")"
+          if [[ -n "$untracked" ]]; then
+            echo "::error::Dependency installation created untracked verification inputs."
+            echo "$untracked"
+            exit 1
+          fi
+      - name: Verify with outbound network disabled
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          command -v sudo unshare setpriv ip timeout >/dev/null
+
+          host_netns="$(readlink /proc/self/ns/net)"
+          runner_uid="$(id -u)"
+          runner_gid="$(id -g)"
+
+          sudo env \
+            "CI=${CI:-true}" \
+            "HOME=$HOME" \
+            "PATH=$PATH" \
+            "HOST_NETNS=$host_netns" \
+            "RUNNER_UID=$runner_uid" \
+            "RUNNER_GID=$runner_gid" \
+            unshare --net -- bash -Eeuo pipefail <<'NETWORK_NAMESPACE'
+          ip link set lo up
+          isolated_netns="$(readlink /proc/self/ns/net)"
+
+          if [[ "$isolated_netns" == "$HOST_NETNS" ]]; then
+            echo "::error::Network namespace isolation is not active."
+            exit 1
+          fi
+
+          interfaces=(/sys/class/net/*)
+          if (( ${#interfaces[@]} != 1 )) || [[ "${interfaces[0]##*/}" != "lo" ]]; then
+            echo "::error::Isolated namespace has a non-loopback interface."
+            exit 1
+          fi
+
+          ipv4_default="$(ip route show default)"
+          ipv6_default="$(ip -6 route show default)"
+          if [[ -n "$ipv4_default" || -n "$ipv6_default" ]]; then
+            echo "::error::Isolated namespace has a default route."
+            exit 1
+          fi
+
+          if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+            echo "::error::Outbound TCP unexpectedly succeeded."
+            exit 1
+          fi
+
+          echo "Network isolation active: $isolated_netns; outbound TCP blocked."
+
+          exec setpriv \
+            --reuid="$RUNNER_UID" \
+            --regid="$RUNNER_GID" \
+            --clear-groups \
+            --inh-caps=-all \
+            --ambient-caps=-all \
+            --bounding-set=-all \
+            --no-new-privs \
+            npm run verify
+          NETWORK_NAMESPACE

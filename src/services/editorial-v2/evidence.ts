@@ -1,12 +1,12 @@
 import type { OnchainNutrient } from "../../types/agent.js";
 import type { NewsItem } from "../blockchain-news.js";
 import type { EvidenceProviderV2, ProviderHealthV2 } from "./provider-health.js";
-import type { MachineComparatorV2 } from "./contracts.js";
+import type { EditorialLaneV2, MachineComparatorV2 } from "./contracts.js";
 
 export const SIGNAL_FRESHNESS_MS = 2 * 60 * 60 * 1000;
 export const NEWS_FRESHNESS_MS = 6 * 60 * 60 * 1000;
 
-export type EvidenceLaneV2 = "onchain" | "protocol" | "ecosystem";
+export type EvidenceLaneV2 = EditorialLaneV2;
 export type EvidenceKindV2 = "signal" | "news";
 export type EvidenceOriginV2 = "direct" | "derived";
 export type EvidenceRoleV2 = "primary" | "discovery";

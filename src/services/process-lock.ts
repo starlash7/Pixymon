@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { randomUUID } from "node:crypto";
 import { resolveDataDir } from "./data-dir.js";
 
 export interface RuntimeLock {
@@ -15,6 +16,7 @@ interface LockMeta {
   pid: number;
   createdAt: string;
   host: string;
+  token?: string;
 }
 
 const DEFAULT_LOCK_PATH = path.join(resolveDataDir(), "pixymon-runtime.lock");
@@ -48,22 +50,16 @@ export function acquireRuntimeLock(lockPath: string = DEFAULT_LOCK_PATH): Runtim
       release: releaseNoop,
     };
   }
-
-  try {
-    fs.unlinkSync(lockPath);
-  } catch {
-    return {
-      acquired: false,
-      lockPath,
-      existingPid: stalePid,
-      reason: "[LOCK] 기존 lock 파일 제거 실패",
-      release: releaseNoop,
-    };
-  }
-
-  const secondTry = tryAcquire(lockPath);
-  if (secondTry.acquired) return secondTry;
-  return secondTry;
+  // Never auto-delete a stale-looking path. POSIX unlink has no
+  // compare-and-delete primitive: another contender could replace the stale
+  // inode between our read and unlink, causing us to remove its live lock.
+  return {
+    acquired: false,
+    lockPath,
+    existingPid: stalePid,
+    reason: "[LOCK] stale 또는 확인 불가 lock 존재; 상태 확인 후 수동 정리 필요",
+    release: releaseNoop,
+  };
 }
 
 export function registerRuntimeLockCleanup(lock: RuntimeLock): void {
@@ -78,25 +74,38 @@ export function registerRuntimeLockCleanup(lock: RuntimeLock): void {
 
 function tryAcquire(lockPath: string): RuntimeLock {
   const releaseNoop = () => {};
+  const token = randomUUID();
+  const temporaryPath = `${lockPath}.${process.pid}.${token}.tmp`;
   let fd: number | null = null;
   try {
-    fd = fs.openSync(lockPath, "wx");
+    // Publish only a fully written metadata file. Creating lockPath first and
+    // filling it afterwards leaves a window where a contender can mistake the
+    // empty file for a stale lock and unlink it.
+    fd = fs.openSync(temporaryPath, "wx", 0o600);
     const payload: LockMeta = {
       pid: process.pid,
       createdAt: new Date().toISOString(),
       host: os.hostname(),
+      token,
     };
     fs.writeFileSync(fd, JSON.stringify(payload, null, 2), { encoding: "utf-8" });
+    fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = null;
+    fs.linkSync(temporaryPath, lockPath);
+    try {
+      fs.unlinkSync(temporaryPath);
+    } catch {
+      // The published lock is valid; a leftover private temp link is harmless.
+    }
 
     let released = false;
     const release = () => {
       if (released) return;
       released = true;
       try {
-        const ownerPid = readLockPid(lockPath);
-        if (!ownerPid || ownerPid === process.pid) {
+        const owner = readLockMeta(lockPath);
+        if (owner?.pid === process.pid && owner.token === token) {
           fs.unlinkSync(lockPath);
         }
       } catch {
@@ -117,6 +126,11 @@ function tryAcquire(lockPath: string): RuntimeLock {
         // no-op
       }
     }
+    try {
+      fs.unlinkSync(temporaryPath);
+    } catch {
+      // no-op
+    }
     if (error?.code === "EEXIST") {
       return {
         acquired: false,
@@ -135,11 +149,20 @@ function tryAcquire(lockPath: string): RuntimeLock {
 }
 
 function readLockPid(lockPath: string): number | undefined {
+  return readLockMeta(lockPath)?.pid;
+}
+
+function readLockMeta(lockPath: string): LockMeta | undefined {
   try {
     const raw = fs.readFileSync(lockPath, "utf-8");
     const parsed = JSON.parse(raw) as Partial<LockMeta>;
     if (typeof parsed.pid === "number" && Number.isFinite(parsed.pid) && parsed.pid > 0) {
-      return Math.floor(parsed.pid);
+      return {
+        pid: Math.floor(parsed.pid),
+        createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : "",
+        host: typeof parsed.host === "string" ? parsed.host : "",
+        token: typeof parsed.token === "string" ? parsed.token : undefined,
+      };
     }
     return undefined;
   } catch {

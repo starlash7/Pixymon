@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pixymon V2 rollout machine evidence",
+  "type": "object",
+  "required": ["schemaVersion", "kind"],
+  "anyOf": [
+    { "required": ["offlineVerify"] },
+    { "required": ["realReplay"] },
+    { "required": ["networkIsolationAudit"] },
+    { "required": ["nonLiveWriteAudit"] }
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "kind": { "const": "pixymon-v2-rollout-evidence" },
+    "offlineVerify": {
+      "type": "object",
+      "required": [
+        "passed",
+        "offlineContractMode",
+        "completedAt",
+        "commit",
+        "pipelineDeterminismScope",
+        "pipelineDeterminismPassed",
+        "pipelineDeterminismRuns"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "passed": { "type": "boolean" },
+        "offlineContractMode": { "type": "boolean" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "commit": { "type": "string", "minLength": 1 },
+        "pipelineDeterminismScope": { "const": "synthetic-contract" },
+        "pipelineDeterminismPassed": { "type": "boolean" },
+        "pipelineDeterminismRuns": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "realReplay": {
+      "type": "object",
+      "required": [
+        "passed",
+        "candidateCount",
+        "evaluatedAt",
+        "artifactKind",
+        "artifactSha256",
+        "sourceLedgerSha256",
+        "sourceLedgerBytes",
+        "sourceEventCount",
+        "sourceDraftCount",
+        "collectionEpoch",
+        "epochDraftCount",
+        "excludedDraftCount",
+        "selectionPolicy",
+        "textProvenance",
+        "corpusReloadDeterminismPassed",
+        "corpusReloadDeterminismRuns"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "passed": { "type": "boolean" },
+        "candidateCount": { "type": "integer", "minimum": 0 },
+        "evaluatedAt": { "type": "string", "format": "date-time" },
+        "artifactKind": { "const": "pixymon-v2-runtime-replay-export" },
+        "artifactSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sourceLedgerSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sourceLedgerBytes": { "type": "integer", "minimum": 0 },
+        "sourceEventCount": { "type": "integer", "minimum": 0 },
+        "sourceDraftCount": { "type": "integer", "minimum": 0 },
+        "collectionEpoch": { "type": "string", "minLength": 1 },
+        "epochDraftCount": { "type": "integer", "minimum": 0 },
+        "excludedDraftCount": { "type": "integer", "minimum": 0 },
+        "selectionPolicy": { "const": "first-created-in-epoch" },
+        "textProvenance": { "const": "generated" },
+        "corpusReloadDeterminismPassed": { "type": "boolean" },
+        "corpusReloadDeterminismRuns": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "networkIsolationAudit": {
+      "type": "object",
+      "required": ["passed", "verifiedAt", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": { "type": "boolean" },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "source": { "type": "string", "minLength": 1 }
+      }
+    },
+    "nonLiveWriteAudit": {
+      "type": "object",
+      "required": [
+        "passed",
+        "writeCount",
+        "windowStartedAt",
+        "windowEndedAt",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "passed": { "type": "boolean" },
+        "writeCount": { "type": "integer", "minimum": 0 },
+        "windowStartedAt": { "type": "string", "format": "date-time" },
+        "windowEndedAt": { "type": "string", "format": "date-time" },
+        "source": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

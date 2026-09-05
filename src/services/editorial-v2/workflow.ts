@@ -6,7 +6,12 @@ import type {
   FollowUpResolutionRecordV2,
   MeaningfulChangeThresholdV2,
 } from "./contracts.js";
-import { EditorialEventStoreV2, type EditorialDraftStateV2 } from "./event-store.js";
+import { EDITORIAL_COLLECTION_EPOCH_V2 } from "./contracts.js";
+import {
+  EditorialContinuityThreadConflictV2,
+  EditorialEventStoreV2,
+  type EditorialDraftStateV2,
+} from "./event-store.js";
 import {
   assessTierAEligibilityV2,
   evaluateEvidenceFreshnessV2,
@@ -282,6 +287,10 @@ function appendProviderMetrics(
 ): void {
   for (const provider of sensing.providers) {
     const outcome = provider.outcome;
+    const gapReasonCounts = new Map<string, number>();
+    for (const reason of provider.selectionGaps?.flatMap((gap) => gap.reasons) ?? []) {
+      gapReasonCounts.set(reason, (gapReasonCounts.get(reason) ?? 0) + 1);
+    }
     appendEditorialMetricV2(metricLogPath, buildEditorialMetricV2(context, {
       type: "provider_fetch",
       stage: "sensing",
@@ -295,8 +304,16 @@ function appendProviderMetrics(
         qualifiedEvidenceCount: provider.evidence.length,
         selectionGapCount: provider.selectionGaps?.length ?? 0,
         selectionGapReasons: [
-          ...new Set(provider.selectionGaps?.flatMap((gap) => gap.reasons) ?? []),
+          ...gapReasonCounts.keys(),
         ],
+        selectionGapSummary: [...gapReasonCounts]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([reason, count]) => `${reason}=${count}`),
+        selectionClassSummary: (provider.selectionClassSummary ?? []).flatMap((row) => [
+          `${row.selectionClass}:attempted=${row.attempted}`,
+          `${row.selectionClass}:qualified=${row.qualified}`,
+          ...row.gapSummary.map((gap) => `${row.selectionClass}:${gap}`),
+        ]),
       },
     }));
   }
@@ -579,7 +596,13 @@ export async function collectEditorialDraftV2(
   const followUpTargets = dueFollowUpTargets(statesBefore, nowIso);
   const sensing = input.sensing ?? await (input.sense
     ? input.sense(followUpTargets)
-    : collectEditorialEvidenceV2({ now: nowIso, followUpTargets }));
+    : collectEditorialEvidenceV2({
+        now: nowIso,
+        followUpTargets,
+        // The action id is durably logged, so production runs broaden coverage
+        // without sacrificing replayability. Tests can pin selectionSeed.
+        selectionSeed: input.selectionSeed || actionId,
+      }));
 
   appendProviderMetrics(sensing, metricContext, input.metricLogPath);
 
@@ -661,22 +684,57 @@ export async function collectEditorialDraftV2(
     return { status: "no-post", stage: written.stage, reason: written.reason, runId, actionId };
   }
 
-  const draft = input.store.createDraft({
-    id: actionId,
-    runId,
-    createdAt: nowIso,
-    format: planning.plan.format,
-    subject: planning.plan.subject,
-    thesis: planning.plan.thesis,
-    factIds: planning.plan.factIds,
-    facts: [factSnapshot(planning.evidence)],
-    verdict: planning.plan.verdict,
-    falsifier: planning.plan.falsifier,
-    followUpSchedule: planning.plan.followUpAt,
-    continuityThread: planning.plan.continuityThread,
-    voiceState: planning.plan.voiceState,
-    draft: written.payload.draft,
-  });
+  let draft: ReturnType<EditorialEventStoreV2["createDraft"]>;
+  try {
+    draft = input.store.createDraft({
+      id: actionId,
+      runId,
+      createdAt: nowIso,
+      lane: planning.plan.lane,
+      collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
+      format: planning.plan.format,
+      subject: planning.plan.subject,
+      thesis: planning.plan.thesis,
+      factIds: planning.plan.factIds,
+      facts: [factSnapshot(planning.evidence)],
+      verdict: planning.plan.verdict,
+      falsifier: planning.plan.falsifier,
+      followUpSchedule: planning.plan.followUpAt,
+      continuityThread: planning.plan.continuityThread,
+      voiceState: planning.plan.voiceState,
+      draft: written.payload.draft,
+      generatedPayload: {
+        draft: written.payload.draft,
+        usedFactIds: [...written.payload.usedFactIds],
+        claims: written.payload.claims.map((claim) => ({
+          kind: claim.kind,
+          text: claim.text,
+          factIds: [...claim.factIds],
+        })),
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof EditorialContinuityThreadConflictV2)) throw error;
+    appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
+      type: "generation_attempt",
+      stage: "followup-idempotency",
+      outcome: "no-post",
+      reason: "followup-revisit-already-queued",
+      details: {
+        attempts: written.attempts,
+        fallbackUsed: false,
+        existingDraftId: error.existingDraftId,
+        continuityThread: error.continuityThread,
+      },
+    }));
+    return {
+      status: "no-post",
+      stage: "followup",
+      reason: "followup-revisit-already-queued",
+      runId,
+      actionId,
+    };
+  }
   appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
     type: "generation_attempt",
     stage: "contract",

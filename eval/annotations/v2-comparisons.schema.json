@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pixymon V2 blind comparison source cases",
+  "description": "All V2-side fields are derived from the bound replay row.",
+  "type": "array",
+  "minItems": 36,
+  "maxItems": 36,
+  "items": {
+    "type": "object",
+    "required": ["id", "replayRowId", "baselineText"],
+    "additionalProperties": false,
+    "properties": {
+      "id": { "type": "string", "minLength": 1 },
+      "replayRowId": { "type": "string", "pattern": "^replay-[0-9]{6}$" },
+      "baselineText": { "type": "string", "minLength": 1 }
+    }
+  }
+}
