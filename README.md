@@ -35,7 +35,7 @@ The current product north star is documented in `concept.md`.
 The current work is Pixymon V2: evidence → question/hypothesis → editorial judgment → memory-aware writing → human approval → publication → reobservation and revised judgment.
 
 - Initial scope: protocol originals with named, fresh, direct numeric evidence.
-- Implemented: bounded hypotheses, relevant judgment recall, isolated shadow follow-ups, structured generation with one retry, append-only review, and stage-bound approved publishing.
+- Implemented: a model-authored inquiry before writing (question, evidence significance, current judgment and memory-driven check choice), relevant judgment/outcome recall, isolated shadow follow-ups, append-only review, and stage-bound approved publishing.
 - Validation: offline contracts and synthetic diversity tests; these do not prove reader preference or production quality.
 - Still blocked: real replay/human evaluation, elapsed R1/R2 gates, and the trusted zero-X verifier. The September 5 generation smoke also stopped on insufficient Anthropic credit.
 
@@ -68,7 +68,7 @@ If the answer is no, it is probably just automation work, not product work.
 
 ### V2 Editorial Loop
 
-The planner chooses evidence and its testable scope; the writer renders that judgment with read-only memory. Human approval does not bypass freshness, grounding, duplicate, budget, or rollout-stage checks. Shadow rehearsal exercises the follow-up loop without publishing or changing live character memory.
+The planner chooses eligible evidence, giving a previously invalidated subject priority among equally fresh candidates. A budgeted editorial model then explains its question, why the evidence matters, and what a real prior judgment changes about the next check. It can pursue a bounded measurement test, withhold, or choose no-post. The writer renders that judgment with read-only memory; an unresolved hypothesis no longer forces a boilerplate withholding conclusion. Human approval does not bypass freshness, grounding, duplicate, budget, or rollout-stage checks. Shadow rehearsal exercises the follow-up loop without publishing or changing live character memory.
 
 See [character architecture](docs/character-architecture.md) for the contracts and [V2 runbook](docs/editorial-v2-runbook.md) for commands and promotion requirements.
 

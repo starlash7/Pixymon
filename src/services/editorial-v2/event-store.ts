@@ -16,6 +16,7 @@ import {
 import { createFollowUpScheduleV2 } from "./follow-ups.js";
 import { splitEditorialSentencesV2 } from "./validator.js";
 import { acquireRuntimeLock } from "../process-lock.js";
+import { validateEditorialInquiryV2 } from "./inquiry.js";
 
 const SIGNAL_FRESHNESS_MS = 2 * 60 * 60 * 1000;
 const NEWS_FRESHNESS_MS = 6 * 60 * 60 * 1000;
@@ -392,7 +393,10 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
       const measurement = draft.facts[0]?.followUp;
       if (!measurement || measurement.metric.name !== draft.falsifier.metric ||
           measurement.metric.unit !== draft.falsifier.unit ||
-          measurement.threshold !== draft.falsifier.threshold || measurement.comparator !== draft.falsifier.comparator) {
+          (draft.editorialCase.inquiry?.check === "current-level"
+            ? measurement.metric.value !== draft.falsifier.threshold ||
+              draft.falsifier.comparator !== (draft.facts[0].metric.value > 0 ? "lt" : "gt")
+            : measurement.threshold !== draft.falsifier.threshold || measurement.comparator !== draft.falsifier.comparator)) {
         throw new Error("hypothesis falsifier must match its tracked measurement");
       }
     }
@@ -420,6 +424,14 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
     factIds.add(fact.factId);
   });
   assertGeneratedPayload(draft);
+  if (draft.editorialCase?.inquiry) {
+    const reasons = validateEditorialInquiryV2(draft.editorialCase.inquiry, {
+      factIds: draft.factIds, revisit: draft.format === "revisit",
+      levelTest: draft.editorialCase.scope === "usd-tvl-level", memory: draft.memoryContext,
+    });
+    if (reasons.length) throw new Error(`invalid editorial inquiry: ${reasons.join(",")}`);
+    if (draft.thesis !== draft.editorialCase.inquiry.judgment) throw new Error("inquiry judgment must match draft thesis");
+  }
   if (hasCollectionEpoch && !draft.generatedPayload) {
     throw new Error("epoch draft requires durable generated payload");
   }

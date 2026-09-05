@@ -1,5 +1,23 @@
 export const EDITORIAL_V2_SCHEMA_VERSION = 2 as const;
-export const EDITORIAL_COLLECTION_EPOCH_V2 = "hypothesis-writer-v2" as const;
+export const EDITORIAL_COLLECTION_EPOCH_V2 = "inquiry-writer-v3" as const;
+
+export type EditorialCheckV2 = "pre-move-level" | "current-level" | "observation-only" | "recorded-checkpoint";
+
+/** Model-authored editorial reasoning; measurement choices remain code-bounded. */
+export interface EditorialInquiryV2 {
+  decision: "pursue" | "withhold";
+  question: string;
+  whyThisEvidence: string;
+  judgment: string;
+  factIds: readonly string[];
+  check: EditorialCheckV2;
+  memory: {
+    draftId: string;
+    resolutionId: string | null;
+    lesson: string;
+    change: string;
+  } | null;
+}
 
 /** A test of a measured level, never a test of adoption, flows, or causality. */
 export interface EditorialCaseV2 {
@@ -8,6 +26,8 @@ export interface EditorialCaseV2 {
   scope: "usd-tvl-level" | "observation-only";
   factIds: readonly string[];
   limitation: string;
+  /** Missing only in pre-inquiry records. */
+  inquiry?: EditorialInquiryV2;
 }
 
 export interface EditorialMemoryContextV2 {
@@ -19,6 +39,16 @@ export interface EditorialMemoryContextV2 {
     thesis: string;
     verdict: string;
     recordedAt: string;
+    question?: string;
+    check?: EditorialCheckV2;
+    outcome?: {
+      id: string;
+      checkpoint: FollowUpCheckpointV2;
+      resolution: FollowUpResolutionV2;
+      reason: string;
+      resolvedAt: string;
+      falsifierMatched?: boolean;
+    };
   };
 }
 

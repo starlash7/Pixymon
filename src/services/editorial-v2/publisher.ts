@@ -65,6 +65,7 @@ export async function publishEditorialDraftV2(input: {
   if (input.mode !== "live") return blocked("live-mode-required");
   if (!state.draft.generatedPayload) return blocked("writer-lineage-missing");
   if (state.draft.collectionEpoch !== EDITORIAL_COLLECTION_EPOCH_V2) return blocked("writer-epoch-not-current");
+  if (!state.draft.editorialCase?.inquiry) return blocked("editorial-inquiry-missing");
   if (state.draft.trackingMode === "shadow") return blocked("shadow-draft-cannot-publish");
   if (state.draft.lane !== "protocol") return blocked("protocol-only-milestone");
   try {

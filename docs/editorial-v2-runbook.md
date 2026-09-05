@@ -44,7 +44,7 @@ npm run eval:corpus -- --input path/to/generic-corpus-array.json
 
 ## R2 real replay and blind evaluation
 
-Export the first 100 raw generated drafts in the current `hypothesis-writer-v2` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs. Rows retain `trackingMode` so real shadow observations cannot masquerade as live experience. The examples below use the normal ledger; for shadow evaluation, consistently select `EDITORIAL_TRACKING_MODE=shadow` and the corresponding shadow event log and artifact paths:
+Export the first 100 raw generated drafts in the current `inquiry-writer-v3` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs. Rows retain `trackingMode` so real shadow observations cannot masquerade as live experience. The examples below use the normal ledger; for shadow evaluation, consistently select `EDITORIAL_TRACKING_MODE=shadow` and the corresponding shadow event log and artifact paths:
 
 ```bash
 npm run editorial:replay-export -- --limit 100 --output data/editorial-v2/replay-001.json
@@ -137,7 +137,7 @@ Review one draft:
 npm run editorial:review -- --id <draftId>
 ```
 
-The terminal card shows the planner thesis, verdict, machine falsifier, raw metric, provider, observation time, source URL, and public draft. Public copy must retain the exact UTC observation time. Decisions are append-only `approve`, `edit`, or `reject` events. Edited copy must pass the same subject, number, time, judgment, length, and Korean contract before it can become approved. Add `fact-checked` and `language-checked` to the final review's reason tags after those checks; rollout status treats absent positive tags as unknown, never as proof of zero errors.
+The terminal card shows the model's inquiry, why the evidence matters, current judgment, chosen check, linked memory lesson/change, machine falsifier, raw metric, source URL/time, and draft. Review whether the reasoning really follows the evidence and the linked past outcome; fact-ID linkage alone does not prove a semantic claim. Public copy must retain the exact UTC observation time. Decisions are append-only `approve`, `edit`, or `reject` events. Edited copy must pass the same subject, number, time, judgment, length, and Korean contract before it can become approved. Add `fact-checked` and `language-checked` to the final review's reason tags after those checks; rollout status treats absent positive tags as unknown, never as proof of zero errors.
 
 ## Publish one approved original
 
@@ -184,7 +184,17 @@ Every collection captures a private create-only `decision-contexts/<action hash>
 npm run editorial:compare -- --context <decision-context.json> --output <new-comparison.json>
 ```
 
-This performs two budgeted writer runs with the same stored evidence/time/seed/memory and configured model, comparing the captured plan with the current planner. It does not call providers or X and does not modify either ledger. It is a planner comparison under the current writer, not a recreation of an old writer/model or proof of LLM determinism. Start with 12 actual collected contexts. Human scores, no-edit acceptance and reader preference remain pending until independent evaluation; the comparison command does not earn R2 by itself.
+This compares the captured plan with the current planning/inquiry path using the same stored evidence/time/seed/memory and configured model. Old `hypothesis-writer-v2` contexts retain their pre-inquiry baseline; the current variant adds an inquiry call. New `inquiry-writer-v3` contexts run inquiry on both sides, so neither side recreates an earlier sampled inquiry response. Each side can stop before writing. It does not call providers or X or modify either ledger. This is not a recreation of an old writer/model or proof of LLM determinism. Start with 12 actual collected contexts. Human scores, no-edit acceptance and reader preference remain pending until independent evaluation; the comparison command does not earn R2 by itself.
+
+## Inquiry before writing
+
+- The editorial model decides what to learn, why the selected evidence matters, and how the previous judgment/outcome changes this check. It returns structured reasoning, not a public draft. A malformed contract gets one retry; no public value or an empty model response stops before the writer. No deterministic inquiry or prose fallback exists in runtime.
+- For a new USD TVL hypothesis, `pre-move-level` tests full reversion; `current-level` tests whether the current level also holds (increase: below current invalidates; decrease: above current invalidates). The model chooses a method, never an arbitrary metric, threshold or deadline. Code binds it to the existing evidence and +24/+72h schedule. `observation-only` cannot resolve as supported. Revisit uses `recorded-checkpoint` and cannot rewrite the original test.
+- Memory includes the relevant original question/check and recorded outcome, including an outcome resolved in the same collection run. A published Revisit can refer back to its original outcome. Unposted live drafts and approvals do not count as experience. Shadow experience stays isolated. Definitive prior invalidation can change candidate priority only after Tier A, freshness and novelty gates.
+- The initial planner's `digesting` represents the untested measurement hypothesis, not a requirement to withhold every editorial opinion. The inquiry's judgment drives the writer; factual grounding and human review still apply.
+- A normal successful collection now uses two budgeted model calls: inquiry (up to 1,000 output tokens) and writer (up to 550). Each has at most one contract retry. Provider-only follow-ups still need no LLM. Existing spend limits remain in force; no automatic budget increase is made.
+- `planning_decision` / `inquiry` telemetry stores the question, significance, judgment, selected method/threshold, linked draft/outcome IDs and lesson/change. The immutable draft stores the complete inquiry. Inputs are captured before either model call. The new collection epoch prevents old output-quality evidence from being reused as proof for this behavior; publishing requires the current epoch and an inquiry record.
+- These contracts verify bounded execution and provenance, not the originality or truth of arbitrary reasoning prose. Independent human comparison remains required; the existing Anthropic credit failure blocks real-model quality verification until access is restored.
 
 ## Runtime files and telemetry
 

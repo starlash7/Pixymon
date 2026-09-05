@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { planEditorialV2, type PlanEditorialInputV2, type EditorialPlanningResultV2 } from "./planner.js";
 import type { EditorialMemoryContextV2 } from "./contracts.js";
 import { writeEditorialDraftV2, type EditorialWriterModelV2 } from "./writer.js";
+import { applyEditorialInquiryV2, reasonEditorialInquiryV2 } from "./inquiry.js";
 
 export interface EditorialDecisionContextV2 {
   kind: "pixymon-decision-context";
@@ -13,7 +14,8 @@ export interface EditorialDecisionContextV2 {
   trackingMode: "live" | "shadow";
   revision: { commit: string | null; dirty: boolean | null };
   modelId: string;
-  writerVersion: "hypothesis-writer-v2";
+  writerVersion: "hypothesis-writer-v2" | "inquiry-writer-v3";
+  inquiryModelId?: string;
   planningInput: PlanEditorialInputV2;
   memories: Record<string, EditorialMemoryContextV2>;
   capturedPlanning: EditorialPlanningResultV2;
@@ -65,6 +67,7 @@ export function readEditorialDecisionContextV2(filePath: string): EditorialDecis
 export async function replayEditorialDecisionV2(input: {
   context: EditorialDecisionContextV2;
   model: EditorialWriterModelV2;
+  inquiryModel?: EditorialWriterModelV2;
   variant: "captured-plan" | "current-plan";
 }) {
   const context = structuredClone(input.context);
@@ -73,7 +76,13 @@ export async function replayEditorialDecisionV2(input: {
     : planEditorialV2(context.planningInput);
   if (planning.status === "blocked") return { status: "no-post" as const, stage: planning.stage, reason: planning.reason };
   if (input.variant === "current-plan") {
-    planning.plan.memoryContext = context.memories[planning.plan.subject];
+    planning.plan.memoryContext ??= context.memories[planning.plan.subject];
+  }
+  if (input.variant === "current-plan" || context.writerVersion === "inquiry-writer-v3") {
+    if (!input.inquiryModel) return { status: "no-post" as const, stage: "inquiry", reason: "inquiry-model-required" };
+    const reasoned = await reasonEditorialInquiryV2({ model: input.inquiryModel, plan: planning.plan, evidence: planning.evidence });
+    if (reasoned.status === "blocked") return { status: "no-post" as const, stage: "inquiry", reason: reasoned.reason };
+    planning.plan = applyEditorialInquiryV2(planning.plan, planning.evidence, reasoned.inquiry);
   }
   const writing = await writeEditorialDraftV2({ model: input.model, plan: planning.plan, evidence: planning.evidence });
   return { planning, writing };

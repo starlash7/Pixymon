@@ -19,13 +19,16 @@ async function main() {
   if (fs.existsSync(outputPath)) throw new Error("comparison output already exists");
   const contextSha256 = sha256FileV2(contextPath);
   const context = readEditorialDecisionContextV2(contextPath);
-  const model = createAnthropicEditorialWriterV2(initClaudeClient());
-  const baseline = await replayEditorialDecisionV2({ context, model, variant: "captured-plan" });
-  const candidate = await replayEditorialDecisionV2({ context, model, variant: "current-plan" });
+  const claude = initClaudeClient();
+  const model = createAnthropicEditorialWriterV2(claude);
+  const inquiryModel = createAnthropicEditorialWriterV2(claude, undefined, "inquire");
+  const baseline = await replayEditorialDecisionV2({ context, model, inquiryModel, variant: "captured-plan" });
+  const candidate = await replayEditorialDecisionV2({ context, model, inquiryModel, variant: "current-plan" });
   if (sha256FileV2(contextPath) !== contextSha256) throw new Error("comparison context changed");
   fs.writeFileSync(outputPath, JSON.stringify({
     kind: "pixymon-same-context-comparison", contextSha256, sourceRevision: context.revision,
-    modelId: model.modelId, baselineVariant: "captured-plan", candidateVariant: "current-plan",
+    modelId: model.modelId, inquiryModelId: inquiryModel.modelId,
+    baselineVariant: "captured-plan", candidateVariant: "current-plan",
     baseline, candidate, humanEvaluation: "pending",
   }, null, 2) + "\n", { flag: "wx", mode: 0o600 });
   console.log("[EDITORIAL] same-context comparison saved; human preference and no-edit acceptance are not yet measured");

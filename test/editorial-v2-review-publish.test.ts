@@ -9,6 +9,7 @@ import { publishEditorialDraftV2 as publishWithPolicy } from "../src/services/ed
 import { recordEditorialReviewV2 } from "../src/services/editorial-v2/review.ts";
 import { splitEditorialSentencesV2 } from "../src/services/editorial-v2/validator.ts";
 import { EDITORIAL_COLLECTION_EPOCH_V2 } from "../src/services/editorial-v2/contracts.ts";
+import { inquiryCaseFixture } from "./helpers/editorial-inquiry.ts";
 
 const NOW = new Date("2026-08-28T10:00:00.000Z");
 // Individual dispatch tests inject earned operator authority. Missing/revoked
@@ -31,6 +32,7 @@ function fixture(
     runId: "run-1", createdAt: NOW.toISOString(),
     lane: "protocol", collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
     format, subject: "Aave", thesis: "Aave TVL을 확인한다.", factIds: ["fact-1"],
+    editorialCase: inquiryCaseFixture("fact-1", "Aave TVL을 확인한다.", format === "revisit"),
     facts: [{ factId: "fact-1", subject: "Aave", metric: { name: "tvl-change-24h", value: 8.4, raw: "+8.4%", unit: "%", period: "24h" }, source: { provider: "defillama", url: "https://api.llama.fi/v2/chains", publishedAt: null, observedAt: "2026-08-28T09:30:00.000Z" } }],
     verdict: format === "revisit" ? "digesting" : "approve", falsifier: createMachineFalsifierV2({ metric: "tvl-change-24h", comparator: "lt", threshold: 8.4, unit: "%" }, schedule), followUpSchedule: schedule, voiceState: "curious", draft: draftText,
     ...{
@@ -80,6 +82,7 @@ function addDraft(
     format: input.format ?? "bite",
     subject: input.subject,
     thesis: `${input.subject} TVL을 확인한다.`,
+    editorialCase: inquiryCaseFixture(`fact-${input.id}`, `${input.subject} TVL을 확인한다.`, input.format === "revisit"),
     factIds: [`fact-${input.id}`],
     facts: [{
       factId: `fact-${input.id}`,
@@ -178,6 +181,20 @@ test("legacy drafts without durable writer lineage cannot publish", async () => 
   assert.deepEqual(result, { status: "blocked", reason: "writer-lineage-missing" });
   assert.equal(healthChecks, 0);
   assert.equal(dispatches, 0);
+});
+
+test("approval cannot publish a current-epoch draft without editorial reasoning", async () => {
+  const f = fixture();
+  const missing = f.store.createDraft({ ...f.draft, id: "no-inquiry", editorialCase: undefined });
+  f.store.approve(missing.id, { reviewerId: "operator" });
+  let called = false;
+  const result = await publishEditorialDraftV2({
+    store: f.store, draftId: missing.id, mode: "live", metricLogPath: f.metrics, timezone: "Asia/Seoul", now: NOW,
+    dispatch: async () => { called = true; return "must-not-send"; },
+    revalidateEvidence: async () => { called = true; return { ok: true }; },
+  });
+  assert.deepEqual(result, { status: "blocked", reason: "editorial-inquiry-missing" });
+  assert.equal(called, false);
 });
 
 test("edited copy must retain the evidence contract", () => {
@@ -410,6 +427,7 @@ test("publish-time gate blocks the same subject inside rolling 24h without a mea
     format: "withhold",
     subject: "Aave",
     thesis: "같은 대상을 새 변화 없이 반복하지 않는다.",
+    editorialCase: inquiryCaseFixture("fact-second", "같은 대상을 새 변화 없이 반복하지 않는다."),
     factIds: ["fact-second"],
     facts: [{ factId: "fact-second", subject: "Aave", metric: { name: "tvl-change-24h", value: 8.4, raw: "+8.4%", unit: "%", period: "24h" }, source: { provider: "defillama", url: "https://api.llama.fi/v2/chains", publishedAt: null, observedAt: "2026-08-28T09:40:00.000Z" } }],
     verdict: "digesting",
@@ -571,6 +589,7 @@ test("invalid daily limit fails closed to one post per day", async () => {
     format: "bite",
     subject: "Compound",
     thesis: "Compound TVL을 확인한다.",
+    editorialCase: inquiryCaseFixture("fact-2", "Compound TVL을 확인한다."),
     factIds: ["fact-2"],
     facts: [{ factId: "fact-2", subject: "Compound", metric: { name: "tvl-change-24h", value: 4.2, raw: "+4.2%", unit: "%", period: "24h" }, source: { provider: "defillama", url: "https://api.llama.fi/v2/chains", publishedAt: null, observedAt: "2026-08-28T09:30:00.000Z" } }],
     verdict: "approve",

@@ -175,8 +175,8 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 ## 13. Current Implementation Boundary — REDUCTION / HOLD SCOPE
 
 - The initial evidence and human-evaluation scope is protocol only. Other lanes remain discovery-only.
-- A USD TVL level hypothesis checks whether that level has fully reverted; it does not test price-neutral retention, deposits, users, or causality. Observations without a testable hypothesis remain unresolved, never supported by default.
-- The writer reads stable beliefs and one relevant recorded judgment. Live candidates never learn from shadow experience, unposted drafts, or human edits presented as actual publications.
+- A USD TVL level hypothesis checks full reversion or, when explicitly selected, whether the current level holds; it does not test price-neutral retention, deposits, users, or causality. Observations without a testable hypothesis remain unresolved, never supported by default.
+- The editor and writer read stable beliefs and one relevant recorded judgment with its original question, check method and observed outcome. Live candidates never learn from shadow experience, unposted drafts, or human edits presented as actual publications.
 - Runtime decision contexts preserve candidate facts, clock, selection seed, historical inputs, memory, model identity and code revision before generation, including no-post decisions. The same-context comparison command has no publishing capability.
 - Development acceptance starts with 12 real cases before collecting the full corpus. No claim of improved reader preference or no-edit acceptance is allowed before actual human evaluation.
 - The trusted external zero-X verifier remains unimplemented. R1 and therefore R3 authorization remain blocked until it is supplied; a local authorization file is not a substitute for that proof.
@@ -188,3 +188,12 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Local `npm run verify`: 451 unit tests, 64 offline golden cases, and the 100-case synthetic corpus with 100-run determinism passed. This is contract proof, not reader-quality proof.
 - The first main CI run failed before tests because its interface check used the inherited sysfs mount. The corrected check reads current-namespace links through netlink; nine parser regressions cover loopback-only acceptance and fail-closed responses. Linux CI remains the actual namespace-isolation verification surface.
 - The last real shadow generation attempt stopped on insufficient Anthropic credit (`generation/model-empty`). Restore generation access, evaluate 12 same-context cases, then collect the real corpus and independent human scores. No live promotion is earned by this integration.
+
+## 15. Inquiry Continuity — HOLD SCOPE
+
+- An editorial model now authors the inquiry and its importance before the writer, with explicit links to the selected fact and actual previous judgment/outcome. It may pursue, withhold or no-post; it does not select arbitrary new tools or evidence sources.
+- Memory can influence candidate priority after hard gates. Choosing a stricter current-level check changes the executable falsifier for a new hypothesis while preserving old originals and resolutions. Revisit interprets recorded results instead of moving historical goalposts.
+- Initial hypothesis status remains untested; the writer expresses the editor's current judgment without forcing every original to end in withholding. No new phrase templates, emotion categories, social surfaces or publishing permissions are added.
+- Verification includes shadow original → invalidated follow-up → Revisit → next original with a different check → different 72h resolution, plus unsupported fact/memory/check rejection and no-post before writing. Deterministic models in tests prove the plumbing, not real character quality.
+- Local `npm run verify` passes: build/script types, 467 unit tests, 64 offline golden cases, and the 100-case synthetic corpus with 100-run determinism. Same-context replay regression verifies legacy/current paths without mutating captured inputs.
+- Collection epoch is `inquiry-writer-v3`. Real-model generation and human preference/no-edit acceptance remain unverified due to the existing Anthropic credit blocker. R1 zero-X proof and all rollout authorization requirements remain unchanged.

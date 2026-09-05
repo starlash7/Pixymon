@@ -33,6 +33,7 @@ import {
 } from "./provider-adapters.js";
 import { appendEditorialMetricV2, buildEditorialMetricV2 } from "./telemetry.js";
 import { writeEditorialDraftV2, type EditorialWriterModelV2 } from "./writer.js";
+import { applyEditorialInquiryV2, reasonEditorialInquiryV2 } from "./inquiry.js";
 
 export type EditorialCollectResultV2 =
   | { status: "drafted"; draftId: string; draft: string; runId: string; actionId: string }
@@ -41,6 +42,7 @@ export type EditorialCollectResultV2 =
 export interface CollectEditorialDraftInputV2 {
   store: EditorialEventStoreV2;
   writerModel: EditorialWriterModelV2;
+  inquiryModel: EditorialWriterModelV2;
   metricLogPath: string;
   mode: ActionMode;
   trackingMode?: "live" | "shadow";
@@ -163,12 +165,19 @@ function trackingAnchor(state: EditorialDraftStateV2) {
   return undefined;
 }
 
-function memoryFromStore(
-  states: readonly EditorialDraftStateV2[], subject: string, parentId?: string
+export function editorialMemoryFromStoreV2(
+  states: readonly EditorialDraftStateV2[], card: EvidenceCardV2, parentId?: string
 ): EditorialMemoryContextV2 {
   const previous = states.filter((state) => trackingAnchor(state) &&
-    (parentId ? state.draft.id === parentId : state.draft.subject === subject)
+    (parentId ? state.draft.id === parentId :
+      firstFact(state)?.source.provider === card.source.provider &&
+      (card.subjectKey ? firstFact(state)?.subjectKey === card.subjectKey : state.draft.subject === card.subject))
   ).sort((a, b) => Date.parse(trackingAnchor(b)!.startedAt) - Date.parse(trackingAnchor(a)!.startedAt))[0];
+  const originalId = previous?.draft.continuityThread?.replace(/:(24h|72h)$/, "");
+  const original = originalId ? states.find((state) => state.draft.id === originalId && trackingAnchor(state)) : previous;
+  const outcome = [...(original?.followUps ?? [])].sort((a, b) =>
+    Date.parse(b.resolvedAt) - Date.parse(a.resolvedAt) || (b.checkpoint === "72h" ? 1 : 0) - (a.checkpoint === "72h" ? 1 : 0)
+  )[0];
   return {
     beliefs: ["열기보다 남아 있는 근거를 믿는다.", "관측과 설명을 구분한다.", "틀렸다면 먼저 고친다."],
     previous: previous ? {
@@ -176,6 +185,14 @@ function memoryFromStore(
       text: previous.publication?.publishedText ?? previous.draft.draft,
       thesis: previous.draft.thesis, verdict: previous.draft.verdict,
       recordedAt: trackingAnchor(previous)!.startedAt,
+      question: original?.draft.editorialCase?.question,
+      check: original?.draft.editorialCase?.inquiry?.check ??
+        (original?.draft.editorialCase?.scope === "usd-tvl-level" ? "pre-move-level" :
+          original?.draft.editorialCase?.scope === "observation-only" ? "observation-only" : undefined),
+      outcome: outcome ? {
+        id: outcome.id, checkpoint: outcome.checkpoint, resolution: outcome.resolution,
+        reason: outcome.reason, resolvedAt: outcome.resolvedAt, falsifierMatched: outcome.falsifierMatched,
+      } : undefined,
     } : undefined,
   };
 }
@@ -674,6 +691,11 @@ export async function collectEditorialDraftV2(
       details: { retryableCount: followUps.retryableCount },
     }));
   }
+  // Include checkpoints resolved in THIS run, before selection and reasoning.
+  const statesForMemory = input.store.listDraftStates();
+  const memoryByFactId = Object.fromEntries([...sensing.evidence, ...followUps.revisitEvidence].map((card) => [
+    card.id, editorialMemoryFromStoreV2(statesForMemory, card),
+  ]));
   const planningInput = {
     evidence: sensing.evidence.filter((card) => card.lane === "protocol"),
     followUpEvidence: followUps.revisitEvidence.filter((card) => card.lane === "protocol"),
@@ -681,14 +703,15 @@ export async function collectEditorialDraftV2(
     dueRevisits: followUps.dueRevisits,
     now: nowIso,
     selectionSeed: input.selectionSeed || actionId,
+    memoryByFactId,
   };
   const planning = planEditorialV2(planningInput);
   const memories = Object.fromEntries([...planningInput.evidence, ...planningInput.followUpEvidence].map((card) => [
-    card.subject, memoryFromStore(statesBefore, card.subject),
+    card.subject, memoryByFactId[card.id],
   ]));
   if (planning.status === "planned") {
     const parentId = planning.plan.continuityThread?.replace(/:(24h|72h)$/, "");
-    planning.plan.memoryContext = memoryFromStore(statesBefore, planning.plan.subject, parentId);
+    planning.plan.memoryContext = editorialMemoryFromStoreV2(statesForMemory, planning.evidence, parentId);
     memories[planning.plan.subject] = planning.plan.memoryContext;
   }
   // Capture every planning decision, including no-posts, before requesting prose.
@@ -696,7 +719,8 @@ export async function collectEditorialDraftV2(
     writeEditorialDecisionContextV2(path.join(path.dirname(input.metricLogPath), "decision-contexts"), {
       kind: "pixymon-decision-context", version: 1, actionId, trackingMode,
       revision: editorialCodeRevisionV2(), modelId: input.writerModel.modelId ?? "unidentified-model",
-      writerVersion: "hypothesis-writer-v2", planningInput, memories, capturedPlanning: planning,
+      writerVersion: EDITORIAL_COLLECTION_EPOCH_V2, inquiryModelId: input.inquiryModel.modelId ?? "unidentified-model",
+      planningInput, memories, capturedPlanning: planning,
     });
   } catch {
     appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
@@ -743,6 +767,23 @@ export async function collectEditorialDraftV2(
       quantityShare: planning.evidence.selection?.priceNeutral?.quantityShare ?? null,
     },
   }));
+  const reasoned = await reasonEditorialInquiryV2({ model: input.inquiryModel, plan: planning.plan, evidence: planning.evidence });
+  if (reasoned.status === "reasoned") planning.plan = applyEditorialInquiryV2(planning.plan, planning.evidence, reasoned.inquiry);
+  appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
+    type: "planning_decision", stage: "inquiry", outcome: reasoned.status === "reasoned" ? "reasoned" : "no-post",
+    ...(reasoned.status === "blocked" ? { reason: reasoned.reason } : {}),
+    details: reasoned.status === "reasoned" ? {
+      attempts: reasoned.attempts, question: reasoned.inquiry.question, whyThisEvidence: reasoned.inquiry.whyThisEvidence,
+      judgment: reasoned.inquiry.judgment, check: reasoned.inquiry.check,
+      format: planning.plan.format, falsifierMetric: planning.plan.falsifier.metric,
+      falsifierComparator: planning.plan.falsifier.comparator, falsifierThreshold: planning.plan.falsifier.threshold,
+      memoryDraftId: reasoned.inquiry.memory?.draftId ?? null,
+      memoryResolutionId: reasoned.inquiry.memory?.resolutionId ?? null,
+      lesson: reasoned.inquiry.memory?.lesson ?? null, change: reasoned.inquiry.memory?.change ?? null,
+      fallbackUsed: false,
+    } : { attempts: reasoned.attempts, validationReasons: reasoned.validationReasons, fallbackUsed: false },
+  }));
+  if (reasoned.status === "blocked") return { status: "no-post", stage: "inquiry", reason: reasoned.reason, runId, actionId };
   const written = await writeEditorialDraftV2({ model: input.writerModel, plan: planning.plan, evidence: planning.evidence });
   if (written.status === "blocked") {
     appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {

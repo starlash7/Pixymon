@@ -4,7 +4,8 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.ts";
-import { checkEditorialFollowUpsV2, collectEditorialDraftV2 } from "../src/services/editorial-v2/workflow.ts";
+import { checkEditorialFollowUpsV2, collectEditorialDraftV2 as collectWithInquiry, editorialMemoryFromStoreV2 } from "../src/services/editorial-v2/workflow.ts";
+import { inquiryModelFixture } from "./helpers/editorial-inquiry.ts";
 import { splitEditorialSentencesV2, formatEvidenceSourceTimeV2 } from "../src/services/editorial-v2/validator.ts";
 import type { EditorialClaimKindV2 } from "../src/services/editorial-v2/writer.ts";
 import type { EvidenceCardV2 } from "../src/services/editorial-v2/evidence.ts";
@@ -13,6 +14,11 @@ import { createFollowUpScheduleV2, createMachineFalsifierV2 } from "../src/servi
 import { EDITORIAL_COLLECTION_EPOCH_V2 } from "../src/services/editorial-v2/contracts.ts";
 
 const NOW = new Date("2026-08-28T10:00:00.000Z");
+
+function collectEditorialDraftV2(input: Omit<Parameters<typeof collectWithInquiry>[0], "inquiryModel"> &
+  Partial<Pick<Parameters<typeof collectWithInquiry>[0], "inquiryModel">>) {
+  return collectWithInquiry({ inquiryModel: inquiryModelFixture, ...input });
+}
 
 test("shadow tracks unchanged 24h and invalidated 72h without publication, and recalls its actual judgment", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pixymon-shadow-loop-"));
@@ -61,9 +67,36 @@ test("shadow tracks unchanged 24h and invalidated 72h without publication, and r
     assert.equal(result.status, "drafted", JSON.stringify(result));
     assert.equal(store.getDraftState("shadow-original")?.followUps[1].resolution, "invalidated");
     assert.equal(store.getDraftState("shadow-revisit")?.draft.memoryContext?.previous?.draftId, "shadow-original");
+    assert.equal(store.getDraftState("shadow-revisit")?.draft.memoryContext?.previous?.outcome?.resolution, "invalidated");
     assert.equal(store.readEvents().some((event) => event.type === "draft-published" || event.type === "dispatch-prepared"), false);
     assert.equal(fs.existsSync(path.join(dir, "memory.json")), false);
     assert.equal(fs.readdirSync(path.join(dir, "decision-contexts")).length, 2);
+    // Experience changes the next executable check, not only the wording.
+    current = new Date(NOW.getTime() + 96 * 3_600_000);
+    const nextFact = { ...original, id: "aave:new-move", source: { ...original.source, observedAt: current.toISOString() } };
+    const nextText = `Aave의 TVL은 ${formatEvidenceSourceTimeV2(current.toISOString())} 기준 24시간 동안 +8.4% 늘었다. 이번에는 변동 전으로 돌아가지 않는다는 기준을 넘어, 지금 수준도 유지되는지 구별할 가치가 있다는 판단이다.`;
+    const next = await collectEditorialDraftV2({
+      store, metricLogPath: metrics, mode: "observe", trackingMode: "shadow", now: current,
+      actionId: "shadow-next", sensing: sensing([nextFact]),
+      writerModel: { async generate({ prompt }) {
+        assert.match(prompt, /current-level/);
+        assert.match(prompt, /이전 수준 가설은 반증/);
+        assert.match(prompt, /모든 글을 보류로 끝내지 않는다/);
+        return JSON.stringify({ draft: nextText, usedFactIds: [nextFact.id], claims: claimsFor(nextText, nextFact.id) });
+      } },
+    });
+    assert.equal(next.status, "drafted", JSON.stringify(next));
+    const nextState = store.getDraftState("shadow-next")!;
+    assert.equal(nextState.draft.editorialCase?.inquiry?.check, "current-level");
+    assert.equal(nextState.draft.falsifier.threshold, 108_000_000);
+    assert.equal(store.getDraftState("shadow-original")?.draft.falsifier.threshold, 100_000_000);
+    assert.equal(nextState.draft.editorialCase?.inquiry?.memory?.draftId, "shadow-revisit");
+    const reloaded = new EditorialEventStoreV2({ eventLogPath: path.join(dir, "events.ndjson"), now: () => current });
+    assert.deepEqual(reloaded.getDraftState("shadow-next")?.draft.editorialCase, nextState.draft.editorialCase);
+    current = new Date(current.getTime() + 72 * 3_600_000);
+    await checkEditorialFollowUpsV2({ store, metricLogPath: metrics, mode: "observe", now: current, sensing: sensing([], [level(104_000_000)]) });
+    assert.equal(store.getDraftState("shadow-next")?.followUps.find((row) => row.checkpoint === "72h")?.resolution, "invalidated");
+    assert.equal(store.readEvents().some((event) => event.type === "draft-published" || event.type === "dispatch-prepared"), false);
     await assert.rejects(collectEditorialDraftV2({
       store, metricLogPath: metrics, mode: "observe", now: current,
       sensing: sensing([]), writerModel: { async generate() { throw new Error("not called"); } },
@@ -131,6 +164,10 @@ test("observe collection creates a review draft without any X dependency", async
   const storedDraft = f.store.listDraftStates()[0].draft;
   assert.equal(storedDraft.facts[0].source.url, "https://api.llama.fi/v2/chains");
   assert.deepEqual(storedDraft.generatedPayload, writerPayload);
+  assert.equal(storedDraft.editorialCase?.inquiry?.decision, "withhold");
+  assert.equal(editorialMemoryFromStoreV2(f.store.listDraftStates(), evidence()).previous, undefined);
+  f.store.approve(storedDraft.id, { reviewerId: "operator" });
+  assert.equal(editorialMemoryFromStoreV2(f.store.listDraftStates(), evidence()).previous, undefined);
   assert.match(fs.readFileSync(f.metrics, "utf8"), /"type":"generation_attempt"/);
 });
 
@@ -148,6 +185,24 @@ test("every no-post records a planning stage and reason", async () => {
   });
   assert.deepEqual({ status: result.status, stage: result.status === "no-post" ? result.stage : "", reason: result.status === "no-post" ? result.reason : "" }, { status: "no-post", stage: "eligibility", reason: "no-tier-a-evidence" });
   assert.match(fs.readFileSync(f.metrics, "utf8"), /"outcome":"no-post"/);
+});
+
+test("a declined inquiry records its reason and never invokes the writer or creates experience", async () => {
+  const f = fixture();
+  try {
+    let writerCalls = 0;
+    const result = await collectEditorialDraftV2({
+      store: f.store, metricLogPath: f.metrics, mode: "observe", now: NOW, sensing: sensing([evidence()]),
+      inquiryModel: { async generate() { return JSON.stringify({ decision: "no-post", reason: "현재 자료만으로는 새롭게 구별할 질문이 없다" }); } },
+      writerModel: { async generate() { writerCalls++; return null; } },
+    });
+    assert.equal(result.status, "no-post");
+    assert.equal(result.status === "no-post" && result.stage, "inquiry");
+    assert.equal(writerCalls, 0);
+    assert.equal(f.store.listDraftStates().length, 0);
+    assert.match(fs.readFileSync(f.metrics, "utf8"), /"stage":"inquiry","outcome":"no-post"/);
+    assert.equal(fs.readdirSync(path.join(f.dir, "decision-contexts")).length, 1);
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
 
 test("provider telemetry records bounded selection-gap counts without raw candidate rows", async () => {

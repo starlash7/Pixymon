@@ -176,6 +176,8 @@ export function buildEditorialPromptV2(
   };
   const endingRule = plan.format === "revisit"
     ? "마지막 문장은 이전 판정을 지지·철회·미결 중 하나로 닫고, 새 24·72시간 재검증을 약속하지 않는다"
+    : plan.editorialCase?.inquiry
+      ? "마지막 문장은 편집 판단을 자기 말로 표현한다. 검증 결과가 아직 없다는 이유로 모든 글을 보류로 끝내지 않는다. 미래 가설을 이미 확인한 사실처럼 말하지 않는다"
     : `마지막 문장은 지금 관측에 대한 ${verdictGuide[plan.verdict]} 판단으로 닫는다. 조건문은 허용하되 새 관측 일정은 약속하지 않는다`;
   return `다음 편집 계약을 사실 왜곡 없이 한국어 원문 트윗 하나로 렌더링하라.
 
@@ -188,6 +190,8 @@ export function buildEditorialPromptV2(
 - voiceGuide: ${voiceGuide[plan.voiceState]}
 - formatGuide: ${formatGuide[plan.format]}
 - 검증 계약: ${JSON.stringify(plan.editorialCase ?? null)}
+- 이번 탐구: ${JSON.stringify(plan.editorialCase?.inquiry ?? null)}
+- 이번 탐구가 있으면 질문·근거의 의미·기억에서 바꾼 확인 방법 중 독자가 알아야 할 핵심을 현재 판단에 담는다. 내부 필드명이나 검토용 수치를 옮겨 적지 않는다.
 - 읽기 전용 기억: ${JSON.stringify(plan.memoryContext ?? null)}
 - 기억은 과거 판단을 연결하는 자료이지 현재 사실의 추가 근거가 아니다. 기억의 숫자를 본문에 재사용하지 않는다. shadow 기억을 실제 공개 게시라고 표현하지 않는다.
 - Revisit은 기억의 실제 질문·판정 중 무엇이 바뀌었는지 밝힌다. USD TVL 수준의 가설 지지를 가격 중립 잔류나 원인 입증으로 확대하지 않는다.
@@ -265,7 +269,8 @@ export async function writeEditorialDraftV2(input: {
 
 export function createAnthropicEditorialWriterV2(
   claude: Anthropic,
-  timezone?: string
+  timezone?: string,
+  purpose: "write" | "inquire" = "write"
 ): EditorialWriterModelV2 {
   return {
     modelId: CLAUDE_MODEL,
@@ -274,12 +279,12 @@ export function createAnthropicEditorialWriterV2(
         claude,
         {
           model: CLAUDE_MODEL,
-          max_tokens: 550,
+          max_tokens: purpose === "inquire" ? 1000 : 550,
           temperature: 0,
           system,
           messages: [{ role: "user", content: prompt }],
         },
-        { kind: "editorial-v2:write", timezone, allowResearchModel: false }
+        { kind: `editorial-v2:${purpose}`, timezone, allowResearchModel: false }
       );
       return response ? extractTextFromClaude(response.message.content) : null;
     },

@@ -82,6 +82,8 @@ export interface PlanEditorialInputV2 {
   dueRevisits?: readonly DueRevisitV2[];
   now: string;
   selectionSeed?: string;
+  /** Only publication-anchored or isolated shadow experience, keyed by current fact ID. */
+  memoryByFactId?: Readonly<Record<string, EditorialMemoryContextV2>>;
 }
 
 function parseInstant(value: string): number {
@@ -305,6 +307,9 @@ export function planEditorialV2(input: PlanEditorialInputV2): EditorialPlanningR
     const leftAge = assessTierAEligibilityV2(left, input.now).freshness.ageMs ?? Number.MAX_SAFE_INTEGER;
     const rightAge = assessTierAEligibilityV2(right, input.now).freshness.ageMs ?? Number.MAX_SAFE_INTEGER;
     if (leftAge !== rightAge) return leftAge - rightAge;
+    const leftCorrection = input.memoryByFactId?.[left.id]?.previous?.outcome?.resolution === "invalidated";
+    const rightCorrection = input.memoryByFactId?.[right.id]?.previous?.outcome?.resolution === "invalidated";
+    if (leftCorrection !== rightCorrection) return leftCorrection ? -1 : 1;
     const leftSize = absoluteEventSize(left);
     const rightSize = absoluteEventSize(right);
     if (leftSize !== null && rightSize !== null && leftSize !== rightSize) return rightSize - leftSize;
@@ -315,5 +320,7 @@ export function planEditorialV2(input: PlanEditorialInputV2): EditorialPlanningR
     return stableHash(`${seed}:${left.id}`) - stableHash(`${seed}:${right.id}`);
   })[0];
 
-  return { status: "planned", plan: buildPlan(selected, input.now), evidence: selected };
+  const plan = buildPlan(selected, input.now);
+  plan.memoryContext = input.memoryByFactId?.[selected.id];
+  return { status: "planned", plan, evidence: selected };
 }

@@ -14,6 +14,7 @@ async function collectOnce(claude: Anthropic, config: RuntimeConfig): Promise<vo
   const result = await collectEditorialDraftV2({
     store,
     writerModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone),
+    inquiryModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "inquire"),
     metricLogPath: paths.metricLogPath,
     mode: config.operational.actionMode,
     trackingMode: paths.trackingMode,

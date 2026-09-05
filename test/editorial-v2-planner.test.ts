@@ -70,6 +70,26 @@ test("planner preserves event significance before using the seed as a tie-break"
   }
 });
 
+test("a recorded invalidation changes subject priority only after hard freshness and novelty gates", () => {
+  const large = card({ id: "large", subject: "Large", metric: { ...card().metric, value: 50, raw: "+50%" } });
+  const learned = card({ id: "learned", subject: "Learned" });
+  const memoryByFactId = { learned: { beliefs: [], previous: {
+    draftId: "published-before", provenance: "live" as const, text: "previous judgment", thesis: "previous thesis",
+    verdict: "digesting", recordedAt: "2026-08-24T10:00:00.000Z",
+    outcome: { id: "resolution-72", checkpoint: "72h" as const, resolution: "invalidated" as const, reason: "falsifier-matched", resolvedAt: "2026-08-27T10:00:00.000Z" },
+  } } };
+  const input = { evidence: [large, learned], now: NOW, memoryByFactId };
+  const selected = planEditorialV2(input);
+  assert.equal(selected.status === "planned" && selected.plan.subject, "Learned");
+  for (let index = 0; index < 100; index++) assert.deepEqual(planEditorialV2(input), selected);
+  const stale = { ...learned, source: { ...learned.source, observedAt: "2026-08-28T07:00:00.000Z" } };
+  const fresh = planEditorialV2({ ...input, evidence: [large, stale] });
+  assert.equal(fresh.status === "planned" && fresh.plan.subject, "Large");
+  const duplicate = planEditorialV2({ ...input, history: [{ subject: "Learned", metricName: learned.metric.name,
+    metricValue: learned.metric.value, factId: learned.id, publishedAt: "2026-08-28T09:00:00.000Z" }] });
+  assert.equal(duplicate.status === "planned" && duplicate.plan.subject, "Large");
+});
+
 test("absolute TVL moved outranks a noisier percentage on a tiny base", () => {
   const noisySmall = card({
     id: "noisy-small",

@@ -13,9 +13,11 @@ async function main(): Promise<void> {
   if (!String(process.env.ANTHROPIC_API_KEY || "").trim()) throw new Error("ANTHROPIC_API_KEY is required");
   const paths = resolveEditorialRuntimePathsV2(config.operational.actionMode);
   const store = new EditorialEventStoreV2({ eventLogPath: paths.eventLogPath });
+  const claude = initClaudeClient();
   const result = await collectEditorialDraftV2({
     store,
-    writerModel: createAnthropicEditorialWriterV2(initClaudeClient(), config.dailyTimezone),
+    writerModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone),
+    inquiryModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "inquire"),
     metricLogPath: paths.metricLogPath,
     mode: config.operational.actionMode,
     trackingMode: paths.trackingMode,
