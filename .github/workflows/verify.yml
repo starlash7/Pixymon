@@ -69,11 +69,15 @@ jobs:
             exit 1
           fi
 
-          interfaces=(/sys/class/net/*)
-          if (( ${#interfaces[@]} != 1 )) || [[ "${interfaces[0]##*/}" != "lo" ]]; then
-            echo "::error::Isolated namespace has a non-loopback interface."
-            exit 1
-          fi
+          # The inherited sysfs mount can still expose host interfaces. Query
+          # the current network namespace through netlink instead.
+          ip -j link show | node -e '
+            const links = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            if (!Array.isArray(links) || links.length !== 1 || links[0]?.ifname !== "lo") {
+              console.error("::error::Isolated namespace must contain only loopback.");
+              process.exit(1);
+            }
+          '
 
           ipv4_default="$(ip route show default)"
           ipv6_default="$(ip -6 route show default)"

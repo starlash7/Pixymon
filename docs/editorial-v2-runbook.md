@@ -32,6 +32,8 @@ npm run verify
 
 It runs the TypeScript build, CLI typecheck, unit/regression tests, 64-case offline golden evaluation, and the 100-candidate synthetic contract diversity gate. The synthetic corpus proves the harness and hard contracts; it is not a substitute for the required 100 real-context replay corpus. `TEST_NO_EXTERNAL_CALLS=true` is a test contract, not evidence that the OS denied network access.
 
+CI checks the isolated namespace's interfaces using `ip -j link show`, not the inherited `/sys/class/net` mount, which caused the first main run to fail before tests. The interface parser has offline regressions; namespace identity, routes, outbound TCP denial and privilege dropping are still checked on Linux. The [ip manual](https://man7.org/linux/man-pages/man8/ip.8.html) documents link inspection and JSON output.
+
 R0 no longer depends on real drafts or Revisit cases. After committing the verification inputs, record the offline gate with `npm run editorial:r0-record -- --output <new-evidence.json>`. The external network-isolation proof is still required separately. Real replay and blind quality gates belong to R2, before any R3 authorization.
 
 `eval:corpus --input` remains a generic local evaluator for JSON arrays. Its input is not accepted as R2 runtime-replay evidence by itself:

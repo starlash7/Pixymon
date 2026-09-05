@@ -185,5 +185,6 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 
 - Removed the inactive blanket conditional/falsifier-language ban and its obsolete tests. Grounding, malformed-language, future-recheck-promise, approval and dispatch gates remain intact. Removed the unused daily-limit environment setting; R3 stays fixed at one original per day.
 - Aligned the README, character architecture and runbook with protocol-only V2, isolated shadow rehearsal, and R0/R2 evaluation separation. V1 remains until its explicit removal gate is earned.
-- Local `npm run verify`: 442 unit tests, 64 offline golden cases, and the 100-case synthetic corpus with 100-run determinism passed. This is contract proof, not reader-quality proof.
+- Local `npm run verify`: 451 unit tests, 64 offline golden cases, and the 100-case synthetic corpus with 100-run determinism passed. This is contract proof, not reader-quality proof.
+- The first main CI run failed before tests because its interface check used the inherited sysfs mount. The corrected check reads current-namespace links through netlink; nine parser regressions cover loopback-only acceptance and fail-closed responses. Linux CI remains the actual namespace-isolation verification surface.
 - The last real shadow generation attempt stopped on insufficient Anthropic credit (`generation/model-empty`). Restore generation access, evaluate 12 same-context cases, then collect the real corpus and independent human scores. No live promotion is earned by this integration.
