@@ -648,7 +648,6 @@ export function buildEditorialRolloutStatusV2(
       requireJudgment: true,
       metricName: fact.metric.name,
       metricDirection: inferMetricDirectionV2(fact.metric.name, fact.metric.raw, fact.metric.value),
-      forbidPublicFollowUp: false,
       forbidFutureRecheck: true,
     }).ok;
   }).length;

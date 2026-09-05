@@ -109,7 +109,6 @@ function validatePayload(
       evidence.metric.raw,
       evidence.metric.value
     ),
-    forbidPublicFollowUp: false,
     forbidFutureRecheck: true,
   });
   const reasons = [...validation.reasons];

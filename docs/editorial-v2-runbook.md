@@ -12,6 +12,7 @@ V2 is protocol-original-post only. Other lanes, quote posts, replies, images, an
 - Not yet earned: the 100-case real replay gate, two-reader blind evaluation, R1/R2 elapsed-time gates, or any automatic live promotion.
 - Current publishable supply is deliberately narrow: significant DefiLlama protocol TVL moves only. CoinGecko and mempool.space snapshots, RSS, and CryptoCompare remain discovery-only.
 - Default runtime stays `POST_PIPELINE_VERSION=v1` until the operator explicitly selects V2.
+- The September 5 shadow smoke selected a real protocol candidate, but Anthropic rejected generation for insufficient credit. It ended as `no-post` (`generation/model-empty`), without a draft or publication. Real-context comparisons and human quality results remain pending; restore model access before collecting more samples.
 
 ## Safety model
 
@@ -39,7 +40,9 @@ R0 no longer depends on real drafts or Revisit cases. After committing the verif
 npm run eval:corpus -- --input path/to/generic-corpus-array.json
 ```
 
-Export the first 100 raw generated drafts in the current `hypothesis-writer-v2` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs. Rows retain `trackingMode` so real shadow observations cannot masquerade as live experience:
+## R2 real replay and blind evaluation
+
+Export the first 100 raw generated drafts in the current `hypothesis-writer-v2` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs. Rows retain `trackingMode` so real shadow observations cannot masquerade as live experience. The examples below use the normal ledger; for shadow evaluation, consistently select `EDITORIAL_TRACKING_MODE=shadow` and the corresponding shadow event log and artifact paths:
 
 ```bash
 npm run editorial:replay-export -- --limit 100 --output data/editorial-v2/replay-001.json
@@ -56,7 +59,7 @@ npm run editorial:r0-record -- \
   --output data/editorial-v2/r0-evidence-001.json
 ```
 
-This command runs `npm run verify`, re-derives every replay row from the recorded ledger prefix, and records the exact replay-file SHA-256 before recording `passed`. It labels synthetic 100-run pipeline determinism separately from the runtime corpus file's 100 reloads; the latter is not represented as a pipeline rerun. It records only `offlineContractMode`, never a claim of OS-level network isolation, and never invents a zero-X audit. Audit metadata conforming to `eval/rollout-evidence.schema.json` may be retained for investigation, but cannot earn a gate until a trusted CI/runner artifact verifier exists.
+With the optional `--replay` input, this command also re-derives every replay row from the recorded ledger prefix and records the exact replay-file SHA-256 before recording `passed`. The replay checks count toward R2, not R0. It labels synthetic 100-run pipeline determinism separately from the runtime corpus file's 100 reloads; the latter is not represented as a pipeline rerun. It records only `offlineContractMode`, never a claim of OS-level network isolation, and never invents a zero-X audit. Free-form audit metadata conforming to `eval/rollout-evidence.schema.json` is informational; network isolation requires the GitHub verifier described below, and the trusted zero-X verifier is still missing.
 
 Build the human pack from 36 protocol cases: 24 originals (Bite or Withhold, with the actual mix recorded rather than forced), plus 12 Revisit cases. Real shadow follow-ups are eligible evaluation inputs, never live publication evidence. Evolution cannot substitute for an original-post cell. Each comparison input contains only `id`, `replayRowId`, and `baselineText`. V2 text, evidence, lane, and format come directly from the strict replay row. Baseline generation must use the same captured context; hand-authored baselines do not prove a model or planner improvement. The public pack strips provider, URL, system/version labels, and the A/B mapping:
 
@@ -78,7 +81,7 @@ npm run editorial:blind-report -- \
   --output path/to/blind-report.json
 ```
 
-Keep the mapping away from both readers until annotation finishes. Without `--seed`, the CLI uses a cryptographic random seed; explicit seeds are for reproducibility tests. The mapping is created with mode `0600` and commits to the replay artifact digest, ledger digest, epoch, verified commit, and each selected row digest. Aggregation rejects a changed A/B side, text, evidence, order, row, or commit. Status additionally verifies the source ledger and machine evidence. Use only `reader-1`, `reader-2`, and `adjudicator-1` in tracked annotations. Schemas live in `eval/annotations/`. A missing second reader, required side field, ≥2-point disagreement adjudication, or stratum leaves the evaluation incomplete. Current protocol-only supply cannot fill the three-lane pack; collect valid evidence for the missing lanes before running a promotion evaluation.
+Keep the mapping away from both readers until annotation finishes. Without `--seed`, the CLI uses a cryptographic random seed; explicit seeds are for reproducibility tests. The mapping is created with mode `0600` and commits to the replay artifact digest, ledger digest, epoch, verified commit, and each selected row digest. Aggregation rejects a changed A/B side, text, evidence, order, row, or commit. Status additionally verifies the source ledger and machine evidence. Use only `reader-1`, `reader-2`, and `adjudicator-1` in tracked annotations. Schemas live in `eval/annotations/`. A missing second reader, required side field, ≥2-point disagreement adjudication, or protocol original/Revisit stratum leaves the evaluation incomplete. Other lanes are not required for this milestone.
 
 ## Collect a real candidate without publishing
 
@@ -158,7 +161,7 @@ If X did not create the post, keep the draft blocked and create a new reviewed d
 
 Lock files fail closed after an abnormal process exit; they are never auto-deleted because stale-lock recovery can race with a new owner. If a command reports a stale or unverifiable lock, first confirm that no Pixymon/editorial process is alive and inspect X plus the dispatch intent. Only then remove the exact reported lock path manually and retry the non-destructive operation. Never broadly delete the data directory or ledger.
 
-R3 is fixed to one approved original per day. `EDITORIAL_DAILY_POST_LIMIT` does not enable ramping through this command.
+R3 is fixed to one approved original per day; there is no environment override for ramping through this command.
 
 Before publishing, create a new 24-hour authorization with `npm run editorial:authorize-live -- --status <fresh-status.json> --output <new-authorization.json> --operator <operatorId>`. The source status must be less than 15 minutes old, belong to the clean current commit, and have every R0/R1/R2 check passing. The publisher verifies its digest, expiry and commit again at the actual dispatch boundary. A file named `<active data directory>/editorial-v2/STOP` suspends sending even with an otherwise valid authorization. The authorization records local operator authority, not independent external proof. Never hand-edit a status or authorization to bypass a gate. The missing trusted zero-X verifier still prevents earning R1 and issuing operational R3 authorization.
 

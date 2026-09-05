@@ -458,7 +458,6 @@ function evaluateRows(
         candidate.displayValue,
         candidate.metricValue
       ),
-      forbidPublicFollowUp: false,
       forbidFutureRecheck: true,
     })
   );

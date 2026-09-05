@@ -180,3 +180,10 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Runtime decision contexts preserve candidate facts, clock, selection seed, historical inputs, memory, model identity and code revision before generation, including no-post decisions. The same-context comparison command has no publishing capability.
 - Development acceptance starts with 12 real cases before collecting the full corpus. No claim of improved reader preference or no-edit acceptance is allowed before actual human evaluation.
 - The trusted external zero-X verifier remains unimplemented. R1 and therefore R3 authorization remain blocked until it is supplied; a local authorization file is not a substitute for that proof.
+
+## 14. Integration Checkpoint — 2026-09-05
+
+- Removed the inactive blanket conditional/falsifier-language ban and its obsolete tests. Grounding, malformed-language, future-recheck-promise, approval and dispatch gates remain intact. Removed the unused daily-limit environment setting; R3 stays fixed at one original per day.
+- Aligned the README, character architecture and runbook with protocol-only V2, isolated shadow rehearsal, and R0/R2 evaluation separation. V1 remains until its explicit removal gate is earned.
+- Local `npm run verify`: 442 unit tests, 64 offline golden cases, and the 100-case synthetic corpus with 100-run determinism passed. This is contract proof, not reader-quality proof.
+- The last real shadow generation attempt stopped on insufficient Anthropic credit (`generation/model-empty`). Restore generation access, evaluate 12 same-context cases, then collect the real corpus and independent human scores. No live promotion is earned by this integration.

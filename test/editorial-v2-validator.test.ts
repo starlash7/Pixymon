@@ -9,7 +9,7 @@ const SOURCE_TIME = "8월 28일 09:30 UTC";
 const BASE_TEXT =
   "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 규모 측면의 변화는 분명하지만, 이 한 번의 관측만으로 더 큰 서사까지 승인하진 않는다.";
 
-function validate(text: string, overrides: Record<string, unknown> = {}) {
+function validate(text: string) {
   return validateEditorialDraftV2({
     text,
     subject: "Aave",
@@ -22,9 +22,7 @@ function validate(text: string, overrides: Record<string, unknown> = {}) {
     requireJudgment: true,
     metricName: "tvl-change-24h",
     metricDirection: "increase",
-    forbidPublicFollowUp: true,
     forbidFutureRecheck: true,
-    ...overrides,
   });
 }
 
@@ -181,54 +179,22 @@ test("publishable copy must retain the exact source time", () => {
 });
 
 for (const conditional of [
-  "이 수치가 추세 전환이면 회복 판정을 승인한다.",
-  "이 수치가 추세 전환이라면 회복 판정을 승인한다.",
-  "이 변화가 유지되면 회복 판정을 승인한다.",
-  "이 변화가 남는다면 회복 판정을 승인한다.",
-  "같은 움직임이 반복될 경우 회복 판정을 승인한다.",
-  "변동성이 커지더라도 회복 판정을 승인한다.",
-  "현재 수준 유지가 승인 조건이라는 판단이다.",
-  "변화가 이어질 때 비로소 이 판정을 승인한다.",
-  "기준 이탈 시 회복 판정을 승인한다.",
-  "이 변화가 이어질 때에만 회복 판정을 승인한다.",
-  "같은 흐름이 이어져야 회복 판정을 승인한다.",
-  "추가 근거 없이는 회복 판정을 승인하지 않는다.",
-  "기준 위에서만 회복 판정을 유지한다.",
+  "지속성까지 판단하려면 추가 관측이 필요하므로, 지금은 이 수치의 변화만 인정한다는 판단이다.",
+  "이 변화가 유지되더라도 원인까지 확인된 것은 아니므로, 현재 수치 범위의 판단만 남긴다.",
+  "추가 근거 없이는 더 큰 서사를 승인하지 않고, 현재 관측한 변화에 한정한 판단만 남긴다.",
+  "이 숫자가 눈에 띄는 경우에도 지속성까지 확정할 근거는 없으므로, 더 큰 서사의 승인은 보류한다.",
 ]) {
-  test(`non-Revisit copy rejects an actual condition: ${conditional}`, () => {
+  test(`ordinary conditionals do not trigger a blanket expression ban: ${conditional}`, () => {
     const result = validate(
       `Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. ${conditional}`
     );
-    assert.equal(result.ok, false);
-    assert.ok(result.reasons.includes("public-conditional-language"));
-  });
-}
-
-for (const followUp of [
-  "72시간 뒤 같은 지표를 다시 확인하겠다는 판단이다.",
-  "24시간 뒤 같은 지표를 확인할 예정이라는 판단이다.",
-  "하루 뒤 같은 값을 점검할 계획이라는 판단이다.",
-  "사흘 후 다음 관측을 검증하겠다는 판단이다.",
-  "이 움직임은 재검증한 뒤 승인하겠다는 판단이다.",
-  "향후 같은 숫자를 다시 볼 생각이라는 판단이다.",
-  "현재 수준이 유지될 시 승인한다는 판단이다.",
-  "현재 수준이 무너지지 않는 한 승인한다는 판단이다.",
-]) {
-  test(`non-Revisit copy rejects a public follow-up: ${followUp}`, () => {
-    const result = validate(
-      `Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. ${followUp}`
-    );
-    assert.equal(result.ok, false);
-    assert.ok(result.reasons.some((reason) =>
-      reason === "public-conditional-language" || reason === "public-recheck-language"
-    ));
+    assert.equal(result.ok, true, result.reasons.join(","));
   });
 }
 
 test("Revisit allows a resolved historical checkpoint", () => {
   const result = validate(
-    "Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. 24시간 재검증에서 이전 기준이 유지됐으므로, 처음 기록한 변화는 아직 유효하다는 판정을 지지한다.",
-    { forbidPublicFollowUp: false }
+    "Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. 24시간 재검증에서 이전 기준이 유지됐으므로, 처음 기록한 변화는 아직 유효하다는 판정을 지지한다."
   );
   assert.equal(result.ok, true, result.reasons.join(","));
 });
@@ -239,14 +205,16 @@ for (const resolved of [
 ]) {
   test(`Revisit allows a completed follow-up statement: ${resolved}`, () => {
     const result = validate(
-      `Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. ${resolved}; 이전 판정은 여전히 유효하고 추가 서사를 보태지 않는다는 판단을 남긴다.`,
-      { forbidPublicFollowUp: false }
+      `Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. ${resolved}; 이전 판정은 여전히 유효하고 추가 서사를 보태지 않는다는 판단을 남긴다.`
     );
     assert.equal(result.ok, true, result.reasons.join(","));
   });
 }
 
 for (const promise of [
+  "72시간 뒤 같은 지표를 다시 확인하겠다는 판단이며, 현재 관측한 변화에 한정해서 기록을 남긴다.",
+  "24시간 뒤 같은 지표를 확인할 예정이라는 판단이며, 현재 관측한 변화에 한정해서 기록을 남긴다.",
+  "하루 뒤 같은 값을 점검할 계획이라는 판단이며, 현재 관측한 변화에 한정해서 기록을 남긴다.",
   "이번 판정은 아직 미결로 남기고, 다음 관측에서 같은 지표를 다시 확인하겠다.",
   "이번 판정은 아직 미결로 남기고, 다음 관측에서 판단을 갱신하겠다.",
   "이번 판정은 아직 미결로 남기고, 후속 데이터가 오면 업데이트한다.",
@@ -256,10 +224,9 @@ for (const promise of [
   "이번 판정은 아직 미결로 남기며, 새 데이터가 오면 이전 판정을 고칠 예정이다.",
   "이번 판정은 아직 미결로 남기며, 다음 기록으로 기존 해석을 고쳐 쓸 생각이다.",
 ]) {
-  test(`Revisit cannot promise another future check: ${promise}`, () => {
+  test(`public copy cannot promise another future check: ${promise}`, () => {
     const result = validate(
-      `Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. ${promise}`,
-      { forbidPublicFollowUp: false }
+      `Aave의 현재 TVL은 8월 28일 09:30 UTC 기준 +8.4% 수준이다. ${promise}`
     );
     assert.equal(result.ok, false);
     assert.ok(result.reasons.includes("future-recheck-promise"));

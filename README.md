@@ -32,27 +32,14 @@ The current product north star is documented in `concept.md`.
 
 ## Current State
 
-As of `main`, Pixymon has:
+The current work is Pixymon V2: evidence → question/hypothesis → editorial judgment → memory-aware writing → human approval → publication → reobservation and revised judgment.
 
-- a `feed -> digest -> evolve -> plan -> act -> reflect` loop
-- Korean-first post / quote / reply generation
-- onchain nutrient ingestion and digest scoring
-- shared context reuse across surfaces
-- Anthropic and X API budget guards
-- Anthropic prompt caching and surface-level model routing
-- narrative observation logs and phrase-audit summaries
-- batch-ready reflection jobs that can feed memory back into the character state
-- safer reply target selection for trend replies
-- structural fallback planning when direct news events are weak
+- Initial scope: protocol originals with named, fresh, direct numeric evidence.
+- Implemented: bounded hypotheses, relevant judgment recall, isolated shadow follow-ups, structured generation with one retry, append-only review, and stage-bound approved publishing.
+- Validation: offline contracts and synthetic diversity tests; these do not prove reader preference or production quality.
+- Still blocked: real replay/human evaluation, elapsed R1/R2 gates, and the trusted zero-X verifier. The September 5 generation smoke also stopped on insufficient Anthropic credit.
 
-The current phase is not "add more templates".
-It is:
-
-- run slowly in production
-- observe actual outputs
-- fix real failure modes from logs and audits
-
-Pixymon V2 now exists beside the legacy path behind `POST_PIPELINE_VERSION=v1|v2` (default: `v1`). V2 is an evidence-first original-post pipeline: direct numeric evidence, deterministic fact selection, one structured writer retry, an append-only human review queue, and explicit approved publishing. It does not enable automatic live posting.
+V2 exists beside the legacy path behind `POST_PIPELINE_VERSION=v1|v2` (default: `v1`). Selecting V2 does not authorize live posting. V1 social features and fallbacks remain for compatibility, not as V2 fallbacks, until V2 has 20 live posts and 14 incident-free days.
 
 ## Product Principles
 
@@ -79,7 +66,13 @@ If the answer is no, it is probably just automation work, not product work.
 
 ## Architecture
 
-### Core Loop
+### V2 Editorial Loop
+
+The planner chooses evidence and its testable scope; the writer renders that judgment with read-only memory. Human approval does not bypass freshness, grounding, duplicate, budget, or rollout-stage checks. Shadow rehearsal exercises the follow-up loop without publishing or changing live character memory.
+
+See [character architecture](docs/character-architecture.md) for the contracts and [V2 runbook](docs/editorial-v2-runbook.md) for commands and promotion requirements.
+
+### Legacy V1 Core Loop
 
 1. `Feed`
    - Collect onchain, market, news, and social signals
@@ -107,7 +100,7 @@ If the answer is no, it is probably just automation work, not product work.
    - Log phrase audit hits
    - Feed reflection memos back into memory
 
-### Supporting Loops
+### Legacy V1 Supporting Loops
 
 - `Budget`
   - X API guard
@@ -138,8 +131,10 @@ If the answer is no, it is probably just automation work, not product work.
 
 ### Internal Services
 
+- `src/services/editorial-v2/`
+  - V2 evidence, hypotheses, writer, review, publishing, follow-ups and evaluation
 - `src/services/engagement.ts`
-  - main planning and action loop
+  - legacy V1 planning and action loop
 - `src/services/engagement/event-evidence.ts`
   - event selection, evidence pairing, structural fallback planning
 - `src/services/llm.ts`
@@ -163,26 +158,22 @@ If the answer is no, it is probably just automation work, not product work.
 
 ### Recommended Operating Mode
 
-Use slow production first.
-The goal is stable runtime, better posts, and clean audit logs, not brute-force volume.
-
-Recommended baseline:
+Use V2 observe/shadow first. Real provider reads and generation may spend the configured LLM budget; they do not post to X. For a one-shot runtime collection, explicitly select:
 
 ```env
 TEST_MODE=false
-SCHEDULER_MODE=true
-DAILY_ACTIVITY_TARGET=8
-POST_MIN_INTERVAL_MINUTES=60
+TEST_NO_EXTERNAL_CALLS=false
+ACTION_MODE=observe
+POST_PIPELINE_VERSION=v2
+SCHEDULER_MODE=false
 POST_LANGUAGE=ko
-REPLY_LANGUAGE_MODE=match
 
 X_API_DAILY_MAX_USD=0.50
 ANTHROPIC_DAILY_MAX_USD=0.50
 TOTAL_DAILY_MAX_USD=1.00
-
-TREND_TWEET_MIN_SOURCE_TRUST=0.45
-TREND_TWEET_MIN_ENGAGEMENT=12
 ```
+
+`.env.example` retains safe test defaults and the legacy V1 selector. Follow the V2 commands below instead of assuming a production rollout is ready.
 
 ### Language Policy
 
@@ -216,16 +207,15 @@ npm run verify
 
 The command enables external-call guards in tests. The GitHub `verify` workflow additionally runs it inside an OS network namespace with outbound access removed; see the runbook for the distinction and evidence checks.
 
-Collect a real V2 candidate without X writes, review it, then explicitly publish an approved draft:
+Collect and review a real V2 candidate without X writes:
 
 ```bash
 ACTION_MODE=observe TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:collect
 ACTION_MODE=observe TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:followups
 npm run editorial:review -- --id <draftId>
-ACTION_MODE=live TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:publish -- --id <draftId> --authorization <authorization.json>
 ```
 
-The live command is capped to one original per day by default and refuses stale evidence, missing approval, duplicate text, test mode, missing X credentials, and concurrent publishing. Full operating and rollback instructions are in `docs/editorial-v2-runbook.md`.
+Only after earning R3 authorization can `editorial:publish -- --id <draftId> --authorization <authorization.json>` run in live mode. It is capped to one original per day and refuses stale evidence, missing approval, duplicate text, test mode, missing X credentials, and concurrent publishing. Full operating and rollback instructions are in [the V2 runbook](docs/editorial-v2-runbook.md).
 
 The current milestone is protocol-only. `npm run editorial:shadow` collects into a separate, permanently non-publishable ledger; `EDITORIAL_TRACKING_MODE=shadow ACTION_MODE=observe npm run editorial:followups` reobserves those hypotheses without X writes or live character-memory changes. R0 is now the offline contract gate; real replay and blind quality evaluation are R2 requirements. R3 publishing requires a fresh operator authorization created by `editorial:authorize-live` from an earned R0/R1/R2 status. The missing trusted zero-X verifier still blocks R1, so this change does not enable production publishing.
 
@@ -240,7 +230,7 @@ npm ci
 Local safe rehearsal:
 
 ```bash
-TEST_MODE=true SCHEDULER_MODE=false npm run dev
+ACTION_MODE=observe TEST_MODE=true SCHEDULER_MODE=false npm run dev
 ```
 
 Build:
@@ -269,11 +259,10 @@ Pixymon is still in a build-and-observe phase.
 
 The main remaining constraints are:
 
-- runtime reliability across long local sessions
-- reply volume staying low because target safety filters are strict
-- some fallback posts still being more functional than truly memorable
-- planner quality still needs tightening around event/evidence contracts under weak news conditions
-- V2 still needs a 100-context real replay corpus, two-reader blind evaluation, and the elapsed R1/R2 observe/review gates before any automatic live promotion
+- restore generation access before collecting 12 same-context comparisons; the last Anthropic call was rejected for insufficient credit
+- implement the trusted zero-X verifier; R1 and therefore R3 publishing remain blocked without it
+- collect a 100-context real replay corpus, complete two-reader blind evaluation, and earn the elapsed R1/R2 observe/review gates before approved live publishing
+- implement and calibrate an independent semantic critic before considering automatic live promotion
 - V2's protocol lane now blocks price-dominated TVL moves with a bounded, derived DefiLlama token-history screen; the screen is not a deposit or inflow claim
 
 ## Project Documents
@@ -291,9 +280,9 @@ The main remaining constraints are:
 
 The near-term path is simple:
 
-1. keep Pixymon running reliably
-2. observe 1-2 days of real outputs
-3. patch only what shows up in logs, memory, and narrative audits
-4. push Pixymon toward character gravity, not just automation throughput
+1. keep verification green and preserve non-publishing observe/shadow isolation
+2. compare old and new judgments on the same real contexts; measure human approval and preference
+3. earn the offline, observe, and review gates before approved live publishing
+4. expand only after the character and evidence loop prove their value
 
 If Pixymon becomes a recognizable character IP, the operator behind it becomes legible too.

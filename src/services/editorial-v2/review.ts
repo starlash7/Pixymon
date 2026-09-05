@@ -73,7 +73,6 @@ export function recordEditorialReviewV2(input: {
         fact.metric.raw,
         fact.metric.value
       ),
-      forbidPublicFollowUp: false,
       forbidFutureRecheck: true,
     });
     if (!validation.ok) throw new Error(`edited draft failed contract: ${validation.reasons.join(",")}`);

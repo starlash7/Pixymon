@@ -105,7 +105,6 @@ export async function publishEditorialDraftV2(input: {
       fact.metric.raw,
       fact.metric.value
     ),
-    forbidPublicFollowUp: false,
     forbidFutureRecheck: true,
   });
   if (!validation.ok) return blocked(`publish-contract:${validation.reasons.join(",")}`);
