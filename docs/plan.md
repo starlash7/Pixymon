@@ -1,6 +1,6 @@
 # Pixymon Operating Plan
 
-Last updated: 2026-09-05
+Last updated: 2026-09-21
 
 This document is not a brainstorm file. It is the operating contract for Pixymon work.
 
@@ -197,3 +197,12 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Verification includes shadow original → invalidated follow-up → Revisit → next original with a different check → different 72h resolution, plus unsupported fact/memory/check rejection and no-post before writing. Deterministic models in tests prove the plumbing, not real character quality.
 - Local `npm run verify` passes: build/script types, 467 unit tests, 64 offline golden cases, and the 100-case synthetic corpus with 100-run determinism. Same-context replay regression verifies legacy/current paths without mutating captured inputs.
 - Collection epoch is `inquiry-writer-v3`. Real-model generation and human preference/no-edit acceptance remain unverified due to the existing Anthropic credit blocker. R1 zero-X proof and all rollout authorization requirements remain unchanged.
+
+## 16. Jev Advisory Evaluation — HOLD SCOPE
+
+- Imported the official TypeSafe development skill at a pinned commit, without global plugins or new package dependencies. Jev is used for bounded semantic review, not writing or posting authority.
+- The operator-only command checks question/test alignment, evidence significance, faithful use of previous outcomes and sentence grounding. Exact code checks and all existing approval/rollout gates remain authoritative.
+- Default preview makes no network call or write. Explicit execution uses one pinned-model request, an 8-second deadline, a 24KB request cap and 12 reserved calls/day UTC; no retry/fallback. Advisory audit records are separate from reviews, memory and promotion evidence.
+- Eight synthetic Korean boundary cases and mock-transport tests exercise the integration. They do not establish semantic accuracy or reader quality. TypeSafe documents weaker non-English/CJK performance, so Korean calibration is required.
+- Local `npm run verify` passes: build/script types, 504 unit tests (37 new Jev tests), 64 offline golden cases and the 100-case synthetic corpus. The operator CLI's synthetic memory-distortion preview completed with zero external calls and no publication authority.
+- Missing `TYPESAFE_API_KEY` prevents real-model verification in this checkpoint. Next: labeled fixtures, 12 actual cases and an independent held-out evaluation. Automatic scheduling, USD budget unification, reranking and writer replacement remain deferred; no live promotion is earned.

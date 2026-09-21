@@ -137,6 +137,11 @@ Review one draft:
 npm run editorial:review -- --id <draftId>
 ```
 
+Optional semantic second opinion: `npm run editorial:jev-review -- --id <draftId>`
+previews a separate Jev request. It does not call a model until explicitly executed,
+and never records human approval. See [Jev advisory review](jev-editorial-review.md)
+for privacy, request limits, synthetic cases and Korean calibration requirements.
+
 The terminal card shows the model's inquiry, why the evidence matters, current judgment, chosen check, linked memory lesson/change, machine falsifier, raw metric, source URL/time, and draft. Review whether the reasoning really follows the evidence and the linked past outcome; fact-ID linkage alone does not prove a semantic claim. Public copy must retain the exact UTC observation time. Decisions are append-only `approve`, `edit`, or `reject` events. Edited copy must pass the same subject, number, time, judgment, length, and Korean contract before it can become approved. Add `fact-checked` and `language-checked` to the final review's reason tags after those checks; rollout status treats absent positive tags as unknown, never as proof of zero errors.
 
 ## Publish one approved original

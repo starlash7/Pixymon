@@ -72,6 +72,8 @@ The planner chooses eligible evidence, giving a previously invalidated subject p
 
 See [character architecture](docs/character-architecture.md) for the contracts and [V2 runbook](docs/editorial-v2-runbook.md) for commands and promotion requirements.
 
+An optional [Jev advisory review](docs/jev-editorial-review.md) checks inquiry/evidence/memory connections and sentence grounding with typed decisions. `npm run editorial:jev-review -- --case memory-distortion` previews a synthetic case offline; only `--execute` with explicitly enabled network access and a TypeSafe key calls the model. It cannot approve or publish, and Korean accuracy is not yet measured.
+
 ### Legacy V1 Core Loop
 
 1. `Feed`

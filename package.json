@@ -19,6 +19,7 @@
     "editorial:compare": "ACTION_MODE=observe node --import tsx scripts/editorial-compare.ts",
     "editorial:followups": "POST_PIPELINE_VERSION=v2 node --import tsx scripts/editorial-followups.ts",
     "editorial:review": "node --import tsx scripts/editorial-review.ts",
+    "editorial:jev-review": "node --import tsx scripts/editorial-jev-review.ts",
     "editorial:publish": "POST_PIPELINE_VERSION=v2 node --import tsx scripts/editorial-publish.ts",
     "editorial:authorize-live": "node --import tsx scripts/editorial-authorize-live.ts",
     "editorial:replay-export": "node --import tsx scripts/editorial-replay-export.ts",
