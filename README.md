@@ -37,7 +37,7 @@ The current work is Pixymon V2: evidence → question/hypothesis → editorial j
 - Initial scope: protocol originals with named, fresh, direct numeric evidence.
 - Implemented: a model-authored inquiry before writing (question, evidence significance, current judgment and memory-driven check choice), relevant judgment/outcome recall, isolated shadow follow-ups, append-only review, and stage-bound approved publishing.
 - Validation: offline contracts and synthetic diversity tests; these do not prove reader preference or production quality.
-- Still blocked: real replay/human evaluation, elapsed R1/R2 gates, and the trusted zero-X verifier. The September 5 generation smoke also stopped on insufficient Anthropic credit.
+- Still blocked: real replay/human evaluation, elapsed R1/R2 gates, and the trusted zero-X verifier. The September 21 shadow smoke reconfirmed insufficient Anthropic credit: real sensing selected a candidate, but the first inquiry call stopped before writing. See the [latest smoke checkpoint and recovery steps](docs/editorial-v2-runbook.md#september-21-shadow-smoke-checkpoint).
 
 V2 exists beside the legacy path behind `POST_PIPELINE_VERSION=v1|v2` (default: `v1`). Selecting V2 does not authorize live posting. V1 social features and fallbacks remain for compatibility, not as V2 fallbacks, until V2 has 20 live posts and 14 incident-free days.
 

@@ -12,7 +12,33 @@ V2 is protocol-original-post only. Other lanes, quote posts, replies, images, an
 - Not yet earned: the 100-case real replay gate, two-reader blind evaluation, R1/R2 elapsed-time gates, or any automatic live promotion.
 - Current publishable supply is deliberately narrow: significant DefiLlama protocol TVL moves only. CoinGecko and mempool.space snapshots, RSS, and CryptoCompare remain discovery-only.
 - Default runtime stays `POST_PIPELINE_VERSION=v1` until the operator explicitly selects V2.
-- The September 5 shadow smoke selected a real protocol candidate, but Anthropic rejected generation for insufficient credit. It ended as `no-post` (`generation/model-empty`), without a draft or publication. Real-context comparisons and human quality results remain pending; restore model access before collecting more samples.
+- The September 21 shadow smoke reconfirmed the Anthropic credit blocker on the current inquiry-first path. Sensing selected a real protocol candidate, but the first inquiry call ended as `no-post` (`inquiry/inquiry-model-empty`), without a draft or publication. Real-context comparisons and human quality results remain pending; restore model access before collecting more samples.
+
+## September 21 shadow smoke checkpoint
+
+Runtime observation on `14a2514`, at 2026-09-21 10:03 UTC / 19:03 KST:
+
+- Ran the existing shadow collector once with process-local overrides; no source or `.env` edits:
+
+  ```bash
+  ACTION_MODE=observe TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false \
+  SOCIAL_SURFACES_ENABLED=false SCHEDULER_MODE=false npm run editorial:shadow
+  ```
+
+- DefiLlama, mempool.space, CoinGecko and RSS reads succeeded. CryptoCompare was explicitly `not-configured`. The bounded DefiLlama detail screen yielded one eligible protocol candidate; this is not a qualification rate over every item in the provider's top-level list.
+- The code planner selected a Bite and captured its input. `claude-sonnet-4-5-20250929` then received HTTP 400 for insufficient account credit on the first inquiry request. The collector exited with code 2, `stage=inquiry`, `reason=inquiry-model-empty`, `attempts=1`, and `fallbackUsed=false`. The writer never ran.
+- The budgeted LLM wrapper currently maps this provider rejection to an empty model result. Diagnose it from the paired console error, not as a quality rejection, a missing-evidence decision, or a successful draft. More collection retries cannot resolve account credit.
+- No X client was initialized and no publication was attempted. Character-memory and X-budget file hashes were unchanged; neither the live nor shadow draft event ledger was created. Shadow metrics and the captured decision context were recorded. This local observation does not replace the missing trusted R1 zero-X verifier.
+- Jev was not enabled; `TYPESAFE_API_KEY` remained absent. This run provides no evidence of Jev quality, Korean prose quality, or memory-driven improvement. The workspace also contained pre-existing untracked files, so the captured revision was marked dirty; this is a diagnostic smoke, not clean-commit promotion evidence.
+- Raw contexts, provider details and runtime/request identifiers stay in gitignored local data. This checkpoint is a sanitized handoff, not a replay corpus or human annotation.
+
+Resume after the operator restores Anthropic account access:
+
+1. Run the same non-publishing command once. Preserve existing budget ceilings, provider gates and no-fallback behavior. Do not change the default runtime to live.
+2. Inspect the actual generated text, selected evidence, inquiry and validation outcome before collecting the first 12 real cases. Report every no-post alongside generated-draft counts; do not substitute hand-written samples or synthetic output for model output.
+3. Review successful shadow originals and perform real +24h/+72h observations using the shadow follow-up worker. Only created drafts start the shadow lifecycle; this failed run scheduled no durable follow-up.
+4. Once relevant recorded experience exists and TypeSafe access is configured, compare Jev-selected memory against the baseline on the same captured context. Human preference and no-edit acceptance remain unmeasured until reviewed.
+5. Complete the trusted zero-X verifier and the existing R1/R2 requirements before considering any live authorization. Neither restored credit nor successful generation earns promotion.
 
 ## Safety model
 
