@@ -6,6 +6,7 @@ import { planEditorialV2, type PlanEditorialInputV2, type EditorialPlanningResul
 import type { EditorialMemoryContextV2 } from "./contracts.js";
 import { writeEditorialDraftV2, type EditorialWriterModelV2 } from "./writer.js";
 import { applyEditorialInquiryV2, reasonEditorialInquiryV2 } from "./inquiry.js";
+import { JEV_MEMORY_EPOCH_V2, type JevMemorySelectionV2 } from "./jev-memory.js";
 
 export interface EditorialDecisionContextV2 {
   kind: "pixymon-decision-context";
@@ -14,11 +15,12 @@ export interface EditorialDecisionContextV2 {
   trackingMode: "live" | "shadow";
   revision: { commit: string | null; dirty: boolean | null };
   modelId: string;
-  writerVersion: "hypothesis-writer-v2" | "inquiry-writer-v3";
+  writerVersion: "hypothesis-writer-v2" | "inquiry-writer-v3" | typeof JEV_MEMORY_EPOCH_V2;
   inquiryModelId?: string;
   planningInput: PlanEditorialInputV2;
   memories: Record<string, EditorialMemoryContextV2>;
   capturedPlanning: EditorialPlanningResultV2;
+  memorySelection?: JevMemorySelectionV2;
 }
 
 function hash(text: string): string {
@@ -68,17 +70,36 @@ export async function replayEditorialDecisionV2(input: {
   context: EditorialDecisionContextV2;
   model: EditorialWriterModelV2;
   inquiryModel?: EditorialWriterModelV2;
-  variant: "captured-plan" | "current-plan";
+  variant: "captured-plan" | "current-plan" | "latest-memory";
 }) {
   const context = structuredClone(input.context);
   const planning = input.variant === "captured-plan"
     ? context.capturedPlanning
     : planEditorialV2(context.planningInput);
   if (planning.status === "blocked") return { status: "no-post" as const, stage: planning.stage, reason: planning.reason };
-  if (input.variant === "current-plan") {
+  if (input.variant === "latest-memory" && !context.memorySelection) {
+    return { status: "no-post" as const, stage: "memory", reason: "jev-memory-comparison-context-required" };
+  }
+  if (input.variant !== "captured-plan") {
     planning.plan.memoryContext ??= context.memories[planning.plan.subject];
   }
-  if (input.variant === "current-plan" || context.writerVersion === "inquiry-writer-v3") {
+  // Replay the recorded semantic decision, not another paid API call or a hidden latest-memory fallback.
+  if (context.memorySelection) {
+    const selection = context.memorySelection;
+    if (selection.factId !== planning.evidence.id) {
+      return { status: "no-post" as const, stage: "memory", reason: "jev-memory-replay-evidence-changed" };
+    }
+    if (input.variant === "latest-memory") {
+      planning.plan.memoryContext = planning.plan.format === "revisit" ? selection.memory :
+        context.planningInput.memoryByFactId?.[planning.evidence.id];
+    } else {
+      if (selection.status === "blocked") return { status: "no-post" as const, stage: "memory", reason: selection.reason };
+      planning.plan.memoryContext = structuredClone(selection.memory);
+    }
+  } else if (context.writerVersion === JEV_MEMORY_EPOCH_V2) {
+    return { status: "no-post" as const, stage: "memory", reason: "jev-memory-selection-missing" };
+  }
+  if (input.variant !== "captured-plan" || context.writerVersion !== "hypothesis-writer-v2") {
     if (!input.inquiryModel) return { status: "no-post" as const, stage: "inquiry", reason: "inquiry-model-required" };
     const reasoned = await reasonEditorialInquiryV2({ model: input.inquiryModel, plan: planning.plan, evidence: planning.evidence });
     if (reasoned.status === "blocked") return { status: "no-post" as const, stage: "inquiry", reason: reasoned.reason };

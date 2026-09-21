@@ -22,13 +22,15 @@ async function main() {
   const claude = initClaudeClient();
   const model = createAnthropicEditorialWriterV2(claude);
   const inquiryModel = createAnthropicEditorialWriterV2(claude, undefined, "inquire");
-  const baseline = await replayEditorialDecisionV2({ context, model, inquiryModel, variant: "captured-plan" });
+  const baselineVariant = process.argv.includes("--memory-baseline") ? "latest-memory" : "captured-plan";
+  if (baselineVariant === "latest-memory" && !context.memorySelection) throw new Error("--memory-baseline requires a Jev memory decision context");
+  const baseline = await replayEditorialDecisionV2({ context, model, inquiryModel, variant: baselineVariant });
   const candidate = await replayEditorialDecisionV2({ context, model, inquiryModel, variant: "current-plan" });
   if (sha256FileV2(contextPath) !== contextSha256) throw new Error("comparison context changed");
   fs.writeFileSync(outputPath, JSON.stringify({
     kind: "pixymon-same-context-comparison", contextSha256, sourceRevision: context.revision,
     modelId: model.modelId, inquiryModelId: inquiryModel.modelId,
-    baselineVariant: "captured-plan", candidateVariant: "current-plan",
+    baselineVariant, candidateVariant: "current-plan",
     baseline, candidate, humanEvaluation: "pending",
   }, null, 2) + "\n", { flag: "wx", mode: 0o600 });
   console.log("[EDITORIAL] same-context comparison saved; human preference and no-edit acceptance are not yet measured");

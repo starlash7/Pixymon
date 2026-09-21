@@ -58,6 +58,8 @@ test("shadow tracks unchanged 24h and invalidated 72h without publication, and r
     const result = await collectEditorialDraftV2({
       store, metricLogPath: metrics, mode: "observe", trackingMode: "shadow", now: current,
       actionId: "shadow-revisit", sensing: sensing([], [observed]),
+      jevMemory: { auditDir: path.join(dir, "jev"), allowExternal: true, apiKey: "fake",
+        fetchImpl: async () => assert.fail("Revisit must keep its parent without a Jev call") },
       writerModel: { async generate({ prompt }) {
         assert.ok(prompt.includes(draft));
         assert.match(prompt, /"provenance":"shadow"/);

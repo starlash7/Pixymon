@@ -1,9 +1,79 @@
-# Jev editorial review — HOLD SCOPE
+# Jev editorial decisions — HOLD SCOPE
 
-This is an operator-invoked semantic review experiment, **not a new writer,
-auto-approval system, or production quality gate**. The bottleneck it addresses
-is that valid fact IDs do not establish whether an inquiry, interpretation or
-claimed memory lesson actually follows the supplied evidence.
+These are operator-invoked experiments, **not a new writer, auto-approval system,
+or production quality gate**. Jev can now select relevant recorded experience
+before inquiry/writing in isolated shadow collection. The existing advisory
+command independently reviews a finished draft. Neither path can authorize X writes.
+
+## Pre-writing memory selection
+
+The previous path always recalled the latest same-subject judgment. That misses
+an older failed test that may matter more to the present question. The new opt-in
+path is connected to `collectEditorialDraftV2`, not just a report beside it:
+
+1. Existing hard evidence, freshness, novelty and due-Revisit gates choose the fact.
+2. Code retrieves at most six recent distinct judgment threads for the same
+   provider, stable subject identity and original measurement. Unposted live
+   candidates, different provenance and future records/outcomes are excluded.
+   A final 72h outcome takes precedence over late bookkeeping for a missed 24h check.
+3. One Jev Choice selects a record, `none` or `unclear`, against the planned
+   measurement question. Jev cannot invent experience, alter facts or execute tools.
+4. A selected record is copied into the inquiry model and then the writer. The
+   inquiry model authors the lesson and may select a different bounded test for
+   the **new** hypothesis. Historical falsifiers remain unchanged.
+5. Low confidence/probability or `unclear` means **no prior record is supplied**;
+   this is logged, not interpreted as “there is no history.” API/contract/quota/audit
+   failures instead stop the candidate at `memory/no-post`, with no latest-memory fallback.
+
+Revisit bypasses Jev entirely: it must retain the actual original being revisited.
+Empty recall also costs zero Jev calls. Confidence **and** winning-option probability
+must both be at least 0.8; these are provisional experiment thresholds, not Korean
+accuracy guarantees. Candidate count/ordering is a retrieval limit, so Jev cannot
+discover a useful memory outside the supplied six threads.
+
+Enable for **one operator-invoked shadow collection**:
+
+```bash
+# Keys live in local .env; do not paste them into chat or commit them.
+# Requires TYPESAFE_API_KEY and usable ANTHROPIC_API_KEY/credit.
+TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:shadow -- --jev-memory
+```
+
+This command performs normal real provider reads and Anthropic inquiry/writing,
+plus at most one paid Jev request. It sends the current measurement question and
+candidate judgment text/outcomes to TypeSafe; URLs, reviewer metadata and ledger
+IDs are not projected into its API state. Free text is still potentially sensitive.
+Do not schedule it: shared USD accounting and Korean calibration remain pending.
+Without `--jev-memory`, collection retains the existing selector and makes no Jev call.
+Non-shadow use is rejected both by the CLI and the collection service.
+
+Memory selection uses rubric `pixymon-memory-selection-v1` and experimental
+collection epoch `jev-memory-inquiry-v4`. Existing baseline epoch remains
+`inquiry-writer-v3`. Shadow drafts cannot publish, and the experimental epoch is
+not accepted by the current live publisher. No R1/R2/R3 promotion is earned.
+
+The shared `editorial-jev` audit reserves calls before inference. A digest-protected
+decision context captures the candidate pool, exact request, raw probabilities,
+selected memory (or explicit omission/failure), rubric and run/action linkage
+before inquiry/writing. `planning_decision` events use stage `memory` with a reason.
+The run's selected memory is frozen during replay; changed evidence or a missing
+selection cannot silently reuse it. Replay never re-calls Jev.
+
+Compare the baseline latest-memory input with the recorded Jev choice on the
+**same** situation, clock, fact and generation model:
+
+```bash
+npm run editorial:compare -- --context <decision-context.json> \
+  --output <new-comparison.json> --memory-baseline
+```
+
+This comparison uses paid Anthropic generation, but no provider/Jev/X calls or
+memory writes. Have readers score the two outputs blind. A failed Jev selection
+stays a no-post on the candidate side; it is not rescued into a positive sample.
+Include failures, empty recall and uncertainty when measuring useful-selection
+coverage, no-edit acceptance and preference. The synthetic test that chooses an
+older refuted test and changes the new falsifier proves the connection only;
+it does **not** prove Jev will choose correctly or that the resulting tweet is better.
 
 ## What was adopted
 
@@ -68,7 +138,7 @@ Use the same `EDITORIAL_TRACKING_MODE` as the draft's ledger. Paper uses its
 separate configured data directory. Live mode is rejected. API credentials alone
 never enable a request. No provider, Anthropic or X client is called by this command.
 
-The experiment has a fixed limit of 12 request reservations per UTC day and active
+Both experiments share a fixed limit of 12 request reservations per UTC day and active
 data directory, with a cross-process lock. All attempts, including errors and
 timeouts, consume their reservation. A request is at most 24,000 UTF-8 bytes and
 has an 8-second deadline; there are no retries or alternative-model fallbacks.
@@ -103,7 +173,7 @@ proves deterministic request construction, not remote model determinism.
 As of this implementation, no `TYPESAFE_API_KEY` was configured and no real Jev
 request was made. Actual accuracy, cost and latency are unmeasured.
 
-Before any runtime integration:
+Before scheduling either experiment or enabling Jev for live candidates:
 
 1. Run the eight labeled synthetic cases and examine every mismatch/uncertain
    result, including correct output that Jev falsely flags.
@@ -112,8 +182,11 @@ Before any runtime integration:
    entire held-out evaluation set.
 3. Compare missed overclaims, invented lessons, false flags, uncertain rate,
    actual usage/latency, operator review time and two Korean readers' judgments.
-4. Only if useful, plan a shadow-mode integration and unified budget accounting.
-   Preserve deterministic facts, publication authorization and human approval.
+4. Evaluate pre-writing recall separately: label useful prior judgments and no-match
+   cases, then compare same-context outputs with `--memory-baseline`. Include API
+   failures and empty/uncertain recall in coverage, not only successful choices.
+5. Only if useful, integrate unified USD budget accounting and earn the rollout
+   gates. Preserve deterministic facts, publication authorization and human approval.
 
 The official [model documentation](https://docs.typesafe.ai/models) explicitly
 warns that non-English/CJK accuracy is lower than English. Do not use Jev as the
@@ -124,4 +197,5 @@ Sources checked 2026-09-21: [HTTP API](https://docs.typesafe.ai/api),
 [Choice](https://docs.typesafe.ai/primitives/choice),
 [state](https://docs.typesafe.ai/concepts/state),
 [confidence](https://docs.typesafe.ai/confidence),
-[citation-checking cookbook](https://docs.typesafe.ai/cookbooks/citation_check).
+[citation-checking cookbook](https://docs.typesafe.ai/cookbooks/citation_check),
+[selection/no-match cookbook](https://docs.typesafe.ai/cookbooks/skill_suggestion).

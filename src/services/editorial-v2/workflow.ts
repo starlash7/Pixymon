@@ -34,6 +34,8 @@ import {
 import { appendEditorialMetricV2, buildEditorialMetricV2 } from "./telemetry.js";
 import { writeEditorialDraftV2, type EditorialWriterModelV2 } from "./writer.js";
 import { applyEditorialInquiryV2, reasonEditorialInquiryV2 } from "./inquiry.js";
+import { selectJevMemoryV2, JEV_MEMORY_EPOCH_V2, JEV_MEMORY_CANDIDATE_LIMIT_V2,
+  type JevMemoryOptionsV2, type JevMemorySelectionV2, type JevMemoryCandidateV2 } from "./jev-memory.js";
 
 export type EditorialCollectResultV2 =
   | { status: "drafted"; draftId: string; draft: string; runId: string; actionId: string }
@@ -52,6 +54,8 @@ export interface CollectEditorialDraftInputV2 {
   selectionSeed?: string;
   sensing?: EditorialSensingResultV2;
   sense?: (followUpTargets: readonly EditorialFollowUpTargetV2[]) => Promise<EditorialSensingResultV2>;
+  /** Explicit operator experiment, never scheduled or publishable. */
+  jevMemory?: JevMemoryOptionsV2;
 }
 
 export interface CheckEditorialFollowUpsInputV2 {
@@ -195,6 +199,44 @@ export function editorialMemoryFromStoreV2(
       } : undefined,
     } : undefined,
   };
+}
+
+/** Bounded recall, not model-written history. Keep provenance, entity and time filtering in code. */
+export function editorialMemoryCandidatesV2(
+  states: readonly EditorialDraftStateV2[], card: EvidenceCardV2, now: string, trackingMode: "live" | "shadow"
+): JevMemoryCandidateV2[] {
+  const cutoff = Date.parse(now);
+  const eligible = states.filter((state) => {
+    const anchor = trackingAnchor(state);
+    const fact = firstFact(state);
+    return anchor && (state.draft.trackingMode ?? "live") === trackingMode &&
+      (trackingMode === "shadow" ? !state.publication : Boolean(state.publication)) &&
+      Date.parse(anchor.startedAt) <= cutoff && state.draft.lane === card.lane &&
+      fact?.source.provider === card.source.provider &&
+      (card.subjectKey ? fact.subjectKey === card.subjectKey : !fact.subjectKey && state.draft.subject === card.subject);
+  }).map((state) => {
+    const known = state.followUps.filter((outcome) => Date.parse(outcome.resolvedAt) <= cutoff);
+    // A late bookkeeping entry for a missed 24h check must not hide a final 72h verdict.
+    return { ...state, followUps: known.some((outcome) => outcome.checkpoint === "72h")
+      ? known.filter((outcome) => outcome.checkpoint === "72h") : known };
+  })
+    .sort((a, b) => Date.parse(trackingAnchor(b)!.startedAt) - Date.parse(trackingAnchor(a)!.startedAt) ||
+      a.draft.id.localeCompare(b.draft.id, "en"));
+  const seenThreads = new Set<string>();
+  const byId = new Map(eligible.map((state) => [state.draft.id, state]));
+  const candidates: JevMemoryCandidateV2[] = [];
+  for (const state of eligible) {
+    const originalId = state.draft.continuityThread?.replace(/:(24h|72h)$/, "") ?? state.draft.id;
+    if (seenThreads.has(originalId)) continue;
+    // A dangling Revisit cannot manufacture its original question or outcome.
+    const original = byId.get(originalId);
+    const metric = original && firstFact(original)?.metric;
+    if (!metric || metric.name !== card.metric.name || metric.unit !== card.metric.unit || metric.period !== card.metric.period) continue;
+    seenThreads.add(originalId);
+    candidates.push({ key: `memory_${candidates.length + 1}`, memory: editorialMemoryFromStoreV2(eligible, card, state.draft.id) });
+    if (candidates.length === JEV_MEMORY_CANDIDATE_LIMIT_V2) break;
+  }
+  return candidates;
 }
 
 function historyFromStore(states: readonly EditorialDraftStateV2[]): EditorialHistoryEntryV2[] {
@@ -655,6 +697,8 @@ export async function collectEditorialDraftV2(
   const metricContext = { runId, actionId, mode: input.mode, now };
   if (input.mode === "live") throw new Error("collection cannot run in live mode");
   const trackingMode = input.trackingMode ?? "live";
+  if (input.jevMemory && trackingMode !== "shadow") throw new Error("Jev memory selection requires isolated shadow tracking");
+  const collectionEpoch = input.jevMemory ? JEV_MEMORY_EPOCH_V2 : EDITORIAL_COLLECTION_EPOCH_V2;
   const statesBefore = input.store.listDraftStates();
   if (statesBefore.some((state) => (state.draft.trackingMode ?? "live") !== trackingMode)) {
     throw new Error("shadow and live-candidate ledgers must be separate");
@@ -714,19 +758,40 @@ export async function collectEditorialDraftV2(
     planning.plan.memoryContext = editorialMemoryFromStoreV2(statesForMemory, planning.evidence, parentId);
     memories[planning.plan.subject] = planning.plan.memoryContext;
   }
+  let memorySelection: JevMemorySelectionV2 | undefined;
+  if (input.jevMemory && planning.status === "planned") {
+    memorySelection = await selectJevMemoryV2({
+      plan: planning.plan, evidence: planning.evidence,
+      candidates: planning.plan.format === "revisit" ? [] : editorialMemoryCandidatesV2(statesForMemory, planning.evidence, nowIso, trackingMode),
+      options: input.jevMemory, runId, actionId, now,
+    });
+    planning.plan.memoryContext = memorySelection.memory;
+    memories[planning.plan.subject] = memorySelection.memory;
+    appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
+      type: "planning_decision", stage: "memory", outcome: memorySelection.status === "blocked" ? "no-post" : memorySelection.status,
+      reason: memorySelection.reason, details: {
+        candidateCount: memorySelection.candidates.length, selectedDraftId: memorySelection.selectedDraftId,
+        requestDigest: memorySelection.requestDigest ?? null, requestId: memorySelection.requestId ?? null,
+        rubric: memorySelection.rubric, fallbackUsed: false,
+      },
+    }));
+  }
   // Capture every planning decision, including no-posts, before requesting prose.
   try {
     writeEditorialDecisionContextV2(path.join(path.dirname(input.metricLogPath), "decision-contexts"), {
       kind: "pixymon-decision-context", version: 1, actionId, trackingMode,
       revision: editorialCodeRevisionV2(), modelId: input.writerModel.modelId ?? "unidentified-model",
-      writerVersion: EDITORIAL_COLLECTION_EPOCH_V2, inquiryModelId: input.inquiryModel.modelId ?? "unidentified-model",
-      planningInput, memories, capturedPlanning: planning,
+      writerVersion: collectionEpoch, inquiryModelId: input.inquiryModel.modelId ?? "unidentified-model",
+      planningInput, memories, capturedPlanning: planning, memorySelection,
     });
   } catch {
     appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
       type: "planning_decision", stage: "capture", outcome: "no-post", reason: "decision-context-write-failed",
     }));
     return { status: "no-post", stage: "capture", reason: "decision-context-write-failed", runId, actionId };
+  }
+  if (memorySelection?.status === "blocked") {
+    return { status: "no-post", stage: "memory", reason: memorySelection.reason, runId, actionId };
   }
   if (planning.status === "blocked") {
     appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
@@ -806,7 +871,7 @@ export async function collectEditorialDraftV2(
       editorialCase: planning.plan.editorialCase,
       memoryContext: planning.plan.memoryContext,
       lane: planning.plan.lane,
-      collectionEpoch: EDITORIAL_COLLECTION_EPOCH_V2,
+      collectionEpoch,
       format: planning.plan.format,
       subject: planning.plan.subject,
       thesis: planning.plan.thesis,

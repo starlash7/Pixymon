@@ -74,6 +74,8 @@ See [character architecture](docs/character-architecture.md) for the contracts a
 
 An optional [Jev advisory review](docs/jev-editorial-review.md) checks inquiry/evidence/memory connections and sentence grounding with typed decisions. `npm run editorial:jev-review -- --case memory-distortion` previews a synthetic case offline; only `--execute` with explicitly enabled network access and a TypeSafe key calls the model. It cannot approve or publish, and Korean accuracy is not yet measured.
 
+For pre-writing recall, `TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false npm run editorial:shadow -- --jev-memory` lets Jev choose relevant recorded experience before inquiry/writing. It requires TypeSafe and Anthropic access, is shadow-only and operator-invoked, and shares the advisory experiment's 12-call daily allowance. No match/uncertainty omits prior memory; service failure stops the candidate. See the same-context `--memory-baseline` comparison in the [Jev runbook](docs/jev-editorial-review.md).
+
 ### Legacy V1 Core Loop
 
 1. `Feed`
