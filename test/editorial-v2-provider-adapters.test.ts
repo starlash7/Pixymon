@@ -41,6 +41,59 @@ function healthyFetch(): typeof fetch {
   }) as typeof fetch;
 }
 
+for (const flags of [
+  { TEST_MODE: "true", TEST_NO_EXTERNAL_CALLS: "true" },
+  { TEST_MODE: "false", TEST_NO_EXTERNAL_CALLS: "true" },
+  { TEST_MODE: "true", TEST_NO_EXTERNAL_CALLS: undefined },
+]) {
+  test(`provider boundaries reject global transport with offline flags ${JSON.stringify(flags)}`, async (t) => {
+    const originalFetch = globalThis.fetch;
+    const previous = { TEST_MODE: process.env.TEST_MODE, TEST_NO_EXTERNAL_CALLS: process.env.TEST_NO_EXTERNAL_CALLS };
+    t.after(() => {
+      globalThis.fetch = originalFetch;
+      for (const key of ["TEST_MODE", "TEST_NO_EXTERNAL_CALLS"] as const) {
+        if (previous[key] === undefined) delete process.env[key];
+        else process.env[key] = previous[key];
+      }
+    });
+    process.env.TEST_MODE = flags.TEST_MODE;
+    if (flags.TEST_NO_EXTERNAL_CALLS === undefined) delete process.env.TEST_NO_EXTERNAL_CALLS;
+    else process.env.TEST_NO_EXTERNAL_CALLS = flags.TEST_NO_EXTERNAL_CALLS;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      throw new Error("global fetch must not be called");
+    };
+    await assert.rejects(() => collectEditorialEvidenceV2({ now: NOW }), /external calls are disabled/);
+    await assert.rejects(() => collectEditorialEvidenceV2({ now: NOW, fetchImpl: globalThis.fetch }), /external calls are disabled/);
+    await assert.rejects(() => __providerAdapterTestV2.fetchPayloadV2({
+      provider: "defillama", url: "https://example.invalid", fetchImpl: globalThis.fetch, timeoutMs: 10,
+    }), /external calls are disabled/);
+    assert.equal(calls, 0);
+    const result = await collectEditorialEvidenceV2({ now: NOW, fetchImpl: healthyFetch(), cryptoCompareApiKey: "" });
+    assert.equal(result.evidence.length, 3);
+    assert.equal(calls, 0, "explicit mock must not fall back to global fetch");
+  });
+}
+
+test("explicit external-call opt-in permits the default provider transport", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const previous = { TEST_MODE: process.env.TEST_MODE, TEST_NO_EXTERNAL_CALLS: process.env.TEST_NO_EXTERNAL_CALLS };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of ["TEST_MODE", "TEST_NO_EXTERNAL_CALLS"] as const) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  });
+  process.env.TEST_MODE = "true";
+  process.env.TEST_NO_EXTERNAL_CALLS = "false";
+  // Replace the transport itself: this opt-in regression must remain network-free.
+  globalThis.fetch = healthyFetch();
+  const result = await collectEditorialEvidenceV2({ now: NOW, cryptoCompareApiKey: "" });
+  assert.equal(result.evidence.length, 3);
+});
+
 test("free provider adapters preserve Tier A numeric provenance and keep RSS discovery-only", async () => {
   const result = await collectEditorialEvidenceV2({ now: NOW, fetchImpl: healthyFetch(), cryptoCompareApiKey: "" });
   assert.equal(result.evidence.length, 3);
@@ -795,8 +848,13 @@ test("a single DefiLlama candidate retains the 32 MiB response allowance", async
   );
 });
 
-test("one stuck DefiLlama lane does not starve the other four later candidates", async () => {
+test("one stuck DefiLlama lane does not starve the other four later candidates", async (t) => {
+  // Advance the clock and timers together: a real timeout can fire just before
+  // Date.now() reaches the deadline and legitimately permit a sixth attempt.
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.parse(NOW) });
   let detailCalls = 0;
+  let completedDetails = 0;
+  let stuckLaneAborted = false;
   const coarse = Array.from({ length: 6 }, (_, index) => ({
     name: `Lane ${index}`,
     slug: `lane-${index}`,
@@ -814,12 +872,14 @@ test("one stuck DefiLlama lane does not starve the other four later candidates",
       detailCalls += 1;
       if (detailRow.slug === "lane-0") {
         return new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () =>
-            reject(Object.assign(new Error("aborted"), { name: "AbortError" }))
-          );
+          init?.signal?.addEventListener("abort", () => {
+            stuckLaneAborted = true;
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          });
         });
       }
       await new Promise((resolve) => setTimeout(resolve, 5));
+      completedDetails += 1;
       return response(quantityDrivenDetail(detailRow.tvl, detailRow.change_1d));
     }
     if (url === __providerAdapterTestV2.ENDPOINTS.mempool) return response({ fastestFee: 25 });
@@ -832,13 +892,26 @@ test("one stuck DefiLlama lane does not starve the other four later candidates",
     throw new Error(`unexpected URL ${url}`);
   }) as typeof fetch;
 
-  const result = await collectEditorialEvidenceV2({
+  const collection = collectEditorialEvidenceV2({
     now: NOW,
     fetchImpl,
     perProviderTimeoutMs: 70,
     sensingDeadlineMs: 200,
     cryptoCompareApiKey: "",
   });
+  // setImmediate drains the response/promise work without advancing mocked time.
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(detailCalls, 3);
+  t.mock.timers.tick(5);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(detailCalls, 5);
+  t.mock.timers.tick(5);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(completedDetails, 4, "healthy lanes finish before the stuck lane times out");
+  assert.equal(stuckLaneAborted, false);
+  t.mock.timers.tick(60);
+  const result = await collection;
+  assert.equal(stuckLaneAborted, true);
   const provider = result.providers.find((row) => row.outcome.provider === "defillama");
   assert.equal(detailCalls, 5);
   assert.ok(provider?.selectionGaps?.some((gap) =>

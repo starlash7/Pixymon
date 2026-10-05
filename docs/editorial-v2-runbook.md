@@ -48,6 +48,41 @@ Resume after the operator restores Anthropic account access:
 - Invalid action modes fail closed as `observe`.
 - V2 has no deterministic, hard, rescue, or emergency publishing fallback. A second contract failure becomes `no-post`.
 
+### External-call and budget guards
+
+`TEST_NO_EXTERNAL_CALLS=true` blocks ordinary collection, shadow collection,
+follow-ups, built-in provider transports and the shared Anthropic request wrapper,
+independently of `TEST_MODE`. When the flag is absent, `TEST_MODE=true` defaults
+to offline. Only an explicit `TEST_NO_EXTERNAL_CALLS=false` opts out of that
+block; blank or malformed configured values fail closed. Tests may inject
+self-contained provider mocks. An injected function must never wrap a real
+transport to evade the offline setting.
+
+Anthropic requests reserve their estimated USD cost and request slot under a
+cross-process file lock before sending. Successful responses settle that
+reservation using separate uncached-input, cache-write, cache-read and output
+usage counters. Cached input is not subtracted from `usage.input_tokens`.
+SDK retries are disabled so every new attempt needs its own reservation.
+Provider-confirmed daily usage is persisted before budget-mode decisions and
+kept separate from outstanding reservations. When a provider report may already
+include an in-flight request, accounting errs high until reconciliation rather
+than reusing that request's allowance.
+
+Provider errors and missing usage leave the reservation charged because the
+request may already have been billed. `pendingReservations` in the active
+`anthropic-budget.json` and the reservation ID in logs identify these cases.
+Do not delete budget files or pending entries to regain allowance. Stop workers
+and reconcile the request with provider billing before recovering uncertain
+state; confirmed actual usage can be settled with `AnthropicBudgetService`.
+A stale or unreadable budget lock, corrupt state, or failed durable write stops
+new calls. Confirm that no owner is running before manually recovering a stale
+lock, and preserve the budget ledger throughout recovery.
+
+The pre-call token count remains an estimate. A response whose actual cost is
+higher is fully charged and blocks later calls as appropriate; this is not a
+provider-enforced spend cap. Combined X/Anthropic accounting is not a single
+cross-provider transaction. Keep the provider's own spending limits in place.
+
 ## R0 verification
 
 The verification command runs with the repository's external-call test guards:

@@ -5,6 +5,7 @@ import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.
 import { resolveEditorialRuntimePathsV2 } from "../src/services/editorial-v2/paths.js";
 import { collectEditorialDraftV2 } from "../src/services/editorial-v2/workflow.js";
 import { createAnthropicEditorialWriterV2 } from "../src/services/editorial-v2/writer.js";
+import { assertExternalCallsAllowed } from "../src/services/external-call-policy.js";
 import { initClaudeClient } from "../src/services/llm.js";
 
 async function main(): Promise<void> {
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
     }
     if (!process.env.TYPESAFE_API_KEY?.trim()) throw new Error("TYPESAFE_API_KEY is required for --jev-memory");
   }
+  assertExternalCallsAllowed("editorial:collect");
   if (!String(process.env.ANTHROPIC_API_KEY || "").trim()) throw new Error("ANTHROPIC_API_KEY is required");
   const store = new EditorialEventStoreV2({ eventLogPath: paths.eventLogPath });
   const claude = initClaudeClient();
