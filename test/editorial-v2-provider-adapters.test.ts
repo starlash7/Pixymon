@@ -848,8 +848,13 @@ test("a single DefiLlama candidate retains the 32 MiB response allowance", async
   );
 });
 
-test("one stuck DefiLlama lane does not starve the other four later candidates", async () => {
+test("one stuck DefiLlama lane does not starve the other four later candidates", async (t) => {
+  // Advance the clock and timers together: a real timeout can fire just before
+  // Date.now() reaches the deadline and legitimately permit a sixth attempt.
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.parse(NOW) });
   let detailCalls = 0;
+  let completedDetails = 0;
+  let stuckLaneAborted = false;
   const coarse = Array.from({ length: 6 }, (_, index) => ({
     name: `Lane ${index}`,
     slug: `lane-${index}`,
@@ -867,12 +872,14 @@ test("one stuck DefiLlama lane does not starve the other four later candidates",
       detailCalls += 1;
       if (detailRow.slug === "lane-0") {
         return new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () =>
-            reject(Object.assign(new Error("aborted"), { name: "AbortError" }))
-          );
+          init?.signal?.addEventListener("abort", () => {
+            stuckLaneAborted = true;
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          });
         });
       }
       await new Promise((resolve) => setTimeout(resolve, 5));
+      completedDetails += 1;
       return response(quantityDrivenDetail(detailRow.tvl, detailRow.change_1d));
     }
     if (url === __providerAdapterTestV2.ENDPOINTS.mempool) return response({ fastestFee: 25 });
@@ -885,13 +892,26 @@ test("one stuck DefiLlama lane does not starve the other four later candidates",
     throw new Error(`unexpected URL ${url}`);
   }) as typeof fetch;
 
-  const result = await collectEditorialEvidenceV2({
+  const collection = collectEditorialEvidenceV2({
     now: NOW,
     fetchImpl,
     perProviderTimeoutMs: 70,
     sensingDeadlineMs: 200,
     cryptoCompareApiKey: "",
   });
+  // setImmediate drains the response/promise work without advancing mocked time.
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(detailCalls, 3);
+  t.mock.timers.tick(5);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(detailCalls, 5);
+  t.mock.timers.tick(5);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(completedDetails, 4, "healthy lanes finish before the stuck lane times out");
+  assert.equal(stuckLaneAborted, false);
+  t.mock.timers.tick(60);
+  const result = await collection;
+  assert.equal(stuckLaneAborted, true);
   const provider = result.providers.find((row) => row.outcome.provider === "defillama");
   assert.equal(detailCalls, 5);
   assert.ok(provider?.selectionGaps?.some((gap) =>
