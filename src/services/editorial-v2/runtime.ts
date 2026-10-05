@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { RuntimeConfig } from "../../config/runtime.js";
+import { externalCallsDisabled } from "../external-call-policy.js";
 import { EditorialEventStoreV2 } from "./event-store.js";
 import { resolveEditorialRuntimePathsV2 } from "./paths.js";
 import { checkEditorialFollowUpsV2, collectEditorialDraftV2 } from "./workflow.js";
@@ -54,9 +55,7 @@ export function shouldCollectEditorialV2(input: {
 }
 
 export function printEditorialV2StartupBanner(config: RuntimeConfig): void {
-  const testMode = process.env.TEST_MODE === "true";
-  const noExternal =
-    testMode && String(process.env.TEST_NO_EXTERNAL_CALLS ?? "true").trim().toLowerCase() !== "false";
+  const noExternal = externalCallsDisabled();
   console.log("▶ Pixymon V2 온라인.");
   console.log("=====================================");
   console.log("  Mode: evidence-first original-only");
@@ -72,9 +71,7 @@ export async function runEditorialV2Runtime(
   claude: Anthropic,
   config: RuntimeConfig
 ): Promise<void> {
-  const testMode = process.env.TEST_MODE === "true";
-  const noExternal =
-    testMode && String(process.env.TEST_NO_EXTERNAL_CALLS ?? "true").trim().toLowerCase() !== "false";
+  const noExternal = externalCallsDisabled();
   if (config.operational.actionMode === "live") {
     console.log("[V2] 자동 live는 잠겨 있습니다. 검토 후 editorial:publish를 사용하세요.");
     return;

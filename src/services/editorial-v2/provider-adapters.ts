@@ -1,3 +1,4 @@
+import { assertExternalCallsAllowed } from "../external-call-policy.js";
 import {
   NEWS_FRESHNESS_MS,
   SIGNAL_FRESHNESS_MS,
@@ -24,6 +25,15 @@ export const DEFILLAMA_DETAIL_CONCURRENCY_V2 = 3;
 export const DEFILLAMA_DETAIL_ROTATION_BUCKET_MS_V2 = SIGNAL_FRESHNESS_MS;
 export const DEFILLAMA_DETAIL_RESPONSE_LIMIT_BYTES_V2 = 32 * 1024 * 1024;
 export const DEFILLAMA_DETAIL_RUN_LIMIT_BYTES_V2 = 64 * 1024 * 1024;
+
+// Keep the original transport identifiable even if a test replaces globalThis.fetch.
+const defaultFetch = globalThis.fetch;
+
+function assertProviderTransportAllowed(fetchImpl: typeof fetch): void {
+  if (fetchImpl === defaultFetch || fetchImpl === globalThis.fetch) {
+    assertExternalCallsAllowed("editorial provider transport");
+  }
+}
 
 const PROVIDER_RESPONSE_LIMIT_BYTES_V2 = {
   defillamaSummary: 16 * 1024 * 1024,
@@ -101,6 +111,7 @@ export interface EditorialFollowUpTargetV2 {
 
 export interface EditorialProviderContextV2 {
   now: string;
+  /** Offline tests must explicitly inject a self-contained mock, never a real transport. */
   fetchImpl?: typeof fetch;
   perProviderTimeoutMs?: number;
   sensingDeadlineMs?: number;
@@ -311,6 +322,8 @@ async function fetchPayloadV2(input: {
   maxResponseBytes?: number;
   maxCacheAgeMs?: number;
 }): Promise<FetchResultV2> {
+  // Keep a policy denial outside the network-error fallback and before any transport.
+  assertProviderTransportAllowed(input.fetchImpl);
   const startedAt = Date.now();
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout>;
@@ -942,7 +955,9 @@ async function collectCryptoCompareV2(context: Required<Pick<EditorialProviderCo
 
 export async function collectEditorialEvidenceV2(context: EditorialProviderContextV2): Promise<EditorialSensingResultV2> {
   if (!validInstant(context.now)) throw new Error("editorial sensing now must be a valid instant");
-  const fetchImpl = context.fetchImpl ?? fetch;
+  if (context.fetchImpl === undefined) assertExternalCallsAllowed("editorial provider collection");
+  const fetchImpl = context.fetchImpl ?? globalThis.fetch;
+  assertProviderTransportAllowed(fetchImpl);
   const sensingDeadlineMs = context.sensingDeadlineMs ?? SENSING_DEADLINE_MS_V2;
   const perProviderTimeoutMs = Math.min(context.perProviderTimeoutMs ?? PROVIDER_TIMEOUT_MS_V2, sensingDeadlineMs);
   const shared = {

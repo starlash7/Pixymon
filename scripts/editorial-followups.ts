@@ -3,6 +3,7 @@ import { loadRuntimeConfig } from "../src/config/runtime.js";
 import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.js";
 import { resolveEditorialRuntimePathsV2 } from "../src/services/editorial-v2/paths.js";
 import { checkEditorialFollowUpsV2 } from "../src/services/editorial-v2/workflow.js";
+import { assertExternalCallsAllowed } from "../src/services/external-call-policy.js";
 
 async function main(): Promise<void> {
   const config = loadRuntimeConfig();
@@ -12,9 +13,7 @@ async function main(): Promise<void> {
   if (config.operational.actionMode === "live") {
     throw new Error("editorial:followups is read/check-only; use ACTION_MODE=observe or paper");
   }
-  if (process.env.TEST_MODE === "true" && process.env.TEST_NO_EXTERNAL_CALLS !== "false") {
-    throw new Error("editorial:followups requires provider reads; TEST_NO_EXTERNAL_CALLS must be false");
-  }
+  assertExternalCallsAllowed("editorial:followups");
   const paths = resolveEditorialRuntimePathsV2(config.operational.actionMode);
   const store = new EditorialEventStoreV2({ eventLogPath: paths.eventLogPath });
   const result = await checkEditorialFollowUpsV2({

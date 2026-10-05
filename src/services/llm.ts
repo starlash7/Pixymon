@@ -6,6 +6,7 @@ import { anthropicAdminUsage, mergeAnthropicUsageSnapshots } from "./anthropic-a
 import { getCharacterCanonOverview } from "./character-docs.js";
 import { quarantineCorruptFile } from "./quarantine.js";
 import { xApiBudget } from "./x-api-budget.js";
+import { assertExternalCallsAllowed } from "./external-call-policy.js";
 
 export interface ClaudeTextLikeBlock {
   type: string;
@@ -255,6 +256,8 @@ export async function requestBudgetedClaudeMessage(
     cacheSharedPrefix?: boolean;
   }
 ): Promise<BudgetedClaudeMessageResult | null> {
+  // Check before optional admin sync as well as the paid model transport.
+  assertExternalCallsAllowed("Anthropic generation");
   const runtimeConfig = loadRuntimeConfig();
   const timezone = typeof options.timezone === "string" && options.timezone.trim().length > 0
     ? options.timezone.trim()
@@ -282,10 +285,18 @@ export async function requestBudgetedClaudeMessage(
       console.warn("[LLM-BUDGET] Anthropic usage sync 실패:", error);
     }
   }
-  const todayAnthropic = mergeAnthropicUsageSnapshots(
-    anthropicBudget.getTodayUsage(timezone),
-    syncedAnthropic
-  );
+  // Optional admin sync can yield; honor a stop flag changed in-flight before
+  // admitting any request. Persist confirmed spend even when mode skips it.
+  assertExternalCallsAllowed("Anthropic generation");
+  let localAnthropic = anthropicBudget.getTodayUsage(timezone);
+  if (syncedAnthropic?.dateKey === localAnthropic.dateKey) {
+    localAnthropic = anthropicBudget.syncConfirmedUsageFloor({
+      timezone,
+      dateKey: syncedAnthropic.dateKey,
+      minimumDailyCostUsd: syncedAnthropic.actualCostUsd,
+    });
+  }
+  const todayAnthropic = mergeAnthropicUsageSnapshots(localAnthropic, syncedAnthropic);
   const budgetMode = resolveAnthropicBudgetMode({
     estimatedRequestCostUsd: estimatedPrimaryCost.estimatedTotalCostUsd,
     timezone,
@@ -319,16 +330,42 @@ export async function requestBudgetedClaudeMessage(
     ...params,
     model: selectedModel,
   };
+  // Reserve before awaiting the provider. A concurrent process must see this
+  // request even if this process crashes or the response is ambiguous. Cache
+  // creation can cost more than an ordinary input; reserve that premium too.
+  const reservation = anthropicBudget.reserveRequest({
+    enabled: runtimeConfig.anthropicCost.enabled,
+    timezone,
+    kind: options.kind,
+    dailyMaxUsd: runtimeConfig.anthropicCost.dailyMaxUsd,
+    dailyRequestLimit: runtimeConfig.anthropicCost.dailyRequestLimit,
+    estimatedCostUsd: estimatedCost.estimatedTotalCostUsd *
+      (usePromptCaching ? Math.max(1, runtimeConfig.anthropicCost.cacheWriteMultiplier) : 1),
+    totalDailyMaxUsd: runtimeConfig.totalCost.enabled ? runtimeConfig.totalCost.dailyMaxUsd : 0,
+    xApiEstimatedCostUsd: todayXCost,
+    // Only provider-confirmed spend is a floor. The merged local snapshot
+    // includes reservations, which must remain separately refundable on settle.
+    minimumDailyCostUsd: syncedAnthropic?.dateKey === todayAnthropic.dateKey
+      ? syncedAnthropic.actualCostUsd : 0,
+    minimumRequestCount: todayAnthropic.requestCount,
+  });
+  if (!reservation.allowed || !reservation.reservationId) {
+    console.log(`[LLM-BUDGET] ${options.kind} 스킵: reservation=${reservation.reason || "unavailable"}`);
+    return null;
+  }
   let message: ClaudeMessageResponse;
   try {
     message = usePromptCaching
       ? await claude.beta.promptCaching.messages.create(
           buildPromptCachingParams(requestParams, {
             cacheSharedPrefix: options.cacheSharedPrefix,
-          })
+          }),
+          { maxRetries: 0 }
         ) as ClaudeMessageResponse
-      : await claude.messages.create(requestParams) as ClaudeMessageResponse;
+      : await claude.messages.create(requestParams, { maxRetries: 0 }) as ClaudeMessageResponse;
   } catch (error) {
+    // Do not release an uncertain request: the provider may have billed it.
+    console.warn(`[LLM-BUDGET] ${options.kind} reservation retained=${reservation.reservationId}`);
     if (shouldGracefullySkipClaudeRequest(error)) {
       console.warn(
         `[LLM-BUDGET] ${options.kind} Claude 요청 스킵: ${summarizeClaudeRequestError(error)}`
@@ -338,19 +375,27 @@ export async function requestBudgetedClaudeMessage(
     throw error;
   }
   const usage = message.usage;
-  const recorded = anthropicBudget.recordUsage({
-    timezone,
-    kind: options.kind,
-    model: selectedModel,
-    inputTokens: usage?.input_tokens ?? estimatedCost.inputTokens,
-    outputTokens: usage?.output_tokens ?? estimatedCost.outputTokens,
-    cacheCreationInputTokens: usage?.cache_creation_input_tokens ?? 0,
-    cacheReadInputTokens: usage?.cache_read_input_tokens ?? 0,
-    pricing: runtimeConfig.anthropicCost,
-  });
+  const validUsage = usage && Number.isFinite(usage.input_tokens) && usage.input_tokens! >= 0 &&
+    Number.isFinite(usage.output_tokens) && usage.output_tokens! >= 0 &&
+    Number.isFinite(usage.cache_creation_input_tokens ?? 0) && (usage.cache_creation_input_tokens ?? 0) >= 0 &&
+    Number.isFinite(usage.cache_read_input_tokens ?? 0) && (usage.cache_read_input_tokens ?? 0) >= 0;
+  const recorded = validUsage
+    ? anthropicBudget.settleRequest({
+        reservationId: reservation.reservationId,
+        model: selectedModel,
+        inputTokens: usage.input_tokens!,
+        outputTokens: usage.output_tokens!,
+        cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
+        cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+        pricing: runtimeConfig.anthropicCost,
+      })
+    : anthropicBudget.getTodayUsage(timezone);
+  if (!validUsage) {
+    console.warn(`[LLM-BUDGET] ${options.kind} usage unavailable; reservation retained=${reservation.reservationId}`);
+  }
 
   console.log(
-    `[LLM-BUDGET] ${options.kind} mode=${budgetMode.mode} model=${selectedModel} cache=${usePromptCaching ? "on" : "off"} req=${recorded.requestCount}/${runtimeConfig.anthropicCost.dailyRequestLimit} anthropic=$${recorded.estimatedTotalCostUsd.toFixed(3)}/$${runtimeConfig.anthropicCost.dailyMaxUsd.toFixed(2)} total~$${(recorded.estimatedTotalCostUsd + todayXCost).toFixed(3)}/$${runtimeConfig.totalCost.dailyMaxUsd.toFixed(2)}`
+    `[LLM-BUDGET] ${options.kind} mode=${budgetMode.mode} model=${selectedModel} cache=${usePromptCaching ? "on" : "off"} req=${recorded.requestCount}/${runtimeConfig.anthropicCost.dailyRequestLimit} anthropic=$${recorded.estimatedTotalCostUsd.toFixed(6)}/$${runtimeConfig.anthropicCost.dailyMaxUsd.toFixed(2)} total~$${(recorded.estimatedTotalCostUsd + todayXCost).toFixed(6)}/$${runtimeConfig.totalCost.dailyMaxUsd.toFixed(2)}`
   );
 
   return {
