@@ -2,8 +2,7 @@ import type { ActionMode } from "../../types/runtime.js";
 import { EditorialEventStoreV2, type EditorialDraftStateV2 } from "./event-store.js";
 import { appendEditorialMetricV2, buildEditorialMetricV2 } from "./telemetry.js";
 import {
-  formatEvidenceSourceTimeV2,
-  inferMetricDirectionV2,
+  editorialDraftValidationInputV2,
   validateEditorialDraftV2,
 } from "./validator.js";
 
@@ -58,27 +57,14 @@ export function recordEditorialReviewV2(input: {
   if (input.action === "edit") {
     const fact = state.draft.facts[0];
     if (!fact) throw new Error("editorial draft has no evidence fact");
-    const validation = validateEditorialDraftV2({
+    const validation = validateEditorialDraftV2(editorialDraftValidationInputV2({
       text: input.editedDraft || "",
       subject: state.draft.subject,
-      displayValue: fact.metric.raw,
+      fact,
       factIds: state.draft.factIds,
       usedFactIds: state.draft.factIds,
-      allowedNumericValues: [fact.metric.period, "24시간", "72시간"],
-      allowedNamedTokens: [
-        ...fact.metric.name.split(/[^a-zA-Z0-9]+/).filter(Boolean).map((token) => token.toUpperCase()),
-        fact.metric.unit,
-      ],
-      sourceTimeToken: formatEvidenceSourceTimeV2(fact.source.observedAt),
-      requireJudgment: true,
-      metricName: fact.metric.name,
-      metricDirection: inferMetricDirectionV2(
-        fact.metric.name,
-        fact.metric.raw,
-        fact.metric.value
-      ),
-      forbidFutureRecheck: true,
-    });
+      rendering: state.draft.rendering,
+    }));
     if (!validation.ok) throw new Error(`edited draft failed contract: ${validation.reasons.join(",")}`);
     input.store.edit(input.draftId, {
       reviewerId: input.reviewerId,

@@ -18,7 +18,7 @@ test("writer voice states register and safety rules the validator enforces", () 
   assert.match(system, /존댓말\(~습니다, ~입니다, ~해요\)은 쓰지 않는다/);
   assert.match(system, /이모지, 해시태그, 투자 조언/);
   assert.match(system, /캐릭터 단어\(픽시몬, 물고, 씹고, 먹고, 소화, 흉터, 눕\)는 합쳐서 한 번까지만/);
-  assert.match(system, /판정 성격이 드러나는 단어/);
+  assert.match(system, /글의 중심은 그걸 소화한 픽시의 생각/);
 });
 
 test("writer voice degrades to character.ts when canon docs are absent", () => {

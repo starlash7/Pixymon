@@ -1,3 +1,5 @@
+import type { EditorialRenderingV2 } from "./contracts.js";
+
 const MALFORMED_KO_PATTERNS: Array<{ code: string; pattern: RegExp }> = [
   { code: "malformed-nuun", pattern: /(?:안|못)\s*눕은/u },
   { code: "malformed-stem-particle", pattern: /어긋난에서/u },
@@ -12,11 +14,14 @@ const LATIN_NAMED_TOKEN = /\b[A-Za-z][A-Za-z0-9.-]{1,}\b/g;
 const KNOWN_KO_CRYPTO_ENTITY = /비트코인|이더리움|솔라나|테더|리플|에이다|도지코인|아발란체|체인링크|폴리곤|유니스왑|아비트럼|커브|메이커다오/gu;
 const INCREASE_WORD = /늘|증가|상승|올랐|커졌|확대/u;
 const DECREASE_WORD = /줄|감소|하락|내렸|빠졌|낮아졌|축소/u;
+// Conjugated stems only: thought copy is free prose, so bare "늘" would match "오늘" or "늘 그렇듯".
+const THOUGHT_INCREASE_WORD = /늘었|늘어|증가|상승|올랐|커졌|불어났|부풀|확대/u;
+const THOUGHT_DECREASE_WORD = /줄었|줄어|감소|하락|내렸|빠졌|빠지|낮아졌|축소|홀쭉|쪼그라/u;
 const JUDGMENT_WORD = /판정|판단|결론|해석|반증|승인|보류|유예|기각|무효|철회|유지|지지|미결|틀리|거둔다|남긴다/u;
 const FUTURE_RECHECK_PROMISE = /(?:다음|후속).{0,32}(?:확인|검증|점검|살피|다시\s*보|판단.{0,8}갱신|판정.{0,8}갱신|갱신|업데이트|다시\s*쓰)(?:하겠다|겠다|할\s*(?:예정|계획|생각))|(?:다음|후속).{0,24}(?:오면|도착하면|나오면).{0,16}(?:확인|검증|점검|갱신|업데이트|다시\s*쓰)|(?:재검증|다시\s*(?:확인|검증|점검|살피|보|쓰)|지켜보)(?:하겠다|겠다)|(?:확인|검증|관찰|점검)할\s*(?:예정|계획)|(?:새|새로운)\s*(?:숫자|수치|데이터).{0,16}(?:오면|도착하면|나오면).{0,16}(?:갱신|업데이트|다시\s*쓰)|(?:다음|후속|향후|차후|앞으로|추후|나중|(?:새|새로운)\s*(?:숫자|수치|데이터)).{0,48}(?:재평가할|바꿀|고칠|(?:고쳐|다시)\s*쓸)\s*(?:예정|계획|생각)|돌아오겠다/u;
 // Fixture-backed closed-world guard: a TVL level/change does not prove these separate phenomena.
-const UNSUPPORTED_TVL_CLAIM = /사용자|활성\s*주소|신규\s*(?:자금|예치)|자금\s*(?:유입|유출|복귀|이탈)|유입|유출|채택|수익|매출|거래량|구조적\s*성장|안정성|경쟁력|신뢰.{0,8}(?:회복|강화)|담보\s*건전성|청산\s*위험|고래\s*지갑|기관\s*(?:매수|복귀)|매수.{0,12}(?:원인|배경)|확정적\s*신호|증명|보장/u;
-const SCOPE_NEGATION = /(?:뜻|의미|증명|보장|확정|단정|승인)하지\s*않|(?:확인|증명|보장)되지\s*않|아니(?:다|라는|라고|며|고)|(?:단정|구분|구별)할\s*수\s*없|모른다|모르겠/u;
+const UNSUPPORTED_TVL_CLAIM = /사용자|활성\s*주소|신규\s*(?:자금|예치)|자금\s*(?:유입|유출|복귀|이탈)|유입|유출|들어차|들어왔|빠져나|채택|수익|매출|거래량|구조적\s*성장|안정성|경쟁력|신뢰.{0,8}(?:회복|강화)|담보\s*건전성|청산\s*위험|고래\s*지갑|기관\s*(?:매수|복귀)|매수.{0,12}(?:원인|배경)|확정적\s*신호|증명|보장/u;
+const SCOPE_NEGATION = /(?:뜻|의미|증명|보장|확정|단정|승인)하지\s*않|(?:확인|증명|보장)되지\s*않|아니(?:다|라는|라고|며|고)|(?:단정|구분|구별|확인|증명|판단|확정)할\s*수\s*없|알\s*수\s*없|불확실|모른다|모르겠|배제/u;
 const POSITIVE_SCOPE_BEFORE_NEGATION = /(?:뜻|의미)(?:하고|하며|하나)|확인(?:됐|되었)(?:고|으며)/u;
 // Formal 합쇼체 reads as a news desk or assistant, not the character ("아니다" is plain speech).
 const FORMAL_REGISTER = /(?<!아)니다(?=[.!?,\s]|$)|니까[?]/u;
@@ -37,6 +42,8 @@ export interface EditorialDraftValidationInputV2 {
   forbidFutureRecheck?: boolean;
   minChars?: number;
   maxChars?: number;
+  /** `thought` drops the mandatory number/source-time/judgment-word placement; every stated fact stays grounded. */
+  rendering?: EditorialRenderingV2;
 }
 
 export interface EditorialDraftValidationV2 {
@@ -124,7 +131,8 @@ export function validateEditorialDraftV2(
   input: EditorialDraftValidationInputV2
 ): EditorialDraftValidationV2 {
   const text = String(input.text || "").replace(/\s+/g, " ").trim();
-  const minChars = input.minChars ?? 90;
+  const thought = input.rendering === "thought";
+  const minChars = input.minChars ?? (thought ? 40 : 90);
   const maxChars = input.maxChars ?? 190;
   const sentences = splitEditorialSentencesV2(text);
   const reasons: string[] = [];
@@ -133,15 +141,20 @@ export function validateEditorialDraftV2(
   if (text.length > maxChars) reasons.push("too-long");
   if (sentences.length < 2 || sentences.length > 3) reasons.push("sentence-count");
   if (!/[가-힣]/u.test(text)) reasons.push("korean-missing");
-  if (!sentences[0]?.includes(input.subject)) reasons.push("subject-not-in-first-sentence");
-  if (!sentences.slice(0, 2).join(" ").includes(input.displayValue)) {
-    reasons.push("numeric-fact-not-in-first-two-sentences");
-  }
-  if (input.sourceTimeToken && !text.includes(input.sourceTimeToken)) {
-    reasons.push("source-time-missing");
-  }
-  if (input.requireJudgment && !JUDGMENT_WORD.test(sentences.at(-1) || "")) {
-    reasons.push("final-judgment-missing");
+  if (thought) {
+    // A thought may say "Stargate" for "Stargate V2"; it still has to be about the selected subject.
+    if (!text.includes(subjectAnchorV2(input.subject))) reasons.push("subject-missing");
+  } else {
+    if (!sentences[0]?.includes(input.subject)) reasons.push("subject-not-in-first-sentence");
+    if (!sentences.slice(0, 2).join(" ").includes(input.displayValue)) {
+      reasons.push("numeric-fact-not-in-first-two-sentences");
+    }
+    if (input.sourceTimeToken && !text.includes(input.sourceTimeToken)) {
+      reasons.push("source-time-missing");
+    }
+    if (input.requireJudgment && !JUDGMENT_WORD.test(sentences.at(-1) || "")) {
+      reasons.push("final-judgment-missing");
+    }
   }
   if (input.forbidFutureRecheck && FUTURE_RECHECK_PROMISE.test(text)) {
     reasons.push("future-recheck-promise");
@@ -181,11 +194,15 @@ export function validateEditorialDraftV2(
   );
   if (unsupportedKoEntities.length > 0) reasons.push("unsupported-korean-entity");
 
-  const factSentence = sentences.find((sentence) => sentence.includes(input.displayValue)) || "";
-  if (input.metricDirection === "increase" && DECREASE_WORD.test(factSentence)) {
+  const numericSentence = sentences.find((sentence) => sentence.includes(input.displayValue));
+  // Without the number, a thought describes the move in words in its opening observation.
+  const factSentence = numericSentence ?? (thought ? sentences[0] || "" : "");
+  const increaseWord = thought && !numericSentence ? THOUGHT_INCREASE_WORD : INCREASE_WORD;
+  const decreaseWord = thought && !numericSentence ? THOUGHT_DECREASE_WORD : DECREASE_WORD;
+  if (input.metricDirection === "increase" && decreaseWord.test(factSentence)) {
     reasons.push("metric-direction-conflict");
   }
-  if (input.metricDirection === "decrease" && INCREASE_WORD.test(factSentence)) {
+  if (input.metricDirection === "decrease" && increaseWord.test(factSentence)) {
     reasons.push("metric-direction-conflict");
   }
 
@@ -201,5 +218,42 @@ export function validateEditorialDraftV2(
     reasons: [...new Set(reasons)],
     sentenceCount: sentences.length,
     charCount: text.length,
+  };
+}
+
+export function subjectAnchorV2(subject: string): string {
+  return String(subject || "").trim().split(/\s+/u)[0] || "";
+}
+
+/** One contract for writer, review, publish and rollout re-validation of the same draft. */
+export function editorialDraftValidationInputV2(input: {
+  text: string;
+  subject: string;
+  fact: {
+    metric: { name: string; raw: string; value: number; period: string; unit: string };
+    source: { observedAt: string };
+  };
+  factIds: readonly string[];
+  usedFactIds: readonly string[];
+  rendering?: EditorialRenderingV2;
+}): EditorialDraftValidationInputV2 {
+  const { metric } = input.fact;
+  return {
+    text: input.text,
+    subject: input.subject,
+    displayValue: metric.raw,
+    factIds: input.factIds,
+    usedFactIds: input.usedFactIds,
+    allowedNumericValues: [metric.period, "24시간", "72시간"],
+    allowedNamedTokens: [
+      ...metric.name.split(/[^a-zA-Z0-9]+/).filter(Boolean).map((token) => token.toUpperCase()),
+      metric.unit,
+    ],
+    sourceTimeToken: formatEvidenceSourceTimeV2(input.fact.source.observedAt),
+    requireJudgment: true,
+    metricName: metric.name,
+    metricDirection: inferMetricDirectionV2(metric.name, metric.raw, metric.value),
+    forbidFutureRecheck: true,
+    rendering: input.rendering ?? "data",
   };
 }

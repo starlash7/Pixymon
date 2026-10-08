@@ -130,6 +130,14 @@ test("a generated TVL judgment cannot assert an outflow the writer would then pu
   assert.ok(validateEditorialInquiryV2(inquiry, { ...context, tvlMetric: true }).includes("inquiry-judgment-metric-scope"));
   // Stored ledgers are re-read without the generation-time flag and stay valid.
   assert.equal(validateEditorialInquiryV2(inquiry, context).includes("inquiry-judgment-metric-scope"), false);
-  const caveated = { ...inquiry, judgment: "숫자는 크지만 유출인지 가격 효과인지는 아직 모른다." };
-  assert.equal(validateEditorialInquiryV2(caveated, { ...context, tvlMetric: true }).includes("inquiry-judgment-metric-scope"), false);
+  for (const judgment of [
+    "숫자는 크지만 유출인지 가격 효과인지는 아직 모른다.",
+    "유입이나 채택 여부 같은 원인은 이 수치로 확인할 수 없으므로 수준만 본다.",
+    "자금 유입 원인은 불확실하므로 기준선 유지 여부만 본다.",
+    "원인이나 유입에 대한 추측을 배제하고 수준만 검증한다.",
+    "수량 변화가 주요인으로 추정되나 자금의 이동 원인이나 사용자 행위는 확정할 수 없다.",
+  ]) {
+    const caveated = { ...inquiry, judgment };
+    assert.equal(validateEditorialInquiryV2(caveated, { ...context, tvlMetric: true }).includes("inquiry-judgment-metric-scope"), false, judgment);
+  }
 });

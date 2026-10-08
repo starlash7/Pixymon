@@ -13,6 +13,7 @@ V2 is protocol-original-post only. Other lanes, quote posts, replies, images, an
 - Current publishable supply is deliberately narrow: significant DefiLlama protocol TVL moves only. CoinGecko and mempool.space snapshots, RSS, and CryptoCompare remain discovery-only.
 - Default runtime stays `POST_PIPELINE_VERSION=v1` until the operator explicitly selects V2.
 - Since `character-writer-v5` the writer's system prompt is built from `character.ts` and the SOUL/ENEMIES/RITUALS canon (`src/services/editorial-v2/voice.ts`). The validator rejects formal 합쇼체 (`formal-register`) and TVL flow/capital-flight readings in both the draft and the generated inquiry judgment. Earlier-epoch drafts are not publishable or countable toward R2.
+- Since `thought-writer-v6` each action is rendered as a `thought` (primary, numbers/time optional but grounded) or a `data` post (about 1 in 4, full numeric/source-time contract). The choice is deterministic per action id, captured in decision contexts, stored on the draft and used by review/publish re-validation.
 - The September 21 shadow smoke reconfirmed the Anthropic credit blocker on the current inquiry-first path. Sensing selected a real protocol candidate, but the first inquiry call ended as `no-post` (`inquiry/inquiry-model-empty`), without a draft or publication. Real-context comparisons and human quality results remain pending; restore model access before collecting more samples.
 
 ## September 21 shadow smoke checkpoint

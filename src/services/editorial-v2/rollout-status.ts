@@ -8,8 +8,7 @@ import { EDITORIAL_COLLECTION_EPOCH_V2 } from "./contracts.js";
 import type { VerifiedEditorialR1BoundaryV2 } from "./r1-promotion.js";
 import type { EditorialMetricTypeV2, EditorialMetricV2 } from "./telemetry.js";
 import {
-  formatEvidenceSourceTimeV2,
-  inferMetricDirectionV2,
+  editorialDraftValidationInputV2,
   validateEditorialDraftV2,
 } from "./validator.js";
 
@@ -633,23 +632,14 @@ export function buildEditorialRolloutStatusV2(
       ? state.draft.generatedPayload?.usedFactIds
       : state.draft.factIds;
     if (!usedFactIds) return true;
-    return !validateEditorialDraftV2({
+    return !validateEditorialDraftV2(editorialDraftValidationInputV2({
       text: state.publishText,
       subject: state.draft.subject,
-      displayValue: fact.metric.raw,
+      fact,
       factIds: state.draft.factIds,
       usedFactIds,
-      allowedNumericValues: [fact.metric.period, "24시간", "72시간"],
-      allowedNamedTokens: [
-        ...fact.metric.name.split(/[^a-zA-Z0-9]+/).filter(Boolean).map((token) => token.toUpperCase()),
-        fact.metric.unit,
-      ],
-      sourceTimeToken: formatEvidenceSourceTimeV2(fact.source.observedAt),
-      requireJudgment: true,
-      metricName: fact.metric.name,
-      metricDirection: inferMetricDirectionV2(fact.metric.name, fact.metric.raw, fact.metric.value),
-      forbidFutureRecheck: true,
-    }).ok;
+      rendering: state.draft.rendering,
+    })).ok;
   }).length;
 
   const draftedMetrics = new Set(

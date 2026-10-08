@@ -7,8 +7,7 @@ import type { EditorialFactSnapshotV2 } from "./contracts.js";
 import { EDITORIAL_COLLECTION_EPOCH_V2 } from "./contracts.js";
 import { appendEditorialMetricV2, buildEditorialMetricV2 } from "./telemetry.js";
 import {
-  formatEvidenceSourceTimeV2,
-  inferMetricDirectionV2,
+  editorialDraftValidationInputV2,
   validateEditorialDraftV2,
 } from "./validator.js";
 
@@ -87,27 +86,14 @@ export async function publishEditorialDraftV2(input: {
 
   const fact = preparation.facts[0];
   if (!fact) return blocked("evidence-fact-missing");
-  const validation = validateEditorialDraftV2({
+  const validation = validateEditorialDraftV2(editorialDraftValidationInputV2({
     text: preparation.publishText,
     subject: state.draft.subject,
-    displayValue: fact.metric.raw,
+    fact,
     factIds: state.draft.factIds,
     usedFactIds: state.draft.generatedPayload.usedFactIds,
-    allowedNumericValues: [fact.metric.period, "24시간", "72시간"],
-    allowedNamedTokens: [
-      ...fact.metric.name.split(/[^a-zA-Z0-9]+/).filter(Boolean).map((token) => token.toUpperCase()),
-      fact.metric.unit,
-    ],
-    sourceTimeToken: formatEvidenceSourceTimeV2(fact.source.observedAt),
-    requireJudgment: true,
-    metricName: fact.metric.name,
-    metricDirection: inferMetricDirectionV2(
-      fact.metric.name,
-      fact.metric.raw,
-      fact.metric.value
-    ),
-    forbidFutureRecheck: true,
-  });
+    rendering: state.draft.rendering,
+  }));
   if (!validation.ok) return blocked(`publish-contract:${validation.reasons.join(",")}`);
 
   let evidenceHealth: EditorialEvidenceRevalidationV2;
