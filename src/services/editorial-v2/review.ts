@@ -65,6 +65,8 @@ export function recordEditorialReviewV2(input: {
       usedFactIds: state.draft.factIds,
       rendering: state.draft.rendering,
       scopeReview: state.draft.scopeReview,
+      extraFacts: state.draft.facts.slice(1),
+      format: state.draft.format,
     }));
     if (!validation.ok) throw new Error(`edited draft failed contract: ${validation.reasons.join(",")}`);
     input.store.edit(input.draftId, {

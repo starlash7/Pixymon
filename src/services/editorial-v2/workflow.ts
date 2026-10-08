@@ -32,7 +32,8 @@ import {
   type EditorialSensingResultV2,
 } from "./provider-adapters.js";
 import { appendEditorialMetricV2, buildEditorialMetricV2 } from "./telemetry.js";
-import { writeEditorialDraftV2, type EditorialWriterModelV2 } from "./writer.js";
+import { writeEditorialDraftV2, writeEditorialEvolutionV2, type EditorialWriterModelV2 } from "./writer.js";
+import { buildEditorialEvolutionPlanV2, selectEditorialEvolutionV2 } from "./evolution.js";
 import { applyEditorialInquiryV2, reasonEditorialInquiryV2 } from "./inquiry.js";
 import { selectJevMemoryV2, JEV_MEMORY_EPOCH_V2, JEV_MEMORY_CANDIDATE_LIMIT_V2,
   type JevMemoryOptionsV2, type JevMemorySelectionV2, type JevMemoryCandidateV2 } from "./jev-memory.js";
@@ -58,6 +59,8 @@ export interface CollectEditorialDraftInputV2 {
   jevMemory?: JevMemoryOptionsV2;
   /** Semantic scope reviewer for the inquiry judgment and the draft; fails closed when unavailable. */
   scopeCritic?: EditorialWriterModelV2;
+  /** When nothing new is eligible, reflect on closed past judgments instead of staying silent. */
+  memoryReflection?: boolean;
 }
 
 export interface CheckEditorialFollowUpsInputV2 {
@@ -804,6 +807,10 @@ export async function collectEditorialDraftV2(
       reason: planning.reason,
       details: { candidateCount: planning.candidateCount, blockReasons: [...planning.blockReasons] },
     }));
+    if (input.memoryReflection && !input.jevMemory) {
+      return reflectOnMemoryV2(input, { nowIso, trackingMode, collectionEpoch, runId, actionId, metricContext,
+        fallback: { stage: planning.stage, reason: planning.reason } });
+    }
     return { status: "no-post", stage: planning.stage, reason: planning.reason, runId, actionId };
   }
 
@@ -927,6 +934,75 @@ export async function collectEditorialDraftV2(
     stage: "contract",
     outcome: "drafted",
     details: { attempts: written.attempts, draftId: draft.id, rendering: draft.rendering ?? "data",
+      scopeReviewModel: written.scopeReview?.modelId ?? null, fallbackUsed: false },
+  }));
+  return { status: "drafted", draftId: draft.id, draft: draft.draft, runId, actionId };
+}
+
+/**
+ * Nothing new was eligible. Read the ledger again (this run may have just closed a 72h check) and,
+ * if enough judgments have closed, write a reflection on them. Otherwise keep the original no-post.
+ */
+async function reflectOnMemoryV2(
+  input: CollectEditorialDraftInputV2,
+  context: {
+    nowIso: string; trackingMode: "live" | "shadow"; collectionEpoch: string; runId: string; actionId: string;
+    metricContext: Parameters<typeof buildEditorialMetricV2>[0];
+    fallback: { stage: string; reason: string };
+  }
+): Promise<EditorialCollectResultV2> {
+  const { nowIso, trackingMode, runId, actionId, metricContext } = context;
+  const states = input.store.listDraftStates();
+  const selection = selectEditorialEvolutionV2(states, nowIso, trackingMode);
+  appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
+    type: "planning_decision", stage: "evolution", outcome: selection.status === "planned" ? "planned" : "no-post",
+    ...(selection.status === "blocked" ? { reason: selection.reason } : {}),
+    details: selection.status === "planned"
+      ? { recalledDraftIds: selection.records.map((record) => record.draftId), fallbackUsed: false }
+      : { fallbackUsed: false },
+  }));
+  if (selection.status === "blocked") {
+    return { status: "no-post", stage: context.fallback.stage, reason: context.fallback.reason, runId, actionId };
+  }
+  const lane = states.find((state) => state.draft.id === selection.records[0].draftId)?.draft.lane ?? "protocol";
+  const plan = buildEditorialEvolutionPlanV2(selection.records, nowIso, lane);
+  const written = await writeEditorialEvolutionV2({ model: input.writerModel, plan, records: selection.records,
+    scopeCritic: input.scopeCritic });
+  if (written.status === "blocked") {
+    appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
+      type: "generation_attempt", stage: written.stage, outcome: "no-post", reason: written.reason,
+      details: { format: "evolution", attempts: written.attempts, validationReasons: [...written.validationReasons], fallbackUsed: false },
+    }));
+    return { status: "no-post", stage: written.stage, reason: written.reason, runId, actionId };
+  }
+  const draft = input.store.createDraft({
+    id: actionId,
+    runId,
+    createdAt: nowIso,
+    trackingMode,
+    lane,
+    collectionEpoch: context.collectionEpoch,
+    rendering: plan.rendering,
+    scopeReview: written.scopeReview,
+    format: plan.format,
+    subject: plan.subject,
+    thesis: plan.thesis,
+    factIds: plan.factIds,
+    facts: selection.records.map((record) => record.fact),
+    verdict: plan.verdict,
+    falsifier: plan.falsifier,
+    followUpSchedule: plan.followUpAt,
+    voiceState: plan.voiceState,
+    draft: written.payload.draft,
+    generatedPayload: {
+      draft: written.payload.draft,
+      usedFactIds: [...written.payload.usedFactIds],
+      claims: written.payload.claims.map((claim) => ({ kind: claim.kind, text: claim.text, factIds: [...claim.factIds] })),
+    },
+  });
+  appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
+    type: "generation_attempt", stage: "contract", outcome: "drafted",
+    details: { format: "evolution", attempts: written.attempts, draftId: draft.id, rendering: "thought",
       scopeReviewModel: written.scopeReview?.modelId ?? null, fallbackUsed: false },
   }));
   return { status: "drafted", draftId: draft.id, draft: draft.draft, runId, actionId };

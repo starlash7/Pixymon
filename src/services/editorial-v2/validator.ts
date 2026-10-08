@@ -1,4 +1,4 @@
-import type { EditorialRenderingV2 } from "./contracts.js";
+import type { EditorialFormatV2, EditorialRenderingV2 } from "./contracts.js";
 import { editorialScopeTextDigestV2, type EditorialScopeReviewV2 } from "./scope-critic.js";
 
 const MALFORMED_KO_PATTERNS: Array<{ code: string; pattern: RegExp }> = [
@@ -47,6 +47,8 @@ export interface EditorialDraftValidationInputV2 {
   rendering?: EditorialRenderingV2;
   /** A semantic scope review passed for exactly this text, so the regex scope floor is not re-applied. */
   semanticScopeCleared?: boolean;
+  /** Memory reflections may be about any remembered subject; one anchor is enough. */
+  alternateSubjects?: readonly string[];
 }
 
 export interface EditorialDraftValidationV2 {
@@ -146,7 +148,8 @@ export function validateEditorialDraftV2(
   if (!/[가-힣]/u.test(text)) reasons.push("korean-missing");
   if (thought) {
     // A thought may say "Stargate" for "Stargate V2"; it still has to be about the selected subject.
-    if (!text.includes(subjectAnchorV2(input.subject))) reasons.push("subject-missing");
+    const anchors = [input.subject, ...(input.alternateSubjects ?? [])].map(subjectAnchorV2).filter(Boolean);
+    if (!anchors.some((anchor) => text.includes(anchor))) reasons.push("subject-missing");
   } else {
     if (!sentences[0]?.includes(input.subject)) reasons.push("subject-not-in-first-sentence");
     if (!sentences.slice(0, 2).join(" ").includes(input.displayValue)) {
@@ -228,35 +231,45 @@ export function subjectAnchorV2(subject: string): string {
   return String(subject || "").trim().split(/\s+/u)[0] || "";
 }
 
+export interface ValidationFactV2 {
+  subject?: string;
+  metric: { name: string; raw: string; value: number; period: string; unit: string };
+  source: { observedAt: string };
+}
+
 /** One contract for writer, review, publish and rollout re-validation of the same draft. */
 export function editorialDraftValidationInputV2(input: {
   text: string;
   subject: string;
-  fact: {
-    metric: { name: string; raw: string; value: number; period: string; unit: string };
-    source: { observedAt: string };
-  };
+  fact: ValidationFactV2;
   factIds: readonly string[];
   usedFactIds: readonly string[];
   rendering?: EditorialRenderingV2;
   scopeReview?: EditorialScopeReviewV2;
+  /** Remembered facts beyond the first, for `evolution` reflections over several past judgments. */
+  extraFacts?: readonly ValidationFactV2[];
+  format?: EditorialFormatV2;
 }): EditorialDraftValidationInputV2 {
   const { metric } = input.fact;
+  const extras = input.extraFacts ?? [];
+  const metricTokens = (fact: ValidationFactV2) => [
+    ...fact.metric.name.split(/[^a-zA-Z0-9]+/).filter(Boolean).map((token) => token.toUpperCase()),
+    fact.metric.unit,
+  ];
   return {
     text: input.text,
     subject: input.subject,
     displayValue: metric.raw,
     factIds: input.factIds,
     usedFactIds: input.usedFactIds,
-    allowedNumericValues: [metric.period, "24시간", "72시간"],
-    allowedNamedTokens: [
-      ...metric.name.split(/[^a-zA-Z0-9]+/).filter(Boolean).map((token) => token.toUpperCase()),
-      metric.unit,
-    ],
+    allowedNumericValues: [metric.period, "24시간", "72시간", ...extras.flatMap((fact) => [fact.metric.raw, fact.metric.period])],
+    allowedNamedTokens: [...metricTokens(input.fact), ...extras.flatMap((fact) => [...metricTokens(fact), fact.subject ?? ""])],
+    alternateSubjects: extras.map((fact) => fact.subject ?? "").filter(Boolean),
     sourceTimeToken: formatEvidenceSourceTimeV2(input.fact.source.observedAt),
     requireJudgment: true,
     metricName: metric.name,
-    metricDirection: inferMetricDirectionV2(metric.name, metric.raw, metric.value),
+    // A reflection spans several past moves; no single direction applies to its opening line.
+    metricDirection: input.format === "evolution" ? "snapshot" : inferMetricDirectionV2(metric.name, metric.raw, metric.value),
     forbidFutureRecheck: true,
     rendering: input.rendering ?? "data",
     semanticScopeCleared: input.scopeReview?.status === "pass" &&

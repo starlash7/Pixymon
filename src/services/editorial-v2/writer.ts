@@ -13,9 +13,15 @@ import {
   splitEditorialSentencesV2,
   subjectAnchorV2,
   validateEditorialDraftV2,
+  type ValidationFactV2,
 } from "./validator.js";
 import { buildEditorialWriterSystemV2 } from "./voice.js";
-import { reviewEditorialScopeV2, type EditorialScopeReviewV2 } from "./scope-critic.js";
+import {
+  reviewEditorialScopeV2,
+  type EditorialScopeCriticResultV2,
+  type EditorialScopeReviewV2,
+} from "./scope-critic.js";
+import { buildEditorialEvolutionPromptV2, type EditorialReflectionRecordV2 } from "./evolution.js";
 
 export type EditorialClaimKindV2 = "observation" | "judgment";
 
@@ -91,12 +97,15 @@ function parsePayload(text: string): EditorialWriterPayloadV2 | null {
 function validatePayload(
   payload: EditorialWriterPayloadV2,
   plan: EditorialPlanV2,
-  evidence: EvidenceCardV2
+  fact: ValidationFactV2,
+  extraFacts: readonly ValidationFactV2[] = []
 ): string[] {
   const validation = validateEditorialDraftV2(editorialDraftValidationInputV2({
     text: payload.draft,
     subject: plan.subject,
-    fact: evidence,
+    fact,
+    extraFacts,
+    format: plan.format,
     factIds: plan.factIds,
     usedFactIds: payload.usedFactIds,
     rendering: plan.rendering,
@@ -234,12 +243,13 @@ ${retryReasons.length > 0 ? `- 이전 실패 원인: ${retryReasons.join(", ")}\
 {"draft":"첫 문장. 둘째 문장.","usedFactIds":["${evidence.id}"],"claims":[{"kind":"observation","text":"첫 문장.","factIds":["${evidence.id}"]},{"kind":"judgment","text":"둘째 문장.","factIds":["${evidence.id}"]}]}`;
 }
 
-export async function writeEditorialDraftV2(input: {
+/** Generate → contract → semantic scope, with one feedback retry. Shared by fact posts and reflections. */
+async function writeWithContractV2(input: {
   model: EditorialWriterModelV2;
-  plan: EditorialPlanV2;
-  evidence: EvidenceCardV2;
-  /** Semantic scope check; when present it must pass, and it may clear a regex-only scope flag. */
+  buildPrompt: (retryReasons: readonly string[]) => string;
+  validate: (payload: EditorialWriterPayloadV2) => string[];
   scopeCritic?: EditorialWriterModelV2;
+  critique: (critic: EditorialWriterModelV2, text: string) => Promise<EditorialScopeCriticResultV2>;
 }): Promise<EditorialWritingResultV2> {
   let retryReasons: string[] = [];
   let scopeFeedback = "";
@@ -248,7 +258,7 @@ export async function writeEditorialDraftV2(input: {
     try {
       response = await input.model.generate({
         system: buildEditorialWriterSystemV2(),
-        prompt: buildEditorialPromptV2(input.plan, input.evidence, retryReasons) + scopeFeedback,
+        prompt: input.buildPrompt(retryReasons) + scopeFeedback,
         attempt,
       });
     } catch {
@@ -264,17 +274,17 @@ export async function writeEditorialDraftV2(input: {
       retryReasons = ["invalid-json-contract"];
       continue;
     }
-    retryReasons = validatePayload(payload, input.plan, input.evidence);
+    retryReasons = input.validate(payload);
     const regexScopeOnly = retryReasons.length === 1 && retryReasons[0] === "metric-semantic-scope";
     if (input.scopeCritic && (retryReasons.length === 0 || regexScopeOnly)) {
-      const critic = await reviewEditorialScopeV2({ model: input.scopeCritic, text: payload.draft, evidence: input.evidence });
+      const critic = await input.critique(input.scopeCritic, payload.draft);
       if (critic.status === "unavailable") {
         // Fail closed: an unchecked thought is not published on the regex floor alone.
         return { status: "blocked", stage: "scope", reason: critic.reason, attempts: attempt, validationReasons: [critic.reason] };
       }
       if (critic.status === "pass") return { status: "generated", payload, attempts: attempt, scopeReview: critic.review };
       retryReasons = ["semantic-scope"];
-      scopeFeedback = `\n지난 초안의 "${critic.claim}"는 이 측정값으로 확인할 수 없는 해석이었다(${critic.problem}). 그 해석을 빼고, 모르는 건 모른다고 쓴다.`;
+      scopeFeedback = `\n지난 초안의 "${critic.claim}"는 근거로 확인할 수 없는 말이었다(${critic.problem}). 그 말을 빼고, 모르는 건 모른다고 쓴다.`;
       continue;
     }
     if (retryReasons.length === 0) return { status: "generated", payload, attempts: attempt };
@@ -288,6 +298,39 @@ export async function writeEditorialDraftV2(input: {
     attempts: 2,
     validationReasons: retryReasons,
   };
+}
+
+export async function writeEditorialDraftV2(input: {
+  model: EditorialWriterModelV2;
+  plan: EditorialPlanV2;
+  evidence: EvidenceCardV2;
+  /** Semantic scope check; when present it must pass, and it may clear a regex-only scope flag. */
+  scopeCritic?: EditorialWriterModelV2;
+}): Promise<EditorialWritingResultV2> {
+  return writeWithContractV2({
+    model: input.model,
+    scopeCritic: input.scopeCritic,
+    buildPrompt: (retryReasons) => buildEditorialPromptV2(input.plan, input.evidence, retryReasons),
+    validate: (payload) => validatePayload(payload, input.plan, input.evidence),
+    critique: (critic, text) => reviewEditorialScopeV2({ model: critic, text, evidence: input.evidence }),
+  });
+}
+
+/** A reflection over closed past judgments; every remembered fact is a grounding source. */
+export async function writeEditorialEvolutionV2(input: {
+  model: EditorialWriterModelV2;
+  plan: EditorialPlanV2;
+  records: readonly EditorialReflectionRecordV2[];
+  scopeCritic?: EditorialWriterModelV2;
+}): Promise<EditorialWritingResultV2> {
+  const [first, ...rest] = input.records.map((record) => record.fact);
+  return writeWithContractV2({
+    model: input.model,
+    scopeCritic: input.scopeCritic,
+    buildPrompt: (retryReasons) => buildEditorialEvolutionPromptV2(input.plan, input.records, retryReasons),
+    validate: (payload) => validatePayload(payload, input.plan, first, rest),
+    critique: (critic, text) => reviewEditorialScopeV2({ model: critic, text, records: input.records }),
+  });
 }
 
 export function createAnthropicEditorialWriterV2(
