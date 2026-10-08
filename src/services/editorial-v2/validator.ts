@@ -1,4 +1,5 @@
 import type { EditorialRenderingV2 } from "./contracts.js";
+import { editorialScopeTextDigestV2, type EditorialScopeReviewV2 } from "./scope-critic.js";
 
 const MALFORMED_KO_PATTERNS: Array<{ code: string; pattern: RegExp }> = [
   { code: "malformed-nuun", pattern: /(?:안|못)\s*눕은/u },
@@ -44,6 +45,8 @@ export interface EditorialDraftValidationInputV2 {
   maxChars?: number;
   /** `thought` drops the mandatory number/source-time/judgment-word placement; every stated fact stays grounded. */
   rendering?: EditorialRenderingV2;
+  /** A semantic scope review passed for exactly this text, so the regex scope floor is not re-applied. */
+  semanticScopeCleared?: boolean;
 }
 
 export interface EditorialDraftValidationV2 {
@@ -159,7 +162,7 @@ export function validateEditorialDraftV2(
   if (input.forbidFutureRecheck && FUTURE_RECHECK_PROMISE.test(text)) {
     reasons.push("future-recheck-promise");
   }
-  if (/tvl/i.test(input.metricName || "") && hasUnsupportedTvlClaimV2(text)) {
+  if (!input.semanticScopeCleared && /tvl/i.test(input.metricName || "") && hasUnsupportedTvlClaimV2(text)) {
     reasons.push("metric-semantic-scope");
   }
   if (FORMAL_REGISTER.test(text)) reasons.push("formal-register");
@@ -236,6 +239,7 @@ export function editorialDraftValidationInputV2(input: {
   factIds: readonly string[];
   usedFactIds: readonly string[];
   rendering?: EditorialRenderingV2;
+  scopeReview?: EditorialScopeReviewV2;
 }): EditorialDraftValidationInputV2 {
   const { metric } = input.fact;
   return {
@@ -255,5 +259,7 @@ export function editorialDraftValidationInputV2(input: {
     metricDirection: inferMetricDirectionV2(metric.name, metric.raw, metric.value),
     forbidFutureRecheck: true,
     rendering: input.rendering ?? "data",
+    semanticScopeCleared: input.scopeReview?.status === "pass" &&
+      input.scopeReview.textSha256 === editorialScopeTextDigestV2(input.text),
   };
 }

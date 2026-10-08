@@ -7,6 +7,8 @@ import type { ActionMode } from "../../types/runtime.js";
 import type { EditorialWriterModelV2 } from "./writer.js";
 
 export const GEMINI_DEFAULT_MODEL_V2 = "gemini-3.5-flash";
+/** A different model than the writer: the free quota is per model, and an independent reader is the point. */
+export const GEMINI_DEFAULT_CRITIC_MODEL_V2 = "gemini-3.6-flash";
 // Google's free tier allows 20 generate requests per model per day (observed quota 2026-10-08).
 export const GEMINI_DAILY_REQUEST_LIMIT_V2 = 20;
 export const GEMINI_MAX_ATTEMPTS_V2 = 3;
@@ -36,9 +38,16 @@ export function resolveEditorialModelProviderV2(input: {
   return "gemini";
 }
 
-export function resolveGeminiModelIdV2(env: NodeJS.ProcessEnv = process.env): string {
-  const model = String(env.GEMINI_EDITORIAL_MODEL || GEMINI_DEFAULT_MODEL_V2).trim();
-  if (!/^gemini-[a-z0-9][a-z0-9.-]*$/u.test(model)) throw new Error("GEMINI_EDITORIAL_MODEL is invalid");
+export function resolveGeminiModelIdV2(
+  env: NodeJS.ProcessEnv = process.env,
+  role: "writer" | "critic" = "writer"
+): string {
+  const model = String(role === "critic"
+    ? env.GEMINI_CRITIC_MODEL || GEMINI_DEFAULT_CRITIC_MODEL_V2
+    : env.GEMINI_EDITORIAL_MODEL || GEMINI_DEFAULT_MODEL_V2).trim();
+  if (!/^gemini-[a-z0-9][a-z0-9.-]*$/u.test(model)) {
+    throw new Error(`${role === "critic" ? "GEMINI_CRITIC_MODEL" : "GEMINI_EDITORIAL_MODEL"} is invalid`);
+  }
   return model;
 }
 
@@ -167,7 +176,7 @@ function appendLedger(logPath: string, event: Record<string, unknown>): void {
 export function createGeminiEditorialModelV2(input: {
   apiKey?: string;
   model?: string;
-  purpose: "write" | "inquire";
+  purpose: "write" | "inquire" | "critique";
   ledgerDir: string;
   fetchImpl?: typeof fetch;
   now?: () => Date;

@@ -71,6 +71,7 @@ export async function replayEditorialDecisionV2(input: {
   model: EditorialWriterModelV2;
   inquiryModel?: EditorialWriterModelV2;
   variant: "captured-plan" | "current-plan" | "latest-memory";
+  scopeCritic?: EditorialWriterModelV2;
 }) {
   const context = structuredClone(input.context);
   const planning = input.variant === "captured-plan"
@@ -105,10 +106,12 @@ export async function replayEditorialDecisionV2(input: {
   }
   if (input.variant !== "captured-plan" || context.writerVersion !== "hypothesis-writer-v2") {
     if (!input.inquiryModel) return { status: "no-post" as const, stage: "inquiry", reason: "inquiry-model-required" };
-    const reasoned = await reasonEditorialInquiryV2({ model: input.inquiryModel, plan: planning.plan, evidence: planning.evidence });
+    const reasoned = await reasonEditorialInquiryV2({ model: input.inquiryModel, plan: planning.plan, evidence: planning.evidence,
+      scopeCritic: input.scopeCritic });
     if (reasoned.status === "blocked") return { status: "no-post" as const, stage: "inquiry", reason: reasoned.reason };
     planning.plan = applyEditorialInquiryV2(planning.plan, planning.evidence, reasoned.inquiry);
   }
-  const writing = await writeEditorialDraftV2({ model: input.model, plan: planning.plan, evidence: planning.evidence });
+  const writing = await writeEditorialDraftV2({ model: input.model, plan: planning.plan, evidence: planning.evidence,
+    scopeCritic: input.scopeCritic });
   return { planning, writing };
 }

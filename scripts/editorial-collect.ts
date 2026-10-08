@@ -35,11 +35,13 @@ async function main(): Promise<void> {
     const apiKey = String(process.env.GEMINI_API_KEY || "").trim();
     if (!apiKey) throw new Error("GEMINI_API_KEY is required for EDITORIAL_MODEL_PROVIDER=gemini");
     const model = resolveGeminiModelIdV2();
+    const criticModel = resolveGeminiModelIdV2(process.env, "critic");
     const ledgerDir = path.join(paths.dataDir, "editorial-gemini");
-    console.log(`[EDITORIAL] provider=gemini model=${model} (shadow-only free-tier experiment)`);
+    console.log(`[EDITORIAL] provider=gemini model=${model} critic=${criticModel} (shadow-only free-tier experiment)`);
     models = {
       writerModel: createGeminiEditorialModelV2({ apiKey, model, purpose: "write", ledgerDir }),
       inquiryModel: createGeminiEditorialModelV2({ apiKey, model, purpose: "inquire", ledgerDir }),
+      scopeCritic: createGeminiEditorialModelV2({ apiKey, model: criticModel, purpose: "critique", ledgerDir }),
     };
   } else {
     if (!String(process.env.ANTHROPIC_API_KEY || "").trim()) throw new Error("ANTHROPIC_API_KEY is required");
@@ -47,6 +49,7 @@ async function main(): Promise<void> {
     models = {
       writerModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone),
       inquiryModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "inquire"),
+      scopeCritic: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "critique"),
     };
   }
   const store = new EditorialEventStoreV2({ eventLogPath: paths.eventLogPath });

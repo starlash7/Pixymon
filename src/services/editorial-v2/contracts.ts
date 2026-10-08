@@ -170,6 +170,8 @@ export interface EditorialDraftRecordV2 {
   collectionEpoch?: string;
   /** Absent on drafts written before thought rendering; those were validated as `data`. */
   rendering?: EditorialRenderingV2;
+  /** Semantic scope review that passed for the generated text (sha256 of normalized text). */
+  scopeReview?: { status: "pass"; modelId: string; textSha256: string };
   format: EditorialFormatV2;
   subject: string;
   thesis: string;
