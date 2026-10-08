@@ -167,9 +167,11 @@ export function buildEditorialPromptV2(
   const renderingRules = thought
     ? [
         "- 이 글은 픽시의 생각 글이다. 숫자 보고가 아니라 이 장면을 보고 픽시가 무엇을 느끼고 의심하고 궁금해하는지, 무엇을 아직 승인하지 않는지를 쓴다",
+        "- 흐름: 픽시 눈에 보인 장면 하나 → 그 장면에서 생긴 의심이나 궁금증 → 픽시가 믿거나 기억하는 것에 비춘 한마디. 문장을 이 순서의 틀로 복사하지 말고 흐름만 따른다",
         "- 2~3문장, 공백 포함 40~190자",
         `- "${subjectAnchorV2(plan.subject)}"를 한 번 넣는다(전체 이름 "${plan.subject}"도 된다)`,
-        `- 움직임은 말로 그린다(방향: ${direction === "increase" ? "커짐" : direction === "decrease" ? "작아짐" : "현재 수준"}). 숫자와 시각은 그게 없으면 장면이 서지 않을 때만 쓰고, 쓰면 rawValue와 publicSourceTime을 그대로 쓴다. 그 외 숫자는 쓰지 않는다`,
+        `- 기본은 숫자와 시각 없이 쓴다. 움직임은 말로 그린다(방향: ${direction === "increase" ? "커짐" : direction === "decrease" ? "작아짐" : "현재 수준"}). 숫자가 없으면 장면이 서지 않을 때만 rawValue나 publicSourceTime을 그대로 쓰고, 그 외 숫자는 쓰지 않는다`,
+        "- 이번 탐구의 질문은 픽시의 궁금증으로 바꿔 말한다. 검증 방법, 기준점, 지표 이름, 추적 일정은 글에 쓰지 않는다",
       ].join("\n")
     : [
         "- 정확히 2~3문장, 공백 포함 90~190자",

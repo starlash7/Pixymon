@@ -60,6 +60,8 @@ test("thought copy keeps every stated fact grounded", () => {
   assert.ok(check("어떤 브릿지가 하루 만에 홀쭉해졌음. 픽시는 아직 모르겠음, 이게 뭔지.", "thought").reasons.includes("subject-missing"));
   assert.ok(check("Stargate가 하루 만에 확 불어났는데 가격은 멀쩡함. 픽시는 아직 모르겠음, 이게 뭔지.", "thought").reasons.includes("metric-direction-conflict"));
   assert.ok(check("Stargate가 홀쭉해졌는데 자금 유출이 분명해 보임. 픽시는 이 장면을 오래 기억할 듯.", "thought").reasons.includes("metric-semantic-scope"));
+  // Observed Gemini thought (2026-10-08): an inflow claim without the word 유입.
+  assert.ok(check("Stargate 규모가 갑자기 쪼그라드는 흐름이 찍힘. 가격 착시보다 자금이 직접 빠져나가면서 덩치가 준 모습임. 며칠 더 두고 소화해볼 생각임.", "thought").reasons.includes("metric-semantic-scope"));
   assert.ok(check("Stargate가 홀쭉해졌습니다. 픽시는 아직 판단을 보류합니다.", "thought").reasons.includes("formal-register"));
   assert.ok(check("Stargate가 홀쭉해졌음. 다음 데이터 오면 다시 확인하겠다.", "thought").reasons.includes("future-recheck-promise"));
 });
