@@ -1,5 +1,5 @@
 export const EDITORIAL_V2_SCHEMA_VERSION = 2 as const;
-export const EDITORIAL_COLLECTION_EPOCH_V2 = "inquiry-writer-v3" as const;
+export const EDITORIAL_COLLECTION_EPOCH_V2 = "character-writer-v5" as const;
 
 export type EditorialCheckV2 = "pre-move-level" | "current-level" | "observation-only" | "recorded-checkpoint";
 

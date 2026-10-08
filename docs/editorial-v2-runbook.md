@@ -12,6 +12,7 @@ V2 is protocol-original-post only. Other lanes, quote posts, replies, images, an
 - Not yet earned: the 100-case real replay gate, two-reader blind evaluation, R1/R2 elapsed-time gates, or any automatic live promotion.
 - Current publishable supply is deliberately narrow: significant DefiLlama protocol TVL moves only. CoinGecko and mempool.space snapshots, RSS, and CryptoCompare remain discovery-only.
 - Default runtime stays `POST_PIPELINE_VERSION=v1` until the operator explicitly selects V2.
+- Since `character-writer-v5` the writer's system prompt is built from `character.ts` and the SOUL/ENEMIES/RITUALS canon (`src/services/editorial-v2/voice.ts`). The validator rejects formal 합쇼체 (`formal-register`) and TVL flow/capital-flight readings in both the draft and the generated inquiry judgment. Earlier-epoch drafts are not publishable or countable toward R2.
 - The September 21 shadow smoke reconfirmed the Anthropic credit blocker on the current inquiry-first path. Sensing selected a real protocol candidate, but the first inquiry call ended as `no-post` (`inquiry/inquiry-model-empty`), without a draft or publication. Real-context comparisons and human quality results remain pending; restore model access before collecting more samples.
 
 ## September 21 shadow smoke checkpoint
@@ -105,7 +106,7 @@ npm run eval:corpus -- --input path/to/generic-corpus-array.json
 
 ## R2 real replay and blind evaluation
 
-Export the first 100 raw generated drafts in the current `inquiry-writer-v3` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs. Rows retain `trackingMode` so real shadow observations cannot masquerade as live experience. The examples below use the normal ledger; for shadow evaluation, consistently select `EDITORIAL_TRACKING_MODE=shadow` and the corresponding shadow event log and artifact paths:
+Export the first 100 raw generated drafts in the current `character-writer-v5` collection epoch from the append-only ledger without runtime IDs, reviewers, provider URLs, or publication IDs. Rows retain `trackingMode` so real shadow observations cannot masquerade as live experience. The examples below use the normal ledger; for shadow evaluation, consistently select `EDITORIAL_TRACKING_MODE=shadow` and the corresponding shadow event log and artifact paths:
 
 ```bash
 npm run editorial:replay-export -- --limit 100 --output data/editorial-v2/replay-001.json
@@ -250,7 +251,7 @@ Every collection captures a private create-only `decision-contexts/<action hash>
 npm run editorial:compare -- --context <decision-context.json> --output <new-comparison.json>
 ```
 
-This compares the captured plan with the current planning/inquiry path using the same stored evidence/time/seed/memory and configured model. Old `hypothesis-writer-v2` contexts retain their pre-inquiry baseline; the current variant adds an inquiry call. New `inquiry-writer-v3` contexts run inquiry on both sides, so neither side recreates an earlier sampled inquiry response. Each side can stop before writing. It does not call providers or X or modify either ledger. This is not a recreation of an old writer/model or proof of LLM determinism. Start with 12 actual collected contexts. Human scores, no-edit acceptance and reader preference remain pending until independent evaluation; the comparison command does not earn R2 by itself.
+This compares the captured plan with the current planning/inquiry path using the same stored evidence/time/seed/memory and configured model. Old `hypothesis-writer-v2` contexts retain their pre-inquiry baseline; the current variant adds an inquiry call. `inquiry-writer-v3` and later contexts run inquiry on both sides, so neither side recreates an earlier sampled inquiry response. Each side can stop before writing. It does not call providers or X or modify either ledger. This is not a recreation of an old writer/model or proof of LLM determinism. Start with 12 actual collected contexts. Human scores, no-edit acceptance and reader preference remain pending until independent evaluation; the comparison command does not earn R2 by itself.
 
 ### Free-tier Gemini shadow writer
 

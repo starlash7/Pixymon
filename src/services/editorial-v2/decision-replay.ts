@@ -15,7 +15,7 @@ export interface EditorialDecisionContextV2 {
   trackingMode: "live" | "shadow";
   revision: { commit: string | null; dirty: boolean | null };
   modelId: string;
-  writerVersion: "hypothesis-writer-v2" | "inquiry-writer-v3" | typeof JEV_MEMORY_EPOCH_V2;
+  writerVersion: "hypothesis-writer-v2" | "inquiry-writer-v3" | "character-writer-v5" | typeof JEV_MEMORY_EPOCH_V2;
   inquiryModelId?: string;
   planningInput: PlanEditorialInputV2;
   memories: Record<string, EditorialMemoryContextV2>;

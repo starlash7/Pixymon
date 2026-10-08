@@ -232,3 +232,60 @@ for (const promise of [
     assert.ok(result.reasons.includes("future-recheck-promise"));
   });
 }
+
+test("validator rejects formal news-desk register but keeps plain 아니다", () => {
+  const formal = validate(
+    "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었습니다. 이 한 번의 관측만으로 더 큰 서사까지 승인하지는 않는 판단입니다."
+  );
+  assert.ok(formal.reasons.includes("formal-register"), formal.reasons.join(","));
+  const plain = validate(
+    "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 회복 서사가 아니다, 아직은 숫자 하나라 승인 보류다."
+  );
+  assert.equal(plain.reasons.includes("formal-register"), false, plain.reasons.join(","));
+});
+
+test("validator rejects TVL decomposition presented as an asset outflow", () => {
+  // First real Gemini shadow draft (2026-10-08): formal register plus an outflow reading of a TVL move.
+  const sample = validateEditorialDraftV2({
+    text: "10월 8일 06:53 UTC 기준 Stargate V2의 TVL이 24시간 동안 -33.54% 급감했습니다. 가격 변동 영향은 미미하여 실제 자산 수량이 유출된 것으로 관측됩니다. 이 급격한 이탈이 일시적 노이즈에 그치지 않고 지속적인 구조적 변화로 이어질지 추적하고자 합니다.",
+    subject: "Stargate V2",
+    displayValue: "-33.54%",
+    factIds: ["fact-1"],
+    usedFactIds: ["fact-1"],
+    allowedNumericValues: ["24시간", "72시간"],
+    allowedNamedTokens: ["TVL"],
+    sourceTimeToken: "10월 8일 06:53 UTC",
+    requireJudgment: true,
+    metricName: "tvl-change-24h",
+    metricDirection: "decrease",
+    forbidFutureRecheck: true,
+  });
+  for (const reason of ["formal-register", "metric-semantic-scope", "final-judgment-missing"]) {
+    assert.ok(sample.reasons.includes(reason), `${reason} missing: ${sample.reasons.join(",")}`);
+  }
+  const caveated = validate(
+    "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이게 유입인지 가격 효과인지는 이 숫자만으로 모른다, 그래서 회복 서사 승인은 보류다."
+  );
+  assert.equal(caveated.reasons.includes("metric-semantic-scope"), false, caveated.reasons.join(","));
+});
+
+test("digits inside a versioned protocol name are not unsupported numbers", () => {
+  const input = {
+    subject: "Stargate V2", displayValue: "-33.54%", factIds: ["fact-1"], usedFactIds: ["fact-1"],
+    allowedNumericValues: ["24시간", "72시간"], allowedNamedTokens: ["TVL"], sourceTimeToken: "10월 8일 06:53 UTC",
+    requireJudgment: true, metricName: "tvl-change-24h", metricDirection: "decrease" as const, forbidFutureRecheck: true,
+  };
+  const named = validateEditorialDraftV2({ ...input,
+    text: "Stargate V2의 TVL이 10월 8일 06:53 UTC 기준 24시간 동안 -33.54% 줄었다. 숫자 하나로 이탈 서사를 승인하긴 이르다, 일단 판단 보류." });
+  assert.equal(named.reasons.includes("unsupported-number"), false, named.reasons.join(","));
+  const fabricated = validateEditorialDraftV2({ ...input,
+    text: "Stargate V2의 TVL이 10월 8일 06:53 UTC 기준 24시간 동안 -33.54% 줄었다. 이틀 전엔 12% 빠졌으니 이탈 서사 승인은 보류다." });
+  assert.ok(fabricated.reasons.includes("unsupported-number"), fabricated.reasons.join(","));
+});
+
+test("validator rejects a hedged capital-flight reading of a TVL move", () => {
+  const result = validate(
+    "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 수량 위주로 늘어난 걸 보면 실제 자금 이탈이 멈췄을 가능성이 높음. 회복 서사 승인은 보류."
+  );
+  assert.ok(result.reasons.includes("metric-semantic-scope"), result.reasons.join(","));
+});

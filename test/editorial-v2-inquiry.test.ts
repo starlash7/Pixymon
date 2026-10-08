@@ -123,3 +123,13 @@ test("explicit no-public-value and missing model output stop before writing with
   assert.equal(malformed.status, "blocked");
   assert.equal(malformed.attempts, 2);
 });
+
+test("a generated TVL judgment cannot assert an outflow the writer would then publish", () => {
+  const inquiry = { ...inquiryFixture({ factId: card.id, levelTest: true }),
+    judgment: "가격 중립 분석상 실제 수량 유출이 확인됐다." };
+  assert.ok(validateEditorialInquiryV2(inquiry, { ...context, tvlMetric: true }).includes("inquiry-judgment-metric-scope"));
+  // Stored ledgers are re-read without the generation-time flag and stay valid.
+  assert.equal(validateEditorialInquiryV2(inquiry, context).includes("inquiry-judgment-metric-scope"), false);
+  const caveated = { ...inquiry, judgment: "숫자는 크지만 유출인지 가격 효과인지는 아직 모른다." };
+  assert.equal(validateEditorialInquiryV2(caveated, { ...context, tvlMetric: true }).includes("inquiry-judgment-metric-scope"), false);
+});
