@@ -7,7 +7,8 @@ import type { ActionMode } from "../../types/runtime.js";
 import type { EditorialWriterModelV2 } from "./writer.js";
 
 export const GEMINI_DEFAULT_MODEL_V2 = "gemini-3.5-flash";
-export const GEMINI_DAILY_REQUEST_LIMIT_V2 = 60;
+// Google's free tier allows 20 generate requests per model per day (observed quota 2026-10-08).
+export const GEMINI_DAILY_REQUEST_LIMIT_V2 = 20;
 export const GEMINI_MAX_ATTEMPTS_V2 = 3;
 const GEMINI_ENDPOINT_V2 = "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_TIMEOUT_MS_V2 = 60_000;
@@ -113,7 +114,10 @@ async function requestOnce(input: {
       const status = response.status;
       // Free-tier limits are per minute; a short exponential backoff just burns the remaining attempts.
       if (status === 429) {
-        throw new GeminiRequestError("gemini-rate-limited", true, parseRetryDelayMs(body) ?? GEMINI_MAX_RETRY_DELAY_MS_V2);
+        const retryDelayMs = parseRetryDelayMs(body) ?? GEMINI_MAX_RETRY_DELAY_MS_V2;
+        // A delay of hours means the daily quota is spent; retrying only burns time.
+        if (retryDelayMs > GEMINI_MAX_RETRY_DELAY_MS_V2) throw new GeminiRequestError("gemini-daily-quota", false);
+        throw new GeminiRequestError("gemini-rate-limited", true, retryDelayMs);
       }
       if (status === 401 || status === 403) throw new GeminiRequestError("gemini-auth-failed", false);
       throw new GeminiRequestError(`gemini-http-${status}`, status >= 500);
@@ -126,8 +130,8 @@ async function requestOnce(input: {
 }
 
 /**
- * Every attempt reserves a slot in a durable daily ledger before dispatch, so crashes and
- * timeouts still count. Corrupt accounting fails closed instead of resetting the allowance.
+ * Every attempt reserves a slot per model in a durable daily ledger before dispatch, so crashes
+ * and timeouts still count. Corrupt accounting fails closed instead of resetting the allowance.
  */
 function reserveAttempt(ledgerDir: string, entry: Record<string, unknown>, now: Date): string {
   const day = now.toISOString().slice(0, 10);
@@ -143,7 +147,7 @@ function reserveAttempt(ledgerDir: string, entry: Record<string, unknown>, now: 
         typeof event.requestId !== "string" || String(event.timestamp).slice(0, 10) !== day)) {
       throw new GeminiRequestError("gemini-ledger-invalid", false);
     }
-    if (events.filter((event) => event.status === "reserved").length >= GEMINI_DAILY_REQUEST_LIMIT_V2) {
+    if (events.filter((event) => event.status === "reserved" && event.model === entry.model).length >= GEMINI_DAILY_REQUEST_LIMIT_V2) {
       throw new GeminiRequestError("gemini-daily-request-limit", false);
     }
     const requestId = randomUUID();

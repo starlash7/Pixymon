@@ -262,7 +262,7 @@ EDITORIAL_MODEL_PROVIDER=gemini npm run editorial:shadow
 ```
 
 - Use a Google AI Studio key on a project with no billing account so the free tier cannot incur charges.
-- Each HTTP attempt reserves a slot in `editorial-gemini/<UTC day>.ndjson` before dispatch (60/day). Corrupt accounting fails closed. 429 honors the server `retryDelay`, 5xx/timeouts back off; at most three attempts per call. Auth failures and truncated output (`finishReason` other than `STOP`) are not retried. Failures are logged as `[GEMINI] {...}` with an explicit reason instead of an empty result.
+- The free tier allows 20 generate requests per model per day (Pacific reset). Each HTTP attempt reserves a slot per model in `editorial-gemini/<UTC day>.ndjson` before dispatch (20/model/day). Corrupt accounting fails closed. A 429 whose `retryDelay` exceeds 30s is treated as a spent daily quota and not retried; other 429s, 5xx and timeouts back off, at most three attempts per call. A real collection uses about 2–6 requests, so plan on a few samples per model per day; another model id (for example `gemini-3.7-flash`) has its own quota. Auth failures and truncated output (`finishReason` other than `STOP`) are not retried. Failures are logged as `[GEMINI] {...}` with an explicit reason instead of an empty result.
 - Decision contexts record the Gemini model id. Gemini drafts are evidence about Gemini only; they do not validate the Anthropic writer, earn R2, or authorize live use.
 
 ## Inquiry before writing

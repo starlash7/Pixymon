@@ -128,12 +128,31 @@ test("gemini enforces the durable daily allowance before dispatch", async (t) =>
   allowExternal(t);
   const dir = ledgerDir(t);
   const reserved = Array.from({ length: GEMINI_DAILY_REQUEST_LIMIT_V2 }, (_, index) => JSON.stringify({
-    kind: "pixymon-gemini-editorial", requestId: `r${index}`, timestamp: NOW.toISOString(), status: "reserved" }));
+    kind: "pixymon-gemini-editorial", model: GEMINI_DEFAULT_MODEL_V2, requestId: `r${index}`, timestamp: NOW.toISOString(), status: "reserved" }));
   fs.writeFileSync(path.join(dir, DAY_LOG), `${reserved.join("\n")}\n`);
   let calls = 0;
   const fetchImpl = (async () => { calls += 1; return jsonResponse(200, okBody("{}")); }) as typeof fetch;
   await assert.rejects(model(dir, fetchImpl).generate({ system: "s", prompt: "p", attempt: 1 }), /gemini-daily-request-limit/);
   assert.equal(calls, 0);
+  // Google's free quota is per model, so another model still has its own allowance.
+  const other = createGeminiEditorialModelV2({ apiKey: "test-key", model: "gemini-3.7-flash", purpose: "write", ledgerDir: dir,
+    fetchImpl, now: () => NOW });
+  assert.equal(await other.generate({ system: "s", prompt: "p", attempt: 1 }), "{}");
+  assert.equal(calls, 1);
+});
+
+test("gemini stops immediately when the free daily quota is spent", async (t) => {
+  allowExternal(t);
+  const dir = ledgerDir(t);
+  let calls = 0;
+  const sleeps: number[] = [];
+  const fetchImpl = (async () => {
+    calls += 1;
+    return jsonResponse(429, { error: { details: [{ "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "56221s" }] } });
+  }) as typeof fetch;
+  await assert.rejects(model(dir, fetchImpl, sleeps).generate({ system: "s", prompt: "p", attempt: 1 }), /gemini-daily-quota/);
+  assert.equal(calls, 1);
+  assert.deepEqual(sleeps, []);
 });
 
 test("gemini fails closed on corrupt accounting", async (t) => {
