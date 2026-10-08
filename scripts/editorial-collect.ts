@@ -59,6 +59,7 @@ async function main(): Promise<void> {
     metricLogPath: paths.metricLogPath,
     mode: config.operational.actionMode,
     trackingMode: paths.trackingMode,
+    memoryReflection: true,
     jevMemory: jevMemory ? { apiKey: process.env.TYPESAFE_API_KEY, allowExternal: true,
       auditDir: path.join(paths.dataDir, "editorial-jev") } : undefined,
   });

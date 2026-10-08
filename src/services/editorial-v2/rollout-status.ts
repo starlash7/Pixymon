@@ -640,6 +640,8 @@ export function buildEditorialRolloutStatusV2(
       usedFactIds,
       rendering: state.draft.rendering,
       scopeReview: state.draft.scopeReview,
+      extraFacts: state.draft.facts.slice(1),
+      format: state.draft.format,
     })).ok;
   }).length;
 

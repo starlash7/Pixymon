@@ -20,6 +20,7 @@ async function collectOnce(claude: Anthropic, config: RuntimeConfig): Promise<vo
     metricLogPath: paths.metricLogPath,
     mode: config.operational.actionMode,
     trackingMode: paths.trackingMode,
+    memoryReflection: true,
   });
   if (result.status === "drafted") {
     console.log(`[V2] 검토 후보 생성: ${result.draftId}`);

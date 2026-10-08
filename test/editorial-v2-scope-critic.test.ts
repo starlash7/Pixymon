@@ -72,9 +72,17 @@ test("scope critic results are explicit: pass carries a digest, malformed output
   assert.equal(fail.status, "fail");
   assert.deepEqual(await reviewEditorialScopeV2({ model: critic(["error"]), text: CLEAN, evidence: STARGATE }),
     { status: "unavailable", reason: "gemini-http-503" });
-  const malformed = { async generate() { return "{\"verdict\":\"maybe\"}"; } };
+  let malformedCalls = 0;
+  const malformed = { async generate() { malformedCalls += 1; return "{\"verdict\":\"maybe\"}"; } };
   assert.deepEqual(await reviewEditorialScopeV2({ model: malformed, text: CLEAN, evidence: STARGATE }),
     { status: "unavailable", reason: "scope-critic-contract" });
+  assert.equal(malformedCalls, 2);
+  const wrapped = await reviewEditorialScopeV2({ model: { async generate() { return JSON.stringify([{ verdict: "Fail", claim: "x", problem: "y" }]); } },
+    text: CLEAN, evidence: STARGATE });
+  assert.equal(wrapped.status, "fail");
+  const replies = ["not json", JSON.stringify({ verdict: "pass", claim: "", problem: "" })];
+  const recovered = await reviewEditorialScopeV2({ model: { async generate() { return replies.shift()!; } }, text: CLEAN, evidence: STARGATE });
+  assert.equal(recovered.status, "pass");
 });
 
 test("a critic pass clears a regex false positive on a hedge, for exactly that text", async () => {
@@ -100,7 +108,7 @@ test("a critic fail catches a paraphrased outflow the regex missed and feeds it 
     model: { async generate({ prompt }) { writerPrompts.push(prompt); return payload(drafts.shift()!); } } });
   assert.equal(result.status, "generated", JSON.stringify(result));
   if (result.status === "generated") assert.equal(result.payload.draft, CLEAN);
-  assert.match(writerPrompts[1], /짐 싸서 나간 모양임.*확인할 수 없는 해석/);
+  assert.match(writerPrompts[1], /짐 싸서 나간 모양임.*근거로 확인할 수 없는 말/);
 });
 
 test("an unavailable critic stops the draft instead of publishing on the regex floor", async () => {
