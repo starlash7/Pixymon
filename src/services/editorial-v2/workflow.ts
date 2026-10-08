@@ -9,7 +9,7 @@ import type {
   FollowUpResolutionRecordV2,
   MeaningfulChangeThresholdV2,
 } from "./contracts.js";
-import { EDITORIAL_COLLECTION_EPOCH_V2 } from "./contracts.js";
+import { EDITORIAL_COLLECTION_EPOCH_V2, selectEditorialRenderingV2 } from "./contracts.js";
 import {
   EditorialContinuityThreadConflictV2,
   EditorialEventStoreV2,
@@ -757,6 +757,7 @@ export async function collectEditorialDraftV2(
     const parentId = planning.plan.continuityThread?.replace(/:(24h|72h)$/, "");
     planning.plan.memoryContext = editorialMemoryFromStoreV2(statesForMemory, planning.evidence, parentId);
     memories[planning.plan.subject] = planning.plan.memoryContext;
+    planning.plan.rendering = selectEditorialRenderingV2(actionId);
   }
   let memorySelection: JevMemorySelectionV2 | undefined;
   if (input.jevMemory && planning.status === "planned") {
@@ -872,6 +873,7 @@ export async function collectEditorialDraftV2(
       memoryContext: planning.plan.memoryContext,
       lane: planning.plan.lane,
       collectionEpoch,
+      rendering: planning.plan.rendering,
       format: planning.plan.format,
       subject: planning.plan.subject,
       thesis: planning.plan.thesis,

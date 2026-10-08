@@ -11,6 +11,7 @@ import type {
   MachineFalsifierV2,
   EditorialCaseV2,
   EditorialMemoryContextV2,
+  EditorialRenderingV2,
 } from "./contracts.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -32,6 +33,8 @@ export interface EditorialPlanV2 {
   blockReasons: readonly string[];
   editorialCase?: EditorialCaseV2;
   memoryContext?: EditorialMemoryContextV2;
+  /** Set by collection after planning; absent means the numeric `data` contract. */
+  rendering?: EditorialRenderingV2;
 }
 
 export interface EditorialHistoryEntryV2 {

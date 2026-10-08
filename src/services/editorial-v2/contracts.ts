@@ -1,5 +1,20 @@
+import { createHash } from "node:crypto";
+
 export const EDITORIAL_V2_SCHEMA_VERSION = 2 as const;
-export const EDITORIAL_COLLECTION_EPOCH_V2 = "character-writer-v5" as const;
+export const EDITORIAL_COLLECTION_EPOCH_V2 = "thought-writer-v6" as const;
+
+/**
+ * `thought` is the primary voice: Pixymon's own reading of what it ate, numbers optional.
+ * `data` keeps the numeric/source-time contract and is mixed in occasionally.
+ */
+export type EditorialRenderingV2 = "thought" | "data";
+export const EDITORIAL_DATA_RENDERING_EVERY_V2 = 4;
+
+/** Deterministic per action so captured contexts replay with the same rendering. */
+export function selectEditorialRenderingV2(seed: string): EditorialRenderingV2 {
+  const bucket = createHash("sha256").update(`rendering:${seed}`).digest().readUInt32BE(0);
+  return bucket % EDITORIAL_DATA_RENDERING_EVERY_V2 === 0 ? "data" : "thought";
+}
 
 export type EditorialCheckV2 = "pre-move-level" | "current-level" | "observation-only" | "recorded-checkpoint";
 
@@ -153,6 +168,8 @@ export interface EditorialDraftRecordV2 {
   lane?: EditorialLaneV2;
   /** Absent only on legacy events created before evaluation lineage capture. */
   collectionEpoch?: string;
+  /** Absent on drafts written before thought rendering; those were validated as `data`. */
+  rendering?: EditorialRenderingV2;
   format: EditorialFormatV2;
   subject: string;
   thesis: string;

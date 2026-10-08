@@ -405,6 +405,9 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
   if (!["bite", "withhold", "revisit", "evolution"].includes(draft.format)) {
     throw new Error(`unsupported editorial format: ${String(draft.format)}`);
   }
+  if (draft.rendering !== undefined && !["thought", "data"].includes(draft.rendering)) {
+    throw new Error(`unsupported editorial rendering: ${String(draft.rendering)}`);
+  }
   if (!["curious", "energized", "skeptical", "patient", "humbled"].includes(draft.voiceState)) {
     throw new Error(`unsupported editorial voice state: ${String(draft.voiceState)}`);
   }

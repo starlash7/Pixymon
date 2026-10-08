@@ -78,7 +78,7 @@ As of now, Pixymon still fails on:
 The active response is `Pixymon V2`, first in `REDUCTION` and then `HOLD SCOPE`:
 
 1. stop publishing multi-stage fallback prose
-2. preserve named subjects, raw numbers, source URLs, and source time
+2. preserve named subjects, raw numbers, source URLs, and source time in the ledger; in public text, any stated number or time must match them (required in text only for `data` rendering)
 3. connect selected facts to an explicit question, a bounded measurement hypothesis, and its falsifier
 4. keep original posts human-approved until offline, observe, and review gates pass
 5. revisit published Bite/Withhold at +24h and +72h; rehearse the same lifecycle in a separate, non-publishable shadow ledger
@@ -140,7 +140,7 @@ Work in this order unless a higher-severity runtime failure interrupts:
 V2 promotion metrics override volume metrics:
 
 1. factual and numeric error: `0`
-2. named-subject and numeric coverage: `100%`
+2. named-subject coverage: `100%`; numeric coverage `100%` for `data` rendering only (thought posts state numbers only when needed)
 3. malformed or live-fallback output: `0`
 4. semantic near-duplicate rate: `<8%`
 5. human no-edit acceptance: `>=80%`
@@ -236,3 +236,12 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Real shadow samples (Gemini, 2026-10-08): before — "…-33.54% 급감했습니다. …자산 수량이 유출된 것으로 관측됩니다. …추적하고자 합니다." (rejected). After — USDD (`gemini-3.5-flash`) "…+8.21% 급증한 게 보임. …진짜 자금이 누운 건지 아직은 소화 중인 단계로 판단함." and Stargate V2 (`gemini-3.8-flash`) "…-33.54% 빠진 게 10월 8일 07:10 UTC에 찍힘. 원인이나 실제 유출 여부는 단정할 수 없어서…" (both passed gates). `gemini-3.5-flash` inquiry repeatedly asserted outflow and was stopped at `inquiry-judgment-metric-scope`; `gemini-3.8-flash` respected the scope in its one sample.
 - These are 2 passing drafts, not reader-preference evidence. They prove Gemini behavior only, not the Anthropic writer.
 - Deferred: sensing yields one or two eligible protocol candidates per window, so repeated runs hit `subject-repeat-without-delta` — the 12-case set is now gated by candidate supply, not the writer. Every sentence still ends in ~음/~임 and the judgment-word requirement pulls endings toward "판단함"; watch for that becoming a template. The Jev memory epoch (`jev-memory-inquiry-v4`) also uses the new writer and was not re-versioned. Human no-edit review of real drafts remains pending.
+
+## 20. Thought Rendering — 2026-10-08 / HOLD SCOPE (operator direction change)
+
+- Operator decision: Pixymon's primary output is its own thought, in the Lobstar Wilde direction — data is what it ate, not what it reports. Numbers and times appear only when the scene needs them. Reference post: "Stargate가 하루 만에 확 홀쭉해졌는데 가격은 멀쩡함. 사람이 떠난 건지 지갑만 옮긴 건지 픽시는 아직 모르겠음. 조용히 빠지는 쪽이 늘 더 오래 기억에 남더라."
+- Primary bottleneck: the V2 contract (subject in sentence 1, raw value in sentences 1–2, exact source time, judgment word, 90+ chars) made every post a numeric report regardless of voice.
+- Each planned action now gets a deterministic `rendering`: `thought` (3 of 4) or `data` (1 of 4), hashed from the action id, captured in the decision context and stored on the draft. Legacy drafts without it keep the `data` contract.
+- `thought` drops mandatory number/source-time/subject-position/judgment-word placement and lowers the minimum to 40 chars. It keeps: subject anchor present, every stated number/name grounded, direction words consistent with the move, TVL flow/cause scope, formal-register, future-recheck, URL/hashtag and character-cue limits. Writer, review, publish and rollout re-validation share one input builder, so they cannot diverge per rendering.
+- Evidence, hypothesis, falsifier and 24/72h follow-ups are unchanged; thought posts are revisited the same way. Collection epoch is `thought-writer-v6`.
+- Deferred: a thought still digests one selected fact; multi-signal and memory-led thoughts (several things eaten in a day, recurring obsessions) need planner work. The data ratio is fixed, not chosen by need. Reader preference remains unmeasured.

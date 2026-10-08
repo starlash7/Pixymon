@@ -7,9 +7,11 @@ import {
 import type { EvidenceCardV2 } from "./evidence.js";
 import type { EditorialPlanV2 } from "./planner.js";
 import {
+  editorialDraftValidationInputV2,
   formatEvidenceSourceTimeV2,
   inferMetricDirectionV2,
   splitEditorialSentencesV2,
+  subjectAnchorV2,
   validateEditorialDraftV2,
 } from "./validator.js";
 import { buildEditorialWriterSystemV2 } from "./voice.js";
@@ -89,29 +91,14 @@ function validatePayload(
   plan: EditorialPlanV2,
   evidence: EvidenceCardV2
 ): string[] {
-  const sourceTimeToken = formatEvidenceSourceTimeV2(evidence.source.observedAt);
-  const metricTokens = [
-    ...evidence.metric.name.split(/[^a-zA-Z0-9]+/).filter(Boolean).map((token) => token.toUpperCase()),
-    evidence.metric.unit,
-  ];
-  const validation = validateEditorialDraftV2({
+  const validation = validateEditorialDraftV2(editorialDraftValidationInputV2({
     text: payload.draft,
     subject: plan.subject,
-    displayValue: evidence.metric.raw,
+    fact: evidence,
     factIds: plan.factIds,
     usedFactIds: payload.usedFactIds,
-    allowedNumericValues: [evidence.metric.period, "24시간", "72시간"],
-    allowedNamedTokens: metricTokens,
-    sourceTimeToken,
-    requireJudgment: true,
-    metricName: evidence.metric.name,
-    metricDirection: inferMetricDirectionV2(
-      evidence.metric.name,
-      evidence.metric.raw,
-      evidence.metric.value
-    ),
-    forbidFutureRecheck: true,
-  });
+    rendering: plan.rendering,
+  }));
   const reasons = [...validation.reasons];
   const allowed = new Set(plan.factIds);
   const sentences = splitEditorialSentencesV2(payload.draft);
@@ -175,8 +162,26 @@ export function buildEditorialPromptV2(
     digesting: "해석 보류",
     reject: "기각",
   };
+  const thought = plan.rendering === "thought";
+  const direction = inferMetricDirectionV2(evidence.metric.name, evidence.metric.raw, evidence.metric.value);
+  const renderingRules = thought
+    ? [
+        "- 이 글은 픽시의 생각 글이다. 숫자 보고가 아니라 이 장면을 보고 픽시가 무엇을 느끼고 의심하고 궁금해하는지, 무엇을 아직 승인하지 않는지를 쓴다",
+        "- 2~3문장, 공백 포함 40~190자",
+        `- "${subjectAnchorV2(plan.subject)}"를 한 번 넣는다(전체 이름 "${plan.subject}"도 된다)`,
+        `- 움직임은 말로 그린다(방향: ${direction === "increase" ? "커짐" : direction === "decrease" ? "작아짐" : "현재 수준"}). 숫자와 시각은 그게 없으면 장면이 서지 않을 때만 쓰고, 쓰면 rawValue와 publicSourceTime을 그대로 쓴다. 그 외 숫자는 쓰지 않는다`,
+      ].join("\n")
+    : [
+        "- 정확히 2~3문장, 공백 포함 90~190자",
+        "- 첫 문장에 subject, 첫 두 문장 안에 rawValue를 그대로 한 번 넣는다",
+        "- 본문에 publicSourceTime을 그대로 한 번 넣는다",
+        "- 마지막 문장에 판정 성격이 드러나는 단어(승인, 보류, 지지, 기각, 판단, 유지 등) 하나를 자연스럽게 넣는다",
+      ].join("\n");
+  const thoughtEnding = "마지막 문장은 지금 픽시의 생각(판단, 의심, 이 장면이 남긴 느낌)으로 닫는다. 검증 결과가 아직 없다는 이유로 모든 글을 보류로 끝내지 않는다. 미래 가설을 이미 확인한 사실처럼 말하지 않는다";
   const endingRule = plan.format === "revisit"
     ? "마지막 문장은 이전 판정을 지지·철회·미결 중 하나로 닫고, 새 24·72시간 재검증을 약속하지 않는다"
+    : thought
+      ? thoughtEnding
     : plan.editorialCase?.inquiry
       ? "마지막 문장은 편집 판단을 자기 말로 표현한다. 검증 결과가 아직 없다는 이유로 모든 글을 보류로 끝내지 않는다. 미래 가설을 이미 확인한 사실처럼 말하지 않는다"
     : `마지막 문장은 지금 관측에 대한 ${verdictGuide[plan.verdict]} 판단으로 닫는다. 조건문은 허용하되 새 관측 일정은 약속하지 않는다`;
@@ -209,9 +214,7 @@ export function buildEditorialPromptV2(
 - publicSourceTime: ${sourceTimeToken}
 
 규칙:
-- 정확히 2~3문장, 공백 포함 90~190자
-- 첫 문장에 subject, 첫 두 문장 안에 rawValue를 그대로 한 번 넣는다
-- 본문에 publicSourceTime을 그대로 한 번 넣는다
+${renderingRules}
 - ${endingRule}
 - 출처 URL, 해시태그, 투자 조언, 지원되지 않은 이름·숫자는 쓰지 않는다
 - TVL만으로 자금 유입, 사용자 복귀, 채택, 수익, 거래량 또는 원인을 사실처럼 단정하지 않는다
