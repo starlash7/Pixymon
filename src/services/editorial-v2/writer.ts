@@ -12,6 +12,7 @@ import {
   splitEditorialSentencesV2,
   validateEditorialDraftV2,
 } from "./validator.js";
+import { buildEditorialWriterSystemV2 } from "./voice.js";
 
 export type EditorialClaimKindV2 = "observation" | "judgment";
 
@@ -215,7 +216,7 @@ export function buildEditorialPromptV2(
 - 출처 URL, 해시태그, 투자 조언, 지원되지 않은 이름·숫자는 쓰지 않는다
 - TVL만으로 자금 유입, 사용자 복귀, 채택, 수익, 거래량 또는 원인을 사실처럼 단정하지 않는다
 - 관측 사실과 픽시몬의 잠정 판단을 구분한다
-- 캐릭터 비유는 최대 한 번이며 억지로 넣지 않는다
+- 캐릭터 비유는 최대 한 번이며 억지로 넣지 않는다. 존댓말과 뉴스·리포트 문체는 쓰지 않는다
 - 사실을 새로 만들거나 생성 후 문장을 덧붙이지 않는다
 - JSON 외 텍스트 금지
 - claims는 draft의 각 문장을 순서대로 빠짐없이 복사한다. kind는 관측 사실=observation, 현재 판단=judgment 둘 중 하나다
@@ -236,7 +237,7 @@ export async function writeEditorialDraftV2(input: {
     let response: string | null;
     try {
       response = await input.model.generate({
-        system: "너는 숫자를 먹고 판정을 기억하는 Pixymon V2다. 헤드라인을 요약하지 않고, 확인한 사실과 잠정 판단을 분리하며, 다시 돌아와 틀리면 먼저 고친다. JSON 계약만 반환한다.",
+        system: buildEditorialWriterSystemV2(),
         prompt: buildEditorialPromptV2(input.plan, input.evidence, retryReasons),
         attempt,
       });

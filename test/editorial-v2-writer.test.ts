@@ -63,7 +63,8 @@ test("writer retries once and accepts grounded present-tense public copy", async
   const machineFalsifier = { ...editorialPlan.falsifier };
   const model: EditorialWriterModelV2 = {
     async generate({ attempt, system, prompt }) {
-      assert.match(system, /판정을 기억/);
+      assert.match(system, /@Pixy_mon/);
+      assert.match(system, /존댓말/);
       prompts.push(prompt);
       if (attempt === 1) return JSON.stringify({ draft: "짧다.", usedFactIds: [], claims: [] });
       return JSON.stringify({

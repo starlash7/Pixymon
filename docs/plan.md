@@ -1,6 +1,6 @@
 # Pixymon Operating Plan
 
-Last updated: 2026-09-21
+Last updated: 2026-10-08
 
 This document is not a brainstorm file. It is the operating contract for Pixymon work.
 
@@ -226,3 +226,13 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - The existing 523-unit/64-golden/100-synthetic verification is implementation evidence, not 100 real generated posts or measured reader preference. Actual prose, faithful memory interpretation, character distinctiveness and no-edit acceptance remain unverified.
 - Next: restore model access; inspect the first actual draft without posting; collect and review 12 real cases; observe successful shadow originals at +24h/+72h; then compare memory selection on the same contexts. The trusted zero-X verifier and independent semantic-critic execution/calibration remain separate unfinished requirements, not gates that elapsed time alone can satisfy.
 - Reproduction details and recovery steps are in the [editorial runbook](editorial-v2-runbook.md#september-21-shadow-smoke-checkpoint). No posting permission, provider threshold, spend limit or rollout requirement is relaxed by this checkpoint.
+
+## 19. Character Voice Writer — 2026-10-08 / HOLD SCOPE
+
+- Primary bottleneck: the first real V2 outputs (free-tier Gemini shadow, Anthropic credit still absent) read as a news desk — formal 합쇼체, date-first openers, report verbs — and treated a derived TVL quantity decomposition as a confirmed outflow. The V2 writer had a one-line system prompt and never received `character.ts` or the canon.
+- The writer system prompt is now built from `character.ts` (bio, personality, signatures as register reference) and SOUL/ENEMIES/RITUALS. Facts, numbers, names, source time and the judgment requirement are unchanged; `character.ts` itself is untouched. Collection epoch moves to `character-writer-v5`.
+- Live-path guards for the exact observed failures: `formal-register` (합쇼체), TVL flow/capital-flight claims (`유입`, `유출`, `자금 이탈`) unless explicitly negated, and the same scope check on the generated inquiry judgment (generation time only, so stored ledgers stay readable). The inquiry retry now explains that failure in words instead of a bare code.
+- Fixed a validator false positive: digits inside a versioned name ("Stargate V2의") were counted as unsupported numbers, blocking every such protocol. Latin-embedded digits are now left to the named-token gate.
+- Real shadow samples (Gemini, 2026-10-08): before — "…-33.54% 급감했습니다. …자산 수량이 유출된 것으로 관측됩니다. …추적하고자 합니다." (rejected). After — USDD (`gemini-3.5-flash`) "…+8.21% 급증한 게 보임. …진짜 자금이 누운 건지 아직은 소화 중인 단계로 판단함." and Stargate V2 (`gemini-3.8-flash`) "…-33.54% 빠진 게 10월 8일 07:10 UTC에 찍힘. 원인이나 실제 유출 여부는 단정할 수 없어서…" (both passed gates). `gemini-3.5-flash` inquiry repeatedly asserted outflow and was stopped at `inquiry-judgment-metric-scope`; `gemini-3.8-flash` respected the scope in its one sample.
+- These are 2 passing drafts, not reader-preference evidence. They prove Gemini behavior only, not the Anthropic writer.
+- Deferred: sensing yields one or two eligible protocol candidates per window, so repeated runs hit `subject-repeat-without-delta` — the 12-case set is now gated by candidate supply, not the writer. Every sentence still ends in ~음/~임 and the judgment-word requirement pulls endings toward "판단함"; watch for that becoming a template. The Jev memory epoch (`jev-memory-inquiry-v4`) also uses the new writer and was not re-versioned. Human no-edit review of real drafts remains pending.
