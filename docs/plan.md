@@ -248,3 +248,15 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Gemini free tier is 20 generate requests per model per day with frequent 503s; inquiry models repeatedly narrated the price-neutral decomposition as inflow/outflow.
 - The TVL scope gate is regex-based and fails both ways on free prose (missed "들어차면서"; blocked hedges such as "확인할 수 없", "불확실", "배제", "확정할 수 없" until added). A semantic check (the existing Jev advisory path or a model critic) is needed before thought posts can scale; regex patches are stopgaps.
 - Deferred: a thought still digests one selected fact; multi-signal and memory-led thoughts (several things eaten in a day, recurring obsessions) need planner work. The data ratio is fixed, not chosen by need. Reader preference remains unmeasured.
+
+## 21. Semantic Scope Critic — 2026-10-08 / HOLD SCOPE
+
+- Primary bottleneck: free-prose thoughts made the regex TVL scope gate fail both ways (missed paraphrased flows, blocked hedges).
+- A scope critic model now reads the generated inquiry judgment and the draft against the measurement (subject, metric, raw value, price change when screened): describing size/direction, price stability, feelings, questions and hedges pass; asserting or calling likely an inflow/outflow, user/whale behaviour, adoption, revenue, cause or future retention fails with the offending sentence, which is fed back once.
+- Layering: the regex stays the deterministic floor everywhere. A critic pass may clear a regex-only scope flag, but only for the exact text (sha256 stored as `scopeReview` on the draft); review edits and publish re-validation fall back to the regex for any other text. A critic fail blocks even regex-clean text. An unavailable critic stops the action (`stage=scope`) — no publication on the regex floor alone.
+- The inquiry no longer sees the quantity/price decomposition, only the price change; with those fields the models narrated confirmed outflows on every Stargate attempt.
+- Real Gemini replay (writer/inquiry `gemini-3.6-flash`, critic `gemini-3.5-flash-lite`, no publication): the critic caught "자금 유출의 성격이 강한", "이탈된 유동성", and the regex-clean "예치 수량 수치 자체가 크게 줄어든 … 확인되므로"; it passed hedged judgments the regex would have blocked. Generated thoughts:
+  - USDD: "USDD 규모가 하루 만에 훌쩍 커진 장면이 보임. 가격이 뛰어서 착시가 생긴 건지 진짜 수량이 늘어난 건지 소화 중임. 잠깐 튀었다 빠지는 거라면 아직 진짜 성숙으로 승인하긴 어려움."
+  - Stargate V2: "Stargate V2에서 가격 흔들림에 비해 규모가 푹 꺼진 장면에 눈이 감. 진짜 자금이 빠져나간 건지 단순 평가액 착시인지 확신하긴 이름. 겉으로 보이는 숫자보다 이 상태가 얼마나 오래 고착될지부터 소화해보는 중." (regex-flagged on 빠져나, cleared by the critic as a hedge)
+- Costs: up to two extra model calls per candidate (inquiry + draft, plus one each on retry). Gemini uses a separate critic model (`GEMINI_CRITIC_MODEL`, default `gemini-3.6-flash`) for an independent reader and its own free quota; Anthropic uses the same model with a 300-token critique budget.
+- Deferred: critic calibration on labelled Korean cases (false pass/fail rates are unknown from two samples); `editorial:compare` replays without a critic; Jev remains a separate, unconfigured advisory path. Next product step remains multi-signal and memory-led thoughts.

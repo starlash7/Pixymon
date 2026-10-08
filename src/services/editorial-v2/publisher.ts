@@ -93,6 +93,7 @@ export async function publishEditorialDraftV2(input: {
     factIds: state.draft.factIds,
     usedFactIds: state.draft.generatedPayload.usedFactIds,
     rendering: state.draft.rendering,
+    scopeReview: state.draft.scopeReview,
   }));
   if (!validation.ok) return blocked(`publish-contract:${validation.reasons.join(",")}`);
 

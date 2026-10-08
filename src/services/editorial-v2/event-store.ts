@@ -408,6 +408,10 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
   if (draft.rendering !== undefined && !["thought", "data"].includes(draft.rendering)) {
     throw new Error(`unsupported editorial rendering: ${String(draft.rendering)}`);
   }
+  if (draft.scopeReview !== undefined && (draft.scopeReview?.status !== "pass" ||
+      typeof draft.scopeReview.modelId !== "string" || !/^[0-9a-f]{64}$/u.test(String(draft.scopeReview.textSha256)))) {
+    throw new Error("invalid editorial scope review");
+  }
   if (!["curious", "energized", "skeptical", "patient", "humbled"].includes(draft.voiceState)) {
     throw new Error(`unsupported editorial voice state: ${String(draft.voiceState)}`);
   }

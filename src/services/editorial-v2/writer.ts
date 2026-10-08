@@ -15,6 +15,7 @@ import {
   validateEditorialDraftV2,
 } from "./validator.js";
 import { buildEditorialWriterSystemV2 } from "./voice.js";
+import { reviewEditorialScopeV2, type EditorialScopeReviewV2 } from "./scope-critic.js";
 
 export type EditorialClaimKindV2 = "observation" | "judgment";
 
@@ -40,10 +41,11 @@ export type EditorialWritingResultV2 =
       status: "generated";
       payload: EditorialWriterPayloadV2;
       attempts: 1 | 2;
+      scopeReview?: EditorialScopeReviewV2;
     }
   | {
       status: "blocked";
-      stage: "generation" | "contract";
+      stage: "generation" | "contract" | "scope";
       reason: string;
       attempts: number;
       validationReasons: readonly string[];
@@ -236,14 +238,17 @@ export async function writeEditorialDraftV2(input: {
   model: EditorialWriterModelV2;
   plan: EditorialPlanV2;
   evidence: EvidenceCardV2;
+  /** Semantic scope check; when present it must pass, and it may clear a regex-only scope flag. */
+  scopeCritic?: EditorialWriterModelV2;
 }): Promise<EditorialWritingResultV2> {
   let retryReasons: string[] = [];
+  let scopeFeedback = "";
   for (const attempt of [1, 2] as const) {
     let response: string | null;
     try {
       response = await input.model.generate({
         system: buildEditorialWriterSystemV2(),
-        prompt: buildEditorialPromptV2(input.plan, input.evidence, retryReasons),
+        prompt: buildEditorialPromptV2(input.plan, input.evidence, retryReasons) + scopeFeedback,
         attempt,
       });
     } catch {
@@ -260,6 +265,18 @@ export async function writeEditorialDraftV2(input: {
       continue;
     }
     retryReasons = validatePayload(payload, input.plan, input.evidence);
+    const regexScopeOnly = retryReasons.length === 1 && retryReasons[0] === "metric-semantic-scope";
+    if (input.scopeCritic && (retryReasons.length === 0 || regexScopeOnly)) {
+      const critic = await reviewEditorialScopeV2({ model: input.scopeCritic, text: payload.draft, evidence: input.evidence });
+      if (critic.status === "unavailable") {
+        // Fail closed: an unchecked thought is not published on the regex floor alone.
+        return { status: "blocked", stage: "scope", reason: critic.reason, attempts: attempt, validationReasons: [critic.reason] };
+      }
+      if (critic.status === "pass") return { status: "generated", payload, attempts: attempt, scopeReview: critic.review };
+      retryReasons = ["semantic-scope"];
+      scopeFeedback = `\n지난 초안의 "${critic.claim}"는 이 측정값으로 확인할 수 없는 해석이었다(${critic.problem}). 그 해석을 빼고, 모르는 건 모른다고 쓴다.`;
+      continue;
+    }
     if (retryReasons.length === 0) return { status: "generated", payload, attempts: attempt };
   }
   return {
@@ -276,7 +293,7 @@ export async function writeEditorialDraftV2(input: {
 export function createAnthropicEditorialWriterV2(
   claude: Anthropic,
   timezone?: string,
-  purpose: "write" | "inquire" = "write"
+  purpose: "write" | "inquire" | "critique" = "write"
 ): EditorialWriterModelV2 {
   return {
     modelId: CLAUDE_MODEL,
@@ -285,7 +302,7 @@ export function createAnthropicEditorialWriterV2(
         claude,
         {
           model: CLAUDE_MODEL,
-          max_tokens: purpose === "inquire" ? 1000 : 550,
+          max_tokens: purpose === "inquire" ? 1000 : purpose === "critique" ? 300 : 550,
           temperature: 0,
           system,
           messages: [{ role: "user", content: prompt }],

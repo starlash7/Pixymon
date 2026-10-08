@@ -1,6 +1,7 @@
 import type { EditorialInquiryV2, EditorialMemoryContextV2 } from "./contracts.js";
 import type { EvidenceCardV2 } from "./evidence.js";
 import type { EditorialPlanV2 } from "./planner.js";
+import { reviewEditorialScopeV2 } from "./scope-critic.js";
 import { hasUnsupportedTvlClaimV2 } from "./validator.js";
 import type { EditorialWriterModelV2 } from "./writer.js";
 
@@ -49,10 +50,25 @@ export function validateEditorialInquiryV2(
   return reasons;
 }
 
+/**
+ * The quantity/price decomposition screens out price-driven moves; it is not shown to the model.
+ * Given those fields, models narrate them as confirmed inflows or outflows.
+ */
+function inquirySelectionV2(evidence: EvidenceCardV2) {
+  const selection = evidence.selection;
+  if (!selection) return null;
+  return {
+    kind: selection.kind,
+    absoluteMoveUsd: selection.absoluteMoveUsd,
+    benchmarkChangePercent: selection.benchmarkChangePercent,
+    priceChangePercent: selection.priceNeutral?.priceChangePercent ?? null,
+  };
+}
+
 export function buildEditorialInquiryPromptV2(plan: EditorialPlanV2, evidence: EvidenceCardV2): string {
   return `픽시몬이 무엇을 알아내려는지 먼저 결정하라. 아직 트윗은 쓰지 않는다.
 현재 관측: ${JSON.stringify({ id: evidence.id, subject: evidence.subject, metric: evidence.metric, source: evidence.source })}
-선별 맥락(파생 자료, 공개 사실로 단정 금지): ${JSON.stringify(evidence.selection ?? null)}
+선별 맥락(파생 자료, 공개 사실로 단정 금지): ${JSON.stringify(inquirySelectionV2(evidence))}
 검사 가능한 기준점: ${JSON.stringify(evidence.followUp ?? null)}
 기존 검증 계약: ${JSON.stringify(plan.editorialCase ?? null)}
 현재 체크포인트 판정: ${plan.format === "revisit" ? plan.verdict : "새 가설의 결과는 아직 없음"}
@@ -60,7 +76,7 @@ export function buildEditorialInquiryPromptV2(plan: EditorialPlanV2, evidence: E
 
 스스로 답할 세 가지:
 1. 무엇을 알아내고 싶은가? subject 이름만 바꿔 끼운 질문보다 지금 관측과 관련 기록에서 생긴 구체적인 불확실성을 고른다.
-2. 왜 이 근거가 중요한가? 무엇을 구별하는 데 도움이 되고 무엇은 아직 모르는지 적는다. 단순히 큰 수치라는 이유로 원인·유입·채택을 만들어내지 않는다. 선별 맥락의 가격/수량 분해는 추정치라서 judgment에서 유입·유출·사용자·원인을 확인된 사실처럼 쓰지 않는다.
+2. 왜 이 근거가 중요한가? 무엇을 구별하는 데 도움이 되고 무엇은 아직 모르는지 적는다. 단순히 큰 수치라는 이유로 원인·유입·채택을 만들어내지 않는다. 가격이 크게 움직이지 않았다는 것은 말할 수 있지만, 그렇다고 돈이나 자산이 들어오거나 나갔다고 확인된 것은 아니다.
 3. 지난 판단 때문에 이번에는 무엇을 다르게 확인하는가? 이전 질문과 실제 재관측 결과를 읽고, 검사 기준을 바꾸거나 유지하는 이유를 설명한다. 실패하지 않은 기록을 실패로 꾸미지 않는다. shadow는 공개 경험이 아니다.
 
 사용 가능한 검사(새 공급자·임의 수치·새 일정을 만들지 않는다):
@@ -83,15 +99,18 @@ function retryHint(reasons: readonly string[]): string {
 
 export async function reasonEditorialInquiryV2(input: {
   model: EditorialWriterModelV2; plan: EditorialPlanV2; evidence: EvidenceCardV2;
+  /** The writer renders this judgment, so the same semantic scope check applies before writing. */
+  scopeCritic?: EditorialWriterModelV2;
 }): Promise<EditorialInquiryResultV2> {
   let reasons: string[] = [];
+  let scopeFeedback = "";
   for (const attempt of [1, 2] as const) {
     let response: string | null;
     try {
       response = await input.model.generate({
         system: "너는 Pixymon의 편집자다. 호기심을 근거와 실제 기억에 연결한다. 관측, 추론, 미확인을 구분하고 JSON만 반환한다.",
         prompt: buildEditorialInquiryPromptV2(input.plan, input.evidence) +
-          (reasons.length ? `\n이전 계약 실패: ${reasons.join(", ")}${retryHint(reasons)}` : ""), attempt,
+          (reasons.length ? `\n이전 계약 실패: ${reasons.join(", ")}${retryHint(reasons)}${scopeFeedback}` : ""), attempt,
       });
     } catch { reasons = ["inquiry-model-error"]; continue; }
     if (!response) return { status: "blocked", reason: "inquiry-model-empty", attempts: attempt, validationReasons: ["inquiry-model-empty"] };
@@ -109,6 +128,18 @@ export async function reasonEditorialInquiryV2(input: {
       factIds: input.plan.factIds, revisit: input.plan.format === "revisit",
       levelTest: input.plan.editorialCase?.scope === "usd-tvl-level", memory: input.plan.memoryContext,
     });
+    const regexScopeOnly = reasons.length === 1 && reasons[0] === "inquiry-judgment-metric-scope";
+    if (input.scopeCritic && (!reasons.length || regexScopeOnly)) {
+      const critic = await reviewEditorialScopeV2({ model: input.scopeCritic,
+        text: String((value as EditorialInquiryV2).judgment), evidence: input.evidence });
+      if (critic.status === "unavailable") {
+        return { status: "blocked", reason: `inquiry-${critic.reason}`, attempts: attempt, validationReasons: [critic.reason] };
+      }
+      if (critic.status === "pass") return { status: "reasoned", inquiry: structuredClone(value) as EditorialInquiryV2, attempts: attempt };
+      reasons = ["inquiry-judgment-metric-scope"];
+      scopeFeedback = `\n문제 문장: "${critic.claim}" (${critic.problem})`;
+      continue;
+    }
     if (!reasons.length) return { status: "reasoned", inquiry: structuredClone(value) as EditorialInquiryV2, attempts: attempt };
   }
   return { status: "blocked", reason: reasons[0], attempts: 2, validationReasons: reasons };

@@ -56,6 +56,8 @@ export interface CollectEditorialDraftInputV2 {
   sense?: (followUpTargets: readonly EditorialFollowUpTargetV2[]) => Promise<EditorialSensingResultV2>;
   /** Explicit operator experiment, never scheduled or publishable. */
   jevMemory?: JevMemoryOptionsV2;
+  /** Semantic scope reviewer for the inquiry judgment and the draft; fails closed when unavailable. */
+  scopeCritic?: EditorialWriterModelV2;
 }
 
 export interface CheckEditorialFollowUpsInputV2 {
@@ -833,7 +835,8 @@ export async function collectEditorialDraftV2(
       quantityShare: planning.evidence.selection?.priceNeutral?.quantityShare ?? null,
     },
   }));
-  const reasoned = await reasonEditorialInquiryV2({ model: input.inquiryModel, plan: planning.plan, evidence: planning.evidence });
+  const reasoned = await reasonEditorialInquiryV2({ model: input.inquiryModel, plan: planning.plan, evidence: planning.evidence,
+    scopeCritic: input.scopeCritic });
   if (reasoned.status === "reasoned") planning.plan = applyEditorialInquiryV2(planning.plan, planning.evidence, reasoned.inquiry);
   appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
     type: "planning_decision", stage: "inquiry", outcome: reasoned.status === "reasoned" ? "reasoned" : "no-post",
@@ -850,7 +853,8 @@ export async function collectEditorialDraftV2(
     } : { attempts: reasoned.attempts, validationReasons: reasoned.validationReasons, fallbackUsed: false },
   }));
   if (reasoned.status === "blocked") return { status: "no-post", stage: "inquiry", reason: reasoned.reason, runId, actionId };
-  const written = await writeEditorialDraftV2({ model: input.writerModel, plan: planning.plan, evidence: planning.evidence });
+  const written = await writeEditorialDraftV2({ model: input.writerModel, plan: planning.plan, evidence: planning.evidence,
+    scopeCritic: input.scopeCritic });
   if (written.status === "blocked") {
     appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
       type: "generation_attempt",
@@ -874,6 +878,7 @@ export async function collectEditorialDraftV2(
       lane: planning.plan.lane,
       collectionEpoch,
       rendering: planning.plan.rendering,
+      scopeReview: written.scopeReview,
       format: planning.plan.format,
       subject: planning.plan.subject,
       thesis: planning.plan.thesis,
@@ -921,7 +926,8 @@ export async function collectEditorialDraftV2(
     type: "generation_attempt",
     stage: "contract",
     outcome: "drafted",
-    details: { attempts: written.attempts, draftId: draft.id, fallbackUsed: false },
+    details: { attempts: written.attempts, draftId: draft.id, rendering: draft.rendering ?? "data",
+      scopeReviewModel: written.scopeReview?.modelId ?? null, fallbackUsed: false },
   }));
   return { status: "drafted", draftId: draft.id, draft: draft.draft, runId, actionId };
 }

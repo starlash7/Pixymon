@@ -639,6 +639,7 @@ export function buildEditorialRolloutStatusV2(
       factIds: state.draft.factIds,
       usedFactIds,
       rendering: state.draft.rendering,
+      scopeReview: state.draft.scopeReview,
     })).ok;
   }).length;
 
