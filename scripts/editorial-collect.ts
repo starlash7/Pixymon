@@ -2,6 +2,11 @@ import "dotenv/config";
 import path from "node:path";
 import { loadRuntimeConfig } from "../src/config/runtime.js";
 import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.js";
+import {
+  createGeminiEditorialModelV2,
+  resolveEditorialModelProviderV2,
+  resolveGeminiModelIdV2,
+} from "../src/services/editorial-v2/gemini-model.js";
 import { resolveEditorialRuntimePathsV2 } from "../src/services/editorial-v2/paths.js";
 import { collectEditorialDraftV2 } from "../src/services/editorial-v2/workflow.js";
 import { createAnthropicEditorialWriterV2 } from "../src/services/editorial-v2/writer.js";
@@ -23,14 +28,31 @@ async function main(): Promise<void> {
     }
     if (!process.env.TYPESAFE_API_KEY?.trim()) throw new Error("TYPESAFE_API_KEY is required for --jev-memory");
   }
+  const provider = resolveEditorialModelProviderV2({ mode: config.operational.actionMode, trackingMode: paths.trackingMode });
   assertExternalCallsAllowed("editorial:collect");
-  if (!String(process.env.ANTHROPIC_API_KEY || "").trim()) throw new Error("ANTHROPIC_API_KEY is required");
+  let models;
+  if (provider === "gemini") {
+    const apiKey = String(process.env.GEMINI_API_KEY || "").trim();
+    if (!apiKey) throw new Error("GEMINI_API_KEY is required for EDITORIAL_MODEL_PROVIDER=gemini");
+    const model = resolveGeminiModelIdV2();
+    const ledgerDir = path.join(paths.dataDir, "editorial-gemini");
+    console.log(`[EDITORIAL] provider=gemini model=${model} (shadow-only free-tier experiment)`);
+    models = {
+      writerModel: createGeminiEditorialModelV2({ apiKey, model, purpose: "write", ledgerDir }),
+      inquiryModel: createGeminiEditorialModelV2({ apiKey, model, purpose: "inquire", ledgerDir }),
+    };
+  } else {
+    if (!String(process.env.ANTHROPIC_API_KEY || "").trim()) throw new Error("ANTHROPIC_API_KEY is required");
+    const claude = initClaudeClient();
+    models = {
+      writerModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone),
+      inquiryModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "inquire"),
+    };
+  }
   const store = new EditorialEventStoreV2({ eventLogPath: paths.eventLogPath });
-  const claude = initClaudeClient();
   const result = await collectEditorialDraftV2({
     store,
-    writerModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone),
-    inquiryModel: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "inquire"),
+    ...models,
     metricLogPath: paths.metricLogPath,
     mode: config.operational.actionMode,
     trackingMode: paths.trackingMode,
