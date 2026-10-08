@@ -157,3 +157,13 @@ test("gemini honors the external-call guard and a missing key without dispatchin
   assert.equal(calls, 0);
   assert.equal(fs.existsSync(path.join(dir, DAY_LOG)), false);
 });
+
+test("gemini waits out a per-minute 429 that carries no retry delay", async (t) => {
+  allowExternal(t);
+  const dir = ledgerDir(t);
+  const responses = [jsonResponse(429, {}), jsonResponse(200, okBody("{}"))];
+  const sleeps: number[] = [];
+  const fetchImpl = (async () => responses.shift()!) as typeof fetch;
+  assert.equal(await model(dir, fetchImpl, sleeps).generate({ system: "s", prompt: "p", attempt: 1 }), "{}");
+  assert.deepEqual(sleeps, [30_000]);
+});

@@ -111,7 +111,10 @@ async function requestOnce(input: {
     try { body = await response.json(); } catch { body = undefined; }
     if (!response.ok) {
       const status = response.status;
-      if (status === 429) throw new GeminiRequestError("gemini-rate-limited", true, parseRetryDelayMs(body));
+      // Free-tier limits are per minute; a short exponential backoff just burns the remaining attempts.
+      if (status === 429) {
+        throw new GeminiRequestError("gemini-rate-limited", true, parseRetryDelayMs(body) ?? GEMINI_MAX_RETRY_DELAY_MS_V2);
+      }
       if (status === 401 || status === 403) throw new GeminiRequestError("gemini-auth-failed", false);
       throw new GeminiRequestError(`gemini-http-${status}`, status >= 500);
     }
