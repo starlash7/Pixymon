@@ -67,7 +67,7 @@ export function editorialMemoryOutcomeTargetViolationV2(text: string): string | 
   let processed = text.replace(/“[^”]*”|"[^"]*"/gu, "");
   processed = processed.replace(/\([^)]*\)/gu, "");
   processed = processed.replace(/—[^—]*—/gu, "");
-  return processed.match(/(?:급감|급증|하락|상승|감소|증가)(?:은|는|이|가)\s*(?:(?:결국|이미|실제로)\s*)?(?:반증(?:됐|되었)|틀렸|맞았)(?:고|음|다)(?!\s*\?)(?=[,.!…\s(—]|$)/u)?.[0];
+  return processed.match(/(?:급감|급증|하락|상승|감소|증가)(?:은|는|이|가)\s*(?:(?:결국|이미|실제로)\s*)?(?:반증(?:됐|되었)|틀렸|맞았)(?:고|음|다)(?!\s*\?)(?=[,.!…\s()—]|$)/u)?.[0];
 }
 
 /** Reflections are checked against the recorded outcomes instead of a fresh measurement. */

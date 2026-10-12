@@ -174,6 +174,7 @@ test("boundary: unbalanced or nested quotes do not break the guard", async () =>
   assert.equal(editorialMemoryOutcomeTargetViolationV2('"급감은 맞았다고 누군가 말했음.'), undefined);
   assert.equal(editorialMemoryOutcomeTargetViolationV2('"외부 "급증은 틀렸다"고 본 분석"을 읽었지만 동의 안 함.'), undefined);
   assert.ok(editorialMemoryOutcomeTargetViolationV2("급감은 반증됐다"));
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("급감은 맞았다) 이게 문제."), "unbalanced ) should be caught");
 });
 
 test("boundary: punctuation in context (parentheses, dash, ellipsis)", async () => {
