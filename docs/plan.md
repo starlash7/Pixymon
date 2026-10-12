@@ -288,3 +288,10 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Shared spend ledger (PR #16): Anthropic/X caps and the admin-usage cache live in `~/.pixymon/spend` for every process that can reach a paid provider, so worktrees no longer get separate daily caps. Offline/test processes keep their data directory.
 - Every early thought draft closed on "모름/지켜봄/보류". Thoughts (not Revisits) now must close on a stance; a final sentence that is only a hedge is rejected as `hedge-only-ending` and retried once with a plain-language hint. Retry feedback now explains common reasons (hedge ending, ungrounded number/name, unmarked causal claim) instead of codes only.
 - Not yet verified on a real model run: no eligible candidate during the session; the scheduled cycle on main will produce the first samples.
+## 26. Operator Pilot Publication — 2026-10-12 (operator decision: option B)
+
+- R1 requires a trusted zero-X verifier that does not exist, so R3 could never be authorized. The operator chose a simplified path for the first human-approved originals.
+- `--pilot` authorization: current-epoch shadow drafts with ≥12 reviewed, ≥8 approved without edit and tagged `fact-checked`, 0 factual-error tags. Recomputed from the shadow ledger at dispatch. 24h expiry, commit-bound, STOP file, clean tree, human approval per post, one post per day — unchanged.
+- Not changed: R0–R2/R3 status path, automatic posting (still locked), rollback rules.
+- Still required before a first post: X API credentials; a live-capable writer (Anthropic credit, or a decision to allow Gemini for live).
+- Deferred: a total cap for the pilot (R3 specified 10 originals); reviewer identity is the local operator, not independent.
