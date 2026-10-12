@@ -160,3 +160,73 @@ test("memory critic distinguishes the outcome target from the observed market mo
   assert.match(prompt, /fail 예: "Stargate V2의 급감은 반증됐고"/);
   assert.match(prompt, /pass 예: "급감을 일시적이라 본 내 판단은 반증됐고"/);
 });
+
+test("boundary: quoted assertions are left to the critic, not the guard", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  assert.equal(editorialMemoryOutcomeTargetViolationV2('누군가 "급감은 맞았다"고 말했지만 픽시는 그렇게 안 봄.'), undefined);
+  assert.equal(editorialMemoryOutcomeTargetViolationV2('"증가는 틀렸다" 이게 당시 반응이었음.'), undefined);
+  assert.equal(editorialMemoryOutcomeTargetViolationV2('"상승은 반증됐고" 라는 평가가 나왔지만'), undefined);
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("급감은 맞았고"));
+});
+
+test("boundary: unbalanced or nested quotes do not break the guard", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  assert.equal(editorialMemoryOutcomeTargetViolationV2('"급감은 맞았다고 누군가 말했음.'), undefined);
+  assert.equal(editorialMemoryOutcomeTargetViolationV2('"외부 "급증은 틀렸다"고 본 분석"을 읽었지만 동의 안 함.'), undefined);
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("급감은 반증됐다"));
+});
+
+test("boundary: punctuation in context (parentheses, dash, ellipsis)", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("급감은 맞았다. 다음도 그럴까?"));
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("상승은 반증됐고, 이제 다시 생각해야 함."));
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("급증은 틀렸음!"));
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("하락은 반증됐다…"));
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("감소는(결국) 맞았다."));
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("증가는—픽시가 봤을 때—반증됐음."));
+});
+
+test("boundary: questions and hedges must pass", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  assert.equal(editorialMemoryOutcomeTargetViolationV2("급감은 맞았다?"), undefined);
+  assert.equal(editorialMemoryOutcomeTargetViolationV2("증가는 반증됐을까?"), undefined);
+  assert.equal(editorialMemoryOutcomeTargetViolationV2("상승은 틀렸다는 평가가 아니라"), undefined);
+  assert.equal(editorialMemoryOutcomeTargetViolationV2("하락이 반증된 것은 아님."), undefined);
+});
+
+test("boundary: line breaks and CRLF do not break matching", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("급감은\n맞았다."));
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("상승은 \r\n반증됐고"));
+  assert.ok(editorialMemoryOutcomeTargetViolationV2("증가는  \n  틀렸음."));
+});
+
+test("boundary: quoted text spanning lines must pass", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  assert.equal(editorialMemoryOutcomeTargetViolationV2('"급감은\n맞았다"고 했지만'), undefined);
+  assert.equal(editorialMemoryOutcomeTargetViolationV2('"증가는\r\n반증됐고"라는 말'), undefined);
+});
+
+test("boundary: mixed verdicts in one text—guard catches the wrong one", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  const mixed = "내 판단은 맞았음. 급감은 반증됐고.";
+  const violation = editorialMemoryOutcomeTargetViolationV2(mixed);
+  assert.ok(violation);
+  assert.ok(violation!.includes("급감은 반증됐고"));
+});
+
+test("boundary: question followed by assertion—guard finds the assertion", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  const combined = "증가는 맞았을까? 실제로 하락은 틀렸다.";
+  const violation = editorialMemoryOutcomeTargetViolationV2(combined);
+  assert.ok(violation);
+  assert.ok(violation!.includes("하락은 틀렸다"));
+});
+
+test("boundary: quote followed by unquoted restatement—guard catches the restatement", async () => {
+  const { editorialMemoryOutcomeTargetViolationV2 } = await import("../src/services/editorial-v2/scope-critic.ts");
+  const restated = '"급증은 반증됐다"는 평가를 봤는데, 사실 급증은 맞았음.';
+  const violation = editorialMemoryOutcomeTargetViolationV2(restated);
+  assert.ok(violation);
+  assert.ok(violation!.includes("급증은 맞았음"));
+});
