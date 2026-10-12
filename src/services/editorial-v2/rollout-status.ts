@@ -20,9 +20,10 @@ const METRIC_TYPES: readonly EditorialMetricTypeV2[] = [
   "dispatch_decision",
   "followup_resolution",
 ];
-const FACT_CHECKED_TAG = "fact-checked";
+export const EDITORIAL_FACT_CHECKED_TAG_V2 = "fact-checked";
+const FACT_CHECKED_TAG = EDITORIAL_FACT_CHECKED_TAG_V2;
 const LANGUAGE_CHECKED_TAG = "language-checked";
-const FACT_ERROR_TAGS = new Set([
+export const EDITORIAL_FACT_ERROR_TAGS_V2: ReadonlySet<string> = new Set([
   "factual-error",
   "fact-error",
   "numeric-error",
@@ -31,6 +32,7 @@ const FACT_ERROR_TAGS = new Set([
   "wrong-time",
   "unsupported-claim",
 ]);
+const FACT_ERROR_TAGS = EDITORIAL_FACT_ERROR_TAGS_V2;
 const MALFORMED_TAGS = new Set(["malformed", "malformed-korean", "grammar-error"]);
 
 export interface RolloutMachineEvidenceV2 {

@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { EDITORIAL_COLLECTION_EPOCH_V2 } from "./contracts.js";
 import { EDITORIAL_R1_REQUIRED_CHECK_IDS_V2 } from "./r1-promotion.js";
 import type { EditorialRolloutStatusV2 } from "./rollout-status.js";
+import type { EditorialDraftStateV2 } from "./event-store.js";
+import { assertOperatorPilotAuthorizationV2, isOperatorPilotAuthorizationV2 } from "./operator-pilot.js";
 
 const DAY_MS = 86_400_000;
 const REQUIRED_CHECKS = {
@@ -71,11 +73,19 @@ export function writeApprovedLiveAuthorizationV2(input: {
 
 export function assertApprovedLiveAuthorizationV2(input: {
   authorizationPath: string; stopPath: string; commit: string; workingTreeClean: boolean; now?: Date;
+  /** Tests only; production re-reads the canonical shadow ledger. */
+  shadowLedgerPath?: string;
+  loadShadowStates?: (shadowLedgerPath: string) => readonly EditorialDraftStateV2[];
 }): void {
   if (fs.existsSync(input.stopPath)) throw new Error("editorial-live-suspended");
   if (!input.workingTreeClean) throw new Error("editorial-live-tree-dirty");
   if (!input.authorizationPath) throw new Error("approved-live-authorization-required");
   const record = JSON.parse(fs.readFileSync(input.authorizationPath, "utf8")) as ApprovedLiveAuthorizationV2;
+  if (isOperatorPilotAuthorizationV2(record)) {
+    assertOperatorPilotAuthorizationV2(record, { commit: input.commit, now: input.now,
+      shadowLedgerPath: input.shadowLedgerPath, loadStates: input.loadShadowStates });
+    return;
+  }
   const nowMs = (input.now ?? new Date()).getTime();
   const issuedMs = Date.parse(record.issuedAt);
   const expiryMs = Date.parse(record.expiresAt);
