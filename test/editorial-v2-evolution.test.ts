@@ -58,6 +58,12 @@ test("reflection needs two closed, unreflected judgments from the same ledger", 
   assert.deepEqual(selectEditorialEvolutionV2([STARGATE, open], NOW, "shadow"), { status: "blocked", reason: "evolution-insufficient-memory" });
 });
 
+test("a missed 72h check is not a closed judgment to reflect on", () => {
+  const missed = closed("usdd-missed", "USDD", "2026-10-07T09:00:00.000Z", "unresolved");
+  missed.followUps = [{ ...missed.followUps[0], reason: "checkpoint-window-missed" }];
+  assert.deepEqual(selectEditorialEvolutionV2([STARGATE, missed], NOW, "shadow"), { status: "blocked", reason: "evolution-insufficient-memory" });
+});
+
 test("reflection has a cooldown and never revisits the same judgments", () => {
   const recent = closed("reflection-recent", "Stargate V2", NOW, "supported", "evolution");
   recent.draft.createdAt = "2026-10-08T00:00:00.000Z";

@@ -56,7 +56,9 @@ export function selectEditorialEvolutionV2(
   const closed = sameLedger
     .filter((state) => ["bite", "withhold"].includes(state.draft.format) && anchoredAt(state, trackingMode))
     .map((state) => ({ state, outcome: state.followUps.find((row) => row.checkpoint === "72h" &&
-      ["supported", "invalidated", "unresolved"].includes(row.resolution)) }))
+      ["supported", "invalidated", "unresolved"].includes(row.resolution) &&
+      // A missed check says nothing about whether the judgment held; never reflect on it.
+      row.reason !== "checkpoint-window-missed") }))
     .filter(({ state, outcome }) => outcome && Date.parse(outcome.resolvedAt) <= nowMs &&
       nowMs - Date.parse(outcome.resolvedAt) <= EVOLUTION_LOOKBACK_MS_V2 && state.draft.facts[0] &&
       !reflected.has(state.draft.factIds[0]))
