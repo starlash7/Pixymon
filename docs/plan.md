@@ -272,3 +272,11 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
   - Both unresolved: "Stargate V2랑 USDD를 찍어뒀던 기억이 떠오르는데 사흘이 지나도 내 생각이 맞았는지 판정이 안 났다. 빠르게 털고 나가지 못한 숫자들은 그냥 묵혀두는 게 맞나 싶기도 하고."
   - An earlier label ("판단이 반증됐다") produced "Stargate V2의 급감은 반증됐고", grading the move instead of the judgment, and the lite critic passed it. Outcome labels are now plain language with an explicit rule.
 - Deferred: reflections have no decision-context capture for `editorial:compare`; the lite critic is lenient (it passed the misattribution above), so critic calibration remains open; reflections over a longer arc (recurring obsessions across weeks) and SOUL/MEMORY.md updates from outcomes are not implemented.
+
+## 23. Operator Pilot Publication — 2026-10-12 (operator decision: option B)
+
+- R1 requires a trusted zero-X verifier that does not exist, so R3 could never be authorized. The operator chose a simplified path for the first human-approved originals.
+- `--pilot` authorization: current-epoch shadow drafts with ≥12 reviewed, ≥8 approved without edit and tagged `fact-checked`, 0 factual-error tags. Recomputed from the shadow ledger at dispatch. 24h expiry, commit-bound, STOP file, clean tree, human approval per post, one post per day — unchanged.
+- Not changed: R0–R2/R3 status path, automatic posting (still locked), rollback rules.
+- Still required before a first post: X API credentials; a live-capable writer (Anthropic credit, or a decision to allow Gemini for live).
+- Deferred: a total cap for the pilot (R3 specified 10 originals); reviewer identity is the local operator, not independent.
