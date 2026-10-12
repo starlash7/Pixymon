@@ -5,6 +5,7 @@ import { LlmBatchQueueService, llmBatchQueue } from "./llm-batch-queue.js";
 import { LlmBatchRunsService, llmBatchRuns, RemoteBatchLike } from "./llm-batch-runs.js";
 import { memory } from "./memory.js";
 import { TEST_NO_EXTERNAL_CALLS } from "./twitter.js";
+import { reserveBudgetForBatchJob } from "./llm.js";
 
 interface BatchRunnerMemoryLike {
   recordDigestReflectionMemo(input: {
@@ -17,7 +18,7 @@ interface BatchRunnerMemoryLike {
 }
 
 export interface LlmBatchSubmitReport {
-  status: "disabled" | "local-skip" | "empty" | "submitted" | "error";
+  status: "disabled" | "local-skip" | "empty" | "budget-skip" | "submitted" | "error";
   requestCount: number;
   batchId?: string;
   error?: string;
@@ -38,6 +39,8 @@ export async function submitPendingLlmBatch(
     queue?: LlmBatchQueueService;
     runs?: LlmBatchRunsService;
     memoryService?: BatchRunnerMemoryLike;
+    /** Same daily budget as single requests; returns null when the job may not be submitted. */
+    reserve?: (job: { request: Anthropic.Messages.MessageCreateParams; kind: string }) => string | null;
   } = {}
 ): Promise<LlmBatchSubmitReport> {
   if (!settings.enabled) {
@@ -49,9 +52,18 @@ export async function submitPendingLlmBatch(
 
   const queue = deps.queue || llmBatchQueue;
   const runs = deps.runs || llmBatchRuns;
-  const pendingJobs = queue.getPendingJobs(settings.maxRequestsPerBatch);
+  const reserve = deps.reserve ||
+    ((job: { request: Anthropic.Messages.MessageCreateParams; kind: string }) =>
+      reserveBudgetForBatchJob(job.request as never, job.kind));
+  const queued = queue.getPendingJobs(settings.maxRequestsPerBatch);
+  // Stop at the first denial: later jobs are no cheaper, and unreserved jobs stay pending.
+  const pendingJobs: typeof queued = [];
+  for (const job of queued) {
+    if (!reserve({ request: job.request as Anthropic.Messages.MessageCreateParams, kind: job.kind })) break;
+    pendingJobs.push(job);
+  }
   if (pendingJobs.length === 0) {
-    return { status: "empty", requestCount: 0 };
+    return { status: queued.length === 0 ? "empty" : "budget-skip", requestCount: 0 };
   }
 
   try {

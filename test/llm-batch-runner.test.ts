@@ -83,7 +83,7 @@ test("submitPendingLlmBatch submits queued jobs and records batch state", async 
         maxSyncBatchesPerRun: 3,
         minSyncMinutes: 0,
       },
-      { queue, runs, memoryService }
+      { queue, runs, memoryService, reserve: () => "reservation-1" }
     );
 
     assert.equal(report.status, "submitted");
@@ -103,6 +103,21 @@ test("submitPendingLlmBatch submits queued jobs and records batch state", async 
       total: 1,
     });
     assert.equal(runs.getSyncCandidates(0, 5)[0]?.customIds[0], jobCustomId);
+  });
+});
+
+test("submitPendingLlmBatch never submits a job the daily budget did not reserve", async () => {
+  await withTempBatchState(async (queue, runs) => {
+    let creates = 0;
+    const fakeClaude = { beta: { messages: { batches: { create: async () => { creates += 1; throw new Error("must not submit"); } } } } } as any;
+    const report = await submitPendingLlmBatch(
+      fakeClaude,
+      { enabled: true, maxRequestsPerBatch: 8, maxSyncBatchesPerRun: 3, minSyncMinutes: 0 },
+      { queue, runs, memoryService: { recordDigestReflectionMemo() {} }, reserve: () => null }
+    );
+    assert.deepEqual(report, { status: "budget-skip", requestCount: 0 });
+    assert.equal(creates, 0);
+    assert.equal(queue.getQueueStats().pending, 1);
   });
 });
 
