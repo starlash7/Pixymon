@@ -59,6 +59,15 @@ JSON만 반환한다:
 {"verdict":"pass 또는 fail","claim":"fail이면 문제 문장, pass면 빈 문자열","problem":"fail이면 무엇을 넘어섰는지 한 줄"}`;
 }
 
+/** Bounded containment for direct grading of an observed move, not a semantic classifier.
+ * The subject-particle + affirmative predicate is required; questions, negation and
+ * judgment subjects do not match. Quoted text is left to the critic. Other paraphrases still need the semantic critic.
+ */
+export function editorialMemoryOutcomeTargetViolationV2(text: string): string | undefined {
+  const unquoted = text.replace(/“[^”]*”|"[^"]*"/gu, "");
+  return unquoted.match(/(?:급감|급증|하락|상승|감소|증가)(?:은|는|이|가)\s*(?:(?:결국|이미|실제로)\s*)?(?:반증(?:됐|되었)|틀렸|맞았)(?:고|음|다)(?!\s*\?)(?=[,.!\s]|$)/u)?.[0];
+}
+
 /** Reflections are checked against the recorded outcomes instead of a fresh measurement. */
 export function buildEditorialMemoryScopeCriticPromptV2(text: string, records: readonly EditorialReflectionRecordV2[]): string {
   return `아래 글이 픽시의 지난 판단 기록과 다른 주장을 하거나, 기록으로 확인할 수 없는 것을 사실처럼 말하는지 판정하라.
@@ -71,6 +80,8 @@ ${formatEditorialReflectionRecordsV2(records)}
 - 그 결과에서 픽시가 느끼거나 배운 것, 지금의 믿음과 의심
 
 fail인 것:
+- 결과는 그때 픽시의 판단에 대한 판정이다. 관측된 시장 움직임 자체는 맞았다/틀렸다/반증됐다고 평가하지 않는다.
+- fail 예: "Stargate V2의 급감은 반증됐고". pass 예: "급감을 일시적이라 본 내 판단은 반증됐고"
 - 기록과 다른 결과나 개수(예: 반증된 것을 맞았다고 함, 하나를 두 번이라고 함)
 - 기록에 없는 원인, 자금 유입·유출, 사용자 행동, 앞으로의 전망을 사실이나 유력한 해석으로 말함
 - 비공개 연습 기록을 실제로 올렸던 글처럼 말함
@@ -91,6 +102,8 @@ export async function reviewEditorialScopeV2(input: {
   records?: readonly EditorialReflectionRecordV2[];
 }): Promise<EditorialScopeCriticResultV2> {
   if (!input.evidence && !input.records?.length) return { status: "unavailable", reason: "scope-critic-context-missing" };
+  const targetViolation = input.records?.length ? editorialMemoryOutcomeTargetViolationV2(input.text) : undefined;
+  if (targetViolation) return { status: "fail", claim: targetViolation, problem: "memory-outcome-target: 결과는 시장 움직임이 아니라 지난 판단을 평가한다" };
   const prompt = input.records?.length
     ? buildEditorialMemoryScopeCriticPromptV2(input.text, input.records)
     : buildEditorialScopeCriticPromptV2(input.text, input.evidence!);

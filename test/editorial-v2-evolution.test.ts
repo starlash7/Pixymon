@@ -8,6 +8,7 @@ import {
   selectEditorialEvolutionV2,
   type EditorialReflectionRecordV2,
 } from "../src/services/editorial-v2/evolution.ts";
+import { reviewEditorialScopeV2 } from "../src/services/editorial-v2/scope-critic.ts";
 import { splitEditorialSentencesV2 } from "../src/services/editorial-v2/validator.ts";
 import { writeEditorialEvolutionV2, type EditorialWriterModelV2 } from "../src/services/editorial-v2/writer.ts";
 import { collectEditorialDraftV2 } from "../src/services/editorial-v2/workflow.ts";
@@ -168,4 +169,55 @@ test("a reflection draft is accepted by the real ledger and survives review re-v
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Offline regression derived from docs/plan.md §22; not the original model request/reply.
+// These closed 72h records are synthetic, not observed follow-up measurements.
+const MOVE_GRADED = "Stargate V2의 급감은 반증됐고, USDD의 판단은 맞았음. 픽시는 숫자가 눕는 모양을 대충 짐작하면 안 된다는 걸 배움.";
+
+test("documented memory mistake is contained even when the critic would pass", async () => {
+  const records = RECORDS();
+  let calls = 0;
+  const critic = { async generate() { calls++; return JSON.stringify({ verdict: "pass" }); } };
+  const review = await reviewEditorialScopeV2({ text: MOVE_GRADED, records, model: critic });
+  assert.equal(review.status, "fail");
+  assert.equal(calls, 0);
+  for (const scopeCritic of [critic, undefined]) {
+    const result = await writeEditorialEvolutionV2({ records, plan: buildEditorialEvolutionPlanV2(records, NOW, "protocol"),
+      scopeCritic, model: { async generate() { return payload(MOVE_GRADED, records); } } });
+    assert.equal(result.status, "blocked", JSON.stringify(result));
+    if (result.status === "blocked") assert.ok(result.validationReasons.includes("memory-outcome-target"));
+  }
+});
+
+test("memory outcome containment allows judgments, hedges, negation and quoted mistakes", async () => {
+  const records = RECORDS();
+  for (const text of [
+    "Stargate V2의 급감을 일시적이라 본 내 판단은 반증됐고, USDD의 판단은 맞았음. 픽시는 성급했던 버릇을 돌아봄.",
+    "Stargate V2의 급감은 관측됐고 내 판단은 틀렸음. 픽시는 USDD를 보며 성급했던 버릇을 돌아봄.",
+    "Stargate V2의 급감은 반증됐다? 이 기록은 움직임이 아니라 내 판단만 평가함.",
+    "Stargate V2의 급감은 반증됐음 ? 픽시는 내 판단부터 돌아봄.",
+    '“Stargate V2의 급감은 반증됐다.”는 잘못된 말임. 픽시는 내 판단부터 돌아봄.',
+    "Stargate V2의 급감이 반증됐는지는 이 기록으로 말할 수 없음. 픽시는 그때 판단부터 돌아봄.",
+    "Stargate V2의 급감이 반증됐다는 뜻은 아님. 픽시는 그때 판단부터 돌아봄.",
+    '“Stargate V2의 급감은 반증됐다”는 잘못된 말임. 픽시는 시장이 아니라 내 판단부터 돌아봄.',
+    "Stargate V2의 급감은 반증되지 않았음. 픽시의 판단이 틀렸던 걸 돌아봄.",
+    "Stargate V2의 급감이 아니라 내 판단이 반증됐음. 픽시는 성급했던 버릇을 돌아봄.",
+  ]) {
+    assert.equal((await reviewEditorialScopeV2({ records, text, model: { async generate() {
+      return JSON.stringify({ verdict: "pass" });
+    } } })).status, "pass", text);
+  }
+});
+
+test("a contained memory mistake retries once and accepts a corrected judgment", async () => {
+  const records = RECORDS();
+  const drafts = [MOVE_GRADED, "Stargate V2의 급감을 일시적이라 본 내 판단은 반증됐고, USDD의 판단은 맞았음. 픽시는 성급했던 버릇을 돌아봄."];
+  const prompts: string[] = [];
+  const result = await writeEditorialEvolutionV2({ records, plan: buildEditorialEvolutionPlanV2(records, NOW, "protocol"),
+    scopeCritic: { async generate() { return JSON.stringify({ verdict: "pass" }); } },
+    model: { async generate({ prompt }) { prompts.push(prompt); return payload(drafts.shift()!, records); } } });
+  assert.equal(result.status, "generated", JSON.stringify(result));
+  assert.equal(result.attempts, 2);
+  assert.match(prompts[1], /memory-outcome-target/);
 });
