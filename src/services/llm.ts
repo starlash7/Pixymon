@@ -246,6 +246,40 @@ export function initClaudeClient(): Anthropic {
   });
 }
 
+/**
+ * Batch submissions bypassed the per-request budget entirely. Reserve each job against the same
+ * daily cost/request limits before it may be submitted; an unreserved job stays queued. Reservations
+ * are never released (batch billing is settled later), which over-counts rather than under-counts.
+ */
+export function reserveBudgetForBatchJob(params: ClaudeMessageCreateParams, kind: string): string | null {
+  assertExternalCallsAllowed("Anthropic batch submission");
+  const runtimeConfig = loadRuntimeConfig();
+  const timezone = runtimeConfig.dailyTimezone;
+  const estimated = estimateAnthropicMessageCost({
+    model: String(params.model || CLAUDE_MODEL),
+    system: typeof params.system === "string" ? params.system : "",
+    messages: Array.isArray(params.messages) ? (params.messages as Array<{ content?: unknown }>) : [],
+    maxTokens: params.max_tokens,
+    pricing: runtimeConfig.anthropicCost,
+  });
+  const reservation = anthropicBudget.reserveRequest({
+    enabled: runtimeConfig.anthropicCost.enabled,
+    timezone,
+    kind: `batch:${kind}`,
+    dailyMaxUsd: runtimeConfig.anthropicCost.dailyMaxUsd,
+    dailyRequestLimit: runtimeConfig.anthropicCost.dailyRequestLimit,
+    estimatedCostUsd: estimated.estimatedTotalCostUsd,
+    totalDailyMaxUsd: runtimeConfig.totalCost.enabled ? runtimeConfig.totalCost.dailyMaxUsd : 0,
+    xApiEstimatedCostUsd: xApiBudget.getTodayUsage(timezone).estimatedTotalCostUsd,
+    minimumRequestCount: anthropicBudget.getTodayUsage(timezone).requestCount,
+  });
+  if (!reservation.allowed || !reservation.reservationId) {
+    console.log(`[LLM-BUDGET] batch:${kind} 스킵: reservation=${reservation.reason || "unavailable"}`);
+    return null;
+  }
+  return reservation.reservationId;
+}
+
 export async function requestBudgetedClaudeMessage(
   claude: Anthropic,
   params: ClaudeMessageCreateParams,
