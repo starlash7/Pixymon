@@ -271,6 +271,10 @@ EDITORIAL_MODEL_PROVIDER=gemini npm run editorial:shadow
 - The free tier allows 20 generate requests per model per day (Pacific reset). Each HTTP attempt reserves a slot per model in `editorial-gemini/<UTC day>.ndjson` before dispatch (20/model/day). Corrupt accounting fails closed. A 429 whose `retryDelay` exceeds 30s is treated as a spent daily quota and not retried; other 429s, 5xx and timeouts back off, at most three attempts per call. A real collection uses about 2–6 requests, so plan on a few samples per model per day; another model id (for example `gemini-3.7-flash`) has its own quota. Auth failures and truncated output (`finishReason` other than `STOP`) are not retried. Failures are logged as `[GEMINI] {...}` with an explicit reason instead of an empty result.
 - Decision contexts record the Gemini model id. Gemini drafts are evidence about Gemini only; they do not validate the Anthropic writer, earn R2, or authorize live use.
 
+### Scheduled shadow cycle
+
+24h/72h checks must run inside their windows; a missed window is recorded as `unresolved` with `checkpoint-window-missed` and can never be judged later (reflections skip it). `scripts/editorial-shadow-cycle.sh` runs `editorial:followups` on every invocation and one Gemini shadow collection at `PIXYMON_SHADOW_COLLECT_HOURS` (UTC, default `01 09 17`). It retries once on `gemini-3.5-flash-lite`/`gemini-3.1-flash-lite` only when the provider was unavailable (model error, quota, critic unavailable), never after a gate no-post. Output is appended to `data/shadow-cycle.log`. Run it hourly from launchd or cron; it never touches the live ledger or X.
+
 ## Inquiry before writing
 
 - The editorial model decides what to learn, why the selected evidence matters, and how the previous judgment/outcome changes this check. It returns structured reasoning, not a public draft. A malformed contract gets one retry; no public value or an empty model response stops before the writer. No deterministic inquiry or prose fallback exists in runtime.
