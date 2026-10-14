@@ -61,7 +61,9 @@ self-contained provider mocks. An injected function must never wrap a real
 transport to evade the offline setting.
 
 Anthropic requests reserve their estimated USD cost and request slot under a
-cross-process file lock before sending. Successful responses settle that
+cross-process file lock before sending. Message Batch submissions (V1, off by
+default via `ANTHROPIC_BATCH_ENABLED=false`) reserve each job against the same
+daily limits; an unreserved job stays queued and is never submitted. Successful responses settle that
 reservation using separate uncached-input, cache-write, cache-read and output
 usage counters. Cached input is not subtracted from `usage.input_tokens`.
 SDK retries are disabled so every new attempt needs its own reservation.
