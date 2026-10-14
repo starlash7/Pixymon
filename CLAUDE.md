@@ -118,3 +118,8 @@
 1. `data/memory.json` 존재 여부 확인
 2. 파일 쓰기 권한 확인
 3. JSON read/write 파싱 경로 확인
+
+## 근거 범위 회귀 파일럿
+
+critic 오판/기억 성찰 수정에는 `docs/pstack-pilot.md`를 읽고 따른다.
+완료 기준은 `npm run verify` 전체 통과와 독립 검수 결과다.
