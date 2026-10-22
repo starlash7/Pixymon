@@ -82,8 +82,8 @@ test("a reflection plan carries the remembered facts and is never re-measured", 
   assert.equal(plan.voiceState, "humbled");
   assert.deepEqual(plan.factIds, ["stargate-thought:fact", "usdd-thought:fact"]);
   const prompt = buildEditorialEvolutionPromptV2(plan, RECORDS(), []);
-  assert.match(prompt, /Stargate V2[\s\S]*그때 픽시 생각이 틀린 쪽이었음/);
-  assert.match(prompt, /USDD[\s\S]*그때 픽시 생각이 맞는 쪽이었음/);
+  assert.match(prompt, /Stargate V2[\s\S]*그때 픽시몬 판단이 틀린 쪽이었음/);
+  assert.match(prompt, /USDD[\s\S]*그때 픽시몬 판단이 맞는 쪽이었음/);
   assert.match(prompt, /움직임 자체를 판정하지 않는다/);
   assert.match(prompt, /실제로 올렸던 글처럼 말하지 않는다/);
 });

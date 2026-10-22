@@ -17,12 +17,18 @@ test("writer voice states register and safety rules the validator enforces", () 
   const system = buildEditorialWriterSystemV2(process.cwd());
   assert.match(system, /존댓말\(~습니다, ~입니다, ~해요\)은 쓰지 않는다/);
   assert.match(system, /이모지, 해시태그, 투자 조언/);
-  assert.match(system, /캐릭터 단어\(픽시몬, 물고, 씹고, 먹고, 소화, 흉터, 눕\)는 합쳐서 한 번까지만/);
-  assert.match(system, /글의 중심은 그걸 소화한 픽시의 생각/);
+  assert.match(system, /캐릭터 비유 단어\(물고, 씹고, 먹고, 소화, 흉터, 눕\)는 합쳐서 한 번까지만/);
+  assert.match(system, /글의 중심은 그걸 소화한 픽시몬의 판단/);
 });
 
 test("writer voice degrades to character.ts when canon docs are absent", () => {
   const system = buildEditorialWriterSystemV2("/nonexistent-pixymon-canon");
   assert.match(system, /@Pixy_mon/);
   assert.ok(system.includes(pixymonCharacter.personality[0]));
+});
+
+test("writer voice makes Pixymon speak of itself in the third person", () => {
+  const system = buildEditorialWriterSystemV2(process.cwd());
+  assert.match(system, /3인칭 이름 "픽시몬"으로 부른다/);
+  assert.match(system, /"나", "픽시"라고 하지 않고/);
 });

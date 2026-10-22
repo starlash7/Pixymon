@@ -876,7 +876,7 @@ async function collectCoinGeckoV2(context: Required<Pick<EditorialProviderContex
   const fetched = await fetchPayloadV2({ provider: "coingecko", url: ENDPOINTS.coingecko, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, maxResponseBytes: PROVIDER_RESPONSE_LIMIT_BYTES_V2.coingecko, maxCacheAgeMs: SIGNAL_FRESHNESS_MS });
   if (fetched.ok === false) return failureResult("coingecko", context.now, fetched.failure, fetched.latencyMs, fetched.statusCode);
   if (!Array.isArray(fetched.value)) return failureResult("coingecko", context.now, "parse-error", fetched.latencyMs);
-  const rows = fetched.value.flatMap((value): Array<{ id: string; name: string; current_price: number; change24h?: number }> => {
+  const rows = fetched.value.flatMap((value): Array<{ id: string; name: string; current_price: number; change24h?: number; symbol?: string }> => {
     if (!isRecord(value)) return [];
     if (
       typeof value.id !== "string" ||
@@ -887,8 +887,10 @@ async function collectCoinGeckoV2(context: Required<Pick<EditorialProviderContex
       return [];
     }
     const change = (value as { price_change_percentage_24h?: unknown }).price_change_percentage_24h;
+    const symbol = (value as { symbol?: unknown }).symbol;
     return [{ id: value.id, name: value.name, current_price: value.current_price,
-      ...(typeof change === "number" && Number.isFinite(change) ? { change24h: change } : {}) }];
+      ...(typeof change === "number" && Number.isFinite(change) ? { change24h: change } : {}),
+      ...(typeof symbol === "string" && /^[a-z0-9]{2,10}$/iu.test(symbol) ? { symbol: symbol.toUpperCase() } : {}) }];
   }).slice(0, 5);
   if (rows.length === 0) {
     return failureResult("coingecko", context.now, fetched.value.length === 0 ? "empty" : "parse-error", fetched.latencyMs);
@@ -902,7 +904,10 @@ async function collectCoinGeckoV2(context: Required<Pick<EditorialProviderContex
       const name = String(row.name);
       const formatted = price >= 1 ? `$${price.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : `$${price.toPrecision(4)}`;
       const card = directCard({ id: `coingecko:${slug(String(row.id))}:price:${context.now}`, lane: "ecosystem", subject: name, metricName: "usd-price", value: price, raw: formatted, unit: "USD", period: "snapshot", provider: "coingecko", url: ENDPOINTS.coingecko, now: context.now, health, role: "discovery" });
-      return row.change24h === undefined ? card : withProfile(card, { change24h: row.change24h });
+      return withProfile(card, {
+        ...(row.change24h !== undefined ? { change24h: row.change24h } : {}),
+        ...(row.symbol ? { symbol: row.symbol } : {}),
+      });
     }),
     observations: [],
     discoveries: [],

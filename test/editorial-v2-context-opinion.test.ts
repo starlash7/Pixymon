@@ -78,15 +78,15 @@ test("the writer gets the context and is asked for its own angle, marked as opin
   const prompt = buildEditorialPromptV2(plan(), CARD, []);
   assert.match(prompt, /같이 먹은 재료/);
   assert.match(prompt, /관련 기사 제목: Aave governance votes on GHO rate cut/);
-  assert.match(prompt, /픽시만의 관점 하나를 낸다/);
-  assert.match(prompt, /'픽시 생각엔', '~같음', '~듯'처럼 의견으로 드러낸다/);
+  assert.match(prompt, /픽시몬만의 관점 하나를 낸다/);
+  assert.match(prompt, /'픽시몬이 판단하기에', '픽시몬이 보기엔', '~같음', '~듯'처럼 의견으로 드러낸다/);
 });
 
 test("the inquiry reads the context and forms one labelled hypothesis", () => {
   const prompt = buildEditorialInquiryPromptV2(plan(), CARD);
   assert.match(prompt, /같이 먹은 재료/);
-  assert.match(prompt, /4\. 픽시만의 해석은 무엇인가/);
-  assert.match(prompt, /가설이면 "~같다", "~듯", "픽시 생각엔"처럼 가설로 쓴다/);
+  assert.match(prompt, /4\. 픽시몬만의 해석은 무엇인가/);
+  assert.match(prompt, /가설이면 "~같다", "~듯", "픽시몬이 판단하기에"처럼 가설로 쓴다/);
 });
 
 test("the critic allows marked opinions and fails unmarked causal claims and treated-as-fact headlines", () => {
@@ -129,4 +129,52 @@ test("dropping the sign of a grounded change is not a new number", () => {
 test("duration suffixes and generic market terms are not new numbers or names", () => {
   assert.deepEqual(check("Aave가 7일간 +12.40% 불었는데 DeFi 대출 쪽만 그럼. 픽시 생각엔 GHO 쪽 기대감 같음.").reasons, []);
   assert.ok(check("Aave가 불었는데 Morpho는 조용함. 픽시 생각엔 자리 이동 같음.").reasons.includes("unsupported-name"));
+});
+
+test("Pixymon refers to itself once by its third-person name, separately from metaphor cues", () => {
+  assert.deepEqual(check("Aave가 하루 만에 확 불었는데 비트코인은 $67,000에서 멈춤. 픽시몬이 판단하기에 GHO 쪽 기대감을 먼저 소화한 돈 같음.").reasons, []);
+  assert.ok(check("Aave가 확 불었음. 픽시몬이 보기엔 기대감인데, 픽시몬은 그래도 한 번 더 의심함.").reasons.includes("self-name-overuse"));
+});
+
+test("tickers of context coins and the subject's token count as grounded names", () => {
+  const withTicker = buildEditorialContextV2({ evidence: CARD, sensing: { ...SENSING, evidence: [CARD, { ...BTC, profile: { change24h: 0.06, symbol: "BTC" } }] } });
+  assert.match(withTicker.find((item) => item.id === "market:bitcoin")!.label, /\$BTC/);
+  const text = "Aave가 확 불었는데 $BTC는 제자리고 $AAVE 쪽만 들썩임. 픽시몬이 판단하기에 GHO 쪽 기대감 같음.";
+  const reasons = validateEditorialDraftV2(editorialDraftValidationInputV2({ text, subject: CARD.subject, fact: CARD, factIds: [CARD.id],
+    usedFactIds: [CARD.id], rendering: "thought", context: withTicker })).reasons;
+  assert.equal(reasons.includes("unsupported-name"), false, reasons.join(","));
+});
+
+test("the critic sees the follow-up baseline the inquiry may cite", () => {
+  const prompt = buildEditorialScopeCriticPromptV2("Aave가 확 불었음.", CARD, context());
+  assert.match(prompt, /현재 수준: \$30\.00B/);
+  assert.match(prompt, /변동 전 수준\(재관측 기준점\): \$28\.20B/);
+});
+
+test("the inquiry is given exact memory ids, or told memory must be null", () => {
+  const none = buildEditorialInquiryPromptV2(plan(), CARD);
+  assert.match(none, /memory는 반드시 null이다/);
+  const withMemory = { ...plan(), memoryContext: { beliefs: [], previous: { draftId: "draft-42", provenance: "shadow" as const, text: "t", thesis: "t", verdict: "digesting", recordedAt: NOW,
+    outcome: { id: "draft-42:72h", checkpoint: "72h" as const, resolution: "supported" as const, reason: "r", resolvedAt: NOW } } } };
+  const prompt = buildEditorialInquiryPromptV2(withMemory, CARD);
+  assert.match(prompt, /"draftId":"draft-42","resolutionId":"draft-42:72h"/);
+});
+
+test("an invented memory object is dropped when there is nothing to link", async () => {
+  const { reasonEditorialInquiryV2 } = await import("../src/services/editorial-v2/inquiry.ts");
+  const { inquiryFixture } = await import("./helpers/editorial-inquiry.ts");
+  const levelPlan = { ...plan(), editorialCase: { ...plan().editorialCase!, scope: "usd-tvl-level" as const } };
+  const invented = { ...inquiryFixture({ factId: CARD.id, levelTest: true }), memory: { draftId: "made-up", resolutionId: null, lesson: "x", change: "y" } };
+  const result = await reasonEditorialInquiryV2({ plan: levelPlan, evidence: CARD, model: { async generate() { return JSON.stringify(invented); } } });
+  assert.equal(result.status, "reasoned", JSON.stringify(result));
+  if (result.status === "reasoned") assert.equal(result.inquiry.memory, null);
+});
+
+test("length is checked the way X counts it: Hangul weighs two", async () => {
+  const { xWeightedLengthV2 } = await import("../src/services/editorial-v2/validator.ts");
+  assert.equal(xWeightedLengthV2("abc 1%"), 6);
+  assert.equal(xWeightedLengthV2("픽시몬"), 6);
+  const long = "Aave가 하루 만에 확 불었는데 일주일로 보면 갑자기는 아님. 대출 쪽 사람들이 다 같이 움직인 날이라 픽시몬이 판단하기에 기대감이 먼저 달려간 것 같음. 그런 날은 보통 며칠 뒤에 조용히 빠지던데 이번에는 체인도 여러 개라 조금 다를 수도 있음. 결국 끝까지 남아서 버티는 쪽이 진짜 신호라고 보는 게 맞다고 봄.";
+  assert.ok(long.length <= 190 && xWeightedLengthV2(long) > 280, `${long.length} ${xWeightedLengthV2(long)}`);
+  assert.ok(check(long).reasons.includes("too-long"));
 });

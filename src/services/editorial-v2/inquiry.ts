@@ -66,6 +66,19 @@ function inquirySelectionV2(evidence: EvidenceCardV2) {
   };
 }
 
+/** Ids are copied by code, not found by the model inside a JSON dump; that lookup kept failing. */
+function memoryTemplateV2(plan: EditorialPlanV2): string {
+  const previous = plan.memoryContext?.previous;
+  if (!previous) return "null";
+  return `{"draftId":${JSON.stringify(previous.draftId)},"resolutionId":${JSON.stringify(previous.outcome?.id ?? null)},"lesson":"이전 판단과 결과에서 배운 것","change":"그래서 이번에 다르게 보는 것"}`;
+}
+
+function memoryInstructionV2(plan: EditorialPlanV2): string {
+  return plan.memoryContext?.previous
+    ? "memory의 draftId와 resolutionId는 아래 값을 글자 그대로 쓰고, lesson과 change만 채운다."
+    : "이번에는 연결할 이전 기록이 없다. memory는 반드시 null이다.";
+}
+
 export function buildEditorialInquiryPromptV2(plan: EditorialPlanV2, evidence: EvidenceCardV2): string {
   return `픽시몬이 무엇을 알아내려는지 먼저 결정하라. 아직 트윗은 쓰지 않는다.
 현재 관측: ${JSON.stringify({ id: evidence.id, subject: evidence.subject, metric: evidence.metric, source: evidence.source })}
@@ -81,7 +94,7 @@ ${formatEditorialContextV2(plan.context)}
 1. 무엇을 알아내고 싶은가? subject 이름만 바꿔 끼운 질문보다 지금 관측과 관련 기록에서 생긴 구체적인 불확실성을 고른다.
 2. 왜 이 근거가 중요한가? 무엇을 구별하는 데 도움이 되고 무엇은 아직 모르는지 적는다. 원인·유입·채택을 사실로 단정하지 않는다. 가격이 크게 움직이지 않았다는 것은 말할 수 있지만, 그렇다고 돈이나 자산이 들어오거나 나갔다고 확인된 것은 아니다.
 3. 지난 판단 때문에 이번에는 무엇을 다르게 확인하는가? 이전 질문과 실제 재관측 결과를 읽고, 검사 기준을 바꾸거나 유지하는 이유를 설명한다. 실패하지 않은 기록을 실패로 꾸미지 않는다. shadow는 공개 경험이 아니다.
-4. 픽시만의 해석은 무엇인가? 재료끼리 연결하거나 남들이 놓칠 만한 가설 하나를 세운다(예: 카테고리·체인·기사·시장 흐름과의 연결, 흔한 해석에 대한 반대 의견). 가설은 사실이 아니라 가설로 쓴다.
+4. 픽시몬만의 해석은 무엇인가? 재료끼리 연결하거나 남들이 놓칠 만한 가설 하나를 세운다(예: 카테고리·체인·기사·시장 흐름과의 연결, 흔한 해석에 대한 반대 의견). 가설은 사실이 아니라 가설로 쓴다.
 
 사용 가능한 검사(새 공급자·임의 수치·새 일정을 만들지 않는다):
 - pre-move-level: 변동 전 USD TVL로 완전히 되돌아가는지 확인한다.
@@ -89,10 +102,10 @@ ${formatEditorialContextV2(plan.context)}
 - observation-only: 비교 기준이나 검증 가치가 부족해 해석을 유보한다. 가설 지지 판정은 하지 않는다.
 - recorded-checkpoint: Revisit 전용. 이미 기록된 기준과 결과를 해석하며 과거 검사 기준을 바꾸지 않는다.
 새 가설의 pre-move-level/current-level은 USD TVL 변화와 절대 기준점이 모두 있을 때만 가능하다. 24/72시간 스케줄은 코드가 유지한다.
-judgment는 지금 무엇을 중요하게 보고 어떻게 해석하는지다. 픽시의 가설을 담을 수 있고, 가설이면 "~같다", "~듯", "픽시 생각엔"처럼 가설로 쓴다. 미래 가설이 미결이라는 이유만으로 모든 현재 판단을 '보류'로 끝낼 필요는 없다.
+judgment는 지금 무엇을 중요하게 보고 어떻게 해석하는지다. 픽시몬의 가설을 담을 수 있고, 가설이면 "~같다", "~듯", "픽시몬이 판단하기에"처럼 가설로 쓴다. 미래 가설이 미결이라는 이유만으로 모든 현재 판단을 '보류'로 끝낼 필요는 없다.
 공개 가치가 없거나 지금 자료로 답할 수 없는 질문뿐이면 {"decision":"no-post","reason":"구체적 이유"}만 반환한다.
-그 외에는 아래 JSON만 반환한다. factIds는 현재 관측 id만 사용한다. 이전 기록이 없으면 memory=null, 있으면 실제 draftId와 outcome.id(없으면 null)를 정확히 연결하고 lesson/change를 적는다.
-{"decision":"pursue 또는 withhold","question":"알아내려는 질문","whyThisEvidence":"근거가 중요한 이유와 한계","judgment":"현재의 편집 판단","factIds":["${evidence.id}"],"check":"검사 이름","memory":null}`;
+그 외에는 아래 JSON만 반환한다. factIds는 현재 관측 id만 사용한다. ${memoryInstructionV2(plan)}
+{"decision":"pursue 또는 withhold","question":"알아내려는 질문","whyThisEvidence":"근거가 중요한 이유와 한계","judgment":"현재의 편집 판단","factIds":["${evidence.id}"],"check":"검사 이름","memory":${memoryTemplateV2(plan)}}`;
 }
 
 function retryHint(reasons: readonly string[]): string {
@@ -126,6 +139,10 @@ export async function reasonEditorialInquiryV2(input: {
       if (typeof reason === "string" && reason.trim() && reason.length <= 400) {
         return { status: "blocked", reason: `inquiry-no-public-value:${reason.trim()}`, attempts: attempt, validationReasons: [] };
       }
+    }
+    // With no previous record there is nothing to link; drop an invented memory object instead of failing.
+    if (!input.plan.memoryContext?.previous && value && typeof value === "object" && (value as { memory?: unknown }).memory != null) {
+      (value as { memory: null }).memory = null;
     }
     reasons = validateEditorialInquiryV2(value, {
       tvlMetric: /tvl/i.test(input.evidence.metric.name),

@@ -295,3 +295,12 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Not changed: R0–R2/R3 status path, automatic posting (still locked), rollback rules.
 - Still required before a first post: X API credentials; a live-capable writer (Anthropic credit, or a decision to allow Gemini for live).
 - Deferred: a total cap for the pilot (R3 specified 10 originals); reviewer identity is the local operator, not independent.
+
+## 27. Third-person Pixymon, Inquiry Memory, Tickers, X Length — 2026-10-22
+
+- Operator: Pixymon speaks of itself like a Digimon, in the third person ("픽시몬이 판단하기에", "픽시몬이 보기엔"), not "나"/"픽시". Prompts, critic and CLAUDE.md updated; the self-name is limited to once per post and no longer shares the single metaphor-cue allowance.
+- Inquiry memory: real runs failed with `inquiry-invented-memory` / `inquiry-memory-link-mismatch` because the model had to find ids inside a JSON dump. The prompt now carries the exact draftId/resolutionId template, or states memory must be null; an invented memory object with nothing to link is dropped (the critic still rejects invented history in the judgment). Two following real runs passed the inquiry on the first attempt.
+- Tickers: CoinGecko symbols and the protocol token symbol are in the context (`$BTC`, `$TORN`), so tickers are grounded names.
+- Critic sees the current level and the follow-up baseline the inquiry may cite.
+- X length: X weighs Hangul as 2; the 190-character limit allowed posts a standard account cannot send. Drafts now fail `too-long` above an X weight of 280; prompts ask for ~130 Hangul characters with a retry hint.
+- Real runs today hit the Anthropic daily cap ($0.345/$0.40 at 85% utilization → local-only), which stopped further calls as designed.
