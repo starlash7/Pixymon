@@ -80,14 +80,14 @@ test("legacy drafts without a rendering keep the numeric data contract", () => {
 
 test("the writer asks for a thought or a data post according to the plan", () => {
   const thought = buildEditorialPromptV2(plan("thought"), STARGATE, []);
-  assert.match(thought, /픽시의 생각 글이다/);
+  assert.match(thought, /픽시몬의 생각 글이다/);
   assert.match(thought, /"Stargate"를 한 번 넣는다/);
   assert.match(thought, /방향: 작아짐/);
   assert.doesNotMatch(thought, /첫 두 문장 안에 rawValue/);
   const data = buildEditorialPromptV2(plan("data"), STARGATE, []);
   assert.match(data, /첫 두 문장 안에 rawValue/);
   assert.match(data, /판정 성격이 드러나는 단어/);
-  assert.doesNotMatch(data, /픽시의 생각 글이다/);
+  assert.doesNotMatch(data, /픽시몬의 생각 글이다/);
 });
 
 test("the writer accepts the reference thought end to end", async () => {

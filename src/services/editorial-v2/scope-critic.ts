@@ -20,11 +20,21 @@ export function editorialScopeTextDigestV2(text: string): string {
   return createHash("sha256").update(String(text || "").replace(/\s+/g, " ").trim()).digest("hex");
 }
 
+function formatUsdV2(value: number): string {
+  if (Math.abs(value) >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  return `$${Math.round(value).toLocaleString("en-US")}`;
+}
+
 function measurementLines(evidence: EvidenceCardV2): string {
   const priceChange = evidence.selection?.priceNeutral?.priceChangePercent;
   return [
     `- 대상: ${evidence.subject}`,
     `- 지표: ${evidence.metric.name} = ${evidence.metric.raw} (${evidence.metric.period})`,
+    ...(evidence.followUp ? [
+      `- 현재 수준: ${evidence.followUp.metric.raw}`,
+      `- 변동 전 수준(재관측 기준점): ${formatUsdV2(evidence.followUp.threshold)}`,
+    ] : []),
     typeof priceChange === "number"
       ? `- 같은 기간 담긴 자산 가격 변화(선별 단계 추정): ${priceChange.toFixed(2)}%`
       : "- 가격 변화 정보 없음",
@@ -51,7 +61,7 @@ ${formatEditorialContextV2(context)}
 pass인 것:
 - 측정값과 재료에 있는 사실을 그대로 말함 (움직임은 말로 묘사해도 된다: 커졌다, 홀쭉해졌다)
 - 기사 제목을 "~라는 기사/얘기가 돌던데"처럼 남의 말로 인용함
-- 의견으로 드러낸 해석: "픽시 생각엔", "~같음", "~듯", "~아닐까", "감이 옴" 같은 가설·추측·반대 의견
+- 의견으로 드러낸 해석: "픽시몬이 판단하기에", "픽시몬이 보기엔", "~같음", "~듯", "~아닐까", "감이 옴" 같은 가설·추측·반대 의견
 - 질문, 모른다는 말, 부정
 
 fail인 것 (하나라도 있으면 fail, 그 문장을 claim에 그대로 적는다):
@@ -76,7 +86,7 @@ ${formatEditorialReflectionRecordsV2(records)}
 
 말할 수 있는 것:
 - 기록된 판단과 그 결과(버텼다, 반증됐다, 판정이 안 났다), 그리고 그 개수
-- 그 결과에서 픽시가 느끼거나 배운 것, 지금의 믿음과 의심
+- 그 결과에서 픽시몬이 느끼거나 배운 것, 지금의 믿음과 의심
 
 fail인 것:
 - 기록과 다른 결과나 개수(예: 반증된 것을 맞았다고 함, 하나를 두 번이라고 함)

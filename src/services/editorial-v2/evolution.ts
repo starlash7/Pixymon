@@ -25,9 +25,9 @@ export type EditorialEvolutionSelectionV2 =
 
 // The outcome grades Pixymon's judgment, not the market move; plain words keep that distinction.
 const OUTCOME_LABEL: Record<EditorialReflectionRecordV2["outcome"]["resolution"], string> = {
-  supported: "사흘 뒤 다시 보니 그때 픽시 생각이 맞는 쪽이었음",
-  invalidated: "사흘 뒤 다시 보니 그때 픽시 생각이 틀린 쪽이었음",
-  unresolved: "사흘이 지나도 그때 픽시 생각이 맞는지 틀린지 판정이 안 났음",
+  supported: "사흘 뒤 다시 보니 그때 픽시몬 판단이 맞는 쪽이었음",
+  invalidated: "사흘 뒤 다시 보니 그때 픽시몬 판단이 틀린 쪽이었음",
+  unresolved: "사흘이 지나도 그때 픽시몬 판단이 맞는지 틀린지 판정이 안 났음",
 };
 
 function anchoredAt(state: EditorialDraftStateV2, trackingMode: "live" | "shadow"): string | undefined {
@@ -118,7 +118,7 @@ export function formatEditorialReflectionRecordsV2(records: readonly EditorialRe
   return records.map((record, index) => [
     `${index + 1}. ${record.subject} (factId: ${record.fact.factId}, ${record.provenance === "shadow" ? "비공개 연습 기록" : "실제 게시"})`,
     `   - 그때 본 숫자: ${record.fact.metric.name} ${record.fact.metric.raw}`,
-    `   - 그때 픽시가 쓴 글: ${record.said}`,
+    `   - 그때 픽시몬이 쓴 글: ${record.said}`,
     record.question ? `   - 그때 품은 질문: ${record.question}` : "",
     `   - 결과: ${OUTCOME_LABEL[record.outcome.resolution]} (${record.outcome.reason})`,
   ].filter(Boolean).join("\n")).join("\n");
@@ -131,15 +131,15 @@ export function buildEditorialEvolutionPromptV2(
 ): string {
   const factIds = JSON.stringify(plan.factIds);
   const shadow = records.some((record) => record.provenance === "shadow");
-  return `새 데이터가 없는 날, 픽시가 지난 판단들을 돌아보는 생각 글을 한국어 원문 트윗 하나로 써라.
+  return `새 데이터가 없는 날, 픽시몬이 지난 판단들을 돌아보는 생각 글을 한국어 원문 트윗 하나로 써라.
 
 돌아볼 기록(기록에 있는 것만 사실이다):
 ${formatEditorialReflectionRecordsV2(records)}
 
 규칙:
-- 새 사실을 보고하는 글이 아니다. 이 판단들이 어떻게 끝났는지에서 픽시가 무엇을 배웠는지, 믿음이 어떻게 굳거나 흔들렸는지 쓴다
-- 흐름: 떠오른 기억 하나 → 그게 어떻게 끝났는지 → 그래서 픽시가 지금 믿거나 의심하는 것. 문장을 이 순서의 틀로 복사하지 말고 흐름만 따른다
-- 2~3문장, 공백 포함 40~190자. 기록의 대상 이름 중 하나 이상을 그대로 넣는다
+- 새 사실을 보고하는 글이 아니다. 이 판단들이 어떻게 끝났는지에서 픽시몬이 무엇을 배웠는지, 믿음이 어떻게 굳거나 흔들렸는지 쓴다
+- 흐름: 떠오른 기억 하나 → 그게 어떻게 끝났는지 → 그래서 픽시몬이 지금 믿거나 의심하는 것. 문장을 이 순서의 틀로 복사하지 말고 흐름만 따른다
+- 2~3문장, 공백 포함 40~130자(X는 한글을 2자로 센다). 기록의 대상 이름 중 하나 이상을 그대로 넣는다
 - 결과는 시장이 아니라 그때 픽시의 생각이 맞았는지에 대한 것이다. "급감이 틀렸다"처럼 움직임 자체를 판정하지 않는다
 - 맞았다/틀렸다/몇 번 같은 말은 위 결과와 정확히 맞아야 한다. 기록에 없는 결과, 원인, 유입·유출, 앞으로의 전망은 만들지 않는다
 - 숫자는 기본으로 쓰지 않는다. 꼭 필요하면 기록의 숫자만 그대로 쓴다

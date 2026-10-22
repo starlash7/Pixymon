@@ -29,7 +29,7 @@ export function buildEditorialContextV2(input: {
   const provider = evidence.source.provider;
   if (profile?.category) items.push({ id: "profile:category", kind: "profile", label: "카테고리", text: profile.category, provider, url: evidence.source.url });
   if (profile?.chains?.length) items.push({ id: "profile:chains", kind: "profile", label: "주요 체인", text: profile.chains.join(", "), provider, url: evidence.source.url });
-  if (profile?.symbol) items.push({ id: "profile:symbol", kind: "profile", label: "토큰 심볼", text: profile.symbol, provider, url: evidence.source.url });
+  if (profile?.symbol) items.push({ id: "profile:symbol", kind: "profile", label: "토큰 심볼", text: `${profile.symbol} ($${profile.symbol})`, provider, url: evidence.source.url });
   if (typeof profile?.change7d === "number") items.push({ id: "profile:change7d", kind: "profile", label: "7일 TVL 변화", text: signed(profile.change7d), provider, url: evidence.source.url });
   if (evidence.followUp?.metric.name === "tvl-usd") items.push({ id: "profile:tvl", kind: "profile", label: "현재 TVL", text: evidence.followUp.metric.raw, provider, url: evidence.source.url });
   if (evidence.selection) {
@@ -39,7 +39,7 @@ export function buildEditorialContextV2(input: {
     const korean = KOREAN_NAMES[card.subject];
     const change = card.profile?.change24h;
     items.push({ id: `market:${card.subject.toLowerCase()}`, kind: "market",
-      label: `${korean ? `${korean}(${card.subject})` : card.subject} 가격${typeof change === "number" ? "과 24시간 변화" : "(변화율 없음)"}`,
+      label: `${korean ? `${korean}(${card.subject}${card.profile?.symbol ? `, $${card.profile.symbol}` : ""})` : card.subject} 가격${typeof change === "number" ? "과 24시간 변화" : "(변화율 없음)"}`,
       text: typeof change === "number" ? `${card.metric.raw}, ${signed(change)}` : card.metric.raw, provider: "coingecko", url: card.source.url });
   }
   const needles = [evidence.subject, evidence.subject.split(/\s+/u)[0], profile?.symbol ?? ""].filter(Boolean);

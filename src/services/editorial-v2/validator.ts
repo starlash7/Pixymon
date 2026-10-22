@@ -11,7 +11,9 @@ const MALFORMED_KO_PATTERNS: Array<{ code: string; pattern: RegExp }> = [
 
 // Digits inside a Latin name ("Stargate V2의") belong to the name, which the named-token gate checks.
 const NUMBER_TOKEN = /(?<![A-Za-z0-9.])[-+]?\d+(?:[,.]\d+)*(?:%|[a-zA-Z가-힣/]+)?/gu;
-const CHARACTER_CUE = /픽시몬|물고|씹고|먹고|소화|흉터|눕/gu;
+// Metaphor cues; the third-person self-name is counted separately (Digimon-style "픽시몬이 판단하기에").
+const CHARACTER_CUE = /물고|씹고|먹고|소화|흉터|눕/gu;
+const SELF_NAME = /픽시몬/gu;
 const LATIN_NAMED_TOKEN = /\b[A-Za-z][A-Za-z0-9.-]{1,}\b/g;
 const KNOWN_KO_CRYPTO_ENTITY = /비트코인|이더리움|솔라나|테더|리플|에이다|도지코인|아발란체|체인링크|폴리곤|유니스왑|아비트럼|커브|메이커다오/gu;
 const INCREASE_WORD = /늘|증가|상승|올랐|커졌|확대/u;
@@ -153,7 +155,7 @@ export function validateEditorialDraftV2(
   const reasons: string[] = [];
 
   if (text.length < minChars) reasons.push("too-short");
-  if (text.length > maxChars) reasons.push("too-long");
+  if (text.length > maxChars || xWeightedLengthV2(text) > X_MAX_WEIGHTED_LENGTH) reasons.push("too-long");
   if (sentences.length < 2 || sentences.length > 3) reasons.push("sentence-count");
   if (!/[가-힣]/u.test(text)) reasons.push("korean-missing");
   if (thought) {
@@ -183,6 +185,7 @@ export function validateEditorialDraftV2(
   if (/https?:\/\/|www\./iu.test(text)) reasons.push("public-source-url");
   if (/#\S+/u.test(text)) reasons.push("hashtag");
   if ((text.match(CHARACTER_CUE) || []).length > 1) reasons.push("character-cue-overuse");
+  if ((text.match(SELF_NAME) || []).length > 1) reasons.push("self-name-overuse");
   for (const { code, pattern } of MALFORMED_KO_PATTERNS) {
     if (pattern.test(text)) reasons.push(code);
   }
@@ -241,6 +244,19 @@ export function validateEditorialDraftV2(
     sentenceCount: sentences.length,
     charCount: text.length,
   };
+}
+
+/** X counts most non-Latin characters (Hangul included) as 2; a standard account allows 280. */
+export const X_MAX_WEIGHTED_LENGTH = 280;
+const X_LIGHT_RANGES: ReadonlyArray<readonly [number, number]> = [[0, 4351], [8192, 8205], [8208, 8223], [8242, 8247]];
+
+export function xWeightedLengthV2(text: string): number {
+  let weight = 0;
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0;
+    weight += X_LIGHT_RANGES.some(([low, high]) => code >= low && code <= high) ? 1 : 2;
+  }
+  return weight;
 }
 
 export function subjectAnchorV2(subject: string): string {
