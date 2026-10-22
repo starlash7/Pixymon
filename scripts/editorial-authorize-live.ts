@@ -23,7 +23,7 @@ try {
     const evidence = writeOperatorPilotAuthorizationV2({
       outputPath: required("output"), operatorId: required("operator"), commit: state.currentCommit,
     });
-    console.log(`[EDITORIAL] operator pilot authorization recorded for 24 hours (reviewed=${evidence.reviewed}, no-edit fact-checked=${evidence.noEditFactChecked}, factual errors=0); every post still requires human approval, max one per day`);
+    console.log(`[EDITORIAL] operator pilot authorization recorded for 24 hours (fact-checked approvals=${evidence.approvedFactChecked}, factual errors=0); every post still requires human approval, max one per day`);
   } else {
     writeApprovedLiveAuthorizationV2({
       statusPath: required("status"), outputPath: required("output"),

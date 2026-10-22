@@ -291,7 +291,7 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 ## 26. Operator Pilot Publication — 2026-10-12 (operator decision: option B)
 
 - R1 requires a trusted zero-X verifier that does not exist, so R3 could never be authorized. The operator chose a simplified path for the first human-approved originals.
-- `--pilot` authorization: current-epoch shadow drafts with ≥12 reviewed, ≥8 approved without edit and tagged `fact-checked`, 0 factual-error tags. Recomputed from the shadow ledger at dispatch. 24h expiry, commit-bound, STOP file, clean tree, human approval per post, one post per day — unchanged.
+- `--pilot` authorization: current-epoch shadow drafts with ≥3 approvals tagged `fact-checked` (lowered from 12 reviewed / 8 unedited on 2026-10-22: every post is human-approved anyway; edits allowed), 0 factual-error tags. Recomputed from the shadow ledger at dispatch. 24h expiry, commit-bound, STOP file, clean tree, human approval per post, one post per day — unchanged.
 - Not changed: R0–R2/R3 status path, automatic posting (still locked), rollback rules.
 - Still required before a first post: X API credentials; a live-capable writer (Anthropic credit, or a decision to allow Gemini for live).
 - Deferred: a total cap for the pilot (R3 specified 10 originals); reviewer identity is the local operator, not independent.

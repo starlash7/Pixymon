@@ -11,14 +11,17 @@ import { EDITORIAL_FACT_CHECKED_TAG_V2, EDITORIAL_FACT_ERROR_TAGS_V2 } from "./r
  * R0–R2 status (whose R1 zero-X verifier does not exist). Human approval per post, one post per day,
  * the STOP file and the two-phase dispatch guard are unchanged.
  */
-export const OPERATOR_PILOT_MIN_REVIEWED_V2 = 12;
-export const OPERATOR_PILOT_MIN_NO_EDIT_FACT_CHECKED_V2 = 8;
+/**
+ * Operator decision 2026-10-22: every post is human-approved anyway, so the pilot needs only three
+ * fact-checked approvals (edits allowed) in the current epoch, and no factual-error tag.
+ */
+export const OPERATOR_PILOT_MIN_APPROVED_FACT_CHECKED_V2 = 3;
 const DAY_MS = 86_400_000;
 
 export interface OperatorPilotEvidenceV2 {
   epoch: string;
   reviewed: number;
-  noEditFactChecked: number;
+  approvedFactChecked: number;
   factualErrors: number;
   passed: boolean;
   reasons: string[];
@@ -44,18 +47,17 @@ export function evaluateOperatorPilotEvidenceV2(states: readonly EditorialDraftS
   const epochDrafts = states.filter((state) => state.draft.trackingMode === "shadow" &&
     state.draft.collectionEpoch === EDITORIAL_COLLECTION_EPOCH_V2);
   const reviewed = epochDrafts.filter((state) => state.reviewStatus === "approved" || state.reviewStatus === "rejected");
-  const noEditFactChecked = reviewed.filter((state) => state.reviewStatus === "approved" &&
-    state.reviews.every((review) => review.action !== "edit") &&
+  // An edit records as approved; the last review must carry the operator's fact check.
+  const approvedFactChecked = reviewed.filter((state) => state.reviewStatus === "approved" &&
     tags(state.reviews.at(-1)?.reasonTags ?? []).has(EDITORIAL_FACT_CHECKED_TAG_V2));
   const factualErrors = epochDrafts.filter((state) => state.reviews.some((review) =>
     [...tags(review.reasonTags)].some((tag) => EDITORIAL_FACT_ERROR_TAGS_V2.has(tag))));
   const reasons = [
-    ...(reviewed.length < OPERATOR_PILOT_MIN_REVIEWED_V2 ? [`reviewed ${reviewed.length}/${OPERATOR_PILOT_MIN_REVIEWED_V2}`] : []),
-    ...(noEditFactChecked.length < OPERATOR_PILOT_MIN_NO_EDIT_FACT_CHECKED_V2
-      ? [`no-edit fact-checked approvals ${noEditFactChecked.length}/${OPERATOR_PILOT_MIN_NO_EDIT_FACT_CHECKED_V2}`] : []),
+    ...(approvedFactChecked.length < OPERATOR_PILOT_MIN_APPROVED_FACT_CHECKED_V2
+      ? [`fact-checked approvals ${approvedFactChecked.length}/${OPERATOR_PILOT_MIN_APPROVED_FACT_CHECKED_V2}`] : []),
     ...(factualErrors.length > 0 ? [`factual errors ${factualErrors.length} (must be 0)`] : []),
   ];
-  return { epoch: EDITORIAL_COLLECTION_EPOCH_V2, reviewed: reviewed.length, noEditFactChecked: noEditFactChecked.length,
+  return { epoch: EDITORIAL_COLLECTION_EPOCH_V2, reviewed: reviewed.length, approvedFactChecked: approvedFactChecked.length,
     factualErrors: factualErrors.length, passed: reasons.length === 0, reasons };
 }
 

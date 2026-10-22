@@ -33,20 +33,21 @@ function reviewed(id: string, status: "approved" | "rejected", options: { edited
 
 function earned(): EditorialDraftStateV2[] {
   return [
-    ...Array.from({ length: 8 }, (_, index) => reviewed(`ok-${index}`, "approved")),
-    ...Array.from({ length: 4 }, (_, index) => reviewed(`no-${index}`, "rejected")),
+    ...Array.from({ length: 3 }, (_, index) => reviewed(`ok-${index}`, "approved")),
+    reviewed("no-0", "rejected"),
   ];
 }
 
-test("pilot evidence needs 12 reviewed, 8 unedited fact-checked approvals and no factual error", () => {
+test("pilot evidence needs 3 fact-checked approvals and no factual error", () => {
   assert.deepEqual(evaluateOperatorPilotEvidenceV2(earned()),
-    { epoch: EDITORIAL_COLLECTION_EPOCH_V2, reviewed: 12, noEditFactChecked: 8, factualErrors: 0, passed: true, reasons: [] });
-  assert.equal(evaluateOperatorPilotEvidenceV2(earned().slice(1)).passed, false);
+    { epoch: EDITORIAL_COLLECTION_EPOCH_V2, reviewed: 4, approvedFactChecked: 3, factualErrors: 0, passed: true, reasons: [] });
+  assert.deepEqual(evaluateOperatorPilotEvidenceV2(earned().slice(1)).reasons, ["fact-checked approvals 2/3"]);
+  // The operator may edit; an edited, fact-checked approval still counts.
   const edited = earned(); edited[0] = reviewed("ok-0", "approved", { edited: true });
-  assert.deepEqual(evaluateOperatorPilotEvidenceV2(edited).reasons, ["no-edit fact-checked approvals 7/8"]);
+  assert.equal(evaluateOperatorPilotEvidenceV2(edited).passed, true);
   const unchecked = earned(); unchecked[0] = reviewed("ok-0", "approved", { tags: ["픽시답다"] });
   assert.equal(evaluateOperatorPilotEvidenceV2(unchecked).passed, false);
-  const wrong = earned(); wrong[11] = reviewed("no-3", "rejected", { tags: ["wrong-number"] });
+  const wrong = earned(); wrong[3] = reviewed("no-0", "rejected", { tags: ["wrong-number"] });
   assert.deepEqual(evaluateOperatorPilotEvidenceV2(wrong).reasons, ["factual errors 1 (must be 0)"]);
 });
 
@@ -54,8 +55,8 @@ test("pilot evidence ignores other epochs, live drafts and pending drafts", () =
   const states = earned();
   states[0].draft.collectionEpoch = "character-writer-v5";
   states[1].draft.trackingMode = "live";
-  (states[2] as { reviewStatus: string }).reviewStatus = "pending";
-  assert.equal(evaluateOperatorPilotEvidenceV2(states).reviewed, 9);
+  (states[3] as { reviewStatus: string }).reviewStatus = "pending";
+  assert.deepEqual(evaluateOperatorPilotEvidenceV2(states).reviewed, 1);
 });
 
 function dir(t: TestContext): string {
@@ -68,7 +69,7 @@ test("a pilot authorization is only written when earned and is re-derived at dis
   const root = dir(t);
   const output = path.join(root, "auth.json");
   assert.throws(() => writeOperatorPilotAuthorizationV2({ shadowLedgerPath: "/ledger", outputPath: output, operatorId: "theo",
-    commit: COMMIT, now: NOW, loadStates: () => earned().slice(1) }), /operator-pilot-not-earned: reviewed 11\/12/);
+    commit: COMMIT, now: NOW, loadStates: () => earned().slice(1) }), /operator-pilot-not-earned: fact-checked approvals 2\/3/);
   assert.equal(fs.existsSync(output), false);
   writeOperatorPilotAuthorizationV2({ shadowLedgerPath: "/ledger", outputPath: output, operatorId: "theo", commit: COMMIT, now: NOW,
     loadStates: () => earned() });
