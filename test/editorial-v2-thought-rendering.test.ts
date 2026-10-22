@@ -54,7 +54,7 @@ test("the reference thought passes without a number or timestamp, but not as a d
 });
 
 test("thought copy keeps every stated fact grounded", () => {
-  const exact = "Stargate가 -33.54%나 홀쭉해졌는데 가격은 멀쩡함. 사람이 떠난 건지 지갑만 옮긴 건지 픽시는 아직 모르겠음.";
+  const exact = "Stargate가 -33.54%나 홀쭉해졌는데 가격은 멀쩡함. 사람이 떠난 건지 지갑만 옮긴 건지는 모르지만 픽시는 조용한 이탈 쪽에 걸겠음.";
   assert.deepEqual(check(exact, "thought").reasons, []);
   assert.ok(check("Stargate가 40%나 홀쭉해졌는데 가격은 멀쩡함. 픽시는 아직 모르겠음.", "thought").reasons.includes("unsupported-number"));
   assert.ok(check("어떤 브릿지가 하루 만에 홀쭉해졌음. 픽시는 아직 모르겠음, 이게 뭔지.", "thought").reasons.includes("subject-missing"));
@@ -101,4 +101,13 @@ test("the writer accepts the reference thought end to end", async () => {
     } },
   });
   assert.equal(result.status, "generated", JSON.stringify(result));
+});
+
+test("a thought may not close on a hedge alone; uncertainty belongs earlier", () => {
+  for (const ending of ["픽시는 아직 모르겠음.", "당분간 지켜볼 생각임.", "일단 보류함.", "아직 소화 중임.", "추이를 봐야 할 듯."]) {
+    const text = `Stargate가 하루 만에 확 홀쭉해졌는데 가격은 멀쩡함. ${ending}`;
+    assert.ok(check(text, "thought").reasons.includes("hedge-only-ending"), ending);
+  }
+  assert.equal(check(REFERENCE, "thought").reasons.includes("hedge-only-ending"), false);
+  assert.equal(check("Stargate가 확 홀쭉해졌음. 왜인지는 모르지만 픽시 생각엔 조용히 빠지는 쪽이 진짜 신호 같음.", "thought").reasons.includes("hedge-only-ending"), false);
 });

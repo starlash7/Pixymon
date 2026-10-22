@@ -25,6 +25,8 @@ const FUTURE_RECHECK_PROMISE = /(?:다음|후속).{0,32}(?:확인|검증|점검|
 const UNSUPPORTED_TVL_CLAIM = /사용자|활성\s*주소|신규\s*(?:자금|예치)|자금\s*(?:유입|유출|복귀|이탈)|유입|유출|들어차|들어왔|빠져나|채택|수익|매출|거래량|구조적\s*성장|안정성|경쟁력|신뢰.{0,8}(?:회복|강화)|담보\s*건전성|청산\s*위험|고래\s*지갑|기관\s*(?:매수|복귀)|매수.{0,12}(?:원인|배경)|확정적\s*신호|증명|보장/u;
 const SCOPE_NEGATION = /(?:뜻|의미|증명|보장|확정|단정|승인)하지\s*않|(?:확인|증명|보장)되지\s*않|아니(?:다|라는|라고|며|고)|(?:단정|구분|구별|확인|증명|판단|확정)할\s*수\s*없|알\s*수\s*없|불확실|모른다|모르겠|배제/u;
 const POSITIVE_SCOPE_BEFORE_NEGATION = /(?:뜻|의미)(?:하고|하며|하나)|확인(?:됐|되었)(?:고|으며)/u;
+// Every early thought draft ended on "don't know / will watch"; a thought must close on a stance.
+const HEDGE_ONLY_ENDING = /(?:모름|모르겠음|모르겠다|모르겠네|지켜봄|지켜볼\s*생각임|지켜보는\s*중|봐야\s*할\s*듯|봐야\s*함|봐야겠음|소화\s*중임?|소화해볼\s*생각임|보류함?|미룸)[.!…]?$/u;
 // Formal 합쇼체 reads as a news desk or assistant, not the character ("아니다" is plain speech).
 const FORMAL_REGISTER = /(?<!아)니다(?=[.!?,\s]|$)|니까[?]/u;
 const TRAILING_KO_PARTICLE = /(?:에서|으로|까지|부터|보다|동안|간|은|는|이|가|을|를|에|로|와|과|도|만|의|쯤)$/u;
@@ -55,6 +57,8 @@ export interface EditorialDraftValidationInputV2 {
   alternateSubjects?: readonly string[];
   /** Sourced context the writer saw; its numbers and names count as grounded. */
   contextText?: string;
+  /** Revisit closes on a verdict word (보류/미결 are valid there), so the stance-ending rule skips it. */
+  format?: EditorialFormatV2;
 }
 
 export interface EditorialDraftValidationV2 {
@@ -174,6 +178,7 @@ export function validateEditorialDraftV2(
   if (!input.semanticScopeCleared && /tvl/i.test(input.metricName || "") && hasUnsupportedTvlClaimV2(text)) {
     reasons.push("metric-semantic-scope");
   }
+  if (thought && input.format !== "revisit" && HEDGE_ONLY_ENDING.test(sentences.at(-1) || "")) reasons.push("hedge-only-ending");
   if (FORMAL_REGISTER.test(text)) reasons.push("formal-register");
   if (/https?:\/\/|www\./iu.test(text)) reasons.push("public-source-url");
   if (/#\S+/u.test(text)) reasons.push("hashtag");
@@ -278,6 +283,7 @@ export function editorialDraftValidationInputV2(input: {
     allowedNamedTokens: [...metricTokens(input.fact), ...extras.flatMap((fact) => [...metricTokens(fact), fact.subject ?? ""])],
     alternateSubjects: extras.map((fact) => fact.subject ?? "").filter(Boolean),
     contextText: editorialContextTextV2(input.context),
+    format: input.format,
     sourceTimeToken: formatEvidenceSourceTimeV2(input.fact.source.observedAt),
     requireJudgment: true,
     metricName: metric.name,

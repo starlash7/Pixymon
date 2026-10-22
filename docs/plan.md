@@ -282,3 +282,9 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Prompts: inquiry forms one labelled hypothesis; writer must give one angle of its own and may not end on "지켜보겠다/모르겠다" alone, may not compute ratios or round; critic passes marked opinions and fails unmarked causal claims, headline-as-fact, invented movement, investment advice. Epoch `context-opinion-writer-v7`.
 - Real Claude run (Polymarket International, shadow, no publication): "Polymarket TVL이 24시간 +5.68% 커졌는데, 주요 프로토콜 중간값 +0.81%보다 훨씬 크고 비트코인·이더리움 가격은 거의 안 움직였음. 픽시 생각엔 예측시장 특유의 베팅 집중 같은데, 이게 자금 유입인지 기존 포지션 재평가인지는 아직 모름." The critic caught an unsupported "7일 연속" but passed "가격은 거의 안 움직였음" although the context had price levels only; CoinGecko 24h change is now in the context and the critic rule names that case.
 - Deferred: Anthropic daily caps are per data directory (separate worktrees each get $0.4); critic leniency remains; headlines are matched by name only.
+
+## 25. Stance Endings and Shared Spend — 2026-10-22
+
+- Shared spend ledger (PR #16): Anthropic/X caps and the admin-usage cache live in `~/.pixymon/spend` for every process that can reach a paid provider, so worktrees no longer get separate daily caps. Offline/test processes keep their data directory.
+- Every early thought draft closed on "모름/지켜봄/보류". Thoughts (not Revisits) now must close on a stance; a final sentence that is only a hedge is rejected as `hedge-only-ending` and retried once with a plain-language hint. Retry feedback now explains common reasons (hedge ending, ungrounded number/name, unmarked causal claim) instead of codes only.
+- Not yet verified on a real model run: no eligible candidate during the session; the scheduled cycle on main will produce the first samples.
