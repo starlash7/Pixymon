@@ -36,11 +36,11 @@ git fetch origin
 git switch main
 git pull --ff-only origin main
 git cherry-pick <sha1> <sha2> ...
-npm run build
+npm run verify
 git push origin main
 ```
 
-- `main` 반영 전 최소 `npm run build` 통과 필수
+- `main` 반영 전 `npm run verify` 전체 통과 필수
 - 충돌 시 해결 커밋 메시지에 `merge:` 또는 `reconcile:` 접두사 권장
 
 ## 4) Workspace Lifecycle
@@ -63,7 +63,12 @@ git push origin main
 - [ ] `origin/main` 기준 새 브랜치에서 시작했는가
 - [ ] 내 브랜치에만 push 했는가
 - [ ] `main` 반영은 통합 담당만 수행했는가
-- [ ] 빌드를 통과했는가
+- [ ] 전체 `npm run verify`를 통과했는가
 - [ ] 머지 완료 브랜치를 삭제했는가
 - [ ] 작업 시작 전에 `docs/plan.md`의 현재 모드와 제약을 확인했는가
 - [ ] 작업이 skill 성격이면 `docs/skills-guidelines.md` 규칙을 따랐는가
+
+## 7) Local pstack Pilot
+
+근거 범위/critic 회귀 수정은 [최소 pstack 지침](docs/pstack-pilot.md)을 읽는다.
+이번 파일럿은 로컬 오프라인 검증만 승인됐다. 위 일반 push/통합 예시는 이번 작업에 적용하지 않는다.

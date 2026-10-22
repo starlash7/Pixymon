@@ -18,6 +18,7 @@ import {
 import { buildEditorialWriterSystemV2 } from "./voice.js";
 import {
   reviewEditorialScopeV2,
+  editorialMemoryOutcomeTargetViolationV2,
   type EditorialScopeCriticResultV2,
   type EditorialScopeReviewV2,
 } from "./scope-critic.js";
@@ -349,7 +350,10 @@ export async function writeEditorialEvolutionV2(input: {
     model: input.model,
     scopeCritic: input.scopeCritic,
     buildPrompt: (retryReasons) => buildEditorialEvolutionPromptV2(input.plan, input.records, retryReasons),
-    validate: (payload) => validatePayload(payload, input.plan, first, rest),
+    validate: (payload) => [
+      ...validatePayload(payload, input.plan, first, rest),
+      ...(editorialMemoryOutcomeTargetViolationV2(payload.draft) ? ["memory-outcome-target"] : []),
+    ],
     critique: (critic, text) => reviewEditorialScopeV2({ model: critic, text, records: input.records }),
   });
 }

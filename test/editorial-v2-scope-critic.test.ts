@@ -4,6 +4,7 @@ import { planEditorialV2 } from "../src/services/editorial-v2/planner.ts";
 import { reasonEditorialInquiryV2 } from "../src/services/editorial-v2/inquiry.ts";
 import {
   buildEditorialScopeCriticPromptV2,
+  buildEditorialMemoryScopeCriticPromptV2,
   editorialScopeTextDigestV2,
   reviewEditorialScopeV2,
 } from "../src/services/editorial-v2/scope-critic.ts";
@@ -151,4 +152,11 @@ test("the inquiry sees the price context but not the quantity decomposition it w
   const prompt = buildEditorialInquiryPromptV2(thoughtPlan(), screened);
   assert.match(prompt, /"priceChangePercent":-0\.94/);
   assert.doesNotMatch(prompt, /quantity/i);
+});
+
+test("memory critic distinguishes the outcome target from the observed market move", () => {
+  const prompt = buildEditorialMemoryScopeCriticPromptV2("Stargate V2의 급감은 반증됐고", []);
+  assert.match(prompt, /시장 움직임 자체/);
+  assert.match(prompt, /fail 예: "Stargate V2의 급감은 반증됐고"/);
+  assert.match(prompt, /pass 예: "급감을 일시적이라 본 내 판단은 반증됐고"/);
 });
