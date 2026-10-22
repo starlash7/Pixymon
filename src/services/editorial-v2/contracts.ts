@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const EDITORIAL_V2_SCHEMA_VERSION = 2 as const;
-export const EDITORIAL_COLLECTION_EPOCH_V2 = "thought-writer-v6" as const;
+export const EDITORIAL_COLLECTION_EPOCH_V2 = "context-opinion-writer-v7" as const;
 
 /**
  * `thought` is the primary voice: Pixymon's own reading of what it ate, numbers optional.
@@ -155,6 +155,20 @@ export interface EditorialGeneratedPayloadV2 {
   readonly claims: readonly EditorialGeneratedClaimV2[];
 }
 
+/**
+ * Sourced material Pixymon "ate" alongside the primary measurement. Facts here may be quoted
+ * exactly; headlines are someone else's report, never a verified fact.
+ */
+export interface EditorialContextItemV2 {
+  id: string;
+  kind: "profile" | "market" | "headline";
+  label: string;
+  text: string;
+  provider: string;
+  url?: string;
+  publishedAt?: string | null;
+}
+
 export interface EditorialDraftRecordV2 {
   schemaVersion: typeof EDITORIAL_V2_SCHEMA_VERSION;
   id: string;
@@ -170,6 +184,8 @@ export interface EditorialDraftRecordV2 {
   collectionEpoch?: string;
   /** Absent on drafts written before thought rendering; those were validated as `data`. */
   rendering?: EditorialRenderingV2;
+  /** Context the writer saw; re-validation allows exactly these numbers and names. */
+  context?: readonly EditorialContextItemV2[];
   /** Semantic scope review that passed for the generated text (sha256 of normalized text). */
   scopeReview?: { status: "pass"; modelId: string; textSha256: string };
   format: EditorialFormatV2;

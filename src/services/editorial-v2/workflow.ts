@@ -34,6 +34,7 @@ import {
 import { appendEditorialMetricV2, buildEditorialMetricV2 } from "./telemetry.js";
 import { writeEditorialDraftV2, writeEditorialEvolutionV2, type EditorialWriterModelV2 } from "./writer.js";
 import { buildEditorialEvolutionPlanV2, selectEditorialEvolutionV2 } from "./evolution.js";
+import { buildEditorialContextV2 } from "./context.js";
 import { applyEditorialInquiryV2, reasonEditorialInquiryV2 } from "./inquiry.js";
 import { selectJevMemoryV2, JEV_MEMORY_EPOCH_V2, JEV_MEMORY_CANDIDATE_LIMIT_V2,
   type JevMemoryOptionsV2, type JevMemorySelectionV2, type JevMemoryCandidateV2 } from "./jev-memory.js";
@@ -763,6 +764,7 @@ export async function collectEditorialDraftV2(
     planning.plan.memoryContext = editorialMemoryFromStoreV2(statesForMemory, planning.evidence, parentId);
     memories[planning.plan.subject] = planning.plan.memoryContext;
     planning.plan.rendering = selectEditorialRenderingV2(actionId);
+    planning.plan.context = buildEditorialContextV2({ evidence: planning.evidence, sensing });
   }
   let memorySelection: JevMemorySelectionV2 | undefined;
   if (input.jevMemory && planning.status === "planned") {
@@ -885,6 +887,7 @@ export async function collectEditorialDraftV2(
       lane: planning.plan.lane,
       collectionEpoch,
       rendering: planning.plan.rendering,
+      context: planning.plan.context,
       scopeReview: written.scopeReview,
       format: planning.plan.format,
       subject: planning.plan.subject,

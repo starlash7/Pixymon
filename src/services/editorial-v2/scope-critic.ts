@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { EvidenceCardV2 } from "./evidence.js";
+import type { EditorialContextItemV2 } from "./contracts.js";
+import { formatEditorialContextV2 } from "./context.js";
 import type { EditorialWriterModelV2 } from "./writer.js";
 import { formatEditorialReflectionRecordsV2, type EditorialReflectionRecordV2 } from "./evolution.js";
 
@@ -33,24 +35,30 @@ function measurementLines(evidence: EvidenceCardV2): string {
  * Semantic check for what a TVL-style measurement cannot establish. The regex gate is the
  * deterministic floor; this reads free prose for claims it misses and hedges it misreads.
  */
-export function buildEditorialScopeCriticPromptV2(text: string, evidence: EvidenceCardV2): string {
-  return `아래 글이 주어진 측정값으로 확인할 수 없는 것을 사실처럼, 또는 "그럴 가능성이 높다/~로 보인다"처럼 주장하는지 판정하라.
+export function buildEditorialScopeCriticPromptV2(
+  text: string,
+  evidence: EvidenceCardV2,
+  context?: readonly EditorialContextItemV2[]
+): string {
+  return `아래 글이 근거로 확인할 수 없는 것을 사실처럼 단정하는지 판정하라. 픽시의 의견은 허용된다. 문체는 평가하지 않는다.
 
-측정값:
+주 측정값:
 ${measurementLines(evidence)}
 
-이 측정값으로 말할 수 있는 것:
-- 대상의 USD TVL이 얼마나, 어느 방향으로 움직였는지 (말로 묘사해도 된다: 커졌다, 홀쭉해졌다)
-- 가격 변화 정보가 있으면 가격이 크게 움직이지 않았다는 것
-- 픽시의 감정, 궁금증, 의심, 기억, 믿음
+같이 먹은 재료:
+${formatEditorialContextV2(context)}
 
-이 측정값으로 확인할 수 없는 것 (단정하거나 유력하다고 말하면 fail):
-- 자금이나 자산이 실제로 들어오거나 나갔다는 것(유입, 유출, 이탈, 복귀, 들어찼다, 빠져나갔다)
-- 사용자·고래·기관의 행동, 채택, 수익, 거래량, 원인, 신뢰, 구조적 변화, 앞으로의 잔류
+pass인 것:
+- 측정값과 재료에 있는 사실을 그대로 말함 (움직임은 말로 묘사해도 된다: 커졌다, 홀쭉해졌다)
+- 기사 제목을 "~라는 기사/얘기가 돌던데"처럼 남의 말로 인용함
+- 의견으로 드러낸 해석: "픽시 생각엔", "~같음", "~듯", "~아닐까", "감이 옴" 같은 가설·추측·반대 의견
+- 질문, 모른다는 말, 부정
 
-판정 규칙:
-- 질문("~인지", "~일까"), 모른다는 말, 부정("~는 아니다", "확인할 수 없다"), 가능성을 나열만 하는 문장은 pass다.
-- 하나라도 확인할 수 없는 것을 사실이나 유력한 해석으로 말하면 fail이고, 그 문장을 claim에 그대로 적는다.
+fail인 것 (하나라도 있으면 fail, 그 문장을 claim에 그대로 적는다):
+- 확인되지 않은 원인·자금 흐름·사용자/고래/기관 행동·미래를 의견 표시 없이 사실로 단정 (예: "돈이 빠져나갔다", "고래가 샀다")
+- 측정값·재료에 없는 숫자·사실을 만들거나 재료 내용을 바꿔 말함 (예: 재료에 가격만 있고 변화율이 없는데 "가격이 안 움직였다"고 말함, 7일 누적 변화만 있는데 "매일 올랐다"고 말함)
+- 기사 제목의 내용을 확인된 사실처럼 말함
+- 투자 조언(사라, 팔아라, 진입), 과도한 확신("무조건", "100%")
 
 글:
 ${text}
@@ -89,11 +97,12 @@ export async function reviewEditorialScopeV2(input: {
   text: string;
   evidence?: EvidenceCardV2;
   records?: readonly EditorialReflectionRecordV2[];
+  context?: readonly EditorialContextItemV2[];
 }): Promise<EditorialScopeCriticResultV2> {
   if (!input.evidence && !input.records?.length) return { status: "unavailable", reason: "scope-critic-context-missing" };
   const prompt = input.records?.length
     ? buildEditorialMemoryScopeCriticPromptV2(input.text, input.records)
-    : buildEditorialScopeCriticPromptV2(input.text, input.evidence!);
+    : buildEditorialScopeCriticPromptV2(input.text, input.evidence!, input.context);
   let malformed = "scope-critic-contract";
   // Transport retries live in the model adapter; a malformed verdict gets one more read of the same text.
   for (const attempt of [1, 2] as const) {

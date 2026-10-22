@@ -642,6 +642,7 @@ export function buildEditorialRolloutStatusV2(
       scopeReview: state.draft.scopeReview,
       extraFacts: state.draft.facts.slice(1),
       format: state.draft.format,
+      context: state.draft.context,
     })).ok;
   }).length;
 
