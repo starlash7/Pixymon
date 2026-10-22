@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "npm run test:unit",
-    "test:unit": "ACTION_MODE=observe TEST_MODE=true TEST_NO_EXTERNAL_CALLS=true PIXYMON_DATA_DIR=.test-data PIXYMON_PAPER_DATA_DIR=.test-data/paper MEMORY_DATA_PATH=.test-data/memory.json NARRATIVE_AUDIT_LOG_PATH=.test-data/narrative-observation.ndjson NARRATIVE_AUDIT_SUMMARY_PATH=.test-data/narrative-phrase-audit.json OBSERVABILITY_EVENT_LOG_PATH=.test-data/metrics-events.ndjson node --import tsx --test --test-concurrency=1 test/*.test.ts",
+    "test:unit": "ACTION_MODE=observe TEST_MODE=true TEST_NO_EXTERNAL_CALLS=true PIXYMON_DATA_DIR=.test-data PIXYMON_SPEND_DIR=.test-data PIXYMON_PAPER_DATA_DIR=.test-data/paper MEMORY_DATA_PATH=.test-data/memory.json NARRATIVE_AUDIT_LOG_PATH=.test-data/narrative-observation.ndjson NARRATIVE_AUDIT_SUMMARY_PATH=.test-data/narrative-phrase-audit.json OBSERVABILITY_EVENT_LOG_PATH=.test-data/metrics-events.ndjson node --import tsx --test --test-concurrency=1 test/*.test.ts",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "eval:offline": "node --import tsx scripts/editorial-offline-eval.ts",
     "eval:corpus": "node --import tsx scripts/editorial-corpus-eval.ts",

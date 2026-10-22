@@ -48,6 +48,8 @@ function runCase(body: string, env: Record<string, string> = {}): any {
         TOTAL_DAILY_MAX_USD: "0.5",
         PIXYMON_DATA_DIR: directory,
         PIXYMON_LIVE_DATA_DIR: directory,
+        // External calls are "on" in these children; never let them touch the real shared spend ledger.
+        PIXYMON_SPEND_DIR: directory,
         ...env,
       },
       encoding: "utf8",

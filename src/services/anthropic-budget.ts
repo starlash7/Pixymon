@@ -2,10 +2,10 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import type { AnthropicCostRuntimeSettings, TotalCostRuntimeSettings } from "../types/runtime.js";
-import { resolveDataDir } from "./data-dir.js";
+import { resolveSpendLedgerDir } from "./data-dir.js";
 import { acquireRuntimeLock } from "./process-lock.js";
 
-const DATA_DIR = resolveDataDir();
+const DATA_DIR = resolveSpendLedgerDir();
 const DEFAULT_DATA_PATH = path.join(DATA_DIR, "anthropic-budget.json");
 const KEEP_DAYS = 21;
 const USD_SCALE = 1_000_000_000;
