@@ -60,7 +60,11 @@ block; blank or malformed configured values fail closed. Tests may inject
 self-contained provider mocks. An injected function must never wrap a real
 transport to evade the offline setting.
 
-Anthropic requests reserve their estimated USD cost and request slot under a
+Spend ledgers (`anthropic-budget.json`, `x-api-budget.json`, admin usage cache)
+live in one directory per machine user, `~/.pixymon/spend`, for every process that
+can reach a paid provider — so separate worktrees or data directories share one
+daily cap. Offline/test processes use their own data directory;
+`PIXYMON_SPEND_DIR` overrides both. Anthropic requests reserve their estimated USD cost and request slot under a
 cross-process file lock before sending. Message Batch submissions (V1, off by
 default via `ANTHROPIC_BATCH_ENABLED=false`) reserve each job against the same
 daily limits; an unreserved job stays queued and is never submitted. Successful responses settle that

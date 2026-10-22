@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { AnthropicUsageSnapshot } from "./anthropic-budget.js";
-import { resolveDataDir } from "./data-dir.js";
+import { resolveSpendLedgerDir } from "./data-dir.js";
 
-const DATA_DIR = resolveDataDir();
+const DATA_DIR = resolveSpendLedgerDir();
 const DEFAULT_DATA_PATH = path.join(DATA_DIR, "anthropic-admin-usage.json");
 
 export interface AnthropicAdminUsageSnapshot {
