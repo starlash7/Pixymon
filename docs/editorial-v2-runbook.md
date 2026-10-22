@@ -273,7 +273,7 @@ EDITORIAL_MODEL_PROVIDER=gemini npm run editorial:shadow
 
 ### Scheduled shadow cycle
 
-24h/72h checks must run inside their windows; a missed window is recorded as `unresolved` with `checkpoint-window-missed` and can never be judged later (reflections skip it). `scripts/editorial-shadow-cycle.sh` runs `editorial:followups` on every invocation and one Gemini shadow collection at `PIXYMON_SHADOW_COLLECT_HOURS` (UTC, default `01 09 17`). It retries once on `gemini-3.5-flash-lite`/`gemini-3.1-flash-lite` only when the provider was unavailable (model error, quota, critic unavailable), never after a gate no-post. Output is appended to `data/shadow-cycle.log`. Run it hourly from launchd or cron; it never touches the live ledger or X.
+24h/72h checks must run inside their windows; a missed window is recorded as `unresolved` with `checkpoint-window-missed` and can never be judged later (reflections skip it). `scripts/editorial-shadow-cycle.sh` runs `editorial:followups` on every invocation and one shadow collection at `PIXYMON_SHADOW_COLLECT_HOURS` (UTC, default `01 09 17`). `PIXYMON_SHADOW_PROVIDER=anthropic` (default) uses the publishing writer under `ANTHROPIC_DAILY_MAX_USD`/`ANTHROPIC_DAILY_REQUEST_LIMIT` with no retry; a replayed collection used about 6 requests and $0.08 estimated. `PIXYMON_SHADOW_PROVIDER=gemini` uses the free tier and retries once on `gemini-3.5-flash-lite`/`gemini-3.1-flash-lite` only when the provider was unavailable (model error, quota, critic unavailable), never after a gate no-post. Output is appended to `data/shadow-cycle.log`. Run it hourly from launchd or cron; it never touches the live ledger or X.
 
 ## Inquiry before writing
 

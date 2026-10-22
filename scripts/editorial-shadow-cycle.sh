@@ -1,8 +1,9 @@
 #!/bin/zsh
 # Shadow cycle for a scheduler (launchd/cron), never live:
 # - every run: close due 24h/72h checks on time (a missed window cannot be judged later)
-# - at PIXYMON_SHADOW_COLLECT_HOURS (UTC): one free-tier Gemini shadow collection,
-#   retried once on a lighter model pair when the first pair is overloaded.
+# - at PIXYMON_SHADOW_COLLECT_HOURS (UTC): one shadow collection. PIXYMON_SHADOW_PROVIDER selects
+#   anthropic (default; the same writer that will publish, under the daily USD/request caps, no
+#   retry) or gemini (free tier; retried once on a lighter model pair when overloaded).
 # Observe mode, shadow ledger, no X client; output is appended to data/shadow-cycle.log.
 set -u
 cd "${0:A:h}/.." || exit 1
@@ -12,7 +13,9 @@ log() { print -r -- "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >> "$LOG"; }
 
 export ACTION_MODE=observe EDITORIAL_TRACKING_MODE=shadow POST_PIPELINE_VERSION=v2
 export TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false SOCIAL_SURFACES_ENABLED=false SCHEDULER_MODE=false
-export EDITORIAL_MODEL_PROVIDER=gemini
+PROVIDER=${PIXYMON_SHADOW_PROVIDER:-anthropic}
+[[ "$PROVIDER" == anthropic || "$PROVIDER" == gemini ]] || { log "invalid PIXYMON_SHADOW_PROVIDER=$PROVIDER"; exit 1; }
+export EDITORIAL_MODEL_PROVIDER=$PROVIDER
 
 followups=$(node --import tsx scripts/editorial-followups.ts 2>&1)
 log "followups exit=$? ${followups//$'\n'/ | }"
@@ -22,6 +25,13 @@ case " ${PIXYMON_SHADOW_COLLECT_HOURS:-01 09 17} " in
   *" $hour "*) ;;
   *) exit 0 ;;
 esac
+
+if [[ "$PROVIDER" == anthropic ]]; then
+  # Paid: one attempt per scheduled hour; the request wrapper enforces ANTHROPIC_DAILY_MAX_USD.
+  out=$(node --import tsx scripts/editorial-collect.ts 2>&1)
+  log "collect provider=anthropic :: ${out//$'\n'/ | }"
+  exit 0
+fi
 
 collect() {
   local out
