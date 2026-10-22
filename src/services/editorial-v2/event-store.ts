@@ -408,6 +408,12 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
   if (draft.rendering !== undefined && !["thought", "data"].includes(draft.rendering)) {
     throw new Error(`unsupported editorial rendering: ${String(draft.rendering)}`);
   }
+  if (draft.context !== undefined && (!Array.isArray(draft.context) || draft.context.length > 16 ||
+      draft.context.some((item) => !item || typeof item.id !== "string" || typeof item.label !== "string" ||
+        typeof item.text !== "string" || item.text.length > 300 || typeof item.provider !== "string" ||
+        !["profile", "market", "headline"].includes(item.kind)))) {
+    throw new Error("invalid editorial context");
+  }
   if (draft.scopeReview !== undefined && (draft.scopeReview?.status !== "pass" ||
       typeof draft.scopeReview.modelId !== "string" || !/^[0-9a-f]{64}$/u.test(String(draft.scopeReview.textSha256)))) {
     throw new Error("invalid editorial scope review");

@@ -43,6 +43,15 @@ export interface EvidenceCardV2 {
     comparator: MachineComparatorV2;
     threshold: number;
   };
+  /** Provider-reported descriptors of the subject, usable as sourced context (not the primary measurement). */
+  profile?: {
+    category?: string;
+    chains?: readonly string[];
+    symbol?: string;
+    change7d?: number;
+    /** Market price change, for price cards. */
+    change24h?: number;
+  };
   /** Derived ranking context; never promoted into a direct public claim. */
   selection?: {
     kind: "tvl-outlier";

@@ -1,4 +1,5 @@
-import type { EditorialFormatV2, EditorialRenderingV2 } from "./contracts.js";
+import type { EditorialContextItemV2, EditorialFormatV2, EditorialRenderingV2 } from "./contracts.js";
+import { editorialContextTextV2 } from "./context.js";
 import { editorialScopeTextDigestV2, type EditorialScopeReviewV2 } from "./scope-critic.js";
 
 const MALFORMED_KO_PATTERNS: Array<{ code: string; pattern: RegExp }> = [
@@ -26,6 +27,9 @@ const SCOPE_NEGATION = /(?:뜻|의미|증명|보장|확정|단정|승인)하지\
 const POSITIVE_SCOPE_BEFORE_NEGATION = /(?:뜻|의미)(?:하고|하며|하나)|확인(?:됐|되었)(?:고|으며)/u;
 // Formal 합쇼체 reads as a news desk or assistant, not the character ("아니다" is plain speech).
 const FORMAL_REGISTER = /(?<!아)니다(?=[.!?,\s]|$)|니까[?]/u;
+const TRAILING_KO_PARTICLE = /(?:에서|으로|까지|부터|보다|동안|간|은|는|이|가|을|를|에|로|와|과|도|만|의|쯤)$/u;
+// Generic market vocabulary, not entity names; the named-token gate is for protocols, tokens and people.
+const GENERIC_LATIN_TERMS = new Set(["defi", "cefi", "dex", "cex", "nft", "etf", "rwa", "tvl", "apy", "apr", "dao", "amm", "l1", "l2", "lp", "fomo", "fud"]);
 const UNSUPPORTED_KO_QUANTITY = /(?:두|세|네)\s*배|절반|반토막|수(?:십|백|천|만|억)(?:만|억)?(?:\s*달러)?/u;
 
 export interface EditorialDraftValidationInputV2 {
@@ -49,6 +53,8 @@ export interface EditorialDraftValidationInputV2 {
   semanticScopeCleared?: boolean;
   /** Memory reflections may be about any remembered subject; one anchor is enough. */
   alternateSubjects?: readonly string[];
+  /** Sourced context the writer saw; its numbers and names count as grounded. */
+  contextText?: string;
 }
 
 export interface EditorialDraftValidationV2 {
@@ -181,22 +187,27 @@ export function validateEditorialDraftV2(
     ...collectNumericTokens(input.displayValue),
     ...collectNumericTokens(input.sourceTimeToken || ""),
     ...collectNumericTokens((input.allowedNumericValues || []).join(" ")),
+    ...collectNumericTokens(input.contextText || ""),
   ]);
-  const unsupportedNumbers = collectNumericTokens(text).filter((token) => !allowedNumbers.has(token));
+  // A Korean particle glued to a grounded number ("$67,000에서") is grammar, not a new number.
+  // Dropping the sign of a grounded change ("+5.68%" written as "5.68%") restates it; direction is checked separately.
+  for (const token of [...allowedNumbers]) if (/^[-+]/u.test(token)) allowedNumbers.add(token.slice(1));
+  const unsupportedNumbers = collectNumericTokens(text).filter((token) =>
+    !allowedNumbers.has(token) && !allowedNumbers.has(token.replace(TRAILING_KO_PARTICLE, "")));
   if (unsupportedNumbers.length > 0) reasons.push("unsupported-number");
   if (UNSUPPORTED_KO_QUANTITY.test(text)) reasons.push("unsupported-number-word");
 
   const allowedNames = new Set(
-    [input.subject, input.displayValue, input.sourceTimeToken || "", ...(input.allowedNamedTokens || [])]
+    [input.subject, input.displayValue, input.sourceTimeToken || "", input.contextText || "", ...(input.allowedNamedTokens || [])]
       .flatMap((value) => String(value).match(LATIN_NAMED_TOKEN) || [])
       .map((token) => token.toLowerCase())
   );
   const unsupportedNames = (text.match(LATIN_NAMED_TOKEN) || []).filter(
-    (token) => !allowedNames.has(token.toLowerCase())
+    (token) => !allowedNames.has(token.toLowerCase()) && !GENERIC_LATIN_TERMS.has(token.toLowerCase())
   );
   if (unsupportedNames.length > 0) reasons.push("unsupported-name");
   const unsupportedKoEntities = (text.match(KNOWN_KO_CRYPTO_ENTITY) || []).filter(
-    (token) => !input.subject.includes(token)
+    (token) => !input.subject.includes(token) && !(input.contextText || "").includes(token)
   );
   if (unsupportedKoEntities.length > 0) reasons.push("unsupported-korean-entity");
 
@@ -249,6 +260,7 @@ export function editorialDraftValidationInputV2(input: {
   /** Remembered facts beyond the first, for `evolution` reflections over several past judgments. */
   extraFacts?: readonly ValidationFactV2[];
   format?: EditorialFormatV2;
+  context?: readonly EditorialContextItemV2[];
 }): EditorialDraftValidationInputV2 {
   const { metric } = input.fact;
   const extras = input.extraFacts ?? [];
@@ -265,6 +277,7 @@ export function editorialDraftValidationInputV2(input: {
     allowedNumericValues: [metric.period, "24시간", "72시간", ...extras.flatMap((fact) => [fact.metric.raw, fact.metric.period])],
     allowedNamedTokens: [...metricTokens(input.fact), ...extras.flatMap((fact) => [...metricTokens(fact), fact.subject ?? ""])],
     alternateSubjects: extras.map((fact) => fact.subject ?? "").filter(Boolean),
+    contextText: editorialContextTextV2(input.context),
     sourceTimeToken: formatEvidenceSourceTimeV2(input.fact.source.observedAt),
     requireJudgment: true,
     metricName: metric.name,

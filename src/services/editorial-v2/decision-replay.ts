@@ -15,7 +15,7 @@ export interface EditorialDecisionContextV2 {
   trackingMode: "live" | "shadow";
   revision: { commit: string | null; dirty: boolean | null };
   modelId: string;
-  writerVersion: "hypothesis-writer-v2" | "inquiry-writer-v3" | "character-writer-v5" | "thought-writer-v6" | typeof JEV_MEMORY_EPOCH_V2;
+  writerVersion: "hypothesis-writer-v2" | "inquiry-writer-v3" | "character-writer-v5" | "thought-writer-v6" | "context-opinion-writer-v7" | typeof JEV_MEMORY_EPOCH_V2;
   inquiryModelId?: string;
   planningInput: PlanEditorialInputV2;
   memories: Record<string, EditorialMemoryContextV2>;
@@ -86,6 +86,7 @@ export async function replayEditorialDecisionV2(input: {
     // Re-planning must not change how the captured action is rendered.
     if (context.capturedPlanning.status === "planned") {
       planning.plan.rendering ??= context.capturedPlanning.plan.rendering;
+      planning.plan.context ??= context.capturedPlanning.plan.context;
     }
   }
   // Replay the recorded semantic decision, not another paid API call or a hidden latest-memory fallback.

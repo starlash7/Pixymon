@@ -203,6 +203,10 @@ interface DefiLlamaSummaryRowV2 {
   category?: string;
   tvl: number;
   change_1d: number;
+  /** Optional descriptors; malformed values are dropped, never fatal. */
+  chains?: string[];
+  symbol?: string;
+  change_7d?: number;
 }
 
 interface DefiLlamaShortlistCandidateV2 {
@@ -439,6 +443,10 @@ async function fetchPayloadV2(input: {
   }
 }
 
+function withProfile(card: EvidenceCardV2, profile: NonNullable<EvidenceCardV2["profile"]>): EvidenceCardV2 {
+  return Object.keys(profile).length > 0 ? { ...card, profile } : card;
+}
+
 function directCard(input: {
   id: string;
   lane: EvidenceLaneV2;
@@ -517,12 +525,23 @@ async function collectDefiLlamaV2(
     ) {
       return [];
     }
+    const extra = value as { chains?: unknown; symbol?: unknown; change_7d?: unknown };
+    const chains = Array.isArray(extra.chains)
+      ? extra.chains.filter((chain): chain is string => typeof chain === "string" && chain.trim().length > 0).slice(0, 3)
+      : undefined;
+    const symbol = typeof extra.symbol === "string" && /^[A-Za-z0-9.$-]{2,12}$/u.test(extra.symbol.trim()) && extra.symbol.trim() !== "-"
+      ? extra.symbol.trim() : undefined;
+    const change7d = typeof extra.change_7d === "number" && Number.isFinite(extra.change_7d) && extra.change_7d > -100
+      ? extra.change_7d : undefined;
     return [{
       name: row.name,
       slug: row.slug,
       category: row.category,
       tvl: row.tvl,
       change_1d: row.change_1d,
+      ...(chains?.length ? { chains } : {}),
+      ...(symbol ? { symbol } : {}),
+      ...(change7d !== undefined ? { change_7d: change7d } : {}),
     }];
   });
   if (parsedRows.length === 0) {
@@ -553,7 +572,13 @@ async function collectDefiLlamaV2(
     const tvl = Number(row.tvl);
     const priorTvl = tvl / (1 + change / 100);
     const raw = `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
-    return directCard({
+    const profile = {
+      ...(row.category ? { category: row.category } : {}),
+      ...(row.chains?.length ? { chains: row.chains } : {}),
+      ...(row.symbol ? { symbol: row.symbol } : {}),
+      ...(row.change_7d !== undefined ? { change7d: row.change_7d } : {}),
+    };
+    return withProfile(directCard({
       id: `defillama:${subjectKey}:tvl-change-24h:${context.now}`,
       lane: "protocol",
       subject: name,
@@ -591,7 +616,7 @@ async function collectDefiLlamaV2(
             }
           : undefined,
       },
-    });
+    }), profile);
   };
   const toTvlCard = (
     row: DefiLlamaSummaryRowV2,
@@ -851,7 +876,7 @@ async function collectCoinGeckoV2(context: Required<Pick<EditorialProviderContex
   const fetched = await fetchPayloadV2({ provider: "coingecko", url: ENDPOINTS.coingecko, fetchImpl: context.fetchImpl, timeoutMs: context.perProviderTimeoutMs, maxResponseBytes: PROVIDER_RESPONSE_LIMIT_BYTES_V2.coingecko, maxCacheAgeMs: SIGNAL_FRESHNESS_MS });
   if (fetched.ok === false) return failureResult("coingecko", context.now, fetched.failure, fetched.latencyMs, fetched.statusCode);
   if (!Array.isArray(fetched.value)) return failureResult("coingecko", context.now, "parse-error", fetched.latencyMs);
-  const rows = fetched.value.flatMap((value): Array<{ id: string; name: string; current_price: number }> => {
+  const rows = fetched.value.flatMap((value): Array<{ id: string; name: string; current_price: number; change24h?: number }> => {
     if (!isRecord(value)) return [];
     if (
       typeof value.id !== "string" ||
@@ -861,7 +886,9 @@ async function collectCoinGeckoV2(context: Required<Pick<EditorialProviderContex
     ) {
       return [];
     }
-    return [{ id: value.id, name: value.name, current_price: value.current_price }];
+    const change = (value as { price_change_percentage_24h?: unknown }).price_change_percentage_24h;
+    return [{ id: value.id, name: value.name, current_price: value.current_price,
+      ...(typeof change === "number" && Number.isFinite(change) ? { change24h: change } : {}) }];
   }).slice(0, 5);
   if (rows.length === 0) {
     return failureResult("coingecko", context.now, fetched.value.length === 0 ? "empty" : "parse-error", fetched.latencyMs);
@@ -874,7 +901,8 @@ async function collectCoinGeckoV2(context: Required<Pick<EditorialProviderContex
       const price = Number(row.current_price);
       const name = String(row.name);
       const formatted = price >= 1 ? `$${price.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : `$${price.toPrecision(4)}`;
-      return directCard({ id: `coingecko:${slug(String(row.id))}:price:${context.now}`, lane: "ecosystem", subject: name, metricName: "usd-price", value: price, raw: formatted, unit: "USD", period: "snapshot", provider: "coingecko", url: ENDPOINTS.coingecko, now: context.now, health, role: "discovery" });
+      const card = directCard({ id: `coingecko:${slug(String(row.id))}:price:${context.now}`, lane: "ecosystem", subject: name, metricName: "usd-price", value: price, raw: formatted, unit: "USD", period: "snapshot", provider: "coingecko", url: ENDPOINTS.coingecko, now: context.now, health, role: "discovery" });
+      return row.change24h === undefined ? card : withProfile(card, { change24h: row.change24h });
     }),
     observations: [],
     discoveries: [],

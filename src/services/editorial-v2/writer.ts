@@ -22,6 +22,7 @@ import {
   type EditorialScopeReviewV2,
 } from "./scope-critic.js";
 import { buildEditorialEvolutionPromptV2, type EditorialReflectionRecordV2 } from "./evolution.js";
+import { formatEditorialContextV2 } from "./context.js";
 
 export type EditorialClaimKindV2 = "observation" | "judgment";
 
@@ -106,6 +107,7 @@ function validatePayload(
     fact,
     extraFacts,
     format: plan.format,
+    context: plan.context,
     factIds: plan.factIds,
     usedFactIds: payload.usedFactIds,
     rendering: plan.rendering,
@@ -183,6 +185,9 @@ export function buildEditorialPromptV2(
         `- "${subjectAnchorV2(plan.subject)}"를 한 번 넣는다(전체 이름 "${plan.subject}"도 된다)`,
         `- 기본은 숫자와 시각 없이 쓴다. 움직임은 말로 그린다(방향: ${direction === "increase" ? "커짐" : direction === "decrease" ? "작아짐" : "현재 수준"}). 숫자가 없으면 장면이 서지 않을 때만 rawValue나 publicSourceTime을 그대로 쓰고, 그 외 숫자는 쓰지 않는다`,
         "- 이번 탐구의 질문은 픽시의 궁금증으로 바꿔 말한다. 검증 방법, 기준점, 지표 이름, 추적 일정은 글에 쓰지 않는다",
+        "- 픽시만의 관점 하나를 낸다: 재료끼리의 연결, 남들이 놓칠 의심, 흔한 해석에 대한 반대 의견, 예전 기억과의 패턴. '지켜보겠다', '모르겠다'만으로 끝내지 않는다",
+        "- 틀릴 수 있는 해석은 '픽시 생각엔', '~같음', '~듯'처럼 의견으로 드러낸다. 사실(숫자·이름·기사 내용)은 재료에 있는 그대로만 쓰고, 기사 제목은 '~라는 기사가 돌던데'처럼 남의 말로 인용한다",
+        "- 직접 계산한 배수·비율·차이(예: 몇 배, 몇 %p)는 쓰지 않는다. 숫자는 주 측정값과 재료에 적힌 값 그대로만 쓰고, 반올림하거나 '거의 ~'로 바꾸지 않는다",
       ].join("\n")
     : [
         "- 정확히 2~3문장, 공백 포함 90~190자",
@@ -215,7 +220,7 @@ export function buildEditorialPromptV2(
 - 기억은 과거 판단을 연결하는 자료이지 현재 사실의 추가 근거가 아니다. 기억의 숫자를 본문에 재사용하지 않는다. shadow 기억을 실제 공개 게시라고 표현하지 않는다.
 - Revisit은 기억의 실제 질문·판정 중 무엇이 바뀌었는지 밝힌다. USD TVL 수준의 가설 지지를 가격 중립 잔류나 원인 입증으로 확대하지 않는다.
 
-사용 가능한 유일한 사실:
+주 측정값:
 - factId: ${evidence.id}
 - subject: ${evidence.subject}
 - metric: ${evidence.metric.name}
@@ -226,10 +231,13 @@ export function buildEditorialPromptV2(
 - observedAt: ${evidence.source.observedAt}
 - publicSourceTime: ${sourceTimeToken}
 
+같이 먹은 재료(여기 있는 사실·숫자·이름만 추가로 쓸 수 있다. 기사 제목은 남의 보도다):
+${formatEditorialContextV2(plan.context)}
+
 규칙:
 ${renderingRules}
 - ${endingRule}
-- 출처 URL, 해시태그, 투자 조언, 지원되지 않은 이름·숫자는 쓰지 않는다
+- 출처 URL, 해시태그, 투자 조언, 주 측정값과 재료에 없는 이름·숫자는 쓰지 않는다
 - TVL만으로 자금 유입, 사용자 복귀, 채택, 수익, 거래량 또는 원인을 사실처럼 단정하지 않는다
 - 관측 사실과 픽시몬의 잠정 판단을 구분한다
 - 캐릭터 비유는 최대 한 번이며 억지로 넣지 않는다. 존댓말과 뉴스·리포트 문체는 쓰지 않는다
@@ -312,7 +320,7 @@ export async function writeEditorialDraftV2(input: {
     scopeCritic: input.scopeCritic,
     buildPrompt: (retryReasons) => buildEditorialPromptV2(input.plan, input.evidence, retryReasons),
     validate: (payload) => validatePayload(payload, input.plan, input.evidence),
-    critique: (critic, text) => reviewEditorialScopeV2({ model: critic, text, evidence: input.evidence }),
+    critique: (critic, text) => reviewEditorialScopeV2({ model: critic, text, evidence: input.evidence, context: input.plan.context }),
   });
 }
 
@@ -345,7 +353,8 @@ export function createAnthropicEditorialWriterV2(
         claude,
         {
           model: CLAUDE_MODEL,
-          max_tokens: purpose === "inquire" ? 1000 : purpose === "critique" ? 300 : 550,
+          // The writer repeats every sentence in claims; with context the JSON outgrew 550 tokens and truncated.
+          max_tokens: purpose === "inquire" ? 1000 : purpose === "critique" ? 300 : 900,
           temperature: 0,
           system,
           messages: [{ role: "user", content: prompt }],
