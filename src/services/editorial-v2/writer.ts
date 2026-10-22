@@ -150,6 +150,18 @@ function validatePayload(
   return [...new Set(reasons)];
 }
 
+const RETRY_HINTS_V2: Record<string, string> = {
+  "hedge-only-ending": "마지막 문장이 '모름/지켜봄/보류'로만 끝났다. 모르는 건 앞에서 말하고 마지막은 픽시의 입장으로 닫는다.",
+  "unsupported-number": "주 측정값과 재료에 없는 숫자(계산·반올림 포함)를 썼다. 적힌 값 그대로만 쓰거나 숫자를 빼고 말로 쓴다.",
+  "unsupported-number-word": "배수·절반 같은 숫자 표현을 썼다. 재료에 없는 계산은 쓰지 않는다.",
+  "unsupported-name": "주 측정값과 재료에 없는 이름을 썼다. 재료에 나온 이름만 쓴다.",
+  "metric-semantic-scope": "확인되지 않은 자금 흐름이나 원인을 단정처럼 썼다. 의견이면 '픽시 생각엔 ~같음'으로 드러낸다.",
+};
+
+function explainRetryReasonsV2(reasons: readonly string[]): string {
+  return reasons.filter((reason) => RETRY_HINTS_V2[reason]).map((reason) => `- ${RETRY_HINTS_V2[reason]}\n`).join("");
+}
+
 export function buildEditorialPromptV2(
   plan: EditorialPlanV2,
   evidence: EvidenceCardV2,
@@ -195,7 +207,7 @@ export function buildEditorialPromptV2(
         "- 본문에 publicSourceTime을 그대로 한 번 넣는다",
         "- 마지막 문장에 판정 성격이 드러나는 단어(승인, 보류, 지지, 기각, 판단, 유지 등) 하나를 자연스럽게 넣는다",
       ].join("\n");
-  const thoughtEnding = "마지막 문장은 지금 픽시의 생각(판단, 의심, 이 장면이 남긴 느낌)으로 닫는다. 검증 결과가 아직 없다는 이유로 모든 글을 보류로 끝내지 않는다. 미래 가설을 이미 확인한 사실처럼 말하지 않는다";
+  const thoughtEnding = "마지막 문장은 픽시의 입장(의견, 내기, 믿음, 반대 의견)으로 닫는다. 모르는 것은 앞 문장에서 말하고, 마지막 문장을 '모름', '지켜봄', '봐야 할 듯', '소화 중', '보류'로 끝내지 않는다. 검증 결과가 아직 없다는 이유로 모든 글을 보류로 끝내지 않는다. 미래 가설을 이미 확인한 사실처럼 말하지 않는다";
   const endingRule = plan.format === "revisit"
     ? "마지막 문장은 이전 판정을 지지·철회·미결 중 하나로 닫고, 새 24·72시간 재검증을 약속하지 않는다"
     : thought
@@ -246,7 +258,7 @@ ${renderingRules}
 - claims는 draft의 각 문장을 순서대로 빠짐없이 복사한다. kind는 관측 사실=observation, 현재 판단=judgment 둘 중 하나다
 - 첫 claim만 observation이고 나머지 claim은 judgment다
 - 반증 수치와 일정은 검토함에 보존한다. 본문에서 새로운 숫자·일정·재검증 약속은 만들지 않는다
-${retryReasons.length > 0 ? `- 이전 실패 원인: ${retryReasons.join(", ")}\n` : ""}
+${retryReasons.length > 0 ? `- 이전 실패 원인: ${retryReasons.join(", ")}\n${explainRetryReasonsV2(retryReasons)}` : ""}
 출력 JSON:
 {"draft":"첫 문장. 둘째 문장.","usedFactIds":["${evidence.id}"],"claims":[{"kind":"observation","text":"첫 문장.","factIds":["${evidence.id}"]},{"kind":"judgment","text":"둘째 문장.","factIds":["${evidence.id}"]}]}`;
 }
