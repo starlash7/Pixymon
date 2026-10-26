@@ -69,3 +69,21 @@ test("Pixymon replies to new mentions oldest first, applies trainer rules, and r
   assert.equal(calls[1].since_id, "1900000000000000002");
   assert.equal(sent[1][1], "1900000000000000003");
 });
+
+test("a failed draft stops the run but keeps progress, so the mention is retried next poll", async (t) => {
+  const root = dir(t);
+  const statePath = path.join(root, "mentions-state.json");
+  const ledger = new ReplyLedgerV2(path.join(root, "replies.ndjson"));
+  const rows = [
+    { id: "1900000000000000001", text: "@Pixy_mon airdrop https://spam.xyz", author_id: "6" },
+    { id: "1900000000000000002", text: "@Pixy_mon 이거 진짜 바닥임?", author_id: "7" },
+  ];
+  const users = [{ id: "6", username: "spammer" }, { id: "7", username: "someone" }];
+  const empty: EditorialWriterModelV2 = { modelId: "w", async generate() { return null; } };
+  const result = await replyToNewMentionsV2({ client: client(rows, users, []), selfId: SELF, statePath, ledger, model: empty, critic,
+    dispatch: async () => "x", trainerHandle: "Pixy7Crypto", timezone: "Asia/Seoul",
+    xApiCost: { ...DEFAULT_X_API_COST_SETTINGS, dailyReadRequestLimit: 100, dailyMaxUsd: 10 }, replyDailyLimit: 3, maxRepliesPerRun: 2, minPollMinutes: 0 });
+  assert.deepEqual(result.replied, []);
+  assert.deepEqual(result.skipped.map(([, why]) => why), ["link", "draft-failed:reply-model-empty"]);
+  assert.equal(JSON.parse(fs.readFileSync(statePath, "utf8")).sinceId, "1900000000000000001");
+});
