@@ -1,5 +1,6 @@
 import type { EditorialContextItemV2, EditorialFormatV2, EditorialRenderingV2 } from "./contracts.js";
 import { editorialContextTextV2 } from "./context.js";
+import { trainerHandleV2 } from "./trainer.js";
 import { editorialScopeTextDigestV2, type EditorialScopeReviewV2 } from "./scope-critic.js";
 
 const MALFORMED_KO_PATTERNS: Array<{ code: string; pattern: RegExp }> = [
@@ -59,6 +60,9 @@ export interface EditorialDraftValidationInputV2 {
   alternateSubjects?: readonly string[];
   /** Sourced context the writer saw; its numbers and names count as grounded. */
   contextText?: string;
+  /** True when the context carries the trainer's recent activity; only then may the post address 주인님. */
+  trainerMaterial?: boolean;
+  trainerHandle?: string;
   /** Revisit closes on a verdict word (보류/미결 are valid there), so the stance-ending rule skips it. */
   format?: EditorialFormatV2;
 }
@@ -181,6 +185,9 @@ export function validateEditorialDraftV2(
     reasons.push("metric-semantic-scope");
   }
   if (thought && input.format !== "revisit" && HEDGE_ONLY_ENDING.test(sentences.at(-1) || "")) reasons.push("hedge-only-ending");
+  const mentionsTrainer = /주인님/u.test(text) ||
+    (input.trainerHandle ? text.toLowerCase().includes(`@${input.trainerHandle.toLowerCase()}`) : false);
+  if (mentionsTrainer && !input.trainerMaterial) reasons.push("trainer-without-material");
   if (FORMAL_REGISTER.test(text)) reasons.push("formal-register");
   if (/https?:\/\/|www\./iu.test(text)) reasons.push("public-source-url");
   if (/#\S+/u.test(text)) reasons.push("hashtag");
@@ -220,8 +227,13 @@ export function validateEditorialDraftV2(
   if (unsupportedKoEntities.length > 0) reasons.push("unsupported-korean-entity");
 
   const numericSentence = sentences.find((sentence) => sentence.includes(input.displayValue));
+  // Contrast ("다들 빠지는 날 X만 +7%", "시장은 내렸는데 X는 올랐음") puts the other direction in a
+  // neighbouring clause; check only the clause that carries the number.
+  const numericClause = numericSentence
+    ?.split(/(?:는데|지만|반면|인데|,)\s*/u)
+    .find((clause) => clause.includes(input.displayValue));
   // Without the number, a thought describes the move in words in its opening observation.
-  const factSentence = numericSentence ?? (thought ? sentences[0] || "" : "");
+  const factSentence = numericClause ?? numericSentence ?? (thought ? sentences[0] || "" : "");
   const increaseWord = thought && !numericSentence ? THOUGHT_INCREASE_WORD : INCREASE_WORD;
   const decreaseWord = thought && !numericSentence ? THOUGHT_DECREASE_WORD : DECREASE_WORD;
   if (input.metricDirection === "increase" && decreaseWord.test(factSentence)) {
@@ -299,6 +311,8 @@ export function editorialDraftValidationInputV2(input: {
     allowedNamedTokens: [...metricTokens(input.fact), ...extras.flatMap((fact) => [...metricTokens(fact), fact.subject ?? ""])],
     alternateSubjects: extras.map((fact) => fact.subject ?? "").filter(Boolean),
     contextText: editorialContextTextV2(input.context),
+    trainerMaterial: (input.context ?? []).some((item) => item.kind === "trainer"),
+    trainerHandle: trainerHandleV2(),
     format: input.format,
     sourceTimeToken: formatEvidenceSourceTimeV2(input.fact.source.observedAt),
     requireJudgment: true,

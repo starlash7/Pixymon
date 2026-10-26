@@ -411,7 +411,7 @@ function assertDraft(draft: EditorialDraftRecordV2): void {
   if (draft.context !== undefined && (!Array.isArray(draft.context) || draft.context.length > 16 ||
       draft.context.some((item) => !item || typeof item.id !== "string" || typeof item.label !== "string" ||
         typeof item.text !== "string" || item.text.length > 300 || typeof item.provider !== "string" ||
-        !["profile", "market", "headline"].includes(item.kind)))) {
+        !["profile", "market", "headline", "trainer"].includes(item.kind)))) {
     throw new Error("invalid editorial context");
   }
   if (draft.scopeReview !== undefined && (draft.scopeReview?.status !== "pass" ||
