@@ -51,12 +51,12 @@ test("pilot evidence needs 3 fact-checked approvals and no factual error", () =>
   assert.deepEqual(evaluateOperatorPilotEvidenceV2(wrong).reasons, ["factual errors 1 (must be 0)"]);
 });
 
-test("pilot evidence ignores other epochs, live drafts and pending drafts", () => {
+test("pilot evidence ignores other epochs and pending drafts, and counts operator-approved live candidates", () => {
   const states = earned();
   states[0].draft.collectionEpoch = "character-writer-v5";
   states[1].draft.trackingMode = "live";
   (states[3] as { reviewStatus: string }).reviewStatus = "pending";
-  assert.deepEqual(evaluateOperatorPilotEvidenceV2(states).reviewed, 1);
+  assert.equal(evaluateOperatorPilotEvidenceV2(states).reviewed, 2);
 });
 
 function dir(t: TestContext): string {

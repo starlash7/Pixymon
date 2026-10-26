@@ -115,6 +115,16 @@ export async function reviewEditorialScopeV2(input: {
   const prompt = input.records?.length
     ? buildEditorialMemoryScopeCriticPromptV2(input.text, input.records)
     : buildEditorialScopeCriticPromptV2(input.text, input.evidence!, input.context);
+  return requestScopeVerdictV2({ model: input.model, prompt, text: input.text });
+}
+
+/** One verdict request shared by every critic mode; a malformed verdict gets one more read. */
+export async function requestScopeVerdictV2(input: {
+  model: EditorialWriterModelV2;
+  prompt: string;
+  text: string;
+}): Promise<EditorialScopeCriticResultV2> {
+  const prompt = input.prompt;
   let malformed = "scope-critic-contract";
   // Transport retries live in the model adapter; a malformed verdict gets one more read of the same text.
   for (const attempt of [1, 2] as const) {

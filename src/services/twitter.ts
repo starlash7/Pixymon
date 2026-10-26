@@ -61,6 +61,8 @@ export interface PostTweetOptions {
   xApiCostSettings?: Partial<XApiCostRuntimeSettings>;
   createKind?: string;
   quoteTweetId?: string;
+  /** Operator-approved V2 reply target (type "reply"); never inferred. */
+  replyToTweetId?: string;
   metadata?: PostTweetMetadata;
   /** V2 approved publishing uses one attempt so ambiguous X responses cannot duplicate a post. */
   maxAttempts?: number;
@@ -1185,6 +1187,7 @@ export async function postTweet(
   const xApiCostSettings = resolveXApiCostSettings(options.xApiCostSettings);
   const commitId = `tw_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const quoteTweetId = type === "quote" ? normalizeQuoteTweetId(options.quoteTweetId) : undefined;
+  const replyToTweetId = type === "reply" ? normalizeQuoteTweetId(options.replyToTweetId) : undefined;
   const dispatchLock = type === "briefing" ? acquirePostDispatchLock() : { acquired: true, release: () => {} };
   if (!dispatchLock.acquired) {
     console.log("[POST-GUARD] 다른 인스턴스가 글 발행 중이라 이번 발행을 스킵합니다.");
@@ -1194,6 +1197,10 @@ export async function postTweet(
   try {
     if (type === "quote" && !quoteTweetId) {
       console.log("[POST-GUARD] quote 발행 스킵: quoteTweetId 누락");
+      return null;
+    }
+    if (type === "reply" && !replyToTweetId) {
+      console.log("[POST-GUARD] reply 발행 스킵: replyToTweetId 누락");
       return null;
     }
 
@@ -1244,7 +1251,9 @@ export async function postTweet(
           console.log(`[2PC] send id=${commitId} attempt=${attempt} kind=${createKind}`);
           const tweet = quoteTweetId
             ? await twitter!.v2.tweet({ text: content, quote_tweet_id: quoteTweetId })
-            : await twitter!.v2.tweet(content);
+            : replyToTweetId
+              ? await twitter!.v2.tweet({ text: content, reply: { in_reply_to_tweet_id: replyToTweetId } })
+              : await twitter!.v2.tweet(content);
           console.log(`[2PC] response id=${commitId} attempt=${attempt}`);
           if (ACTION_TWO_PHASE_COMMIT) {
             if (!tweet?.data?.id || String(tweet.data.id).trim().length === 0) {
