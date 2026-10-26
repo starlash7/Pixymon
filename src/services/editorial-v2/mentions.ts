@@ -99,7 +99,14 @@ export async function replyToNewMentionsV2(input: {
       tweetId: mention.id, url: `https://x.com/${mention.username}/status/${mention.id}`, author: mention.username,
       text: mention.text, trainer: mention.username.toLowerCase() === input.trainerHandle.toLowerCase(),
     };
-    const candidates = await draftRepliesV2({ model: input.model, critic: input.critic, target });
+    let candidates;
+    try {
+      candidates = await draftRepliesV2({ model: input.model, critic: input.critic, target });
+    } catch (error) {
+      // Budget local-only or a model outage: stop here, keep progress, and retry this mention next poll.
+      skipped.push([mention.id, `draft-failed:${error instanceof Error ? error.message : String(error)}`]);
+      break;
+    }
     const id = input.ledger.recordDraft(target, candidates, input.model.modelId ?? "unknown", input.now);
     const pick = candidates.findIndex((candidate) => candidate.reasons.length === 0 && candidate.critic === "pass") + 1;
     if (pick === 0) { skipped.push([mention.id, "no-passing-candidate"]); sinceId = mention.id; continue; }
