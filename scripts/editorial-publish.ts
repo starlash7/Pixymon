@@ -1,6 +1,12 @@
 import "dotenv/config";
 import path from "node:path";
-import { assertApprovedLiveAuthorizationV2 } from "../src/services/editorial-v2/publication-policy.js";
+import {
+  assertApprovedLiveAuthorizationV2,
+  assertAutoPublishPolicyV2,
+  autoPublishEnabledV2,
+} from "../src/services/editorial-v2/publication-policy.js";
+import { EDITORIAL_COLLECTION_EPOCH_V2 } from "../src/services/editorial-v2/contracts.js";
+import { recordEditorialReviewV2 } from "../src/services/editorial-v2/review.js";
 import { editorialVerificationRepositoryStateV2 } from "./editorial-repository-state.js";
 import { loadRuntimeConfig } from "../src/config/runtime.js";
 import { EditorialEventStoreV2 } from "../src/services/editorial-v2/event-store.js";
@@ -65,16 +71,38 @@ async function main(): Promise<void> {
 
     const twitter = initTwitterClient();
     if (!twitter) throw new Error("Twitter credentials are required; live publish cannot simulate success");
+    const auto = process.argv.includes("--auto");
+    const stopPath = path.join(paths.dataDir, "editorial-v2", "STOP");
+    if (auto) {
+      // Auto mode publishes only a fresh, critic-passed, untouched candidate of the current writer.
+      if (!autoPublishEnabledV2()) throw new Error("auto-publish-disabled (set PIXYMON_AUTO_PUBLISH=true)");
+      const candidate = store.getDraftState(draftIdArg());
+      if (!candidate) throw new Error("unknown draft");
+      if ((candidate.draft.trackingMode ?? "live") !== "live") throw new Error("auto-publish requires a live candidate");
+      if (candidate.draft.collectionEpoch !== EDITORIAL_COLLECTION_EPOCH_V2) throw new Error("auto-publish requires the current writer epoch");
+      if (!candidate.draft.scopeReview) throw new Error("auto-publish requires a semantic critic pass");
+      if (candidate.reviewStatus === "pending") {
+        recordEditorialReviewV2({ store, draftId: candidate.draft.id, action: "approve", reviewerId: "pixymon-auto",
+          reasonTags: ["auto-publish"], metricLogPath: paths.metricLogPath, mode: "live" });
+      } else if (candidate.reviewStatus !== "approved") {
+        throw new Error(`auto-publish skips a ${candidate.reviewStatus} draft`);
+      }
+    }
     const state = store.getDraftState(draftIdArg());
     const authorize = () => {
       const repository = editorialVerificationRepositoryStateV2();
+      if (auto) {
+        assertAutoPublishPolicyV2({ enabled: autoPublishEnabledV2(), stopPath, workingTreeClean: repository.workingTreeClean });
+        return;
+      }
       assertApprovedLiveAuthorizationV2({
         authorizationPath: arg("authorization") || "",
-        stopPath: path.join(paths.dataDir, "editorial-v2", "STOP"),
+        stopPath,
         commit: repository.currentCommit,
         workingTreeClean: repository.workingTreeClean,
       });
     };
+    const autoDailyLimit = Number(process.env.PIXYMON_ORIGINAL_DAILY_LIMIT || 2);
     const result = await publishEditorialDraftV2({
       store,
       draftId: draftIdArg(),
@@ -82,7 +110,8 @@ async function main(): Promise<void> {
       authorize,
       metricLogPath: paths.metricLogPath,
       timezone: config.dailyTimezone,
-      dailyLimit: 1, // R3 approved-live scope; ramp is not authorized by this policy.
+      // Manual R3/pilot scope stays one per day; operator-enabled auto mode uses PIXYMON_ORIGINAL_DAILY_LIMIT.
+      dailyLimit: auto ? (Number.isInteger(autoDailyLimit) && autoDailyLimit >= 0 ? autoDailyLimit : 2) : 1,
       revalidateEvidence: async (facts) => {
         const revalidationTargets: EditorialFollowUpTargetV2[] = facts.map((fact) => ({
           provider: fact.source.provider as EditorialFollowUpTargetV2["provider"],
@@ -124,7 +153,7 @@ async function main(): Promise<void> {
       dispatch: (text, beforeSend) => postTweet(twitter, text, "briefing", {
         timezone: config.dailyTimezone,
         xApiCostSettings: config.xApiCost,
-        createKind: "editorial-v2:approved-original",
+        createKind: auto ? "editorial-v2:auto-original" : "editorial-v2:approved-original",
         maxAttempts: 1,
         beforeSend,
         metadata: state ? { eventId: state.draft.id, evidenceIds: [...state.draft.factIds], narrativeMode: state.draft.format } : undefined,

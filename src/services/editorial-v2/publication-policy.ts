@@ -100,3 +100,18 @@ export function assertApprovedLiveAuthorizationV2(input: {
   if (digest(statusBytes) !== record.statusSha256) throw new Error("approved-live-status-changed");
   assertApprovedLiveStatusV2(JSON.parse(statusBytes.toString("utf8")), input.commit);
 }
+
+/**
+ * Operator decision 2026-10-26: originals that passed every gate and the semantic critic may publish
+ * without a per-post approval, within the daily caps. The STOP file and a clean committed tree still
+ * gate every send; PIXYMON_AUTO_PUBLISH=true must be set explicitly.
+ */
+export function assertAutoPublishPolicyV2(input: { enabled: boolean; stopPath: string; workingTreeClean: boolean }): void {
+  if (fs.existsSync(input.stopPath)) throw new Error("editorial-live-suspended");
+  if (!input.workingTreeClean) throw new Error("editorial-live-tree-dirty");
+  if (!input.enabled) throw new Error("auto-publish-disabled");
+}
+
+export function autoPublishEnabledV2(env: NodeJS.ProcessEnv = process.env): boolean {
+  return String(env.PIXYMON_AUTO_PUBLISH || "").trim().toLowerCase() === "true";
+}

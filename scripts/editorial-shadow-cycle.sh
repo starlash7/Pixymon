@@ -1,11 +1,12 @@
 #!/bin/zsh
-# Collection cycle for a scheduler (launchd/cron). It never publishes: it creates candidates
-# (PIXYMON_CYCLE_TRACKING=live by default, publishable only after operator approval; or shadow).
+# Collection cycle for a scheduler (launchd/cron). It creates candidates (PIXYMON_CYCLE_TRACKING=live
+# by default, or shadow). With PIXYMON_AUTO_PUBLISH=true a critic-passed live candidate is published
+# immediately through editorial:publish --auto (daily caps, STOP file, clean tree); otherwise never.
 # - every run: close due 24h/72h checks on time (a missed window cannot be judged later)
 # - at PIXYMON_SHADOW_COLLECT_HOURS (UTC): one shadow collection. PIXYMON_SHADOW_PROVIDER selects
 #   anthropic (default; the same writer that will publish, under the daily USD/request caps, no
 #   retry) or gemini (free tier; retried once on a lighter model pair when overloaded).
-# Observe mode, no X client; output is appended to data/shadow-cycle.log.
+# Collection runs in observe mode; output is appended to data/shadow-cycle.log.
 set -u
 cd "${0:A:h}/.." || exit 1
 mkdir -p data
@@ -23,6 +24,12 @@ export EDITORIAL_MODEL_PROVIDER=$PROVIDER
 followups=$(node --import tsx scripts/editorial-followups.ts 2>&1)
 log "followups exit=$? ${followups//$'\n'/ | }"
 
+# Replies to people who mention or reply to Pixymon; the poll itself is throttled and budgeted.
+if [[ "${PIXYMON_AUTO_PUBLISH:-false}" == true ]]; then
+  mentions=$(ACTION_MODE=live node --import tsx scripts/editorial-mentions.ts 2>&1 | grep -v "LLM-BUDGET")
+  [[ "$mentions" == *"polled=false"* ]] || log "mentions :: ${mentions//$'\n'/ | }"
+fi
+
 hour=$(date -u +%H)
 case " ${PIXYMON_SHADOW_COLLECT_HOURS:-01 09 17} " in
   *" $hour "*) ;;
@@ -33,6 +40,12 @@ if [[ "$PROVIDER" == anthropic ]]; then
   # Paid: one attempt per scheduled hour; the request wrapper enforces ANTHROPIC_DAILY_MAX_USD.
   out=$(node --import tsx scripts/editorial-collect.ts 2>&1)
   log "collect provider=anthropic :: ${out//$'\n'/ | }"
+  # Operator-enabled auto mode: publish a fresh, critic-passed live candidate right away (daily caps apply).
+  if [[ "${PIXYMON_AUTO_PUBLISH:-false}" == true && "$TRACKING" == live && "$out" =~ 'draft=(action_[a-z0-9-]+)' ]]; then
+    id=$match[1]
+    pub=$(ACTION_MODE=live node --import tsx scripts/editorial-publish.ts --id "$id" --auto 2>&1)
+    log "auto-publish $id :: ${pub//$'\n'/ | }"
+  fi
   exit 0
 fi
 
