@@ -304,3 +304,11 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Critic sees the current level and the follow-up baseline the inquiry may cite.
 - X length: X weighs Hangul as 2; the 190-character limit allowed posts a standard account cannot send. Drafts now fail `too-long` above an X weight of 280; prompts ask for ~130 Hangul characters with a retry hint.
 - Real runs today hit the Anthropic daily cap ($0.345/$0.40 at 85% utilization → local-only), which stopped further calls as designed.
+
+## 28. Trainer Identity — 2026-10-26 (operator direction)
+
+- The operator (@Pixy7Crypto) is Pixymon's trainer. Pixymon calls only the trainer "주인님" and may coolly criticize, joke about or mock the trainer's account activity — and nobody else. Appearance, family and private life are off limits.
+- Material: until trainer timeline reads are funded (X balance), the operator writes `data/trainer-notes.md`; fresh notes (≤48h) become `trainer` context items. `PIXYMON_TRAINER_HANDLE` / `PIXYMON_TRAINER_NOTES_PATH` override.
+- Guards: `trainer-without-material` rejects "주인님" or @trainer when no trainer material is present; the critic fails invented trainer activity, mockery of others, or private topics. Canon: SOCIAL.md Trainer section; voice block; CLAUDE.md.
+- X caps (local .env): reads 8/day, creates 1/day, $0.10/day, in the shared spend ledger.
+- Next: read the trainer's recent posts through the budgeted X read path, and a dedicated trainer post format.

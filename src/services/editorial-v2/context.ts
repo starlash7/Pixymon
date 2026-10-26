@@ -58,7 +58,7 @@ export function buildEditorialContextV2(input: {
 /** One block shared by the inquiry, writer and critic prompts. */
 export function formatEditorialContextV2(context: readonly EditorialContextItemV2[] | undefined): string {
   if (!context?.length) return "- 추가 재료 없음";
-  return context.map((item) => `- ${item.label}: ${item.text} (출처: ${item.provider}${item.kind === "headline" ? ", 남의 보도라 사실 확인 안 됨" : ""})`).join("\n");
+  return context.map((item) => `- ${item.label}: ${item.text} (출처: ${item.provider}${item.kind === "headline" ? ", 남의 보도라 사실 확인 안 됨" : item.kind === "trainer" ? ", 주인님 활동 메모" : ""})`).join("\n");
 }
 
 /** The text re-validation draws allowed numbers and names from. */

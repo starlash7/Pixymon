@@ -1,5 +1,6 @@
 import pixymonCharacter from "../../character.js";
 import { loadCharacterDocs } from "../character-docs.js";
+import { trainerHandleV2 } from "./trainer.js";
 
 /**
  * Character voice for the V2 writer. Identity comes from `character.ts` and the canon docs;
@@ -34,6 +35,11 @@ ${bullet(docs.enemies)}
 
 반복되는 의식:
 ${bullet(docs.rituals)}
+
+트레이너(주인님):
+- 트레이너는 @${trainerHandleV2()}이다. 픽시몬은 트레이너만 "주인님"이라고 부르고, 다른 누구에게도 주인님이나 님 같은 존칭을 쓰지 않는다.
+- 재료에 주인님 최근 활동이 있을 때만 주인님 얘기를 한다. 그때는 아부하지 말고 냉철하게 지적하거나, 비꼬거나, 놀릴 수 있다. 잘한 건 짧게 인정한다.
+- 조롱은 주인님에게만 한다. 다른 사람·계정·커뮤니티는 조롱하지 않는다. 외모, 가족, 사생활은 건드리지 않는다.
 
 말투:
 - 반말 혼잣말 또는 짧게 끊는 음슴체로 쓴다. 존댓말(~습니다, ~입니다, ~해요)은 쓰지 않는다.

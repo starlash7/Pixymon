@@ -161,7 +161,7 @@ export interface EditorialGeneratedPayloadV2 {
  */
 export interface EditorialContextItemV2 {
   id: string;
-  kind: "profile" | "market" | "headline";
+  kind: "profile" | "market" | "headline" | "trainer";
   label: string;
   text: string;
   provider: string;
