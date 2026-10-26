@@ -1,17 +1,20 @@
 #!/bin/zsh
-# Shadow cycle for a scheduler (launchd/cron), never live:
+# Collection cycle for a scheduler (launchd/cron). It never publishes: it creates candidates
+# (PIXYMON_CYCLE_TRACKING=live by default, publishable only after operator approval; or shadow).
 # - every run: close due 24h/72h checks on time (a missed window cannot be judged later)
 # - at PIXYMON_SHADOW_COLLECT_HOURS (UTC): one shadow collection. PIXYMON_SHADOW_PROVIDER selects
 #   anthropic (default; the same writer that will publish, under the daily USD/request caps, no
 #   retry) or gemini (free tier; retried once on a lighter model pair when overloaded).
-# Observe mode, shadow ledger, no X client; output is appended to data/shadow-cycle.log.
+# Observe mode, no X client; output is appended to data/shadow-cycle.log.
 set -u
 cd "${0:A:h}/.." || exit 1
 mkdir -p data
 LOG=data/shadow-cycle.log
 log() { print -r -- "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >> "$LOG"; }
 
-export ACTION_MODE=observe EDITORIAL_TRACKING_MODE=shadow POST_PIPELINE_VERSION=v2
+TRACKING=${PIXYMON_CYCLE_TRACKING:-live}
+[[ "$TRACKING" == live || "$TRACKING" == shadow ]] || { log "invalid PIXYMON_CYCLE_TRACKING=$TRACKING"; exit 1; }
+export ACTION_MODE=observe EDITORIAL_TRACKING_MODE=$TRACKING POST_PIPELINE_VERSION=v2
 export TEST_MODE=false TEST_NO_EXTERNAL_CALLS=false SOCIAL_SURFACES_ENABLED=false SCHEDULER_MODE=false
 PROVIDER=${PIXYMON_SHADOW_PROVIDER:-anthropic}
 [[ "$PROVIDER" == anthropic || "$PROVIDER" == gemini ]] || { log "invalid PIXYMON_SHADOW_PROVIDER=$PROVIDER"; exit 1; }

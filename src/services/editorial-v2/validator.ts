@@ -31,7 +31,8 @@ const POSITIVE_SCOPE_BEFORE_NEGATION = /(?:뜻|의미)(?:하고|하며|하나)|�
 // Every early thought draft ended on "don't know / will watch"; a thought must close on a stance.
 const HEDGE_ONLY_ENDING = /(?:모름|모르겠음|모르겠다|모르겠네|지켜봄|지켜볼\s*생각임|지켜보는\s*중|봐야\s*할\s*듯|봐야\s*함|봐야겠음|소화\s*중임?|소화해볼\s*생각임|보류함?|미룸)[.!…]?$/u;
 // Formal 합쇼체 reads as a news desk or assistant, not the character ("아니다" is plain speech).
-const FORMAL_REGISTER = /(?<!아)니다(?=[.!?,\s]|$)|니까[?]/u;
+export const FORMAL_REGISTER_V2 = /(?<!아)니다(?=[.!?,\s]|$)|니까[?]/u;
+const FORMAL_REGISTER = FORMAL_REGISTER_V2;
 const TRAILING_KO_PARTICLE = /(?:에서|으로|까지|부터|보다|동안|간|은|는|이|가|을|를|에|로|와|과|도|만|의|쯤)$/u;
 // Generic market vocabulary, not entity names; the named-token gate is for protocols, tokens and people.
 const GENERIC_LATIN_TERMS = new Set(["defi", "cefi", "dex", "cex", "nft", "etf", "rwa", "tvl", "apy", "apr", "dao", "amm", "l1", "l2", "lp", "fomo", "fud"]);
@@ -324,4 +325,14 @@ export function editorialDraftValidationInputV2(input: {
     semanticScopeCleared: input.scopeReview?.status === "pass" &&
       input.scopeReview.textSha256 === editorialScopeTextDigestV2(input.text),
   };
+}
+
+/** Numbers in `text` that do not appear in `source` (particles glued to a number are ignored). */
+export function ungroundedNumbersV2(text: string, source: string, options: { coreOnly?: boolean } = {}): string[] {
+  // Replies quote prose ("앱100위안에" vs "100위 안에"); there only the number itself must match.
+  const normalize = (token: string) => options.coreOnly ? token.replace(/[가-힣]+$/u, "").replace(/^[-+]/u, "") : token;
+  const allowed = new Set(collectNumericTokens(source).map(normalize));
+  for (const token of [...allowed]) if (/^[-+]/u.test(token)) allowed.add(token.slice(1));
+  return collectNumericTokens(text).filter((token) =>
+    !allowed.has(normalize(token)) && !allowed.has(normalize(token.replace(TRAILING_KO_PARTICLE, ""))));
 }

@@ -44,8 +44,8 @@ const tags = (values: readonly string[]) => new Set(values.map((tag) => tag.trim
 
 /** Counts only the current epoch's shadow drafts, so evidence about an older writer never carries over. */
 export function evaluateOperatorPilotEvidenceV2(states: readonly EditorialDraftStateV2[]): OperatorPilotEvidenceV2 {
-  const epochDrafts = states.filter((state) => state.draft.trackingMode === "shadow" &&
-    state.draft.collectionEpoch === EDITORIAL_COLLECTION_EPOCH_V2);
+  // Live candidates the operator approved count too: each live post is itself operator-approved.
+  const epochDrafts = states.filter((state) => state.draft.collectionEpoch === EDITORIAL_COLLECTION_EPOCH_V2);
   const reviewed = epochDrafts.filter((state) => state.reviewStatus === "approved" || state.reviewStatus === "rejected");
   // An edit records as approved; the last review must carry the operator's fact check.
   const approvedFactChecked = reviewed.filter((state) => state.reviewStatus === "approved" &&
@@ -66,8 +66,10 @@ export function canonicalShadowLedgerPathV2(env: NodeJS.ProcessEnv = process.env
   return path.resolve(resolveEditorialRuntimePathsV2("observe", { ...env, EDITORIAL_TRACKING_MODE: "shadow" }).eventLogPath);
 }
 
+/** Approvals live in two ledgers: shadow rehearsal and live candidates. Both paths are canonical. */
 function loadShadowStates(shadowLedgerPath: string): EditorialDraftStateV2[] {
-  return new EditorialEventStoreV2({ eventLogPath: shadowLedgerPath }).listDraftStates();
+  const livePath = path.resolve(resolveEditorialRuntimePathsV2("observe", { ...process.env, EDITORIAL_TRACKING_MODE: "live" }).eventLogPath);
+  return [shadowLedgerPath, livePath].flatMap((eventLogPath) => new EditorialEventStoreV2({ eventLogPath }).listDraftStates());
 }
 
 export function writeOperatorPilotAuthorizationV2(input: {

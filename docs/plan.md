@@ -312,3 +312,11 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Guards: `trainer-without-material` rejects "주인님" or @trainer when no trainer material is present; the critic fails invented trainer activity, mockery of others, or private topics. Canon: SOCIAL.md Trainer section; voice block; CLAUDE.md.
 - X caps (local .env): reads 8/day, creates 1/day, $0.10/day, in the shared spend ledger.
 - Next: read the trainer's recent posts through the budgeted X read path, and a dedicated trainer post format.
+
+## 29. Publishing Originals and Replies — 2026-10-26 (operator priority)
+
+- Operator priority: publish originals and replies now; no automatic reading of the trainer's timeline — trainer material comes only from posts the operator pastes.
+- Originals: the cycle now creates live candidates (`PIXYMON_CYCLE_TRACKING=live`, default) instead of shadow rehearsal; they publish only after operator approval. `scripts/pixymon-post.sh <draftId>` records the fact-checked approval, issues the 24h pilot authorization and sends once through `editorial:publish`. The pilot counts approvals from both canonical ledgers (live candidates included). Evidence must still revalidate at dispatch (~2h freshness).
+- Replies: `editorial:reply draft --url <x.com/.../status/id> --text-file <file>` builds three candidates from a pasted post (trainer rules when the author is the trainer), checks X length, register, hashtags/URLs/emoji/mentions, self-name, numbers against the post, and 주인님 only for the trainer, then runs a reply critic. `editorial:reply publish --id <id> --pick <n>` sends one picked candidate as a reply through the budgeted `postTweet` (single attempt), after a durable prepared record; one reply per target, `PIXYMON_REPLY_DAILY_LIMIT` (default 2).
+- First real reply draft (trainer's 앱인토스 post): two candidates passed; one was blocked for an inferred month ("10월").
+- Needed before the first send: X credentials, X credit, and the local X create cap raised to 3/day (1 original + 2 replies).

@@ -31,7 +31,8 @@
     "audit:narrative": "node scripts/narrative-audit-report.mjs",
     "samples:identity": "node --import tsx scripts/identity-samples.ts",
     "samples:planner": "node --import tsx scripts/planner-samples.ts",
-    "preflight:week-test": "node scripts/preflight-week-test.mjs"
+    "preflight:week-test": "node scripts/preflight-week-test.mjs",
+    "editorial:reply": "node --import tsx scripts/editorial-reply.ts"
   },
   "keywords": [
     "ai-agent",
