@@ -320,3 +320,12 @@ Operational commands and rollback rules live in `docs/editorial-v2-runbook.md`.
 - Replies: `editorial:reply draft --url <x.com/.../status/id> --text-file <file>` builds three candidates from a pasted post (trainer rules when the author is the trainer), checks X length, register, hashtags/URLs/emoji/mentions, self-name, numbers against the post, and 주인님 only for the trainer, then runs a reply critic. `editorial:reply publish --id <id> --pick <n>` sends one picked candidate as a reply through the budgeted `postTweet` (single attempt), after a durable prepared record; one reply per target, `PIXYMON_REPLY_DAILY_LIMIT` (default 2).
 - First real reply draft (trainer's 앱인토스 post): two candidates passed; one was blocked for an inferred month ("10월").
 - Needed before the first send: X credentials, X credit, and the local X create cap raised to 3/day (1 original + 2 replies).
+
+## 30. Auto Publishing and Mention Replies — 2026-10-26 (operator decision)
+
+- Operator: publish automatically within the daily caps, without per-post approval. Caps are ceilings, not targets; nothing is spent when there is no candidate or mention.
+- Originals: with `PIXYMON_AUTO_PUBLISH=true`, the cycle publishes a fresh live candidate that passed every gate and the semantic critic (`scopeReview`) immediately via `editorial:publish --auto` — auto-approved as `pixymon-auto`, `PIXYMON_ORIGINAL_DAILY_LIMIT` (default 2), STOP file and clean committed tree checked at dispatch, single send, evidence revalidated.
+- Replies to pasted posts: `editorial:reply draft ... --auto-publish` posts the first candidate that passed every check and the critic. A pasted trainer quote is replied to under the trainer's post (trainer rules).
+- Mentions: `editorial:mentions` (from the cycle when auto is on) reads new @Pixy_mon mentions since the last seen id, at most 5 per poll, at least `PIXYMON_MENTION_POLL_MINUTES` (default 240) apart, budgeted at the worst case (5 × $0.005) before the request. Self posts, links, tag storms and empty mentions are skipped; the trainer gets trainer rules. Oldest first; a reply-daily-limit stop leaves the rest for the next poll.
+- Kill switch: `data/editorial-v2/STOP` suspends originals, pasted replies and mention replies.
+- Limits: if more than five new mentions arrive between polls, only the newest five are seen; replies are not rate-matched per author yet.
