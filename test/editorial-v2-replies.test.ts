@@ -8,6 +8,7 @@ import {
   parseReplyTargetUrlV2,
   publishReplyV2,
   ReplyLedgerV2,
+  releaseReplyV2,
   validateReplyV2,
   type ReplyTargetV2,
 } from "../src/services/editorial-v2/replies.ts";
@@ -57,7 +58,7 @@ function ledger(t: TestContext): ReplyLedgerV2 {
 test("publishing sends only an operator-picked, checked candidate, once per target, within the daily limit", async (t) => {
   const book = ledger(t);
   const sent: Array<[string, string]> = [];
-  const dispatch = async (text: string, replyTo: string) => { sent.push([text, replyTo]); return `x-${sent.length}`; };
+  const dispatch = async (text: string, replyTo: string, beforeSend: () => void) => { beforeSend(); sent.push([text, replyTo]); return `x-${sent.length}`; };
   const id = book.recordDraft(trainerTarget, [{ text: GOOD, reasons: [], critic: "pass" }, { text: "bad", reasons: ["too-short"], critic: "not-run" }], "m");
   assert.deepEqual(await publishReplyV2({ ledger: book, id, pick: 2, dispatch, timezone: "Asia/Seoul" }), { status: "blocked", reason: "candidate-failed-checks:too-short" });
   assert.deepEqual(await publishReplyV2({ ledger: book, id, pick: 1, dispatch, timezone: "Asia/Seoul" }), { status: "published", xId: "x-1" });
@@ -74,9 +75,32 @@ test("an unresolved send leaves a prepared record so the same reply is never sen
   const book = ledger(t);
   const id = book.recordDraft(trainerTarget, [{ text: GOOD, reasons: [], critic: "pass" }], "m");
   let calls = 0;
-  const failing = async () => { calls += 1; return null; };
+  const failing = async (_text: string, _to: string, beforeSend: () => void) => { beforeSend(); calls += 1; return null; };
   assert.equal((await publishReplyV2({ ledger: book, id, pick: 1, dispatch: failing, timezone: "Asia/Seoul" })).status, "blocked");
   assert.equal((await publishReplyV2({ ledger: book, id, pick: 1, dispatch: failing, timezone: "Asia/Seoul" })).status, "blocked");
   assert.equal(calls, 1);
   assert.deepEqual(book.events().map((event) => event.type), ["reply-drafted", "reply-prepared"]);
+});
+
+test("a guard that declines before sending leaves no prepared record, and a checked unsent reply can be released", async (t) => {
+  const book = ledger(t);
+  const id = book.recordDraft(trainerTarget, [{ text: GOOD, reasons: [], critic: "pass" }], "m");
+  const declined = async () => null;
+  assert.deepEqual(await publishReplyV2({ ledger: book, id, pick: 1, dispatch: declined, timezone: "Asia/Seoul" }),
+    { status: "blocked", reason: "x-not-sent (guard declined; retry later)" });
+  assert.deepEqual(book.events().map((event) => event.type), ["reply-drafted"]);
+  const unresolved = async (_text: string, _to: string, beforeSend: () => void) => { beforeSend(); return null; };
+  assert.equal((await publishReplyV2({ ledger: book, id, pick: 1, dispatch: unresolved, timezone: "Asia/Seoul" })).status, "blocked");
+  assert.deepEqual(releaseReplyV2(book, id, ""), { status: "blocked", reason: "release-reason-required" });
+  assert.deepEqual(releaseReplyV2(book, id, "checked on X: not posted"), { status: "released" });
+  const ok = async (_text: string, _to: string, beforeSend: () => void) => { beforeSend(); return "x-9"; };
+  assert.deepEqual(await publishReplyV2({ ledger: book, id, pick: 1, dispatch: ok, timezone: "Asia/Seoul" }), { status: "published", xId: "x-9" });
+  // A published reply is never released, and its target stays blocked.
+  assert.deepEqual(releaseReplyV2(book, id, "x"), { status: "blocked", reason: "reply-already-published" });
+  assert.equal((await publishReplyV2({ ledger: book, id, pick: 1, dispatch: ok, timezone: "Asia/Seoul" })).status, "blocked");
+});
+
+test("replies may use a character cue word once", () => {
+  assert.ok(validateReplyV2("지금 소화 중임. 온체인 데이터 씹는 데 시간 걸림", otherTarget).includes("character-cue-overuse"));
+  assert.ok(!validateReplyV2("픽시몬은 아직 소화 중임. 결론은 조금 더 보고 냄", otherTarget).includes("character-cue-overuse"));
 });

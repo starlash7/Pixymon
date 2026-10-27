@@ -48,7 +48,7 @@ test("Pixymon replies to new mentions oldest first, applies trainer rules, and r
   const statePath = path.join(root, "mentions-state.json");
   const ledger = new ReplyLedgerV2(path.join(root, "replies.ndjson"));
   const sent: Array<[string, string]> = [];
-  const dispatch = async (text: string, to: string) => { sent.push([text, to]); return `x${sent.length}`; };
+  const dispatch = async (text: string, to: string, beforeSend: () => void) => { beforeSend(); sent.push([text, to]); return `x${sent.length}`; };
   const calls: Array<Record<string, unknown>> = [];
   const rows = [
     { id: "1900000000000000003", text: "@Pixy_mon 이거 진짜 바닥임?", author_id: "7" },

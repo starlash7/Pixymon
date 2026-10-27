@@ -13,6 +13,7 @@ import {
   draftRepliesV2,
   parseReplyTargetUrlV2,
   publishReplyV2,
+  releaseReplyV2,
   ReplyLedgerV2,
 } from "../src/services/editorial-v2/replies.js";
 
@@ -43,8 +44,8 @@ async function publish(ledger: ReplyLedgerV2, id: string, pick: number): Promise
   const limit = Number(process.env.PIXYMON_REPLY_DAILY_LIMIT || DEFAULT_REPLY_DAILY_LIMIT_V2);
   const result = await publishReplyV2({
     ledger, id, pick, timezone: config.dailyTimezone, dailyLimit: Number.isInteger(limit) && limit >= 0 ? limit : DEFAULT_REPLY_DAILY_LIMIT_V2,
-    dispatch: (text, replyToTweetId) => postTweet(twitter, text, "reply", {
-      replyToTweetId, maxAttempts: 1, createKind: "reply:v2", timezone: config.dailyTimezone,
+    dispatch: (text, replyToTweetId, beforeSend) => postTweet(twitter, text, "reply", {
+      replyToTweetId, maxAttempts: 1, createKind: "reply:v2", timezone: config.dailyTimezone, xApiCostSettings: config.xApiCost, beforeSend,
     }),
   });
   console.log(result.status === "published" ? `[REPLY] published https://x.com/Pixy_mon/status/${result.xId}` : `[REPLY] blocked: ${result.reason}`);
@@ -93,7 +94,15 @@ async function main(): Promise<void> {
     await publish(ledger, id, pick);
     return;
   }
-  throw new Error("usage: editorial:reply (draft|show|publish) ...");
+  if (command === "release") {
+    // Only after checking on X that the reply is not on the account.
+    const id = arg("id");
+    const reason = arg("reason");
+    if (!id || !reason) throw new Error("usage: editorial:reply release --id <replyId> --reason <checked-on-x-not-posted>");
+    process.stdout.write(`${JSON.stringify(releaseReplyV2(ledger, id, reason))}\n`);
+    return;
+  }
+  throw new Error("usage: editorial:reply (draft|show|publish|release) ...");
 }
 
 main().catch((error) => {

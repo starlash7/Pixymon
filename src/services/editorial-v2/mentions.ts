@@ -58,7 +58,7 @@ export async function replyToNewMentionsV2(input: {
   ledger: ReplyLedgerV2;
   model: EditorialWriterModelV2;
   critic: EditorialWriterModelV2;
-  dispatch: (text: string, replyToTweetId: string) => Promise<string | null>;
+  dispatch: (text: string, replyToTweetId: string, beforeSend: () => void) => Promise<string | null>;
   trainerHandle: string;
   timezone: string;
   xApiCost: XApiCostRuntimeSettings;
@@ -111,7 +111,8 @@ export async function replyToNewMentionsV2(input: {
     const pick = candidates.findIndex((candidate) => candidate.reasons.length === 0 && candidate.critic === "pass") + 1;
     if (pick === 0) { skipped.push([mention.id, "no-passing-candidate"]); sinceId = mention.id; continue; }
     const result = await publishReplyV2({ ledger: input.ledger, id, pick, dispatch: input.dispatch, dailyLimit: input.replyDailyLimit, timezone: input.timezone, now: input.now });
-    if (result.status === "blocked" && result.reason === "reply-daily-limit") break;
+    // A daily limit or a guard that declined before sending leaves this mention for the next poll.
+    if (result.status === "blocked" && (result.reason === "reply-daily-limit" || result.reason.startsWith("x-not-sent"))) break;
     if (result.status === "published") replied.push(result.xId); else skipped.push([mention.id, result.reason]);
     sinceId = mention.id;
   }

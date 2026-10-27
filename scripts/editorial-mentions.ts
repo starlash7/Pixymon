@@ -35,8 +35,8 @@ async function main(): Promise<void> {
     ledger: new ReplyLedgerV2(path.join(dataDir, "editorial-v2", "replies.ndjson")),
     model: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "write"),
     critic: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "critique"),
-    dispatch: (text, replyToTweetId) => postTweet(twitter, text, "reply", {
-      replyToTweetId, maxAttempts: 1, createKind: "reply:mention-v2", timezone: config.dailyTimezone, xApiCostSettings: config.xApiCost,
+    dispatch: (text, replyToTweetId, beforeSend) => postTweet(twitter, text, "reply", {
+      replyToTweetId, maxAttempts: 1, createKind: "reply:mention-v2", timezone: config.dailyTimezone, xApiCostSettings: config.xApiCost, beforeSend,
     }),
     trainerHandle: trainerHandleV2(),
     timezone: config.dailyTimezone,

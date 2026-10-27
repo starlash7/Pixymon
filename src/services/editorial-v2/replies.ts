@@ -28,7 +28,9 @@ export interface ReplyCandidateV2 {
 export type ReplyEventV2 =
   | { type: "reply-drafted"; id: string; createdAt: string; target: ReplyTargetV2; candidates: ReplyCandidateV2[]; modelId: string }
   | { type: "reply-prepared"; id: string; pick: number; text: string; preparedAt: string }
-  | { type: "reply-published"; id: string; pick: number; text: string; xId: string; publishedAt: string };
+  | { type: "reply-published"; id: string; pick: number; text: string; xId: string; publishedAt: string }
+  /** A prepared reply that provably never reached X (e.g. a budget or interval guard declined before sending). */
+  | { type: "reply-released"; id: string; reason: string; releasedAt: string };
 
 export function parseReplyTargetUrlV2(url: string, env: NodeJS.ProcessEnv = process.env): { tweetId: string; author: string; trainer: boolean } {
   const match = String(url).trim().match(/^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/status\/(\d{5,25})(?:[/?#].*)?$/u);
@@ -52,6 +54,7 @@ export function validateReplyV2(text: string, target: ReplyTargetV2): string[] {
   if (URL_PATTERN.test(trimmed)) reasons.push("url");
   if (EMOJI.test(trimmed)) reasons.push("emoji");
   if ((trimmed.match(/픽시몬/gu) || []).length > 1) reasons.push("self-name-overuse");
+  if ((trimmed.match(/물고|씹고|씹는|먹고|소화|흉터|눕/gu) || []).length > 1) reasons.push("character-cue-overuse");
   if (/주인님/u.test(trimmed) && !target.trainer) reasons.push("trainer-address-to-non-trainer");
   if (/@[A-Za-z0-9_]{1,15}/u.test(trimmed)) reasons.push("mention");
   if (ungroundedNumbersV2(trimmed, target.text, { coreOnly: true }).length > 0) reasons.push("unsupported-number");
@@ -74,7 +77,8 @@ ${target.text}
 규칙:
 - 서로 다른 톤의 답글 후보 3개를 쓴다(예: 인정과 놀림 반반, 냉철한 지적, 픽시몬다운 온체인 비유).
 ${relation}
-- 각 후보는 1~3문장, 한글 120자 이내. X는 한글을 2자로 센다.
+- 각 후보는 1~2문장, 한글 100자 이내. X는 한글을 2자로 센다.
+- 캐릭터 비유 단어(물고, 씹고, 먹고, 소화, 흉터, 눕)는 합쳐서 한 번까지만 쓴다.
 - 숫자·이름·사실은 원글에 있는 것만 쓴다. 원글에 없는 계산이나 추측 숫자는 쓰지 않는다.
 - 자기 지칭은 3인칭 "픽시몬"으로 한 번까지만. 존댓말, 해시태그, 이모지, 링크, @멘션, 투자 조언은 쓰지 않는다.
 - JSON만 반환한다: {"replies":["후보1","후보2","후보3"]}`;
@@ -154,19 +158,35 @@ export class ReplyLedgerV2 {
   }
 }
 
+/**
+ * Operator-only: releases a prepared reply after checking the account shows it never posted, so the
+ * target can be replied to again. A published reply can never be released.
+ */
+export function releaseReplyV2(ledger: ReplyLedgerV2, id: string, reason: string, now = new Date()): { status: "released" } | { status: "blocked"; reason: string } {
+  const events = ledger.events();
+  if (events.some((event) => event.type === "reply-published" && event.id === id)) return { status: "blocked", reason: "reply-already-published" };
+  if (events.some((event) => event.type === "reply-released" && event.id === id)) return { status: "blocked", reason: "reply-already-released" };
+  if (!events.some((event) => event.type === "reply-prepared" && event.id === id)) return { status: "blocked", reason: "reply-not-prepared" };
+  if (!reason.trim()) return { status: "blocked", reason: "release-reason-required" };
+  ledger.append({ type: "reply-released", id, reason: reason.trim(), releasedAt: now.toISOString() });
+  return { status: "released" };
+}
+
 function dayKey(iso: string, timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
 }
 
 /**
- * Publishing is an explicit operator choice of one candidate. A prepared record is written before the
- * single X request, so a crash can never lead to a second send of the same reply or target.
+ * Publishing is an explicit operator choice of one candidate. A prepared record is written right before
+ * the single X request, so a crash can never lead to a second send of the same reply or target, while a
+ * guard that declines before sending leaves nothing behind.
  */
 export async function publishReplyV2(input: {
   ledger: ReplyLedgerV2;
   id: string;
   pick: number;
-  dispatch: (text: string, replyToTweetId: string) => Promise<string | null>;
+  /** Must call beforeSend synchronously right before the network request; a null result without it means not sent. */
+  dispatch: (text: string, replyToTweetId: string, beforeSend: () => void) => Promise<string | null>;
   dailyLimit?: number;
   timezone: string;
   now?: Date;
@@ -181,8 +201,10 @@ export async function publishReplyV2(input: {
   const events = input.ledger.events();
   const targetIds = new Map(events.filter((event) => event.type === "reply-drafted")
     .map((event) => [(event as Extract<ReplyEventV2, { type: "reply-drafted" }>).id, (event as Extract<ReplyEventV2, { type: "reply-drafted" }>).target.tweetId]));
-  const prepared = events.filter((event) => event.type === "reply-prepared");
-  if (prepared.some((event) => targetIds.get(event.id) === draft.target.tweetId)) {
+  const released = new Set(events.filter((event) => event.type === "reply-released").map((event) => event.id));
+  const prepared = events.filter((event) => event.type === "reply-prepared" && !released.has(event.id));
+  const published = events.filter((event) => event.type === "reply-published");
+  if ([...prepared, ...published].some((event) => targetIds.get(event.id) === draft.target.tweetId)) {
     return { status: "blocked", reason: "target-already-replied-or-unresolved" };
   }
   const limit = input.dailyLimit ?? DEFAULT_REPLY_DAILY_LIMIT_V2;
@@ -190,9 +212,13 @@ export async function publishReplyV2(input: {
   if (prepared.filter((event) => dayKey((event as Extract<ReplyEventV2, { type: "reply-prepared" }>).preparedAt, input.timezone) === today).length >= limit) {
     return { status: "blocked", reason: "reply-daily-limit" };
   }
-  input.ledger.append({ type: "reply-prepared", id: draft.id, pick: input.pick, text: candidate.text, preparedAt: now.toISOString() });
-  const xId = await input.dispatch(candidate.text, draft.target.tweetId);
-  if (!xId) return { status: "blocked", reason: "x-dispatch-unresolved (check the account before retrying)" };
+  // The prepared record is written at the send boundary, so a guard that declines beforehand blocks nothing.
+  let sent = false;
+  const xId = await input.dispatch(candidate.text, draft.target.tweetId, () => {
+    sent = true;
+    input.ledger.append({ type: "reply-prepared", id: draft.id, pick: input.pick, text: candidate.text, preparedAt: now.toISOString() });
+  });
+  if (!xId) return { status: "blocked", reason: sent ? "x-dispatch-unresolved (check the account before retrying)" : "x-not-sent (guard declined; retry later)" };
   input.ledger.append({ type: "reply-published", id: draft.id, pick: input.pick, text: candidate.text, xId, publishedAt: new Date().toISOString() });
   return { status: "published", xId };
 }
