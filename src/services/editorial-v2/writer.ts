@@ -1,6 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import {
-  CLAUDE_MODEL,
   extractTextFromClaude,
   requestBudgetedClaudeMessage,
 } from "../llm.js";
@@ -265,6 +264,13 @@ ${retryReasons.length > 0 ? `- 이전 실패 원인: ${retryReasons.join(", ")}\
 {"draft":"첫 문장. 둘째 문장.","usedFactIds":["${evidence.id}"],"claims":[{"kind":"observation","text":"첫 문장.","factIds":["${evidence.id}"]},{"kind":"judgment","text":"둘째 문장.","factIds":["${evidence.id}"]}]}`;
 }
 
+/** The same claims minus the last one; the critic then reads exactly the shortened text. */
+export function dropLastSentenceV2(payload: EditorialWriterPayloadV2): EditorialWriterPayloadV2 | null {
+  if (payload.claims.length < 3) return null;
+  const claims = payload.claims.slice(0, -1);
+  return { ...payload, draft: claims.map((claim) => claim.text.trim()).join(" "), claims };
+}
+
 /** Generate → contract → semantic scope, with one feedback retry. Shared by fact posts and reflections. */
 async function writeWithContractV2(input: {
   model: EditorialWriterModelV2;
@@ -291,12 +297,18 @@ async function writeWithContractV2(input: {
       retryReasons = ["model-empty"];
       continue;
     }
-    const payload = parsePayload(response);
+    let payload = parsePayload(response);
     if (!payload) {
       retryReasons = ["invalid-json-contract"];
       continue;
     }
     retryReasons = input.validate(payload);
+    // Too long is fixed for free when dropping the last sentence leaves a draft that passes every check.
+    const shortened = retryReasons.length === 1 && retryReasons[0] === "too-long" ? dropLastSentenceV2(payload) : null;
+    if (shortened && input.validate(shortened).length === 0) {
+      payload = shortened;
+      retryReasons = [];
+    }
     const regexScopeOnly = retryReasons.length === 1 && retryReasons[0] === "metric-semantic-scope";
     if (input.scopeCritic && (retryReasons.length === 0 || regexScopeOnly)) {
       const critic = await input.critique(input.scopeCritic, payload.draft);
@@ -355,24 +367,30 @@ export async function writeEditorialEvolutionV2(input: {
   });
 }
 
+/** Writer and checker models; the critic and inquiry only judge or structure, so they run on the small model. */
+export const EDITORIAL_WRITER_MODEL_V2 = "claude-sonnet-5-5";
+export const EDITORIAL_CHECK_MODEL_V2 = "claude-haiku-5-5";
+
 export function createAnthropicEditorialWriterV2(
   claude: Anthropic,
   timezone?: string,
   purpose: "write" | "inquire" | "critique" = "write"
 ): EditorialWriterModelV2 {
   return {
-    modelId: CLAUDE_MODEL,
+    modelId: purpose === "write" ? EDITORIAL_WRITER_MODEL_V2 : EDITORIAL_CHECK_MODEL_V2,
     async generate({ system, prompt }) {
+      const model = purpose === "write" ? EDITORIAL_WRITER_MODEL_V2 : EDITORIAL_CHECK_MODEL_V2;
       const response = await requestBudgetedClaudeMessage(
         claude,
         {
-          model: CLAUDE_MODEL,
+          model,
+          // Thinking off: billed output tokens are the reply only. These models reject sampling parameters.
+          thinking: purpose === "write" ? { type: "between_tools" } : { type: "disabled" },
           // The writer repeats every sentence in claims; with context the JSON outgrew 550 tokens and truncated.
           max_tokens: purpose === "inquire" ? 1000 : purpose === "critique" ? 300 : 900,
-          temperature: 0,
           system,
           messages: [{ role: "user", content: prompt }],
-        },
+        } as Parameters<typeof requestBudgetedClaudeMessage>[1],
         { kind: `editorial-v2:${purpose}`, timezone, allowResearchModel: false }
       );
       return response ? extractTextFromClaude(response.message.content) : null;

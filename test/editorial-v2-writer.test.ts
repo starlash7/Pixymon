@@ -85,6 +85,23 @@ test("writer retries once and accepts grounded present-tense public copy", async
   assert.deepEqual(editorialPlan.falsifier, machineFalsifier);
 });
 
+test("a draft that is only too long loses its last sentence instead of a paid retry", async () => {
+  const validDraft = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 수치는 기록하되, 더 큰 회복 서사까지 승인하진 않는다는 판단이다.";
+  const longDraft = `${validDraft} 하루짜리 반등을 추세라고 부르기엔 아직 이르고, 다음 며칠 동안 같은 방향이 이어지는지부터 차분하게 지켜보는 쪽이 맞고, 그 전까지는 숫자 하나에 이야기를 너무 많이 얹지 않는 편이 낫다고 본다는 판단이다.`;
+  let calls = 0;
+  const model: EditorialWriterModelV2 = {
+    async generate() {
+      calls += 1;
+      return JSON.stringify({ draft: longDraft, usedFactIds: [EVIDENCE.id], claims: claimsFor(longDraft) });
+    },
+  };
+  const result = await writeEditorialDraftV2({ model, plan: plan(), evidence: EVIDENCE });
+  if (result.status === "blocked") assert.fail(result.reason);
+  assert.equal(calls, 1);
+  assert.equal(result.payload.draft, validDraft);
+  assert.equal(result.payload.claims.length, 2);
+});
+
 test("writer rejects fabricated Korean entities and reversed metric direction", async () => {
   const fabricated = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 줄었고 이더리움 회복도 확인됐다. 이 한 번의 수치만으로 시장 회복을 승인하진 않는다는 판단이다.";
   const result = await writeEditorialDraftV2({

@@ -772,3 +772,12 @@ test("confirmed floor sync rejects stale-day attribution and obeys existing lock
     ctx.cleanup();
   }
 });
+
+test("known models are budgeted at their own list prices", () => {
+  const cost = (model: string) => estimateAnthropicMessageCost({
+    model, system: "", messages: [], maxTokens: 1_000_000, pricing: DEFAULT_ANTHROPIC_COST_SETTINGS,
+  }).estimatedTotalCostUsd;
+  assert.ok(Math.abs(cost("claude-sonnet-5-5") - 10) < 0.001);
+  assert.ok(Math.abs(cost("claude-haiku-5-5") - 0.5) < 0.001);
+  assert.ok(Math.abs(cost("claude-sonnet-4-5-20250929") - 15) < 0.001);
+});
