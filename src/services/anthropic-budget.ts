@@ -668,10 +668,20 @@ function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(normalized.length / 4));
 }
 
+const KNOWN_MODEL_PRICING: ReadonlyArray<readonly [string, number, number]> = [
+  ["claude-sonnet-5-5", 2, 10],
+  ["claude-haiku-5-5", 0.1, 0.5],
+  ["claude-sonnet-4-5", 3, 15],
+  ["claude-haiku-4-5", 1, 5],
+];
+
 function resolveAnthropicModelPricing(model: string, pricing: AnthropicCostRuntimeSettings): {
   inputCostPerMillionUsd: number;
   outputCostPerMillionUsd: number;
 } {
+  // Known list prices (USD per million tokens) win over the configured primary/research defaults.
+  const known = KNOWN_MODEL_PRICING.find(([prefix]) => model.startsWith(prefix));
+  if (known) return { inputCostPerMillionUsd: known[1], outputCostPerMillionUsd: known[2] };
   if (/haiku/i.test(model)) {
     return {
       inputCostPerMillionUsd: pricing.researchInputCostPerMillionUsd,

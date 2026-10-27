@@ -13,7 +13,7 @@
 
 ## 기술 스택 및 연동
 - Runtime: Node.js + TypeScript
-- LLM: Claude API `claude-sonnet-4-5-20250929`
+- LLM: Claude API — V2 글쓰기 `claude-sonnet-5-5`, 검토·질문 정리 `claude-haiku-5-5` (레거시 경로는 `claude-sonnet-4-5-20250929`)
 - Social: Twitter API v2만 사용
 - Market data: CoinGecko, CryptoCompare, Alternative.me
 - Memory store: `data/memory.json`
@@ -60,7 +60,8 @@
 
 ## API 사용 규칙
 ### Claude API
-- 모델은 `claude-sonnet-4-5-20250929`를 사용한다.
+- V2 글쓰기는 `claude-sonnet-5-5`, 검토(critic)·질문 정리(inquiry)는 `claude-haiku-5-5`를 쓴다. 둘 다 thinking을 끄고 sampling 파라미터(temperature 등)를 보내지 않는다.
+- 레거시 경로는 `claude-sonnet-4-5-20250929`를 유지한다.
 - system prompt는 `character.ts`에서 가져온다.
 - 프롬프트에 출력 제약을 명시한다.
 - 길이 제한 준수
