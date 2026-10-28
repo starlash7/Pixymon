@@ -8,6 +8,7 @@ import {
   resolveGeminiModelIdV2,
 } from "../src/services/editorial-v2/gemini-model.js";
 import { resolveEditorialRuntimePathsV2 } from "../src/services/editorial-v2/paths.js";
+import { autoPublishEnabledV2, originalDailyLimitV2 } from "../src/services/editorial-v2/publication-policy.js";
 import { collectEditorialDraftV2 } from "../src/services/editorial-v2/workflow.js";
 import { createAnthropicEditorialWriterV2 } from "../src/services/editorial-v2/writer.js";
 import { assertExternalCallsAllowed } from "../src/services/external-call-policy.js";
@@ -53,6 +54,12 @@ async function main(): Promise<void> {
     };
   }
   const store = new EditorialEventStoreV2({ eventLogPath: paths.eventLogPath });
+  // In auto mode a draft past today's original cap can never be posted; stop before any paid call.
+  if (autoPublishEnabledV2() && paths.trackingMode === "live" &&
+      store.dispatchedOnSameDay(new Date().toISOString(), config.dailyTimezone) >= originalDailyLimitV2()) {
+    console.log("[EDITORIAL] no-post stage=daily-limit reason=original-daily-limit-reached");
+    return;
+  }
   const result = await collectEditorialDraftV2({
     store,
     ...models,

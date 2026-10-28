@@ -57,7 +57,7 @@ test("Pixymon replies to new mentions oldest first, applies trainer rules, and r
   ];
   const users = [{ id: "5", username: "Pixy7Crypto" }, { id: "6", username: "spammer" }, { id: "7", username: "someone" }];
   const base = { client: client(rows, users, calls), selfId: SELF, statePath, ledger, model: writer, critic, dispatch, trainerHandle: "Pixy7Crypto",
-    timezone: "Asia/Seoul", xApiCost: { ...DEFAULT_X_API_COST_SETTINGS, dailyReadRequestLimit: 100, dailyMaxUsd: 10 }, maxRepliesPerRun: 5, minPollMinutes: 0 };
+    now: new Date("2025-03-13T02:00:00Z"), timezone: "Asia/Seoul", xApiCost: { ...DEFAULT_X_API_COST_SETTINGS, dailyReadRequestLimit: 100, dailyMaxUsd: 10 }, maxRepliesPerRun: 5, minPollMinutes: 0 };
   const first = await replyToNewMentionsV2({ ...base, replyDailyLimit: 1 });
   assert.deepEqual(first.replied, ["x1"]);
   assert.deepEqual(sent, [["주인님 그건 좀 이름. 픽시몬은 일단 한 번 더 의심함.", "1900000000000000001"]]);
@@ -81,9 +81,24 @@ test("a failed draft stops the run but keeps progress, so the mention is retried
   const users = [{ id: "6", username: "spammer" }, { id: "7", username: "someone" }];
   const empty: EditorialWriterModelV2 = { modelId: "w", async generate() { return null; } };
   const result = await replyToNewMentionsV2({ client: client(rows, users, []), selfId: SELF, statePath, ledger, model: empty, critic,
-    dispatch: async () => "x", trainerHandle: "Pixy7Crypto", timezone: "Asia/Seoul",
+    dispatch: async () => "x", trainerHandle: "Pixy7Crypto", now: new Date("2025-03-13T02:00:00Z"), timezone: "Asia/Seoul",
     xApiCost: { ...DEFAULT_X_API_COST_SETTINGS, dailyReadRequestLimit: 100, dailyMaxUsd: 10 }, replyDailyLimit: 3, maxRepliesPerRun: 2, minPollMinutes: 0 });
   assert.deepEqual(result.replied, []);
   assert.deepEqual(result.skipped.map(([, why]) => why), ["link", "draft-failed:reply-model-empty"]);
   assert.equal(JSON.parse(fs.readFileSync(statePath, "utf8")).sinceId, "1900000000000000001");
+});
+
+test("a mention older than two days is skipped as stale without drafting", async (t) => {
+  const root = dir(t);
+  const statePath = path.join(root, "mentions-state.json");
+  const ledger = new ReplyLedgerV2(path.join(root, "replies.ndjson"));
+  let drafted = 0;
+  const counting: EditorialWriterModelV2 = { modelId: "w", async generate() { drafted += 1; return null; } };
+  const rows = [{ id: "1900000000000000003", text: "@Pixy_mon BCH 의견 알려줘", author_id: "5" }];
+  const result = await replyToNewMentionsV2({ client: client(rows, [{ id: "5", username: "Pixy7Crypto" }], []), selfId: SELF, statePath, ledger,
+    model: counting, critic, dispatch: async () => "x", trainerHandle: "Pixy7Crypto", now: new Date("2025-03-20T00:00:00Z"), timezone: "Asia/Seoul",
+    xApiCost: { ...DEFAULT_X_API_COST_SETTINGS, dailyReadRequestLimit: 100, dailyMaxUsd: 10 }, replyDailyLimit: 3, maxRepliesPerRun: 2, minPollMinutes: 0 });
+  assert.deepEqual(result.skipped, [["1900000000000000003", "stale"]]);
+  assert.equal(drafted, 0);
+  assert.equal(JSON.parse(fs.readFileSync(statePath, "utf8")).sinceId, "1900000000000000003");
 });

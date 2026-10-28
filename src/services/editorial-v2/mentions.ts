@@ -42,6 +42,13 @@ export function mentionSkipReasonV2(mention: MentionV2, selfId: string): string 
   return undefined;
 }
 
+export const MENTION_MAX_AGE_MS_V2 = 48 * 60 * 60 * 1000;
+
+/** X ids carry their creation time (ms since the Twitter epoch, shifted 22 bits). */
+export function tweetCreatedAtMsV2(id: string): number {
+  return Number((BigInt(id) >> 22n) + 1288834974657n);
+}
+
 function compareIds(a: string, b: string): number {
   return a.length === b.length ? a.localeCompare(b) : a.length - b.length;
 }
@@ -92,7 +99,9 @@ export async function replyToNewMentionsV2(input: {
   const skipped: Array<[string, string]> = [];
   let sinceId = state.sinceId;
   for (const mention of mentions) {
-    const skip = mentionSkipReasonV2(mention, input.selfId) ?? (mention.username ? undefined : "unknown-author");
+    // An old mention resurfacing (e.g. the very first poll without a since-id) is history, not a conversation.
+    const stale = (input.now ?? new Date()).getTime() - tweetCreatedAtMsV2(mention.id) > MENTION_MAX_AGE_MS_V2 ? "stale" : undefined;
+    const skip = stale ?? mentionSkipReasonV2(mention, input.selfId) ?? (mention.username ? undefined : "unknown-author");
     if (skip) { skipped.push([mention.id, skip]); sinceId = mention.id; continue; }
     if (replied.length >= input.maxRepliesPerRun) break;
     const target: ReplyTargetV2 = {

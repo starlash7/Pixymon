@@ -857,6 +857,15 @@ export class EditorialEventStoreV2 {
     return this.recordReview(draftId, "reject", input);
   }
 
+  /** Originals sent or in flight on the calendar day of `at`; the daily cap counts these. */
+  dispatchedOnSameDay(at: string, timezone: string): number {
+    const day = calendarDate(at, timezone);
+    return [...this.ledger().drafts.values()].filter((state) => {
+      const dispatchedAt = state.publication?.publishedAt || state.dispatchIntent?.recordedAt;
+      return dispatchedAt && calendarDate(dispatchedAt, timezone) === day;
+    }).length;
+  }
+
   preparePublication(draftId: string): PrepareEditorialPublicationResultV2 {
     const state = this.requireDraftState(draftId);
     if (state.draft.trackingMode === "shadow") throw new Error("shadow-draft-cannot-publish");
@@ -910,13 +919,8 @@ export class EditorialEventStoreV2 {
         duplicate.draft.id
       );
     }
-    const today = calendarDate(recordedAt, input.timezone);
     const dailyLimit = normalizedDailyLimit(input.dailyLimit);
-    const dispatchedToday = [...ledger.drafts.values()].filter((state) => {
-      const dispatchedAt = state.publication?.publishedAt || state.dispatchIntent?.recordedAt;
-      return dispatchedAt && calendarDate(dispatchedAt, input.timezone) === today;
-    }).length;
-    if (dispatchedToday >= dailyLimit) {
+    if (this.dispatchedOnSameDay(recordedAt, input.timezone) >= dailyLimit) {
       throw new EditorialDispatchReservationConflictV2("editorial-daily-limit");
     }
     this.assertSubjectNoveltyForDispatch(preparation.draftId, preparation.freshnessCheckedAt);
