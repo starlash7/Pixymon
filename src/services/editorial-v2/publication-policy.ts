@@ -112,6 +112,12 @@ export function assertAutoPublishPolicyV2(input: { enabled: boolean; stopPath: s
   if (!input.enabled) throw new Error("auto-publish-disabled");
 }
 
+/** Auto mode's originals per day (PIXYMON_ORIGINAL_DAILY_LIMIT, default 2). */
+export function originalDailyLimitV2(env: NodeJS.ProcessEnv = process.env): number {
+  const value = Number(env.PIXYMON_ORIGINAL_DAILY_LIMIT || 2);
+  return Number.isInteger(value) && value >= 0 ? value : 2;
+}
+
 export function autoPublishEnabledV2(env: NodeJS.ProcessEnv = process.env): boolean {
   return String(env.PIXYMON_AUTO_PUBLISH || "").trim().toLowerCase() === "true";
 }

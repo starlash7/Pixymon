@@ -4,6 +4,7 @@ import {
   assertApprovedLiveAuthorizationV2,
   assertAutoPublishPolicyV2,
   autoPublishEnabledV2,
+  originalDailyLimitV2,
 } from "../src/services/editorial-v2/publication-policy.js";
 import { EDITORIAL_COLLECTION_EPOCH_V2 } from "../src/services/editorial-v2/contracts.js";
 import { recordEditorialReviewV2 } from "../src/services/editorial-v2/review.js";
@@ -102,7 +103,6 @@ async function main(): Promise<void> {
         workingTreeClean: repository.workingTreeClean,
       });
     };
-    const autoDailyLimit = Number(process.env.PIXYMON_ORIGINAL_DAILY_LIMIT || 2);
     const result = await publishEditorialDraftV2({
       store,
       draftId: draftIdArg(),
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
       metricLogPath: paths.metricLogPath,
       timezone: config.dailyTimezone,
       // Manual R3/pilot scope stays one per day; operator-enabled auto mode uses PIXYMON_ORIGINAL_DAILY_LIMIT.
-      dailyLimit: auto ? (Number.isInteger(autoDailyLimit) && autoDailyLimit >= 0 ? autoDailyLimit : 2) : 1,
+      dailyLimit: auto ? originalDailyLimitV2() : 1,
       revalidateEvidence: async (facts) => {
         const revalidationTargets: EditorialFollowUpTargetV2[] = facts.map((fact) => ({
           provider: fact.source.provider as EditorialFollowUpTargetV2["provider"],
