@@ -30,6 +30,12 @@ if [[ "${PIXYMON_AUTO_PUBLISH:-false}" == true ]]; then
   [[ "$mentions" == *"polled=false"* ]] || log "mentions :: ${mentions//$'\n'/ | }"
 fi
 
+# Thought-first posts: Pixymon's own musings, at most PIXYMON_THOUGHT_DAILY_LIMIT a day, 4h apart, local daytime.
+if [[ "${PIXYMON_AUTO_PUBLISH:-false}" == true ]]; then
+  thought=$(ACTION_MODE=live node --import tsx scripts/editorial-thought.ts 2>&1 | grep -v "LLM-BUDGET")
+  [[ "$thought" == *"skip reason="* ]] || log "thought :: ${thought//$'\n'/ | }"
+fi
+
 hour=$(date -u +%H)
 case " ${PIXYMON_SHADOW_COLLECT_HOURS:-01 09 17} " in
   *" $hour "*) ;;
