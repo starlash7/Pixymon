@@ -7,7 +7,10 @@ import type { EditorialContextItemV2 } from "../src/services/editorial-v2/contra
 import {
   buildThoughtPromptV2,
   draftThoughtV2,
+  normalizeThoughtBetV2,
   publishThoughtV2,
+  resolveDueBetsV2,
+  resultMaterialV2,
   selectThoughtSeedV2,
   ThoughtLedgerV2,
   thoughtDueV2,
@@ -66,7 +69,7 @@ test("a failed fact critic gets one rewrite, then the thought and its journal no
     return reviews === 1 ? '{"verdict":"fail","claim":"ETF 자금이 다 빠졌음","problem":"기사 내용을 사실로 말함"}' : '{"verdict":"pass","claim":"","problem":""}';
   } };
   const result = await draftThoughtV2({ model: writer, critic, seed: "material", material, journal: [], recentPosts: [], trainerHandle: "Pixy7Crypto" });
-  assert.deepEqual(result, { status: "ready", text: texts[1], journal: "조용한 구간을 좋아하게 됨", seed: "material", criticModelId: "c" });
+  assert.deepEqual(result, { status: "ready", text: texts[1], journal: "조용한 구간을 좋아하게 됨", seed: "material", criticModelId: "c", bet: null });
 });
 
 test("publishing spaces thoughts, caps them per day and keeps the journal", async (t) => {
@@ -83,4 +86,49 @@ test("publishing spaces thoughts, caps them per day and keeps the journal", asyn
   assert.deepEqual(thoughtDueV2(book, { dailyLimit: 2, timezone: "Asia/Seoul", now: new Date("2026-10-29T05:00:00Z") }), { due: false, reason: "thought-spacing" });
   assert.deepEqual(thoughtDueV2(book, { dailyLimit: 1, timezone: "Asia/Seoul", now: new Date("2026-10-29T09:00:00Z") }), { due: false, reason: "thought-daily-limit" });
   assert.deepEqual(thoughtDueV2(book, { dailyLimit: 2, timezone: "Asia/Seoul", now: new Date("2026-10-29T09:00:00Z") }), { due: true });
+});
+
+test("tickers need a dollar sign and a thought keeps numbers to one", () => {
+  assert.ok(validateThoughtV2("BTC가 조용한 날은 픽시몬도 배가 덜 고픔. 이번엔 귀찮음 쪽에 걸겠음.", { material, recentPosts: [] }).includes("ticker-format"));
+  assert.deepEqual(validateThoughtV2("$BTC가 조용한 날은 픽시몬도 배가 덜 고픔. 이번엔 귀찮음 쪽에 걸겠음.", { material, recentPosts: [] }), []);
+  assert.ok(validateThoughtV2("$BTC는 $67,000인데 +1.20%라 심심함. 픽시몬은 하품 중에 한 표 던짐.", { material, recentPosts: [] }).includes("too-many-numbers"));
+});
+
+test("a bet is kept only on a bettable ticker with a direction and horizon", () => {
+  const now = new Date("2026-10-29T04:00:00Z");
+  const prices = { BTC: 67000 };
+  assert.deepEqual(normalizeThoughtBetV2({ symbol: "$btc", direction: "up", horizonHours: 24, claim: "귀찮음 쪽" }, prices, now), {
+    symbol: "BTC", direction: "up", horizonHours: 24, claim: "귀찮음 쪽", baseline: 67000,
+    placedAt: "2026-10-29T04:00:00.000Z", dueAt: "2026-10-30T04:00:00.000Z" });
+  assert.equal(normalizeThoughtBetV2({ symbol: "USDT", direction: "up", horizonHours: 24, claim: "x" }, prices, now), null);
+  assert.equal(normalizeThoughtBetV2({ symbol: "BTC", direction: "sideways", horizonHours: 24, claim: "x" }, prices, now), null);
+  assert.equal(normalizeThoughtBetV2(null, prices, now), null);
+});
+
+test("a due bet is graded, earns experience, can evolve Pixymon and queues one result post", async (t) => {
+  const book = ledger(t);
+  const placed = new Date("2026-10-29T04:00:00Z");
+  const sendOk = (xId: string) => async (_text: string, beforeSend: () => void) => { beforeSend(); return xId; };
+  // 45 published thoughts put Pixymon at 45 XP, five short of Lv.2.
+  for (let index = 0; index < 44; index += 1) {
+    const filler = book.recordDraft({ text: `생각 ${index}`, journal: "", seed: "growth" });
+    await publishThoughtV2({ ledger: book, id: filler, text: `생각 ${index}`, dispatch: sendOk(`f${index}`), now: placed });
+  }
+  const bet = normalizeThoughtBetV2({ symbol: "BTC", direction: "down", horizonHours: 24, claim: "귀찮음 쪽" }, { BTC: 80000 }, placed)!;
+  const id = book.recordDraft({ text: "겁먹은 돈은 눕는 중. 픽시몬은 내림에 걸겠음.", journal: "내림에 걸었음", seed: "material", bet });
+  await publishThoughtV2({ ledger: book, id, text: "겁먹은 돈은 눕는 중.", dispatch: sendOk("x1"), now: placed });
+  assert.equal(book.progress().xp, 45);
+  assert.deepEqual(resolveDueBetsV2(book, { BTC: 78000 }, new Date("2026-10-29T20:00:00Z")), []);
+  assert.deepEqual(resolveDueBetsV2(book, { BTC: 78000 }, new Date("2026-10-30T05:00:00Z")), [{ id, outcome: "won" }]);
+  assert.deepEqual(book.progress(), { xp: 55, level: 2, nextLevelXp: 100, wins: 1, losses: 0 });
+  const pending = book.pendingResults();
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].levelUpTo, 2);
+  const facts = resultMaterialV2(pending[0]).map((item) => item.text).join(" | ");
+  assert.match(facts, /\$80,000 → \$78,000/);
+  assert.match(facts, /맞힘, 경험치 \+10, Lv\.2로 진화/);
+  const announce = book.recordDraft({ text: "결과", journal: "", seed: "result", resultFor: id });
+  await publishThoughtV2({ ledger: book, id: announce, text: "결과", dispatch: sendOk("x2"), now: new Date("2026-10-30T05:00:00Z") });
+  assert.deepEqual(book.pendingResults(), []);
+  assert.deepEqual(book.openBets(), []);
 });
