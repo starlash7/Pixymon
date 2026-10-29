@@ -8,10 +8,13 @@ import { resolveEditorialRuntimePathsV2 } from "../src/services/editorial-v2/pat
 import { collectEditorialEvidenceV2 } from "../src/services/editorial-v2/provider-adapters.js";
 import { assertAutoPublishPolicyV2, autoPublishEnabledV2 } from "../src/services/editorial-v2/publication-policy.js";
 import {
+  bettablePricesV2,
   buildThoughtMaterialV2,
   DEFAULT_THOUGHT_DAILY_LIMIT_V2,
   draftThoughtV2,
   publishThoughtV2,
+  resolveDueBetsV2,
+  resultMaterialV2,
   selectThoughtSeedV2,
   ThoughtLedgerV2,
   thoughtDueV2,
@@ -38,12 +41,13 @@ async function main(): Promise<void> {
   const dataDir = resolveDataDir();
   assertAutoPublishPolicyV2({ enabled: autoPublishEnabledV2(), stopPath: path.join(dataDir, "editorial-v2", "STOP"),
     workingTreeClean: editorialVerificationRepositoryStateV2().workingTreeClean });
-  if (!inPostingHours(now, config.dailyTimezone)) { console.log("[THOUGHT] skip reason=outside-posting-hours"); return; }
   const ledger = new ThoughtLedgerV2(path.join(dataDir, "editorial-v2", "thoughts.ndjson"));
+  const betsDue = ledger.openBets().some((open) => Date.parse(open.bet.dueAt) <= now.getTime());
   const limit = Number(process.env.PIXYMON_THOUGHT_DAILY_LIMIT ?? DEFAULT_THOUGHT_DAILY_LIMIT_V2);
-  const due = thoughtDueV2(ledger, { dailyLimit: Number.isInteger(limit) && limit >= 0 ? limit : DEFAULT_THOUGHT_DAILY_LIMIT_V2,
-    timezone: config.dailyTimezone, now });
-  if (!due.due) { console.log(`[THOUGHT] skip reason=${due.reason}`); return; }
+  const due = inPostingHours(now, config.dailyTimezone)
+    ? thoughtDueV2(ledger, { dailyLimit: Number.isInteger(limit) && limit >= 0 ? limit : DEFAULT_THOUGHT_DAILY_LIMIT_V2, timezone: config.dailyTimezone, now })
+    : { due: false as const, reason: "outside-posting-hours" };
+  if (!due.due && !betsDue) { console.log(`[THOUGHT] skip reason=${due.reason}`); return; }
 
   const paths = resolveEditorialRuntimePathsV2("live");
   const lock = acquireRuntimeLock(paths.publishLockPath);
@@ -55,7 +59,16 @@ async function main(): Promise<void> {
     const sensing = await collectEditorialEvidenceV2({ now: now.toISOString(), includeGenericCandidates: true,
       cryptoCompareApiKey: process.env.CRYPTOCOMPARE_API_KEY });
     const trainerNotes = loadTrainerNotesV2({ notesPath: trainerNotesPathV2(), handle: trainerHandleV2(), now });
-    const material = buildThoughtMaterialV2(sensing, trainerNotes);
+    // Grading is free (the same price fetch) and happens even when no post is due.
+    const prices = bettablePricesV2(sensing);
+    const graded = resolveDueBetsV2(ledger, prices, now);
+    if (graded.length) console.log(`[THOUGHT] graded ${graded.map((entry) => `${entry.id}:${entry.outcome}`).join(",")}`);
+    if (!due.due) { console.log(`[THOUGHT] skip reason=${due.reason}`); return; }
+    const progress = ledger.progress();
+    const pending = ledger.pendingResults()[0];
+    const material = pending
+      ? resultMaterialV2(pending)
+      : buildThoughtMaterialV2(sensing, trainerNotes);
     const originals = fs.existsSync(paths.eventLogPath)
       ? new EditorialEventStoreV2({ eventLogPath: paths.eventLogPath }).listDraftStates()
         .filter((state) => state.publication?.publishedText)
@@ -65,21 +78,23 @@ async function main(): Promise<void> {
     const recentPosts = [...originals, ...thoughts.map((entry) => ({ text: entry.text, at: entry.publishedAt }))]
       .sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 6).map((post) => post.text);
     const journal = ledger.journal();
-    const seed = selectThoughtSeedV2({ publishedCount: thoughts.length, hasJournal: journal.length > 0,
+    // A graded bet is announced before anything else; that is the story people follow.
+    const seed = pending ? "result" : selectThoughtSeedV2({ publishedCount: thoughts.length, hasJournal: journal.length > 0,
       hasTrainer: trainerNotes.length > 0 });
     const claude = initClaudeClient();
     const drafted = await draftThoughtV2({
       model: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "write"),
       critic: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "critique"),
-      seed, material, journal, recentPosts, trainerHandle: trainerHandleV2(),
+      seed, material, journal, recentPosts, trainerHandle: trainerHandleV2(), progress, prices, now,
     });
     if (drafted.status === "blocked") { console.log(`[THOUGHT] no-post seed=${seed} reason=${drafted.reason}`); return; }
-    const id = ledger.recordDraft({ text: drafted.text, journal: drafted.journal, seed });
+    const id = ledger.recordDraft({ text: drafted.text, journal: drafted.journal, seed, bet: drafted.bet,
+      ...(pending ? { resultFor: pending.id } : {}) });
     const result = await publishThoughtV2({ ledger, id, text: drafted.text,
       dispatch: (text, beforeSend) => postTweet(twitter, text, "briefing", {
         timezone: config.dailyTimezone, xApiCostSettings: config.xApiCost, createKind: "editorial-v2:thought", maxAttempts: 1, beforeSend,
       }) });
-    console.log(`[THOUGHT] ${result.status} seed=${seed}${"xId" in result ? ` id=${result.xId}` : ` reason=${result.reason}`} :: ${drafted.text}`);
+    console.log(`[THOUGHT] ${result.status} seed=${seed}${drafted.bet ? ` bet=$${drafted.bet.symbol}:${drafted.bet.direction}:${drafted.bet.horizonHours}h` : ""}${"xId" in result ? ` id=${result.xId}` : ` reason=${result.reason}`} :: ${drafted.text}`);
   } finally {
     lock.release();
   }
