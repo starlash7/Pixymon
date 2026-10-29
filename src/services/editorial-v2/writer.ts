@@ -6,6 +6,7 @@ import {
 import type { EvidenceCardV2 } from "./evidence.js";
 import type { EditorialPlanV2 } from "./planner.js";
 import {
+  cashtagCountV2,
   editorialDraftValidationInputV2,
   formatEvidenceSourceTimeV2,
   inferMetricDirectionV2,
@@ -151,6 +152,7 @@ function validatePayload(
 
 const RETRY_HINTS_V2: Record<string, string> = {
   "repeated-angle": "최근 글에서 닳은 표현을 또 썼다. 위 목록의 표현 없이, 다른 각도의 결론으로 다시 쓴다.",
+  "too-many-cashtags": "X는 $티커를 글 하나에 하나만 허용한다. 나머지 코인은 이름으로 쓴다.",
   "too-long": "너무 길었다. X는 한글을 2자로 센다. 문장을 줄이거나 하나 빼서 한글 130자 안으로 쓴다.",
   "hedge-only-ending": "마지막 문장이 '모름/지켜봄/보류'로만 끝났다. 모르는 건 앞에서 말하고 마지막은 픽시몬의 입장으로 닫는다.",
   "unsupported-number": "주 측정값과 재료에 없는 숫자(계산·반올림 포함)를 썼다. 적힌 값 그대로만 쓰거나 숫자를 빼고 말로 쓴다.",
@@ -266,6 +268,7 @@ ${recentBlock}
 ${renderingRules}
 - ${endingRule}
 - 출처 URL, 해시태그, 투자 조언, 주 측정값과 재료에 없는 이름·숫자는 쓰지 않는다
+- $티커는 글 하나에 하나만 쓴다(X 규칙). 다른 코인은 이름으로 쓴다
 - TVL만으로 자금 유입, 사용자 복귀, 채택, 수익, 거래량 또는 원인을 사실처럼 단정하지 않는다
 - "유입인지 아닌지 모른다", "가격 환산 효과일 수 있다", "유지되는지 봐야 한다"는 결론은 쓰지 않는다. 누구나 하는 말이다. 대신 재료끼리의 연결(같은 체인·카테고리·기사·시장 분위기), 이 프로토콜이나 자산에 대한 픽시몬의 취향과 편견, 군중과 반대되는 입장, 작은 내기 중 하나로 픽시몬다운 한마디를 낸다
 - 관측 사실과 픽시몬의 잠정 판단을 구분한다
@@ -365,7 +368,8 @@ export async function writeEditorialDraftV2(input: {
     buildPrompt: (retryReasons) => buildEditorialPromptV2(input.plan, input.evidence, retryReasons, input.recentPosts),
     validate: (payload) => {
       const worn = wornAnglesV2(input.recentPosts ?? []).filter((term) => payload.draft.includes(term));
-      return [...validatePayload(payload, input.plan, input.evidence), ...(worn.length ? ["repeated-angle"] : [])];
+      return [...validatePayload(payload, input.plan, input.evidence), ...(worn.length ? ["repeated-angle"] : []),
+        ...(cashtagCountV2(payload.draft) > 1 ? ["too-many-cashtags"] : [])];
     },
     critique: (critic, text) => reviewEditorialScopeV2({ model: critic, text, evidence: input.evidence, context: input.plan.context }),
   });

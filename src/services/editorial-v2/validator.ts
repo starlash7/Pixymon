@@ -261,6 +261,21 @@ export function validateEditorialDraftV2(
 
 /** X counts most non-Latin characters (Hangul included) as 2; a standard account allows 280. */
 export const X_MAX_WEIGHTED_LENGTH = 280;
+
+/** X rejects a post with more than one cashtag ($SYMBOL); "$80,000" is a price, not a cashtag. */
+export function cashtagCountV2(text: string): number {
+  return (text.match(/\$[A-Za-z][A-Za-z0-9_]{0,9}/gu) || []).length;
+}
+
+/**
+ * X answered with a definitive rejection (400/403), so nothing was posted even though the send started.
+ * Returns the reason, or undefined when the outcome is unknown.
+ */
+export function definitiveXRejectionV2(error: unknown): string | undefined {
+  const value = error as { code?: unknown; data?: { detail?: unknown } } | null;
+  if (!value || (value.code !== 400 && value.code !== 403)) return undefined;
+  return typeof value.data?.detail === "string" ? value.data.detail.slice(0, 200) : `http-${value.code}`;
+}
 const X_LIGHT_RANGES: ReadonlyArray<readonly [number, number]> = [[0, 4351], [8192, 8205], [8208, 8223], [8242, 8247]];
 
 export function xWeightedLengthV2(text: string): number {

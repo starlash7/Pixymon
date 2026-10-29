@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { requestScopeVerdictV2 } from "./scope-critic.js";
 import { trainerHandleV2 } from "./trainer.js";
-import { FORMAL_REGISTER_V2, ungroundedNumbersV2, xWeightedLengthV2, X_MAX_WEIGHTED_LENGTH } from "./validator.js";
+import { cashtagCountV2, definitiveXRejectionV2, FORMAL_REGISTER_V2, ungroundedNumbersV2, xWeightedLengthV2, X_MAX_WEIGHTED_LENGTH } from "./validator.js";
 import { buildEditorialWriterSystemV2 } from "./voice.js";
 import type { EditorialWriterModelV2 } from "./writer.js";
 
@@ -54,6 +54,7 @@ export function validateReplyV2(text: string, target: ReplyTargetV2): string[] {
   if (URL_PATTERN.test(trimmed)) reasons.push("url");
   if (EMOJI.test(trimmed)) reasons.push("emoji");
   if ((trimmed.match(/픽시몬/gu) || []).length > 1) reasons.push("self-name-overuse");
+  if (cashtagCountV2(trimmed) > 1) reasons.push("too-many-cashtags");
   if ((trimmed.match(/물고|씹고|씹는|먹고|소화|흉터|눕/gu) || []).length > 1) reasons.push("character-cue-overuse");
   if (/주인님/u.test(trimmed) && !target.trainer) reasons.push("trainer-address-to-non-trainer");
   if (/@[A-Za-z0-9_]{1,15}/u.test(trimmed)) reasons.push("mention");
@@ -81,6 +82,7 @@ ${relation}
 - 캐릭터 비유 단어(물고, 씹고, 먹고, 소화, 흉터, 눕)는 합쳐서 한 번까지만 쓴다.
 - 숫자·이름·사실은 원글에 있는 것만 쓴다. 원글에 없는 계산이나 추측 숫자는 쓰지 않는다.
 - 픽시몬이 무엇을 봤는지, 왜 그렇게 했는지 같은 자기 작동 이유를 지어내지 않는다. 픽시몬의 실수를 지적받으면 핑계 없이 인정하고, 이유를 모르면 모른다고 한다.
+- $티커는 답글 하나에 하나까지만 쓴다(X 규칙).
 - 자기 지칭은 3인칭 "픽시몬"으로 한 번까지만. 존댓말, 해시태그, 이모지, 링크, @멘션, 투자 조언은 쓰지 않는다.
 - JSON만 반환한다: {"replies":["후보1","후보2","후보3"]}`;
 }
@@ -216,10 +218,19 @@ export async function publishReplyV2(input: {
   }
   // The prepared record is written at the send boundary, so a guard that declines beforehand blocks nothing.
   let sent = false;
-  const xId = await input.dispatch(candidate.text, draft.target.tweetId, () => {
-    sent = true;
-    input.ledger.append({ type: "reply-prepared", id: draft.id, pick: input.pick, text: candidate.text, preparedAt: now.toISOString() });
-  });
+  let xId: string | null;
+  try {
+    xId = await input.dispatch(candidate.text, draft.target.tweetId, () => {
+      sent = true;
+      input.ledger.append({ type: "reply-prepared", id: draft.id, pick: input.pick, text: candidate.text, preparedAt: now.toISOString() });
+    });
+  } catch (error) {
+    // A definitive 400/403 means nothing was posted; give the target and the daily slot back.
+    const rejected = sent ? definitiveXRejectionV2(error) : undefined;
+    if (!rejected) throw error;
+    input.ledger.append({ type: "reply-released", id: draft.id, reason: `x-rejected:${rejected}`, releasedAt: new Date().toISOString() });
+    return { status: "blocked", reason: `x-rejected:${rejected}` };
+  }
   if (!xId) return { status: "blocked", reason: sent ? "x-dispatch-unresolved (check the account before retrying)" : "x-not-sent (guard declined; retry later)" };
   input.ledger.append({ type: "reply-published", id: draft.id, pick: input.pick, text: candidate.text, xId, publishedAt: new Date().toISOString() });
   return { status: "published", xId };
