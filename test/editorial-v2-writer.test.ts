@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { planEditorialV2 } from "../src/services/editorial-v2/planner.ts";
 import { splitEditorialSentencesV2 } from "../src/services/editorial-v2/validator.ts";
 import {
+  wornAnglesV2,
   writeEditorialDraftV2,
   type EditorialClaimKindV2,
   type EditorialWriterModelV2,
@@ -224,4 +225,24 @@ test("writer converts model exceptions into an observed no-post after one retry"
   if (result.status === "generated") assert.fail("unexpected draft");
   assert.equal(result.reason, "model-error");
   assert.equal(result.stage, "generation");
+});
+
+test("a conclusion worn out by recent posts is rejected and named in the prompt", async () => {
+  const recentPosts = [
+    "Binance staked ETH가 하루 새 훌쩍 커졌음. 픽시몬이 보기엔 유입이 아니라 환산 같음.",
+    "Hyperliquid TVL이 하루 새 커짐. 픽시몬이 보기엔 유입이라 부르기엔 이름.",
+  ];
+  assert.deepEqual(wornAnglesV2(recentPosts), ["유입", "하루 새"]);
+  const repeated = "Aave의 TVL은 8월 28일 09:30 UTC 기준 24시간 동안 +8.4% 늘었다. 이 한 번의 수치를 유입으로 부르진 않는다는 판단이다.";
+  const prompts: string[] = [];
+  const model: EditorialWriterModelV2 = {
+    async generate({ prompt }) {
+      prompts.push(prompt);
+      return JSON.stringify({ draft: repeated, usedFactIds: [EVIDENCE.id], claims: claimsFor(repeated) });
+    },
+  };
+  const result = await writeEditorialDraftV2({ model, plan: plan(), evidence: EVIDENCE, recentPosts });
+  assert.equal(result.status, "blocked");
+  if (result.status === "blocked") assert.ok(result.validationReasons.includes("repeated-angle"));
+  assert.match(prompts[0], /이미 닳은 표현이라 이번 글에 쓰지 않는다: 유입, 하루 새/);
 });

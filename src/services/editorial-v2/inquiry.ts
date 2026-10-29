@@ -110,7 +110,7 @@ judgment는 지금 무엇을 중요하게 보고 어떻게 해석하는지다. �
 
 function retryHint(reasons: readonly string[]): string {
   return reasons.includes("inquiry-judgment-metric-scope")
-    ? "\n지난 judgment가 TVL 변화를 유입·유출·이탈·사용자·원인으로 읽었다. 그 해석은 이 숫자로 확인할 수 없다. TVL이 얼마나 움직였는지와 그 숫자로 아직 모르는 것만으로 judgment를 다시 쓴다."
+    ? "\n지난 judgment가 TVL 변화를 유입·유출·이탈·사용자·원인으로 읽었다. 그 해석은 이 숫자로 확인할 수 없다. 유입 여부를 결론으로 삼지 말고, 재료끼리의 연결이나 픽시몬의 입장으로 judgment를 다시 쓴다."
     : "";
 }
 
