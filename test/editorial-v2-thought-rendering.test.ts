@@ -86,7 +86,7 @@ test("the writer asks for a thought or a data post according to the plan", () =>
   assert.doesNotMatch(thought, /첫 두 문장 안에 rawValue/);
   const data = buildEditorialPromptV2(plan("data"), STARGATE, []);
   assert.match(data, /첫 두 문장 안에 rawValue/);
-  assert.match(data, /판정 성격이 드러나는 단어/);
+  assert.match(data, /보류., .소화 중., .지켜봄.으로 끝내지 않는다/);
   assert.doesNotMatch(data, /픽시몬의 생각 글이다/);
 });
 

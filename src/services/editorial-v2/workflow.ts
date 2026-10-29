@@ -866,8 +866,12 @@ export async function collectEditorialDraftV2(
     } : { attempts: reasoned.attempts, validationReasons: reasoned.validationReasons, fallbackUsed: false },
   }));
   if (reasoned.status === "blocked") return { status: "no-post", stage: "inquiry", reason: reasoned.reason, runId, actionId };
+  const recentPosts = input.store.listDraftStates()
+    .filter((state) => state.publication?.publishedText)
+    .sort((a, b) => Date.parse(b.publication!.publishedAt) - Date.parse(a.publication!.publishedAt))
+    .slice(0, 6).map((state) => state.publication!.publishedText);
   const written = await writeEditorialDraftV2({ model: input.writerModel, plan: planning.plan, evidence: planning.evidence,
-    scopeCritic: input.scopeCritic });
+    scopeCritic: input.scopeCritic, recentPosts });
   if (written.status === "blocked") {
     appendEditorialMetricV2(input.metricLogPath, buildEditorialMetricV2(metricContext, {
       type: "generation_attempt",

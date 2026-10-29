@@ -150,6 +150,7 @@ function validatePayload(
 }
 
 const RETRY_HINTS_V2: Record<string, string> = {
+  "repeated-angle": "최근 글에서 닳은 표현을 또 썼다. 위 목록의 표현 없이, 다른 각도의 결론으로 다시 쓴다.",
   "too-long": "너무 길었다. X는 한글을 2자로 센다. 문장을 줄이거나 하나 빼서 한글 130자 안으로 쓴다.",
   "hedge-only-ending": "마지막 문장이 '모름/지켜봄/보류'로만 끝났다. 모르는 건 앞에서 말하고 마지막은 픽시몬의 입장으로 닫는다.",
   "unsupported-number": "주 측정값과 재료에 없는 숫자(계산·반올림 포함)를 썼다. 적힌 값 그대로만 쓰거나 숫자를 빼고 말로 쓴다.",
@@ -158,6 +159,14 @@ const RETRY_HINTS_V2: Record<string, string> = {
   "metric-semantic-scope": "확인되지 않은 자금 흐름이나 원인을 단정처럼 썼다. 의견이면 '픽시몬이 판단하기에 ~같음'처럼 드러낸다.",
 };
 
+// Stock conclusions the TVL beat kept landing on. One that already appeared in two recent posts is worn out.
+const ANGLE_TERMS_V2 = ["유입", "환산", "소화 중", "보류", "유지되는지", "남는지", "하루 새", "몸집", "눈에 걸림", "의심할 만함", "승부", "원인은 아직"] as const;
+
+/** Terms used in at least two of Pixymon's recent posts; a new post may not lean on them again. */
+export function wornAnglesV2(recentPosts: readonly string[]): string[] {
+  return ANGLE_TERMS_V2.filter((term) => recentPosts.filter((post) => post.includes(term)).length >= 2);
+}
+
 function explainRetryReasonsV2(reasons: readonly string[]): string {
   return reasons.filter((reason) => RETRY_HINTS_V2[reason]).map((reason) => `- ${RETRY_HINTS_V2[reason]}\n`).join("");
 }
@@ -165,8 +174,14 @@ function explainRetryReasonsV2(reasons: readonly string[]): string {
 export function buildEditorialPromptV2(
   plan: EditorialPlanV2,
   evidence: EvidenceCardV2,
-  retryReasons: readonly string[]
+  retryReasons: readonly string[],
+  recentPosts: readonly string[] = []
 ): string {
+  const worn = wornAnglesV2(recentPosts);
+  const recentBlock = recentPosts.length === 0 ? "" : `
+픽시몬이 최근에 올린 글(같은 결론, 같은 문장 틀, 같은 마무리를 다시 쓰지 않는다. 이번엔 다른 각도로 쓴다):
+${recentPosts.map((post) => `- ${post}`).join("\n")}
+${worn.length ? `이미 닳은 표현이라 이번 글에 쓰지 않는다: ${worn.join(", ")}\n` : ""}`;
   const sourceTimeToken = formatEvidenceSourceTimeV2(evidence.source.observedAt);
   const voiceGuide: Record<EditorialPlanV2["voiceState"], string> = {
     curious: "숫자의 의미를 열어 두되 현재 근거의 경계는 선명하게 둔다",
@@ -206,7 +221,7 @@ export function buildEditorialPromptV2(
         "- 정확히 2~3문장, 공백 포함 90~140자. X는 한글을 2자로 세서 이보다 길면 올릴 수 없다",
         "- 첫 문장에 subject, 첫 두 문장 안에 rawValue를 그대로 한 번 넣는다",
         "- 본문에 publicSourceTime을 그대로 한 번 넣는다",
-        "- 마지막 문장에 판정 성격이 드러나는 단어(승인, 보류, 지지, 기각, 판단, 유지 등) 하나를 자연스럽게 넣는다",
+        "- 마지막 문장은 픽시몬의 판단(지지, 의심, 반대, 내기 등)으로 닫는다. '보류', '소화 중', '지켜봄'으로 끝내지 않는다",
       ].join("\n");
   const thoughtEnding = "마지막 문장은 픽시몬의 입장(의견, 내기, 믿음, 반대 의견)으로 닫는다. 모르는 것은 앞 문장에서 말하고, 마지막 문장을 '모름', '지켜봄', '봐야 할 듯', '소화 중', '보류'로 끝내지 않는다. 검증 결과가 아직 없다는 이유로 모든 글을 보류로 끝내지 않는다. 미래 가설을 이미 확인한 사실처럼 말하지 않는다";
   const endingRule = plan.format === "revisit"
@@ -246,12 +261,13 @@ export function buildEditorialPromptV2(
 
 같이 먹은 재료(여기 있는 사실·숫자·이름만 추가로 쓸 수 있다. 기사 제목은 남의 보도다):
 ${formatEditorialContextV2(plan.context)}
-
+${recentBlock}
 규칙:
 ${renderingRules}
 - ${endingRule}
 - 출처 URL, 해시태그, 투자 조언, 주 측정값과 재료에 없는 이름·숫자는 쓰지 않는다
 - TVL만으로 자금 유입, 사용자 복귀, 채택, 수익, 거래량 또는 원인을 사실처럼 단정하지 않는다
+- "유입인지 아닌지 모른다", "가격 환산 효과일 수 있다", "유지되는지 봐야 한다"는 결론은 쓰지 않는다. 누구나 하는 말이다. 대신 재료끼리의 연결(같은 체인·카테고리·기사·시장 분위기), 이 프로토콜이나 자산에 대한 픽시몬의 취향과 편견, 군중과 반대되는 입장, 작은 내기 중 하나로 픽시몬다운 한마디를 낸다
 - 관측 사실과 픽시몬의 잠정 판단을 구분한다
 - 캐릭터 비유는 최대 한 번이며 억지로 넣지 않는다. 존댓말과 뉴스·리포트 문체는 쓰지 않는다
 - 사실을 새로 만들거나 생성 후 문장을 덧붙이지 않는다
@@ -340,12 +356,17 @@ export async function writeEditorialDraftV2(input: {
   evidence: EvidenceCardV2;
   /** Semantic scope check; when present it must pass, and it may clear a regex-only scope flag. */
   scopeCritic?: EditorialWriterModelV2;
+  /** Pixymon's latest published posts, newest first; the new post must not repeat their angle. */
+  recentPosts?: readonly string[];
 }): Promise<EditorialWritingResultV2> {
   return writeWithContractV2({
     model: input.model,
     scopeCritic: input.scopeCritic,
-    buildPrompt: (retryReasons) => buildEditorialPromptV2(input.plan, input.evidence, retryReasons),
-    validate: (payload) => validatePayload(payload, input.plan, input.evidence),
+    buildPrompt: (retryReasons) => buildEditorialPromptV2(input.plan, input.evidence, retryReasons, input.recentPosts),
+    validate: (payload) => {
+      const worn = wornAnglesV2(input.recentPosts ?? []).filter((term) => payload.draft.includes(term));
+      return [...validatePayload(payload, input.plan, input.evidence), ...(worn.length ? ["repeated-angle"] : [])];
+    },
     critique: (critic, text) => reviewEditorialScopeV2({ model: critic, text, evidence: input.evidence, context: input.plan.context }),
   });
 }
