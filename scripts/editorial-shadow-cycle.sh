@@ -28,7 +28,7 @@ log "followups exit=$? ${followups//$'\n'/ | }"
 if [[ "${PIXYMON_AUTO_PUBLISH:-false}" == true ]]; then
   mentions=$(ACTION_MODE=live node --import tsx scripts/editorial-mentions.ts 2>&1 | grep -v "LLM-BUDGET")
   [[ "$mentions" == *"polled=false"* ]] || log "mentions :: ${mentions//$'\n'/ | }"
-  # The trainer's own posts: read twice a day at most, one reply per read.
+  # The trainer's own posts, read twice a day at most, become material for thoughts (X forbids replying).
   trainer=$(ACTION_MODE=live node --import tsx scripts/editorial-trainer.ts 2>&1 | grep -v "LLM-BUDGET")
   [[ "$trainer" == *"polled=false"* ]] || log "trainer :: ${trainer//$'\n'/ | }"
 fi

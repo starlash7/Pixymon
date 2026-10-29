@@ -132,3 +132,24 @@ test("a due bet is graded, earns experience, can evolve Pixymon and queues one r
   assert.deepEqual(book.pendingResults(), []);
   assert.deepEqual(book.openBets(), []);
 });
+
+test("one cashtag per post, and a definitive X rejection gives the slot back", async (t) => {
+  assert.ok(validateThoughtV2("$BTC랑 $ETH 둘 다 흔들림. 픽시몬은 내림에 걸겠음.", { material, recentPosts: [] }).includes("too-many-cashtags"));
+  const book = ledger(t);
+  const now = new Date("2026-10-29T03:00:00Z");
+  const id = book.recordDraft({ text: "생각", journal: "메모", seed: "material" });
+  const rejected = await publishThoughtV2({ ledger: book, id, text: "생각", now, dispatch: async (_text, beforeSend) => {
+    beforeSend();
+    throw Object.assign(new Error("Request failed with code 403"), { code: 403, data: { detail: "Posts are limited to a maximum of one cashtag" } });
+  } });
+  assert.deepEqual(rejected, { status: "blocked", reason: "x-rejected:Posts are limited to a maximum of one cashtag" });
+  assert.deepEqual(book.prepared(), []);
+  assert.deepEqual(thoughtDueV2(book, { dailyLimit: 1, timezone: "Asia/Seoul", now }), { due: true });
+  // An unknown failure after the send started stays prepared (never resend blind).
+  const unknown = book.recordDraft({ text: "생각2", journal: "", seed: "growth" });
+  await assert.rejects(publishThoughtV2({ ledger: book, id: unknown, text: "생각2", now, dispatch: async (_text, beforeSend) => {
+    beforeSend();
+    throw Object.assign(new Error("socket hang up"), { code: "ECONNRESET" });
+  } }));
+  assert.equal(book.prepared().length, 1);
+});

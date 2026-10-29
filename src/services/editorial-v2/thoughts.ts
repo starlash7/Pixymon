@@ -5,7 +5,7 @@ import type { EditorialContextItemV2 } from "./contracts.js";
 import { editorialContextTextV2, formatEditorialContextV2 } from "./context.js";
 import type { EditorialSensingResultV2 } from "./provider-adapters.js";
 import { requestScopeVerdictV2 } from "./scope-critic.js";
-import { FORMAL_REGISTER_V2, splitEditorialSentencesV2, ungroundedNumbersV2, X_MAX_WEIGHTED_LENGTH, xWeightedLengthV2 } from "./validator.js";
+import { cashtagCountV2, definitiveXRejectionV2, FORMAL_REGISTER_V2, splitEditorialSentencesV2, ungroundedNumbersV2, X_MAX_WEIGHTED_LENGTH, xWeightedLengthV2 } from "./validator.js";
 import { buildEditorialWriterSystemV2 } from "./voice.js";
 import type { EditorialWriterModelV2 } from "./writer.js";
 
@@ -143,7 +143,7 @@ ${input.recentPosts.length ? input.recentPosts.map((post) => `- ${post}`).join("
 규칙:
 - 1~3문장, 공백 포함 120자 이내. X는 한글을 2자로 센다
 - 첫 문장을 숫자나 가격으로 열지 않는다. 숫자는 글 전체에 ${input.seed === "result" ? "두 개" : "한 개"}까지만 쓰고, 없어도 된다
-- 티커는 $BTC, $ETH처럼 $를 붙여 쓴다
+- 티커는 $BTC처럼 $를 붙여 쓰되, X 규칙상 $티커는 글 하나에 하나만 쓴다(다른 코인은 이더리움, 솔라나처럼 이름으로)
 - 글의 중심은 픽시몬의 생각, 믿음, 의심, 기분, 내기, 취향이다. 재료는 그 생각의 계기일 뿐 요약하지 않는다
 - 생각·믿음·농담은 자유롭게 쓴다. 단 숫자·이름·사건 같은 사실은 재료에 있는 그대로만 쓰고, 기사 내용은 "~라는 기사가 돌던데"처럼 남의 말로 쓴다. 숫자는 없어도 된다
 - "모르겠음", "지켜봄", "소화 중", "보류"로 끝내지 않는다. 입장을 하나 낸다
@@ -208,6 +208,7 @@ export function validateThoughtV2(text: string, input: {
   if (input.recentPosts.some((post) => thoughtSimilarityV2(trimmed, post) >= 0.45)) reasons.push("too-similar");
   const withoutLevel = trimmed.replace(/Lv\.\s?\d+/giu, "");
   if (/^\S*\d/u.test(withoutLevel)) reasons.push("number-first");
+  if (cashtagCountV2(trimmed) > 1) reasons.push("too-many-cashtags");
   if ((withoutLevel.match(/\$?\d[\d,.]*%?/gu) || []).length > (input.maxNumbers ?? 1)) reasons.push("too-many-numbers");
   const tickers = new Set(input.material.flatMap((item) => [...`${item.label} ${item.text}`.matchAll(/\$([A-Z][A-Z0-9]{1,9})/gu)].map((match) => match[1])));
   if ([...tickers].some((ticker) => new RegExp(`(?<![$A-Za-z])${ticker}(?![A-Za-z])`, "u").test(trimmed))) reasons.push("ticker-format");
@@ -291,7 +292,9 @@ export type ThoughtEventV2 =
       bet?: ThoughtBetV2 | null; resultFor?: string }
   | { type: "bet-resolved"; id: string; outcome: "won" | "lost"; observed: number; observedAt: string; levelUpTo?: number }
   | { type: "thought-prepared"; id: string; preparedAt: string }
-  | { type: "thought-published"; id: string; xId: string; publishedAt: string };
+  | { type: "thought-published"; id: string; xId: string; publishedAt: string }
+  /** X definitively rejected the send (400/403): nothing was posted, so the slot is given back. */
+  | { type: "thought-released"; id: string; reason: string; releasedAt: string };
 
 /** Append-only ledger of thought posts plus Pixymon's journal (one line per published thought). */
 export class ThoughtLedgerV2 {
@@ -362,7 +365,10 @@ export class ThoughtLedgerV2 {
 
   /** Sends that started (prepared), for the daily cap and spacing. */
   prepared(): Array<{ id: string; preparedAt: string }> {
-    return this.events().filter((event): event is Extract<ThoughtEventV2, { type: "thought-prepared" }> => event.type === "thought-prepared");
+    const events = this.events();
+    const released = new Set(events.filter((event) => event.type === "thought-released").map((event) => event.id));
+    return events.filter((event): event is Extract<ThoughtEventV2, { type: "thought-prepared" }> =>
+      event.type === "thought-prepared" && !released.has(event.id));
   }
 }
 
@@ -391,10 +397,18 @@ export async function publishThoughtV2(input: {
   now?: Date;
 }): Promise<{ status: "published"; xId: string } | { status: "blocked"; reason: string }> {
   let sent = false;
-  const xId = await input.dispatch(input.text, () => {
-    sent = true;
-    input.ledger.append({ type: "thought-prepared", id: input.id, preparedAt: (input.now ?? new Date()).toISOString() });
-  });
+  let xId: string | null;
+  try {
+    xId = await input.dispatch(input.text, () => {
+      sent = true;
+      input.ledger.append({ type: "thought-prepared", id: input.id, preparedAt: (input.now ?? new Date()).toISOString() });
+    });
+  } catch (error) {
+    const rejected = sent ? definitiveXRejectionV2(error) : undefined;
+    if (!rejected) throw error;
+    input.ledger.append({ type: "thought-released", id: input.id, reason: rejected, releasedAt: new Date().toISOString() });
+    return { status: "blocked", reason: `x-rejected:${rejected}` };
+  }
   if (!xId) return { status: "blocked", reason: sent ? "x-dispatch-unresolved" : "x-not-sent" };
   input.ledger.append({ type: "thought-published", id: input.id, xId, publishedAt: new Date().toISOString() });
   return { status: "published", xId };
