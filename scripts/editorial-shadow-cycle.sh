@@ -28,6 +28,9 @@ log "followups exit=$? ${followups//$'\n'/ | }"
 if [[ "${PIXYMON_AUTO_PUBLISH:-false}" == true ]]; then
   mentions=$(ACTION_MODE=live node --import tsx scripts/editorial-mentions.ts 2>&1 | grep -v "LLM-BUDGET")
   [[ "$mentions" == *"polled=false"* ]] || log "mentions :: ${mentions//$'\n'/ | }"
+  # The trainer's own posts: read twice a day at most, one reply per read.
+  trainer=$(ACTION_MODE=live node --import tsx scripts/editorial-trainer.ts 2>&1 | grep -v "LLM-BUDGET")
+  [[ "$trainer" == *"polled=false"* ]] || log "trainer :: ${trainer//$'\n'/ | }"
 fi
 
 # Thought-first posts: Pixymon's own musings, at most PIXYMON_THOUGHT_DAILY_LIMIT a day, 4h apart, local daytime.
