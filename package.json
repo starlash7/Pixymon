@@ -34,7 +34,8 @@
     "preflight:week-test": "node scripts/preflight-week-test.mjs",
     "editorial:reply": "node --import tsx scripts/editorial-reply.ts",
     "editorial:mentions": "node --import tsx scripts/editorial-mentions.ts",
-    "editorial:thought": "node --import tsx scripts/editorial-thought.ts"
+    "editorial:thought": "node --import tsx scripts/editorial-thought.ts",
+    "editorial:trainer": "node --import tsx scripts/editorial-trainer.ts"
   },
   "keywords": [
     "ai-agent",

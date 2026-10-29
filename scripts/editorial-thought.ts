@@ -20,6 +20,7 @@ import {
   thoughtDueV2,
 } from "../src/services/editorial-v2/thoughts.js";
 import { loadTrainerNotesV2, trainerHandleV2, trainerNotesPathV2 } from "../src/services/editorial-v2/trainer.js";
+import { loadTrainerPostsV2 } from "../src/services/editorial-v2/trainer-posts.js";
 import { createAnthropicEditorialWriterV2 } from "../src/services/editorial-v2/writer.js";
 import { initClaudeClient } from "../src/services/llm.js";
 import { acquireRuntimeLock } from "../src/services/process-lock.js";
@@ -58,7 +59,10 @@ async function main(): Promise<void> {
     // Free providers only; the material is what Pixymon "ate" this hour.
     const sensing = await collectEditorialEvidenceV2({ now: now.toISOString(), includeGenericCandidates: true,
       cryptoCompareApiKey: process.env.CRYPTOCOMPARE_API_KEY });
-    const trainerNotes = loadTrainerNotesV2({ notesPath: trainerNotesPathV2(), handle: trainerHandleV2(), now });
+    const trainerNotes = [
+      ...loadTrainerPostsV2({ statePath: path.join(dataDir, "editorial-v2", "trainer-state.json"), handle: trainerHandleV2(), now }),
+      ...loadTrainerNotesV2({ notesPath: trainerNotesPathV2(), handle: trainerHandleV2(), now }),
+    ];
     // Grading is free (the same price fetch) and happens even when no post is due.
     const prices = bettablePricesV2(sensing);
     const graded = resolveDueBetsV2(ledger, prices, now);
