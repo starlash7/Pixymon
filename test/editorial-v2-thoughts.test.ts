@@ -13,6 +13,8 @@ import {
   resolveDueBetsV2,
   resultMaterialV2,
   selectThoughtSeedV2,
+  selectThoughtShapeV2,
+  thoughtShapeOfV2,
   ThoughtLedgerV2,
   thoughtDueV2,
   validateThoughtV2,
@@ -166,4 +168,19 @@ test("a post may not end like the last three, and an open bet blocks a new one",
   assert.match(open, /최근 글이 끝난 말\(걸겠음, 봄\)로 끝내지 않는다/);
   const free = buildThoughtPromptV2({ seed: "material", material, journal: [], recentPosts: [], trainerHandle: "Pixy7Crypto", retryReasons: [], bettable: ["BTC"] });
   assert.match(free, /진짜 걸고 싶을 때만/);
+});
+
+test("thought length rotates, never repeats the latest post's shape and is enforced", () => {
+  const short = "오늘 시장은 하품만 나옴.";
+  const long = "다들 바닥이라고 외치는데 픽시몬 배는 아직 안 부름. 해킹 기사 하나에 이렇게 흔들리면 아직 덜 털린 거라고 봄. 주인님은 이번에도 남들보다 먼저 들어갔으려나 은근히 궁금해지는 밤임.";
+  assert.equal(thoughtShapeOfV2(short), "one-liner");
+  assert.equal(thoughtShapeOfV2(long), "long");
+  assert.equal(selectThoughtShapeV2({ publishedCount: 1, recentPosts: [], seed: "material" }), "one-liner");
+  assert.equal(selectThoughtShapeV2({ publishedCount: 1, recentPosts: [short], seed: "material" }), "long");
+  assert.notEqual(selectThoughtShapeV2({ publishedCount: 5, recentPosts: [long], seed: "material" }), "long");
+  assert.ok(["medium", "long"].includes(selectThoughtShapeV2({ publishedCount: 3, recentPosts: [], seed: "result" })));
+  assert.deepEqual(validateThoughtV2(short, { material, recentPosts: [], shape: "one-liner" }), []);
+  assert.ok(validateThoughtV2(long, { material, recentPosts: [], shape: "one-liner" }).includes("length-off-shape:one-liner"));
+  const prompt = buildThoughtPromptV2({ seed: "growth", material, journal: [], recentPosts: [], trainerHandle: "Pixy7Crypto", retryReasons: [], shape: "one-liner" });
+  assert.match(prompt, /길이: 한 문장, 공백 포함 10~45자/);
 });

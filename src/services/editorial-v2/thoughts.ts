@@ -28,6 +28,31 @@ export interface ThoughtBetV2 {
   dueAt: string;
 }
 
+/** How long this post is: a one-liner, a normal take, or a longer musing. */
+export type ThoughtShapeV2 = "one-liner" | "medium" | "long";
+
+const SHAPES: Record<ThoughtShapeV2, { min: number; max: number; sentences: [number, number]; guide: string }> = {
+  "one-liner": { min: 10, max: 45, sentences: [1, 1], guide: "한 문장, 공백 포함 10~45자. 툭 던지는 한마디" },
+  medium: { min: 40, max: 90, sentences: [1, 2], guide: "1~2문장, 공백 포함 40~90자" },
+  long: { min: 85, max: 135, sentences: [2, 3], guide: "2~3문장, 공백 포함 85~135자. 생각을 조금 풀어놓는다" },
+};
+
+export function thoughtShapeOfV2(text: string): ThoughtShapeV2 {
+  const length = text.replace(/\s+/gu, " ").trim().length;
+  return length <= 45 ? "one-liner" : length <= 90 ? "medium" : "long";
+}
+
+/** Rotates the length and never repeats the shape of the latest post. */
+export function selectThoughtShapeV2(input: { publishedCount: number; recentPosts: readonly string[]; seed: ThoughtSeedV2 }): ThoughtShapeV2 {
+  const order: ThoughtShapeV2[] = input.seed === "result" ? ["medium", "long"] : ["medium", "one-liner", "long", "one-liner", "medium", "long"];
+  const last = input.recentPosts[0] ? thoughtShapeOfV2(input.recentPosts[0]) : undefined;
+  for (let step = 0; step < order.length; step += 1) {
+    const shape = order[(input.publishedCount + step) % order.length];
+    if (shape !== last) return shape;
+  }
+  return order[0];
+}
+
 export interface ThoughtProgressV2 { xp: number; level: number; nextLevelXp: number; wins: number; losses: number }
 
 export const XP_PER_LEVEL_V2 = 50;
@@ -124,7 +149,9 @@ export function buildThoughtPromptV2(input: {
   bettable?: readonly string[];
   /** A bet is still waiting to be graded; Pixymon holds one bet at a time. */
   openBet?: boolean;
+  shape?: ThoughtShapeV2;
 }): string {
+  const shape = SHAPES[input.shape ?? "medium"];
   const progress = input.progress ?? { xp: 0, level: 1, nextLevelXp: XP_PER_LEVEL_V2, wins: 0, losses: 0 };
   const canBet = input.seed !== "result" && !input.openBet && (input.bettable?.length ?? 0) > 0;
   const endings = recentEndingsV2(input.recentPosts);
@@ -144,7 +171,7 @@ ${formatEditorialContextV2(input.material)}
 ${input.recentPosts.length ? input.recentPosts.map((post) => `- ${post}`).join("\n") : "- 없음"}
 
 규칙:
-- 1~3문장, 공백 포함 120자 이내. X는 한글을 2자로 센다
+- 길이: ${shape.guide}. 이 길이를 지킨다. X는 한글을 2자로 센다
 - 첫 문장을 숫자나 가격으로 열지 않는다. 숫자는 글 전체에 ${input.seed === "result" ? "두 개" : "한 개"}까지만 쓰고, 없어도 된다
 - 티커는 $BTC처럼 $를 붙여 쓰되, X 규칙상 $티커는 글 하나에 하나만 쓴다(다른 코인은 이더리움, 솔라나처럼 이름으로)
 - 글의 중심은 픽시몬의 생각, 믿음, 의심, 기분, 내기, 취향이다. 재료는 그 생각의 계기일 뿐 요약하지 않는다
@@ -200,13 +227,20 @@ export function validateThoughtV2(text: string, input: {
   material: readonly EditorialContextItemV2[];
   recentPosts: readonly string[];
   maxNumbers?: number;
+  shape?: ThoughtShapeV2;
 }): string[] {
   const trimmed = text.replace(/\s+/gu, " ").trim();
   const reasons: string[] = [];
   const sentences = splitEditorialSentencesV2(trimmed);
-  if (trimmed.length < 15) reasons.push("too-short");
+  if (trimmed.length < 10) reasons.push("too-short");
   if (xWeightedLengthV2(trimmed) > X_MAX_WEIGHTED_LENGTH) reasons.push("too-long");
   if (sentences.length > 3) reasons.push("sentence-count");
+  if (input.shape) {
+    const shape = SHAPES[input.shape];
+    if (trimmed.length < shape.min || trimmed.length > shape.max || sentences.length < shape.sentences[0] || sentences.length > shape.sentences[1]) {
+      reasons.push(`length-off-shape:${input.shape}`);
+    }
+  }
   if (!/[가-힣]/u.test(trimmed)) reasons.push("korean-missing");
   if (FORMAL_REGISTER_V2.test(trimmed)) reasons.push("formal-register");
   if (HASHTAG.test(trimmed) || URL.test(trimmed) || EMOJI.test(trimmed) || MENTION.test(trimmed)) reasons.push("forbidden-token");
@@ -266,6 +300,7 @@ export async function draftThoughtV2(input: {
   /** Bettable prices this run, by ticker; empty or absent means no bet. */
   prices?: Record<string, number>;
   openBet?: boolean;
+  shape?: ThoughtShapeV2;
   now?: Date;
 }): Promise<ThoughtDraftResultV2> {
   const prices = input.seed === "result" || input.openBet ? {} : input.prices ?? {};

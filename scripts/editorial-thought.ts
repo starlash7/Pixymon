@@ -16,6 +16,7 @@ import {
   resolveDueBetsV2,
   resultMaterialV2,
   selectThoughtSeedV2,
+  selectThoughtShapeV2,
   ThoughtLedgerV2,
   thoughtDueV2,
 } from "../src/services/editorial-v2/thoughts.js";
@@ -91,6 +92,7 @@ async function main(): Promise<void> {
       critic: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "critique"),
       seed, material, journal, recentPosts, trainerHandle: trainerHandleV2(), progress, prices, now,
       openBet: ledger.openBets().length > 0,
+      shape: selectThoughtShapeV2({ publishedCount: thoughts.length, recentPosts, seed }),
     });
     if (drafted.status === "blocked") { console.log(`[THOUGHT] no-post seed=${seed} reason=${drafted.reason}`); return; }
     const id = ledger.recordDraft({ text: drafted.text, journal: drafted.journal, seed, bet: drafted.bet,
