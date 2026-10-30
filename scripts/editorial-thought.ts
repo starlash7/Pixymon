@@ -90,6 +90,7 @@ async function main(): Promise<void> {
       model: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "write"),
       critic: createAnthropicEditorialWriterV2(claude, config.dailyTimezone, "critique"),
       seed, material, journal, recentPosts, trainerHandle: trainerHandleV2(), progress, prices, now,
+      openBet: ledger.openBets().length > 0,
     });
     if (drafted.status === "blocked") { console.log(`[THOUGHT] no-post seed=${seed} reason=${drafted.reason}`); return; }
     const id = ledger.recordDraft({ text: drafted.text, journal: drafted.journal, seed, bet: drafted.bet,
