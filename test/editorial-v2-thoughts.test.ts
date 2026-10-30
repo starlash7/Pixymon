@@ -8,6 +8,7 @@ import {
   buildThoughtPromptV2,
   draftThoughtV2,
   normalizeThoughtBetV2,
+  recentEndingsV2,
   publishThoughtV2,
   resolveDueBetsV2,
   resultMaterialV2,
@@ -152,4 +153,17 @@ test("one cashtag per post, and a definitive X rejection gives the slot back", a
     throw Object.assign(new Error("socket hang up"), { code: "ECONNRESET" });
   } }));
   assert.equal(book.prepared().length, 1);
+});
+
+test("a post may not end like the last three, and an open bet blocks a new one", () => {
+  const recent = ["관망 가설은 반쯤 접음. 픽시몬은 이 하락이 하루 더 간다에 걸겠음.", "해킹 기사가 돌던데 $BTC가 더 빠진다에 걸겠음.", "공포보다 귀찮음이 무섭다고 봄."];
+  assert.deepEqual(recentEndingsV2(recent), ["걸겠음", "봄"]);
+  assert.ok(validateThoughtV2("오늘은 다들 겁먹은 척만 하는 듯. 픽시몬은 이번에도 반대쪽에 걸겠음.", { material, recentPosts: recent }).includes("repeated-ending"));
+  assert.ok(!validateThoughtV2("오늘은 다들 겁먹은 척만 하는 듯. 픽시몬만 배고픈 건가?", { material, recentPosts: recent }).includes("repeated-ending"));
+  const open = buildThoughtPromptV2({ seed: "material", material, journal: [], recentPosts: recent, trainerHandle: "Pixy7Crypto", retryReasons: [], bettable: ["BTC"], openBet: true });
+  assert.match(open, /이번 글에서는 내기를 걸지 않는다/);
+  assert.doesNotMatch(open, /"bet":/);
+  assert.match(open, /최근 글이 끝난 말\(걸겠음, 봄\)로 끝내지 않는다/);
+  const free = buildThoughtPromptV2({ seed: "material", material, journal: [], recentPosts: [], trainerHandle: "Pixy7Crypto", retryReasons: [], bettable: ["BTC"] });
+  assert.match(free, /진짜 걸고 싶을 때만/);
 });
