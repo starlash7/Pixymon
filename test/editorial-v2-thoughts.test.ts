@@ -184,3 +184,15 @@ test("thought length rotates, never repeats the latest post's shape and is enfor
   const prompt = buildThoughtPromptV2({ seed: "growth", material, journal: [], recentPosts: [], trainerHandle: "Pixy7Crypto", retryReasons: [], shape: "one-liner" });
   assert.match(prompt, /길이: 한 문장, 공백 포함 10~45자/);
 });
+
+test("the voice carries character.ts's variety rules and a post may not open like the last three", async () => {
+  const { buildEditorialWriterSystemV2 } = await import("../src/services/editorial-v2/voice.ts");
+  const system = buildEditorialWriterSystemV2();
+  assert.match(system, /매번 다른 관점으로 말한다/);
+  assert.match(system, /같은 오프너와 같은 문장 골격 반복 금지/);
+  const recent = ["관망 가설은 반쯤 접음. 하락이 하루 더 갈 듯.", "Lv.1이라 아직 입맛이 없음."];
+  assert.ok(validateThoughtV2("관망 가설은 이제 버림. 다들 너무 조용함.", { material, recentPosts: recent }).includes("repeated-opener"));
+  assert.ok(!validateThoughtV2("다들 너무 조용함. 관망 가설은 이제 버림.", { material, recentPosts: recent }).includes("repeated-opener"));
+  assert.match(buildThoughtPromptV2({ seed: "growth", material, journal: [], recentPosts: recent, trainerHandle: "Pixy7Crypto", retryReasons: [] }),
+    /최근 글이 시작한 말\(관망, Lv\.1이라\)로 시작하지 않는다/);
+});

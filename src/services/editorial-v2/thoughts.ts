@@ -5,7 +5,7 @@ import type { EditorialContextItemV2 } from "./contracts.js";
 import { editorialContextTextV2, formatEditorialContextV2 } from "./context.js";
 import type { EditorialSensingResultV2 } from "./provider-adapters.js";
 import { requestScopeVerdictV2 } from "./scope-critic.js";
-import { cashtagCountV2, definitiveXRejectionV2, FORMAL_REGISTER_V2, splitEditorialSentencesV2, ungroundedNumbersV2, X_MAX_WEIGHTED_LENGTH, xWeightedLengthV2 } from "./validator.js";
+import { cashtagCountV2, definitiveXRejectionV2, FORMAL_REGISTER_V2, openingWordV2, recentOpeningsV2, splitEditorialSentencesV2, ungroundedNumbersV2, X_MAX_WEIGHTED_LENGTH, xWeightedLengthV2 } from "./validator.js";
 import { buildEditorialWriterSystemV2 } from "./voice.js";
 import type { EditorialWriterModelV2 } from "./writer.js";
 
@@ -155,6 +155,7 @@ export function buildThoughtPromptV2(input: {
   const progress = input.progress ?? { xp: 0, level: 1, nextLevelXp: XP_PER_LEVEL_V2, wins: 0, losses: 0 };
   const canBet = input.seed !== "result" && !input.openBet && (input.bettable?.length ?? 0) > 0;
   const endings = recentEndingsV2(input.recentPosts);
+  const openings = recentOpeningsV2(input.recentPosts);
   return `픽시몬이 지금 X에 올릴 생각 글 하나를 쓴다. 뉴스 요약도, 데이터 보고도 아니다. 픽시몬 머릿속에서 나온 말이다.
 
 픽시몬 상태: Lv.${progress.level}, 경험치 ${progress.xp} (다음 레벨 ${progress.nextLevelXp}), 내기 전적 ${progress.wins}승 ${progress.losses}패. 내기를 맞히면 경험치가 오르고 레벨이 오르면 진화한다.
@@ -182,7 +183,7 @@ ${input.recentPosts.length ? input.recentPosts.map((post) => `- ${post}`).join("
 - 주인님(@${input.trainerHandle})은 재료에 주인님 활동이 있을 때만 부른다
 - 존댓말, 해시태그, 이모지, 링크, @멘션, 투자 조언(사라·팔아라·진입), 과한 확신은 쓰지 않는다
 ${input.retryReasons.length ? `- 이전 실패 원인: ${input.retryReasons.join(", ")}\n` : ""}${input.criticFeedback ? `${input.criticFeedback}\n` : ""}
-- 마무리를 매번 바꾼다: 질문, 고백, 농담, 단호한 한마디, 주인님한테 던지는 말, 다음 생각 예고 등. 내기로 끝내지 않는다${endings.length ? `. 최근 글이 끝난 말(${endings.join(", ")})로 끝내지 않는다` : ""}
+${openings.length ? `- 최근 글이 시작한 말(${openings.join(", ")})로 시작하지 않는다\n` : ""}- 마무리를 매번 바꾼다: 질문, 고백, 농담, 단호한 한마디, 주인님한테 던지는 말, 다음 생각 예고 등. 내기로 끝내지 않는다${endings.length ? `. 최근 글이 끝난 말(${endings.join(", ")})로 끝내지 않는다` : ""}
 ${canBet ? `- 지금 걸린 내기가 없다. 시세 쪽 생각이고 진짜 걸고 싶을 때만 작은 내기를 하나 건다(남에게 사라·팔라 하는 게 아니라 픽시몬 자신의 예측). 걸면 문장 중간에 자연스럽게 넣고 bet에 기록한다. 걸 수 있는 자산: ${input.bettable!.join(", ")}. 걸지 않으면 bet은 null\n` : "- 이번 글에서는 내기를 걸지 않는다\n"}
 JSON만 반환한다:
 {"text":"올릴 글","journal":"이 글을 쓰고 난 뒤 픽시몬 머릿속에 남길 한 줄(지금 믿는 것, 의심하는 것, 다음에 이어갈 생각)"${canBet ? ',"bet":{"symbol":"BTC","direction":"up 또는 down","horizonHours":24 또는 72,"claim":"건 내용 한 줄"} 또는 null' : ""}}`;
@@ -257,6 +258,7 @@ export function validateThoughtV2(text: string, input: {
   if (/^\S*\d/u.test(withoutLevel)) reasons.push("number-first");
   if (cashtagCountV2(trimmed) > 1) reasons.push("too-many-cashtags");
   if (recentEndingsV2(input.recentPosts).includes(lastWordV2(trimmed))) reasons.push("repeated-ending");
+  if (recentOpeningsV2(input.recentPosts).includes(openingWordV2(trimmed))) reasons.push("repeated-opener");
   if ((withoutLevel.match(/\$?\d[\d,.]*%?/gu) || []).length > (input.maxNumbers ?? 1)) reasons.push("too-many-numbers");
   const tickers = new Set(input.material.flatMap((item) => [...`${item.label} ${item.text}`.matchAll(/\$([A-Z][A-Z0-9]{1,9})/gu)].map((match) => match[1])));
   if ([...tickers].some((ticker) => new RegExp(`(?<![$A-Za-z])${ticker}(?![A-Za-z])`, "u").test(trimmed))) reasons.push("ticker-format");

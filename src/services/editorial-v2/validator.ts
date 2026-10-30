@@ -262,6 +262,15 @@ export function validateEditorialDraftV2(
 /** X counts most non-Latin characters (Hangul included) as 2; a standard account allows 280. */
 export const X_MAX_WEIGHTED_LENGTH = 280;
 
+/** The first word of each of the three latest posts; a new post must not open the same way. */
+export function recentOpeningsV2(recentPosts: readonly string[]): string[] {
+  return [...new Set(recentPosts.slice(0, 3).map(openingWordV2).filter(Boolean))];
+}
+
+export function openingWordV2(text: string): string {
+  return text.trim().split(/\s+/u)[0]?.replace(/[.,!?…~]+$/u, "") ?? "";
+}
+
 /** X rejects a post with more than one cashtag ($SYMBOL); "$80,000" is a price, not a cashtag. */
 export function cashtagCountV2(text: string): number {
   return (text.match(/\$[A-Za-z][A-Za-z0-9_]{0,9}/gu) || []).length;
