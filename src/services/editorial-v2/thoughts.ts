@@ -181,7 +181,7 @@ ${input.recentPosts.length ? input.recentPosts.map((post) => `- ${post}`).join("
 - 생각·믿음·농담은 자유롭게 쓴다. 단 숫자·이름·사건 같은 사실은 재료에 있는 그대로만 쓰고, 기사 내용은 "~라는 기사가 돌던데"처럼 남의 말로 쓴다. 숫자는 없어도 된다
 - "모르겠음", "지켜봄", "소화 중", "보류"로 끝내지 않는다. 입장을 하나 낸다
 - "유입인지 모른다", "유지되는지 봐야 한다" 같은 누구나 하는 말은 쓰지 않는다
-- 자기 지칭은 3인칭 "픽시몬"으로 한 번까지만, 없어도 된다. 반말 혼잣말이나 음슴체로 쓴다
+- 자기 지칭은 3인칭 "픽시몬"으로 한 번까지만, 없어도 된다. "나", "내", "내가"는 쓰지 않는다. 반말 혼잣말이나 음슴체로 쓴다
 - 주인님(@${input.trainerHandle})은 재료에 주인님 활동이 있을 때만 부른다
 - 존댓말, 해시태그, 이모지, 링크, @멘션, 투자 조언(사라·팔아라·진입), 과한 확신은 쓰지 않는다
 ${input.retryReasons.length ? `- 이전 실패 원인: ${input.retryReasons.join(", ")}\n` : ""}${input.criticFeedback ? `${input.criticFeedback}\n` : ""}
@@ -252,6 +252,8 @@ export function validateThoughtV2(text: string, input: {
   if (OVERCONFIDENT.test(trimmed)) reasons.push("overconfidence");
   if (HEDGE_ENDING.test(sentences.at(-1) || "")) reasons.push("hedge-only-ending");
   if ((trimmed.match(/픽시몬/gu) || []).length > 1) reasons.push("self-name-overuse");
+  // Pixymon speaks of itself in the third person, never 나/내/제.
+  if (/(^|[\s,.])(나는|나도|내가|내|나|제가)(?=[\s,.]|$)/u.test(trimmed)) reasons.push("first-person");
   if ((trimmed.match(CHARACTER_CUES) || []).length > 1) reasons.push("character-cue-overuse");
   if (/주인님/u.test(trimmed) && !input.material.some((item) => item.kind === "trainer")) reasons.push("trainer-without-material");
   // "Lv.1" is Pixymon's own stage, not a market fact.

@@ -202,3 +202,9 @@ test("a result post is judged on the wider result range, not the rotated shape",
   assert.ok(validateThoughtV2(text, { material, recentPosts: [], shape: "medium" }).some((reason) => reason.startsWith("length-off-shape")));
   assert.ok(!validateThoughtV2(text, { material, recentPosts: [], shape: "medium", seed: "result" }).some((reason) => reason.startsWith("length-off-shape")));
 });
+
+test("Pixymon never slips into the first person", () => {
+  assert.ok(validateThoughtV2("남의 해킹 기사에 내 취향이 먼저 반응했음. 다음엔 움직임부터 봄.", { material, recentPosts: [] }).includes("first-person"));
+  assert.ok(!validateThoughtV2("남의 해킹 기사에 픽시몬 취향이 먼저 반응했음. 다음엔 움직임부터 봄.", { material, recentPosts: [] }).includes("first-person"));
+  assert.ok(!validateThoughtV2("내일은 다들 나가떨어질 듯. 픽시몬만 배고픔.", { material, recentPosts: [] }).includes("first-person"));
+});
