@@ -196,3 +196,9 @@ test("the voice carries character.ts's variety rules and a post may not open lik
   assert.match(buildThoughtPromptV2({ seed: "growth", material, journal: [], recentPosts: recent, trainerHandle: "Pixy7Crypto", retryReasons: [] }),
     /최근 글이 시작한 말\(관망, Lv\.1이라\)로 시작하지 않는다/);
 });
+
+test("a result post is judged on the wider result range, not the rotated shape", () => {
+  const text = "어제 $BTC 하락에 걸었는데 틀렸음. 겁먹은 돈이 도망갈 거라 봤는데 그냥 버티더라. 픽시몬 판단력은 아직 Lv.1이 맞음.";
+  assert.ok(validateThoughtV2(text, { material, recentPosts: [], shape: "medium" }).some((reason) => reason.startsWith("length-off-shape")));
+  assert.ok(!validateThoughtV2(text, { material, recentPosts: [], shape: "medium", seed: "result" }).some((reason) => reason.startsWith("length-off-shape")));
+});
