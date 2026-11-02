@@ -31,10 +31,12 @@ export interface ThoughtBetV2 {
 /** How long this post is: a one-liner, a normal take, or a longer musing. */
 export type ThoughtShapeV2 = "one-liner" | "medium" | "long";
 
-const SHAPES: Record<ThoughtShapeV2, { min: number; max: number; sentences: [number, number]; guide: string }> = {
+const SHAPES: Record<ThoughtShapeV2 | "result", { min: number; max: number; sentences: [number, number]; guide: string }> = {
   "one-liner": { min: 10, max: 45, sentences: [1, 1], guide: "한 문장, 공백 포함 10~45자. 툭 던지는 한마디" },
   medium: { min: 40, max: 90, sentences: [1, 2], guide: "1~2문장, 공백 포함 40~90자" },
   long: { min: 85, max: 135, sentences: [2, 3], guide: "2~3문장, 공백 포함 85~135자. 생각을 조금 풀어놓는다" },
+  // A result has a bet, an outcome and a lesson to fit; it gets the medium-to-long range.
+  result: { min: 40, max: 135, sentences: [1, 3], guide: "1~3문장, 공백 포함 40~135자" },
 };
 
 export function thoughtShapeOfV2(text: string): ThoughtShapeV2 {
@@ -151,7 +153,7 @@ export function buildThoughtPromptV2(input: {
   openBet?: boolean;
   shape?: ThoughtShapeV2;
 }): string {
-  const shape = SHAPES[input.shape ?? "medium"];
+  const shape = SHAPES[input.seed === "result" ? "result" : input.shape ?? "medium"];
   const progress = input.progress ?? { xp: 0, level: 1, nextLevelXp: XP_PER_LEVEL_V2, wins: 0, losses: 0 };
   const canBet = input.seed !== "result" && !input.openBet && (input.bettable?.length ?? 0) > 0;
   const endings = recentEndingsV2(input.recentPosts);
@@ -229,6 +231,7 @@ export function validateThoughtV2(text: string, input: {
   recentPosts: readonly string[];
   maxNumbers?: number;
   shape?: ThoughtShapeV2;
+  seed?: ThoughtSeedV2;
 }): string[] {
   const trimmed = text.replace(/\s+/gu, " ").trim();
   const reasons: string[] = [];
@@ -237,7 +240,7 @@ export function validateThoughtV2(text: string, input: {
   if (xWeightedLengthV2(trimmed) > X_MAX_WEIGHTED_LENGTH) reasons.push("too-long");
   if (sentences.length > 3) reasons.push("sentence-count");
   if (input.shape) {
-    const shape = SHAPES[input.shape];
+    const shape = SHAPES[input.seed === "result" ? "result" : input.shape];
     if (trimmed.length < shape.min || trimmed.length > shape.max || sentences.length < shape.sentences[0] || sentences.length > shape.sentences[1]) {
       reasons.push(`length-off-shape:${input.shape}`);
     }
