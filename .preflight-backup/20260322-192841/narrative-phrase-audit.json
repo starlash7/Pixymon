@@ -1,0 +1,41 @@
+{
+  "total": 150,
+  "bySurface": {
+    "post": 82,
+    "quote": 24,
+    "reply": 44
+  },
+  "byLabel": {
+    "templated-closing": 2,
+    "staged-screen-metaphor": 1
+  },
+  "examplesByLabel": {
+    "templated-closing": [
+      "체인 위가 실제로 붐비는지가 흔들릴 때 대기 거래가 얼마나 쌓이는지가 어떻게 따라오는지부터 본다. 35%, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 살아남은 근거만 따로 메모해 둔다.",
+      "결국 커뮤니티 설계가 토큰 보상보다 오래 버티는지만 확인하게 된다. 헤지 수요 변화, 미션 완료율, 이 두 단서가 같은 쪽을 보는지부터 확인한다. 먼저 반응 순서를 맞춰 보고 엇갈리면 여기서 접는다. 끝까지 살아남은 근거만 따로 메모해 둔다."
+    ],
+    "staged-screen-metaphor": [
+      "네트워크 사용과 토큰 서사가 같은 방향으로 가는지 다시 본다. BTC 네트워크 수수료 1 sat/vB, Bitcoin sold off first, 이 둘을 같은 화면에 둔다. 오늘은 약한 고리부터 확인하고 흐름이 끊기면 바로 해석을 바꾼다. 마지막까지 버틴 단서만 남겨 둔다."
+    ]
+  },
+  "latestHits": [
+    {
+      "timestamp": "2026-03-15T05:44:01.960Z",
+      "surface": "post",
+      "label": "staged-screen-metaphor",
+      "match": "이 둘을 같은 화면에 둔다"
+    },
+    {
+      "timestamp": "2026-03-13T04:55:15.398Z",
+      "surface": "post",
+      "label": "templated-closing",
+      "match": "끝까지 살아남은 근거만 따로 메모"
+    },
+    {
+      "timestamp": "2026-03-13T04:54:12.911Z",
+      "surface": "post",
+      "label": "templated-closing",
+      "match": "끝까지 살아남은 근거만 따로 메모"
+    }
+  ]
+}
