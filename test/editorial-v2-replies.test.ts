@@ -9,6 +9,7 @@ import {
   publishReplyV2,
   ReplyLedgerV2,
   releaseReplyV2,
+  buildReplyPromptV2,
   validateReplyV2,
   type ReplyTargetV2,
 } from "../src/services/editorial-v2/replies.ts";
@@ -103,4 +104,13 @@ test("a guard that declines before sending leaves no prepared record, and a chec
 test("replies may use a character cue word once", () => {
   assert.ok(validateReplyV2("지금 소화 중임. 온체인 데이터 씹는 데 시간 걸림", otherTarget).includes("character-cue-overuse"));
   assert.ok(!validateReplyV2("픽시몬은 아직 소화 중임. 결론은 조금 더 보고 냄", otherTarget).includes("character-cue-overuse"));
+});
+
+test("a reply may use numbers from the looked-up material but never promises to fetch later", () => {
+  const material = [{ id: "lookup:bch", kind: "market" as const, label: "요청받은 코인 BCH", text: "Bitcoin Cash($BCH) $412.5, 24시간 +3.10%, 시총 21위", provider: "coingecko" }];
+  const target = { ...trainerTarget, text: "@Pixy_mon BCH 어때" };
+  assert.deepEqual(validateReplyV2("주인님 $BCH는 지금 $412.5, 하루 +3.10%임. 시총 21위치곤 조용히 오른 편이라 픽시몬은 맛있다고 봄.", target, material), []);
+  assert.ok(validateReplyV2("주인님 $BCH는 지금 $500임.", target, material).includes("unsupported-number"));
+  assert.ok(validateReplyV2("주인님 그건 픽시몬이 내일까지 찾아오겠음.", target, material).includes("empty-promise"));
+  assert.match(buildReplyPromptV2(target, material), /Bitcoin Cash\(\$BCH\) \$412\.5/);
 });

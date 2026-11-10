@@ -15,7 +15,7 @@ import type { EditorialWriterModelV2 } from "./writer.js";
  * beliefs, moods and jokes are free.
  */
 
-export type ThoughtSeedV2 = "material" | "journal" | "growth" | "trainer" | "result";
+export type ThoughtSeedV2 = "material" | "journal" | "growth" | "trainer" | "result" | "menu";
 
 /** A machine-gradable bet Pixymon placed in a published thought: a price direction over 24 or 72 hours. */
 export interface ThoughtBetV2 {
@@ -31,12 +31,13 @@ export interface ThoughtBetV2 {
 /** How long this post is: a one-liner, a normal take, or a longer musing. */
 export type ThoughtShapeV2 = "one-liner" | "medium" | "long";
 
-const SHAPES: Record<ThoughtShapeV2 | "result", { min: number; max: number; sentences: [number, number]; guide: string }> = {
+const SHAPES: Record<ThoughtShapeV2 | "result" | "menu", { min: number; max: number; sentences: [number, number]; guide: string }> = {
   "one-liner": { min: 10, max: 45, sentences: [1, 1], guide: "한 문장, 공백 포함 10~45자. 툭 던지는 한마디" },
   medium: { min: 40, max: 90, sentences: [1, 2], guide: "1~2문장, 공백 포함 40~90자" },
   long: { min: 85, max: 135, sentences: [2, 3], guide: "2~3문장, 공백 포함 85~135자. 생각을 조금 풀어놓는다" },
   // A result has a bet, an outcome and a lesson to fit; it gets the medium-to-long range.
   result: { min: 40, max: 135, sentences: [1, 3], guide: "1~3문장, 공백 포함 40~135자" },
+  menu: { min: 50, max: 140, sentences: [2, 4], guide: "2~4문장, 공백 포함 50~140자. 항목마다 한 문장" },
 };
 
 export function thoughtShapeOfV2(text: string): ThoughtShapeV2 {
@@ -74,6 +75,7 @@ const SEED_GUIDE: Record<ThoughtSeedV2, string> = {
   journal: "머릿속 메모의 생각 하나를 이어가거나, 의심하거나, 뒤집는다. 메모를 그대로 반복하지 않는다",
   growth: "Lv.1 디지털 생명체로서의 삶: 데이터를 먹고 자라는 배고픔, 아직 모르는 것, 커가는 취향과 편견",
   trainer: "주인님 최근 활동에 대한 픽시몬의 냉철한 지적이나 농담. 활동 내용은 재료 그대로만 쓴다",
+  menu: "오늘의 픽시몬 식단. 재료(트렌딩, 상승·하락 상위, 업비트 거래대금 상위)에서 사람들이 알면 쓸모 있을 항목 2~3개를 골라, 각 항목의 이름과 숫자 하나에 픽시몬의 한 줄 평(맛있음, 수상함, 상했음, 과식 주의 같은)을 붙인다. 정보가 주인공이고 캐릭터는 양념이다. $티커는 하나만 쓰고 나머지는 한글 이름으로 쓴다",
   result: "픽시몬이 예전에 건 내기의 결과가 나왔다. 이겼으면 짧게 으스대고, 졌으면 핑계 없이 인정하고 무엇을 잘못 봤는지 한마디 한다. 레벨이 올랐으면 그것도 말한다",
 };
 
@@ -153,11 +155,12 @@ export function buildThoughtPromptV2(input: {
   openBet?: boolean;
   shape?: ThoughtShapeV2;
 }): string {
-  const shape = SHAPES[input.seed === "result" ? "result" : input.shape ?? "medium"];
+  const shape = SHAPES[input.seed === "result" || input.seed === "menu" ? input.seed : input.shape ?? "medium"];
   const progress = input.progress ?? { xp: 0, level: 1, nextLevelXp: XP_PER_LEVEL_V2, wins: 0, losses: 0 };
-  const canBet = input.seed !== "result" && !input.openBet && (input.bettable?.length ?? 0) > 0;
+  const canBet = input.seed !== "result" && input.seed !== "menu" && !input.openBet && (input.bettable?.length ?? 0) > 0;
   const endings = recentEndingsV2(input.recentPosts);
   const openings = recentOpeningsV2(input.recentPosts);
+  const worn = wornMotifsV2(input.recentPosts);
   return `픽시몬이 지금 X에 올릴 생각 글 하나를 쓴다. 뉴스 요약도, 데이터 보고도 아니다. 픽시몬 머릿속에서 나온 말이다.
 
 픽시몬 상태: Lv.${progress.level}, 경험치 ${progress.xp} (다음 레벨 ${progress.nextLevelXp}), 내기 전적 ${progress.wins}승 ${progress.losses}패. 내기를 맞히면 경험치가 오르고 레벨이 오르면 진화한다.
@@ -175,7 +178,7 @@ ${input.recentPosts.length ? input.recentPosts.map((post) => `- ${post}`).join("
 
 규칙:
 - 길이: ${shape.guide}. 이 길이를 지킨다. X는 한글을 2자로 센다
-- 첫 문장을 숫자나 가격으로 열지 않는다. 숫자는 글 전체에 ${input.seed === "result" ? "두 개" : "한 개"}까지만 쓰고, 없어도 된다
+- 첫 문장을 숫자나 가격으로 열지 않는다. 숫자는 글 전체에 ${input.seed === "menu" ? "세 개" : input.seed === "result" ? "두 개" : "한 개"}까지만 쓰고${input.seed === "menu" ? "" : ", 없어도 된다"}
 - 티커는 $BTC처럼 $를 붙여 쓰되, X 규칙상 $티커는 글 하나에 하나만 쓴다(다른 코인은 이더리움, 솔라나처럼 이름으로)
 - 글의 중심은 픽시몬의 생각, 믿음, 의심, 기분, 내기, 취향이다. 재료는 그 생각의 계기일 뿐 요약하지 않는다
 - 생각·믿음·농담은 자유롭게 쓴다. 단 숫자·이름·사건 같은 사실은 재료에 있는 그대로만 쓰고, 기사 내용은 "~라는 기사가 돌던데"처럼 남의 말로 쓴다. 숫자는 없어도 된다
@@ -185,7 +188,7 @@ ${input.recentPosts.length ? input.recentPosts.map((post) => `- ${post}`).join("
 - 주인님(@${input.trainerHandle})은 재료에 주인님 활동이 있을 때만 부른다
 - 존댓말, 해시태그, 이모지, 링크, @멘션, 투자 조언(사라·팔아라·진입), 과한 확신은 쓰지 않는다
 ${input.retryReasons.length ? `- 이전 실패 원인: ${input.retryReasons.join(", ")}\n` : ""}${input.criticFeedback ? `${input.criticFeedback}\n` : ""}
-${openings.length ? `- 최근 글이 시작한 말(${openings.join(", ")})로 시작하지 않는다\n` : ""}- 마무리를 매번 바꾼다: 질문, 고백, 농담, 단호한 한마디, 주인님한테 던지는 말, 다음 생각 예고 등. 내기로 끝내지 않는다${endings.length ? `. 최근 글이 끝난 말(${endings.join(", ")})로 끝내지 않는다` : ""}
+${worn.length ? `- 최근 글에서 너무 자주 나온 소재라 이번엔 쓰지 않는다: ${worn.join(", ")}\n` : ""}${openings.length ? `- 최근 글이 시작한 말(${openings.join(", ")})로 시작하지 않는다\n` : ""}- 마무리를 매번 바꾼다: 질문, 고백, 농담, 단호한 한마디, 주인님한테 던지는 말, 다음 생각 예고 등. 내기로 끝내지 않는다${endings.length ? `. 최근 글이 끝난 말(${endings.join(", ")})로 끝내지 않는다` : ""}
 ${canBet ? `- 지금 걸린 내기가 없다. 시세 쪽 생각이고 진짜 걸고 싶을 때만 작은 내기를 하나 건다(남에게 사라·팔라 하는 게 아니라 픽시몬 자신의 예측). 걸면 문장 중간에 자연스럽게 넣고 bet에 기록한다. 걸 수 있는 자산: ${input.bettable!.join(", ")}. 걸지 않으면 bet은 null\n` : "- 이번 글에서는 내기를 걸지 않는다\n"}
 JSON만 반환한다:
 {"text":"올릴 글","journal":"이 글을 쓰고 난 뒤 픽시몬 머릿속에 남길 한 줄(지금 믿는 것, 의심하는 것, 다음에 이어갈 생각)"${canBet ? ',"bet":{"symbol":"BTC","direction":"up 또는 down","horizonHours":24 또는 72,"claim":"건 내용 한 줄"} 또는 null' : ""}}`;
@@ -217,6 +220,21 @@ export function thoughtSimilarityV2(a: string, b: string): number {
   return shared / (left.size + right.size - shared);
 }
 
+const MOTIF_STOPWORDS = new Set(["픽시몬", "주인님", "오늘", "하루", "시장", "그냥", "아직", "근데", "같음", "듯함", "이번", "다들", "진짜", "조금", "그게", "이건", "이런", "그런", "있음", "없음", "보니", "같이"]);
+const PARTICLE = /(으로|에서|부터|까지|한테|처럼|보다|이랑|인데|이라|라는|은|는|이|가|을|를|에|의|도|로|과|와|만|랑)$/u;
+
+function motifStemsV2(text: string): Set<string> {
+  return new Set((text.match(/[가-힣]{2,}/gu) || []).map((word) => word.replace(PARTICLE, ""))
+    .filter((stem) => stem.length >= 2 && !MOTIF_STOPWORDS.has(stem)));
+}
+
+/** Words in at least three of the six latest posts: a motif Pixymon has worn out for now. */
+export function wornMotifsV2(recentPosts: readonly string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const post of recentPosts.slice(0, 6)) for (const stem of motifStemsV2(post)) counts.set(stem, (counts.get(stem) ?? 0) + 1);
+  return [...counts].filter(([, count]) => count >= 3).map(([stem]) => stem).sort();
+}
+
 /** The last word of each of the three latest posts; a new post must not end the same way. */
 export function recentEndingsV2(recentPosts: readonly string[]): string[] {
   return [...new Set(recentPosts.slice(0, 3).map(lastWordV2).filter(Boolean))];
@@ -238,9 +256,9 @@ export function validateThoughtV2(text: string, input: {
   const sentences = splitEditorialSentencesV2(trimmed);
   if (trimmed.length < 10) reasons.push("too-short");
   if (xWeightedLengthV2(trimmed) > X_MAX_WEIGHTED_LENGTH) reasons.push("too-long");
-  if (sentences.length > 3) reasons.push("sentence-count");
+  if (sentences.length > (input.seed === "menu" ? 4 : 3)) reasons.push("sentence-count");
   if (input.shape) {
-    const shape = SHAPES[input.seed === "result" ? "result" : input.shape];
+    const shape = SHAPES[input.seed === "result" || input.seed === "menu" ? input.seed : input.shape];
     if (trimmed.length < shape.min || trimmed.length > shape.max || sentences.length < shape.sentences[0] || sentences.length > shape.sentences[1]) {
       reasons.push(`length-off-shape:${input.shape}`);
     }
@@ -264,6 +282,9 @@ export function validateThoughtV2(text: string, input: {
   if (cashtagCountV2(trimmed) > 1) reasons.push("too-many-cashtags");
   if (recentEndingsV2(input.recentPosts).includes(lastWordV2(trimmed))) reasons.push("repeated-ending");
   if (recentOpeningsV2(input.recentPosts).includes(openingWordV2(trimmed))) reasons.push("repeated-opener");
+  const worn = wornMotifsV2(input.recentPosts);
+  // A menu lists coins by design; recurring coin names there are information, not a worn motif.
+  if (input.seed !== "menu" && worn.some((stem) => trimmed.includes(stem))) reasons.push("worn-motif");
   if ((withoutLevel.match(/\$?\d[\d,.]*%?/gu) || []).length > (input.maxNumbers ?? 1)) reasons.push("too-many-numbers");
   const tickers = new Set(input.material.flatMap((item) => [...`${item.label} ${item.text}`.matchAll(/\$([A-Z][A-Z0-9]{1,9})/gu)].map((match) => match[1])));
   if ([...tickers].some((ticker) => new RegExp(`(?<![$A-Za-z])${ticker}(?![A-Za-z])`, "u").test(trimmed))) reasons.push("ticker-format");
@@ -329,7 +350,7 @@ export async function draftThoughtV2(input: {
     }
     const text = typeof value.text === "string" ? value.text.replace(/\s+/gu, " ").trim() : "";
     const journal = typeof value.journal === "string" ? value.journal.replace(/\s+/gu, " ").trim().slice(0, 200) : "";
-    retryReasons = validateThoughtV2(text, { ...input, maxNumbers: input.seed === "result" ? 2 : 1 });
+    retryReasons = validateThoughtV2(text, { ...input, maxNumbers: input.seed === "menu" ? 3 : input.seed === "result" ? 2 : 1 });
     if (!journal) retryReasons.push("journal-missing");
     if (retryReasons.length) continue;
     const verdict = await requestScopeVerdictV2({ model: input.critic, prompt: buildThoughtCriticPromptV2(text, input.material), text });
@@ -499,4 +520,10 @@ export function resultMaterialV2(result: { text: string; bet: ThoughtBetV2; outc
     { id: "result:prices", kind: "market", label: `$${result.bet.symbol} 그때 가격과 지금 가격`, text: `${formatPriceV2(result.bet.baseline)} → ${formatPriceV2(result.observed)}`, provider: "coingecko" },
     { id: "result:outcome", kind: "profile", label: "결과", text: `${result.outcome === "won" ? "맞힘, 경험치 +10" : "틀림, 경험치 -5"}${result.levelUpTo ? `, Lv.${result.levelUpTo}로 진화` : ""}`, provider: "pixymon" },
   ];
+}
+
+/** Whether today's (local day) menu post is already out; the menu is a once-a-day ritual. */
+export function menuPublishedTodayV2(ledger: ThoughtLedgerV2, timezone: string, now: Date): boolean {
+  const today = dayKey(now.toISOString(), timezone);
+  return ledger.published().some((entry) => entry.seed === "menu" && dayKey(entry.publishedAt, timezone) === today);
 }
