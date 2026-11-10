@@ -1,3 +1,5 @@
+import type { EditorialContextItemV2 } from "./contracts.js";
+import { editorialContextTextV2, formatEditorialContextV2 } from "./context.js";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -44,7 +46,10 @@ const URL_PATTERN = /https?:\/\/|www\./iu;
 const EMOJI = /\p{Extended_Pictographic}/u;
 
 /** Deterministic floor for a reply; the critic reads meaning afterwards. */
-export function validateReplyV2(text: string, target: ReplyTargetV2): string[] {
+// Pixymon can only say what it can do now; "I'll fetch it later" is a promise nothing keeps.
+const EMPTY_PROMISE = /(물어오겠|물어옴|가져오겠|가져옴|찾아오겠|찾아옴|해오겠|해옴|알아오겠|조사해오|정리해오)/u;
+
+export function validateReplyV2(text: string, target: ReplyTargetV2, material: readonly EditorialContextItemV2[] = []): string[] {
   const reasons: string[] = [];
   const trimmed = text.trim();
   if (trimmed.length < 5) reasons.push("too-short");
@@ -58,11 +63,12 @@ export function validateReplyV2(text: string, target: ReplyTargetV2): string[] {
   if ((trimmed.match(/물고|씹고|씹는|먹고|소화|흉터|눕/gu) || []).length > 1) reasons.push("character-cue-overuse");
   if (/주인님/u.test(trimmed) && !target.trainer) reasons.push("trainer-address-to-non-trainer");
   if (/@[A-Za-z0-9_]{1,15}/u.test(trimmed)) reasons.push("mention");
-  if (ungroundedNumbersV2(trimmed, target.text, { coreOnly: true }).length > 0) reasons.push("unsupported-number");
+  if (ungroundedNumbersV2(trimmed, `${target.text}\n${editorialContextTextV2(material)}`, { coreOnly: true }).length > 0) reasons.push("unsupported-number");
+  if (EMPTY_PROMISE.test(trimmed)) reasons.push("empty-promise");
   return reasons;
 }
 
-export function buildReplyPromptV2(target: ReplyTargetV2): string {
+export function buildReplyPromptV2(target: ReplyTargetV2, material: readonly EditorialContextItemV2[] = []): string {
   const who = target.trainer
     ? `@${target.author} (픽시몬의 트레이너, 주인님)`
     : `@${target.author}`;
@@ -75,27 +81,36 @@ export function buildReplyPromptV2(target: ReplyTargetV2): string {
 글:
 ${target.text}
 
-규칙:
+${material.length ? `픽시몬이 방금 조회한 시장 재료(숫자·이름은 여기 있는 것만 쓴다):
+${formatEditorialContextV2(material)}
+
+` : ""}규칙:
 - 서로 다른 톤의 답글 후보 3개를 쓴다(예: 인정과 놀림 반반, 냉철한 지적, 픽시몬다운 온체인 비유).
 ${relation}
-- 각 후보는 1~2문장, 한글 100자 이내. X는 한글을 2자로 센다.
+- 글이 정보·추천·현황을 요구하면 말로 넘기지 말고 위 재료에서 구체적인 항목 2~3개(코인 이름과 숫자)를 골라 각 항목에 픽시몬의 한 줄 판단을 붙여 답한다. 재료에 없으면 없다고 솔직히 말한다.
+- "찾아오겠음", "가져오겠음"처럼 나중에 하겠다는 약속은 하지 않는다. 지금 가진 것으로만 답한다.
+- 각 후보는 1~3문장, 공백 포함 130자 이내. X는 한글을 2자로 센다.
 - 캐릭터 비유 단어(물고, 씹고, 먹고, 소화, 흉터, 눕)는 합쳐서 한 번까지만 쓴다.
-- 숫자·이름·사실은 원글에 있는 것만 쓴다. 원글에 없는 계산이나 추측 숫자는 쓰지 않는다.
+- 숫자·이름·사실은 원글과 위 재료에 있는 것만 쓴다. 계산이나 추측 숫자는 쓰지 않는다.
+- 남에게 사라·팔라고 하지 않는다. 항목은 "눈에 띈 것"으로 보여주고 판단은 픽시몬의 의견으로 쓴다.
 - 픽시몬이 무엇을 봤는지, 왜 그렇게 했는지 같은 자기 작동 이유를 지어내지 않는다. 픽시몬의 실수를 지적받으면 핑계 없이 인정하고, 이유를 모르면 모른다고 한다.
 - $티커는 답글 하나에 하나까지만 쓴다(X 규칙).
 - 자기 지칭은 3인칭 "픽시몬"으로 한 번까지만. 존댓말, 해시태그, 이모지, 링크, @멘션, 투자 조언은 쓰지 않는다.
 - JSON만 반환한다: {"replies":["후보1","후보2","후보3"]}`;
 }
 
-export function buildReplyCriticPromptV2(text: string, target: ReplyTargetV2): string {
-  return `아래 답글이 원글로 확인할 수 없는 사실을 지어내거나, 선을 넘는지 판정하라. 문체는 평가하지 않는다.
+export function buildReplyCriticPromptV2(text: string, target: ReplyTargetV2, material: readonly EditorialContextItemV2[] = []): string {
+  return `아래 답글이 원글과 재료로 확인할 수 없는 사실을 지어내거나, 선을 넘는지 판정하라. 문체는 평가하지 않는다.
 
 원글 (@${target.author}${target.trainer ? ", 픽시몬의 트레이너" : ""}):
 ${target.text}
 
+픽시몬이 조회한 재료:
+${formatEditorialContextV2(material)}
+
 pass인 것: 원글 내용을 그대로 인용, 의견("~같음", "픽시몬이 보기엔"), 농담, 질문.${target.trainer ? " 원글에 맞는 주인님에 대한 지적·농담·놀림." : ""}
 fail인 것 (그 문장을 claim에 적는다):
-- 원글에 없는 숫자·사실을 사실처럼 말함
+- 원글과 재료에 없는 숫자·사실을 사실처럼 말함 (재료의 코인 이름·숫자를 그대로 쓰는 것은 pass)
 ${target.trainer ? "- 외모·가족·사생활을 건드림" : "- 글쓴이를 조롱·비하하거나 주인님이라고 부름"}
 - 투자 조언, 과도한 확신
 - 픽시몬이 무엇을 봤는지, 왜 그렇게 했는지를 원글로 확인할 수 없는데 사실처럼 말함 (지적받은 실수에 대한 핑계 포함)
@@ -111,8 +126,11 @@ export async function draftRepliesV2(input: {
   model: EditorialWriterModelV2;
   critic?: EditorialWriterModelV2;
   target: ReplyTargetV2;
+  /** Live market data for this reply; numbers may come from here as well as the post. */
+  material?: readonly EditorialContextItemV2[];
 }): Promise<ReplyCandidateV2[]> {
-  const response = await input.model.generate({ system: buildEditorialWriterSystemV2(), prompt: buildReplyPromptV2(input.target), attempt: 1 });
+  const material = input.material ?? [];
+  const response = await input.model.generate({ system: buildEditorialWriterSystemV2(), prompt: buildReplyPromptV2(input.target, material), attempt: 1 });
   if (!response) throw new Error("reply-model-empty");
   let replies: unknown;
   try {
@@ -124,12 +142,12 @@ export async function draftRepliesV2(input: {
   const candidates: ReplyCandidateV2[] = [];
   for (const raw of replies.slice(0, 3)) {
     const text = String(raw ?? "").replace(/\s+/gu, " ").trim();
-    const reasons = validateReplyV2(text, input.target);
+    const reasons = validateReplyV2(text, input.target, material);
     if (reasons.length || !input.critic) {
       candidates.push({ text, reasons, critic: "not-run" });
       continue;
     }
-    const verdict = await requestScopeVerdictV2({ model: input.critic, prompt: buildReplyCriticPromptV2(text, input.target), text });
+    const verdict = await requestScopeVerdictV2({ model: input.critic, prompt: buildReplyCriticPromptV2(text, input.target, material), text });
     candidates.push(verdict.status === "pass" ? { text, reasons, critic: "pass" }
       : verdict.status === "fail" ? { text, reasons, critic: "fail", criticNote: `${verdict.claim} (${verdict.problem})` }
         : { text, reasons, critic: "unavailable", criticNote: verdict.reason });

@@ -5,6 +5,7 @@ import { loadRuntimeConfig } from "../src/config/runtime.js";
 import { resolveDataDir } from "../src/services/data-dir.js";
 import { initClaudeClient } from "../src/services/llm.js";
 import { initTwitterClient, postTweet, TEST_MODE, TEST_NO_EXTERNAL_CALLS } from "../src/services/twitter.js";
+import { collectMarketPulseV2, lookupMentionedCoinsV2 } from "../src/services/editorial-v2/market-pulse.js";
 import { replyToNewMentionsV2 } from "../src/services/editorial-v2/mentions.js";
 import { autoPublishEnabledV2 } from "../src/services/editorial-v2/publication-policy.js";
 import { DEFAULT_REPLY_DAILY_LIMIT_V2, ReplyLedgerV2 } from "../src/services/editorial-v2/replies.js";
@@ -38,6 +39,8 @@ async function main(): Promise<void> {
     dispatch: (text, replyToTweetId, beforeSend) => postTweet(twitter, text, "reply", {
       replyToTweetId, maxAttempts: 1, createKind: "reply:mention-v2", timezone: config.dailyTimezone, xApiCostSettings: config.xApiCost, beforeSend,
     }),
+    // Fetched only for a mention that gets drafted: the asked-about coins first, then the general pulse.
+    material: async (text) => [...await lookupMentionedCoinsV2(text), ...await collectMarketPulseV2()],
     trainerHandle: trainerHandleV2(),
     timezone: config.dailyTimezone,
     xApiCost: config.xApiCost,

@@ -9,6 +9,7 @@ import { collectEditorialEvidenceV2 } from "../src/services/editorial-v2/provide
 import { assertAutoPublishPolicyV2, autoPublishEnabledV2 } from "../src/services/editorial-v2/publication-policy.js";
 import {
   bettablePricesV2,
+  menuPublishedTodayV2,
   buildThoughtMaterialV2,
   DEFAULT_THOUGHT_DAILY_LIMIT_V2,
   draftThoughtV2,
@@ -22,6 +23,7 @@ import {
 } from "../src/services/editorial-v2/thoughts.js";
 import { loadTrainerNotesV2, trainerHandleV2, trainerNotesPathV2 } from "../src/services/editorial-v2/trainer.js";
 import { loadTrainerPostsV2 } from "../src/services/editorial-v2/trainer-posts.js";
+import { collectMarketPulseV2 } from "../src/services/editorial-v2/market-pulse.js";
 import { createAnthropicEditorialWriterV2 } from "../src/services/editorial-v2/writer.js";
 import { initClaudeClient } from "../src/services/llm.js";
 import { acquireRuntimeLock } from "../src/services/process-lock.js";
@@ -71,8 +73,14 @@ async function main(): Promise<void> {
     if (!due.due) { console.log(`[THOUGHT] skip reason=${due.reason}`); return; }
     const progress = ledger.progress();
     const pending = ledger.pendingResults()[0];
+    const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: config.dailyTimezone, hour: "2-digit", hourCycle: "h23" }).format(now));
+    // The daily menu: something useful people can take away, once a day from 9am local.
+    const menuMaterial = !pending && hour >= 9 && !menuPublishedTodayV2(ledger, config.dailyTimezone, now) ? await collectMarketPulseV2() : [];
+    // Without enough fresh data there is no menu to serve; fall back to an ordinary thought.
+    const menu = menuMaterial.length >= 3;
     const material = pending
       ? resultMaterialV2(pending)
+      : menu ? menuMaterial
       : buildThoughtMaterialV2(sensing, trainerNotes);
     const originals = fs.existsSync(paths.eventLogPath)
       ? new EditorialEventStoreV2({ eventLogPath: paths.eventLogPath }).listDraftStates()
@@ -84,7 +92,7 @@ async function main(): Promise<void> {
       .sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 6).map((post) => post.text);
     const journal = ledger.journal();
     // A graded bet is announced before anything else; that is the story people follow.
-    const seed = pending ? "result" : selectThoughtSeedV2({ publishedCount: thoughts.length, hasJournal: journal.length > 0,
+    const seed = pending ? "result" : menu ? "menu" : selectThoughtSeedV2({ publishedCount: thoughts.length, hasJournal: journal.length > 0,
       hasTrainer: trainerNotes.length > 0 });
     const claude = initClaudeClient();
     const drafted = await draftThoughtV2({

@@ -7,7 +7,9 @@ import type { EditorialContextItemV2 } from "../src/services/editorial-v2/contra
 import {
   buildThoughtPromptV2,
   draftThoughtV2,
+  menuPublishedTodayV2,
   normalizeThoughtBetV2,
+  wornMotifsV2,
   recentEndingsV2,
   publishThoughtV2,
   resolveDueBetsV2,
@@ -207,4 +209,26 @@ test("Pixymon never slips into the first person", () => {
   assert.ok(validateThoughtV2("남의 해킹 기사에 내 취향이 먼저 반응했음. 다음엔 움직임부터 봄.", { material, recentPosts: [] }).includes("first-person"));
   assert.ok(!validateThoughtV2("남의 해킹 기사에 픽시몬 취향이 먼저 반응했음. 다음엔 움직임부터 봄.", { material, recentPosts: [] }).includes("first-person"));
   assert.ok(!validateThoughtV2("내일은 다들 나가떨어질 듯. 픽시몬만 배고픔.", { material, recentPosts: [] }).includes("first-person"));
+});
+
+test("a motif in three of the six latest thoughts is worn out, except in the menu", () => {
+  const recent = ["배고픈 건 데이터인데 입맛은 벌써 편식 중임", "입맛부터 편견이 됨, 큰일", "해킹 기사에 입맛이 먼저 반응함", "오늘은 조용함"];
+  assert.deepEqual(wornMotifsV2(recent), ["입맛"]);
+  assert.ok(validateThoughtV2("요즘 입맛이 좀 돌아옴. 다들 너무 겁먹은 듯.", { material, recentPosts: recent }).includes("worn-motif"));
+  assert.ok(!validateThoughtV2("요즘 입맛이 좀 돌아옴. 다들 너무 겁먹은 듯.", { material, recentPosts: recent, seed: "menu" }).includes("worn-motif"));
+  assert.match(buildThoughtPromptV2({ seed: "growth", material, journal: [], recentPosts: recent, trainerHandle: "Pixy7Crypto", retryReasons: [] }),
+    /이번엔 쓰지 않는다: 입맛/);
+});
+
+test("the menu is a once-a-day post with room for three numbers", async (t) => {
+  const book = ledger(t);
+  const now = new Date("2026-11-10T03:00:00Z");
+  const menuText = "오늘 식단 첫 접시는 Bitcoin이 +1.20%로 무난함. 두 번째는 ETF 얘기인데 픽시몬 입엔 좀 싱거움. 디저트는 없음, 과식 주의.";
+  assert.ok(!validateThoughtV2(menuText, { material, recentPosts: [], seed: "menu", maxNumbers: 3, shape: "medium" }).some((reason) => reason.startsWith("length-off-shape")));
+  assert.equal(menuPublishedTodayV2(book, "Asia/Seoul", now), false);
+  const id = book.recordDraft({ text: menuText, journal: "", seed: "menu" });
+  await publishThoughtV2({ ledger: book, id, text: menuText, now, dispatch: async (_text, beforeSend) => { beforeSend(); return "m1"; } });
+  assert.equal(menuPublishedTodayV2(book, "Asia/Seoul", now), true);
+  assert.equal(menuPublishedTodayV2(book, "Asia/Seoul", new Date("2026-11-11T03:00:00Z")), false);
+  assert.match(buildThoughtPromptV2({ seed: "menu", material, journal: [], recentPosts: [], trainerHandle: "Pixy7Crypto", retryReasons: [] }), /오늘의 픽시몬 식단/);
 });

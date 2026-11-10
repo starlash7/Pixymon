@@ -3,6 +3,7 @@ import path from "node:path";
 import type { XApiCostRuntimeSettings } from "../../types/runtime.js";
 import { xApiBudget } from "../x-api-budget.js";
 import { draftRepliesV2, publishReplyV2, type ReplyLedgerV2, type ReplyTargetV2 } from "./replies.js";
+import type { EditorialContextItemV2 } from "./contracts.js";
 import type { EditorialWriterModelV2 } from "./writer.js";
 
 /** Pay-per-use X bills each post read; a poll is budgeted at its worst case before it is sent. */
@@ -66,6 +67,8 @@ export async function replyToNewMentionsV2(input: {
   model: EditorialWriterModelV2;
   critic: EditorialWriterModelV2;
   dispatch: (text: string, replyToTweetId: string, beforeSend: () => void) => Promise<string | null>;
+  /** Live market material for a reply (free providers); absent in tests that do not need it. */
+  material?: (mentionText: string) => Promise<readonly EditorialContextItemV2[]>;
   trainerHandle: string;
   timezone: string;
   xApiCost: XApiCostRuntimeSettings;
@@ -110,7 +113,8 @@ export async function replyToNewMentionsV2(input: {
     };
     let candidates;
     try {
-      candidates = await draftRepliesV2({ model: input.model, critic: input.critic, target });
+      const material = input.material ? await input.material(mention.text).catch(() => []) : [];
+      candidates = await draftRepliesV2({ model: input.model, critic: input.critic, target, material });
     } catch (error) {
       // Budget local-only or a model outage: stop here, keep progress, and retry this mention next poll.
       skipped.push([mention.id, `draft-failed:${error instanceof Error ? error.message : String(error)}`]);
