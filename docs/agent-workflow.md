@@ -48,9 +48,7 @@ git fetch origin
 git switch main
 git pull --ff-only origin main
 git cherry-pick <sha1> <sha2> ...
-npm run build
-# 필요 시 테스트
-# npm test
+npm run verify
 git push origin main
 ```
 
@@ -61,7 +59,7 @@ git fetch origin
 git switch main
 git pull --ff-only origin main
 git merge --no-ff origin/feat/<task>
-npm run build
+npm run verify
 git push origin main
 ```
 
@@ -105,7 +103,7 @@ git branch -d feat/<task>
 - [ ] `origin/main` 기준 새 브랜치에서 시작했는가
 - [ ] 내 워크스페이스는 내 브랜치만 push 했는가
 - [ ] 통합 담당 워크스페이스만 `main`을 갱신했는가
-- [ ] `main` 반영 전 빌드/테스트를 통과했는가
+- [ ] `main` 반영 전 전체 `npm run verify`를 통과했는가
 - [ ] 완료 브랜치를 삭제했는가
 - [ ] `docs/plan.md`의 작업 모드(`HOLD SCOPE` / `EXPANSION` / `REDUCTION`)를 선언했는가
 - [ ] skill 성격 작업이면 gotchas / scripts / references / verification 경로를 먼저 정했는가
